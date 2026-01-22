@@ -1,5 +1,7 @@
 """Rich terminal and Markdown output rendering."""
 from typing import Dict, List
+from pathlib import Path
+from datetime import datetime
 from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
@@ -140,3 +142,126 @@ class TerminalRenderer:
     def _get_severity_color(self, severity: str) -> str:
         """Get color for severity level."""
         return self.SEVERITY_COLORS.get(severity, "white")
+
+
+class MarkdownExporter:
+    """Exports code review reports to Markdown format."""
+
+    SEVERITY_ICONS = {
+        "Critical": "🔴",
+        "High": "🟠",
+        "Medium": "🟡",
+        "Low": "🔵",
+        "Info": "⚪",
+    }
+
+    def export(self, report: CodeReviewReport, output_path: Path | str):
+        """
+        Export report to Markdown file.
+
+        Args:
+            report: CodeReviewReport to export
+            output_path: Path to output Markdown file
+        """
+        output_path = Path(output_path)
+        content = self._generate_markdown(report)
+        output_path.write_text(content)
+
+    def _generate_markdown(self, report: CodeReviewReport) -> str:
+        """Generate Markdown content."""
+        sections = [
+            self._header(),
+            self._summary(report),
+            self._metrics(report),
+            self._issues(report),
+            self._system_design(report),
+            self._recommendations(report),
+        ]
+
+        return "\n\n".join(sections)
+
+    def _header(self) -> str:
+        """Generate header section."""
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        return f"# Code Review Report\n\n**Generated:** {now}"
+
+    def _summary(self, report: CodeReviewReport) -> str:
+        """Generate summary section."""
+        return f"## Executive Summary\n\n{report.summary}"
+
+    def _metrics(self, report: CodeReviewReport) -> str:
+        """Generate metrics section."""
+        lines = ["## Metrics\n"]
+
+        for key, value in report.metrics.items():
+            lines.append(f"- **{key.replace('_', ' ').title()}:** {value}")
+
+        return "\n".join(lines)
+
+    def _issues(self, report: CodeReviewReport) -> str:
+        """Generate issues section."""
+        if not report.issues:
+            return "## Issues\n\n✅ No issues found!"
+
+        lines = ["## Issues by Severity\n"]
+
+        # Group by severity
+        grouped = {}
+        for issue in report.issues:
+            if issue.severity not in grouped:
+                grouped[issue.severity] = []
+            grouped[issue.severity].append(issue)
+
+        # Render each severity group
+        for severity in ["Critical", "High", "Medium", "Low", "Info"]:
+            if severity not in grouped:
+                continue
+
+            icon = self.SEVERITY_ICONS[severity]
+            issues = grouped[severity]
+
+            lines.append(f"### {icon} {severity} ({len(issues)})\n")
+
+            for issue in issues:
+                lines.append(self._format_issue(issue))
+
+        return "\n".join(lines)
+
+    def _format_issue(self, issue: ReviewIssue) -> str:
+        """Format single issue in Markdown."""
+        lines = [
+            f"#### [{issue.category}] {issue.title}",
+            f"**File:** `{issue.file_path}:{issue.line_start}`",
+            f"**Severity:** {issue.severity}\n",
+            f"**Description:**\n{issue.description}\n",
+            f"**Rationale:**\n{issue.rationale}\n",
+        ]
+
+        if issue.suggested_code:
+            lines.append(f"**Suggested Fix:**")
+            lines.append(f"```python\n{issue.suggested_code}\n```\n")
+
+        if issue.references:
+            lines.append("**References:**")
+            for ref in issue.references:
+                lines.append(f"- {ref}")
+
+        lines.append("\n---\n")
+
+        return "\n".join(lines)
+
+    def _system_design(self, report: CodeReviewReport) -> str:
+        """Generate system design section."""
+        return f"## System Design Insights\n\n{report.system_design_insights}"
+
+    def _recommendations(self, report: CodeReviewReport) -> str:
+        """Generate recommendations section."""
+        if not report.recommendations:
+            return ""
+
+        lines = ["## Top Recommendations\n"]
+
+        for i, rec in enumerate(report.recommendations, 1):
+            lines.append(f"{i}. {rec}")
+
+        return "\n".join(lines)
