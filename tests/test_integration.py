@@ -175,6 +175,7 @@ class TestFullWorkflow:
             mock_analyzer.analyze_batch.return_value = mock_code_review_report
             mock_analyzer.total_input_tokens = 1000
             mock_analyzer.total_output_tokens = 500
+            mock_analyzer.skipped_files = []
             mock_analyzer_class.return_value = mock_analyzer
 
             result = runner.invoke(main, [str(sample_project_dir)])
@@ -194,6 +195,7 @@ class TestFullWorkflow:
             mock_analyzer.analyze_batch.return_value = mock_code_review_report
             mock_analyzer.total_input_tokens = 1000
             mock_analyzer.total_output_tokens = 500
+            mock_analyzer.skipped_files = []
             mock_analyzer_class.return_value = mock_analyzer
 
             result = runner.invoke(main, [
@@ -214,6 +216,7 @@ class TestFullWorkflow:
             mock_analyzer.analyze_batch.return_value = mock_code_review_report
             mock_analyzer.total_input_tokens = 1000
             mock_analyzer.total_output_tokens = 500
+            mock_analyzer.skipped_files = []
             mock_analyzer_class.return_value = mock_analyzer
 
             result = runner.invoke(main, [
@@ -232,6 +235,7 @@ class TestFullWorkflow:
             mock_analyzer.analyze_batch.return_value = mock_code_review_report
             mock_analyzer.total_input_tokens = 1000
             mock_analyzer.total_output_tokens = 500
+            mock_analyzer.skipped_files = []
             mock_analyzer_class.return_value = mock_analyzer
 
             result = runner.invoke(main, [
@@ -250,6 +254,7 @@ class TestFullWorkflow:
             mock_analyzer.analyze_batch.return_value = mock_code_review_report
             mock_analyzer.total_input_tokens = 1000
             mock_analyzer.total_output_tokens = 500
+            mock_analyzer.skipped_files = []
             mock_analyzer_class.return_value = mock_analyzer
 
             result = runner.invoke(main, [
@@ -296,6 +301,7 @@ class TestWorkflowWithFixtures:
             mock_analyzer.analyze_batch.return_value = mock_code_review_report
             mock_analyzer.total_input_tokens = 1000
             mock_analyzer.total_output_tokens = 500
+            mock_analyzer.skipped_files = []
             mock_analyzer_class.return_value = mock_analyzer
 
             result = runner.invoke(main, [str(fixtures_dir)])
@@ -358,6 +364,7 @@ class TestOutputFormats:
             mock_analyzer.analyze_batch.return_value = mock_code_review_report
             mock_analyzer.total_input_tokens = 1000
             mock_analyzer.total_output_tokens = 500
+            mock_analyzer.skipped_files = []
             mock_analyzer_class.return_value = mock_analyzer
 
             result = runner.invoke(main, [
@@ -409,6 +416,7 @@ class TestBatchProcessing:
             mock_analyzer.analyze_batch.return_value = mock_code_review_report
             mock_analyzer.total_input_tokens = 1000
             mock_analyzer.total_output_tokens = 500
+            mock_analyzer.skipped_files = []
             mock_analyzer_class.return_value = mock_analyzer
 
             result = runner.invoke(main, [str(sample_project_dir)])
@@ -464,6 +472,7 @@ class TestBatchProcessing:
             mock_analyzer.analyze_batch.side_effect = [report1, report2]
             mock_analyzer.total_input_tokens = 2000
             mock_analyzer.total_output_tokens = 1000
+            mock_analyzer.skipped_files = []
             mock_analyzer_class.return_value = mock_analyzer
 
             result = runner.invoke(main, [str(sample_project_dir)])

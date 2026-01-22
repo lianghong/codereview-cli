@@ -1,11 +1,12 @@
 """LLM-based code analyzer using AWS Bedrock."""
-from pathlib import Path
 import time
+
 from botocore.exceptions import ClientError
 from langchain_aws import ChatBedrockConverse
-from codereview.models import CodeReviewReport
+
 from codereview.batcher import FileBatch
 from codereview.config import MODEL_CONFIG, SYSTEM_PROMPT
+from codereview.models import CodeReviewReport
 
 
 class CodeAnalyzer:
@@ -24,6 +25,7 @@ class CodeAnalyzer:
         self.model = self._create_model()
         self.total_input_tokens = 0
         self.total_output_tokens = 0
+        self.skipped_files = []  # Track files that couldn't be read
 
     def _create_model(self):
         """Create LangChain model with structured output."""
@@ -63,13 +65,29 @@ class CodeAnalyzer:
             try:
                 result = self.model.invoke(messages)
 
-                # Track approximate token usage based on context
-                # AWS Bedrock returns actual usage, but for estimation we use ~4 chars per token
-                input_tokens = len(context) // 4  # Rough approximation
-                output_tokens = len(str(result.summary)) // 4  # Rough output size
+                # Track token usage from AWS Bedrock response metadata
+                # Try to access actual usage from response, fall back to estimation if unavailable
+                if hasattr(result, 'response_metadata'):
+                    usage = result.response_metadata.get('usage', {})
+                    input_tokens = usage.get('input_tokens', 0)
+                    output_tokens = usage.get('output_tokens', 0)
 
-                self.total_input_tokens += input_tokens
-                self.total_output_tokens += output_tokens
+                    if input_tokens > 0:
+                        # Use actual token counts from AWS
+                        self.total_input_tokens += input_tokens
+                        self.total_output_tokens += output_tokens
+                    else:
+                        # Fallback to estimation if metadata doesn't contain usage
+                        input_tokens = len(context) // 4
+                        output_tokens = len(str(result.model_dump_json())) // 4
+                        self.total_input_tokens += input_tokens
+                        self.total_output_tokens += output_tokens
+                else:
+                    # Fallback to estimation if no response_metadata available
+                    input_tokens = len(context) // 4
+                    output_tokens = len(str(result.model_dump_json())) // 4
+                    self.total_input_tokens += input_tokens
+                    self.total_output_tokens += output_tokens
 
                 return result
 
@@ -88,7 +106,7 @@ class CodeAnalyzer:
                 # For other errors, raise immediately
                 raise
 
-            except Exception as e:
+            except Exception:
                 # For non-AWS errors, raise immediately
                 raise
 
@@ -129,7 +147,10 @@ class CodeAnalyzer:
                 lines.append("")
 
             except Exception as e:
-                lines.append(f"ERROR reading {file_path}: {e}")
+                error_msg = f"ERROR reading {file_path}: {e}"
+                lines.append(error_msg)
                 lines.append("")
+                # Track skipped file for reporting
+                self.skipped_files.append((str(file_path), str(e)))
 
         return "\n".join(lines)

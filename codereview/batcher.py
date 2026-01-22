@@ -1,6 +1,7 @@
 """Smart batching for managing context window limits."""
 from pathlib import Path
 from typing import List
+
 from pydantic import BaseModel, ConfigDict
 
 

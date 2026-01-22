@@ -1,11 +1,12 @@
 """Rich terminal and Markdown output rendering."""
-from typing import Dict, List
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
+from typing import Dict, List
+
 from rich.console import Console
-from rich.table import Table
 from rich.panel import Panel
-from rich.markdown import Markdown
+from rich.table import Table
+
 from codereview.models import CodeReviewReport, ReviewIssue
 
 
@@ -305,7 +306,7 @@ class MarkdownExporter:
         ]
 
         if issue.suggested_code:
-            lines.append(f"**Suggested Fix:**")
+            lines.append("**Suggested Fix:**")
             lines.append(f"```python\n{issue.suggested_code}\n```\n")
 
         if issue.references:

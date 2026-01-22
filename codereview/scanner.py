@@ -1,13 +1,11 @@
 # codereview/scanner.py
 """File scanner for discovering code files to review."""
-from pathlib import Path
 from fnmatch import fnmatch
+from pathlib import Path
 from typing import List
-from codereview.config import (
-    DEFAULT_EXCLUDE_PATTERNS,
-    DEFAULT_EXCLUDE_EXTENSIONS,
-    MAX_FILE_SIZE_KB
-)
+
+from codereview.config import (DEFAULT_EXCLUDE_EXTENSIONS,
+                               DEFAULT_EXCLUDE_PATTERNS, MAX_FILE_SIZE_KB)
 
 
 class FileScanner:

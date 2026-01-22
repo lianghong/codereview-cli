@@ -1,17 +1,19 @@
 """CLI entry point for code review tool."""
-import click
 from pathlib import Path
+
+import click
 from botocore.exceptions import ClientError, NoCredentialsError
 from rich.console import Console
-from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.panel import Panel
+from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
-from codereview.scanner import FileScanner
-from codereview.batcher import SmartBatcher
+
 from codereview.analyzer import CodeAnalyzer
-from codereview.renderer import TerminalRenderer, MarkdownExporter
-from codereview.models import CodeReviewReport, ReviewIssue
+from codereview.batcher import SmartBatcher
 from codereview.config import SUPPORTED_MODELS
+from codereview.models import CodeReviewReport, ReviewIssue
+from codereview.renderer import MarkdownExporter, TerminalRenderer
+from codereview.scanner import FileScanner
 from codereview.static_analysis import StaticAnalyzer
 
 console = Console()
@@ -99,7 +101,7 @@ def main(
         model_info = SUPPORTED_MODELS.get(model_id)
         model_name = model_info["name"] if model_info else "Unknown"
 
-        console.print(f"\n[bold cyan]🔍 Code Review Tool[/bold cyan]\n")
+        console.print("\n[bold cyan]🔍 Code Review Tool[/bold cyan]\n")
         console.print(f"📂 Scanning directory: {directory}")
         console.print(f"🤖 Model: {model_name}\n")
 
@@ -164,7 +166,7 @@ def main(
             console=console
         ) as progress:
             task = progress.add_task(
-                f"Analyzing code...",
+                "Analyzing code...",
                 total=len(batches)
             )
 
@@ -236,7 +238,7 @@ def main(
         )
 
         # Display token usage and cost
-        console.print(f"\n[cyan]💰 Token Usage & Cost Estimate:[/cyan]")
+        console.print("\n[cyan]💰 Token Usage & Cost Estimate:[/cyan]")
         console.print(f"   Input tokens:  {analyzer.total_input_tokens:,}")
         console.print(f"   Output tokens: {analyzer.total_output_tokens:,}")
         console.print(f"   Total tokens:  {analyzer.total_input_tokens + analyzer.total_output_tokens:,}")
@@ -250,6 +252,15 @@ def main(
             total_cost = input_cost + output_cost
             console.print(f"   [bold]Estimated cost: ${total_cost:.4f}[/bold]")
         console.print()
+
+        # Warn if any files were skipped
+        if analyzer.skipped_files:
+            console.print(f"[yellow]⚠️  Warning: {len(analyzer.skipped_files)} file(s) could not be read:[/yellow]")
+            for file_path, error in analyzer.skipped_files[:5]:  # Show first 5
+                console.print(f"   • {file_path}: {error}")
+            if len(analyzer.skipped_files) > 5:
+                console.print(f"   ... and {len(analyzer.skipped_files) - 5} more")
+            console.print()
 
         # Step 5: Render results
         renderer = TerminalRenderer()

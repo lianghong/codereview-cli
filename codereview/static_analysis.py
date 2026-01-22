@@ -1,8 +1,8 @@
 """Static analysis integration for Python code quality tools."""
 import subprocess
-from pathlib import Path
 from dataclasses import dataclass
-from typing import List, Dict, Any
+from pathlib import Path
+from typing import Any, Dict, List
 
 
 @dataclass
@@ -94,8 +94,19 @@ class StaticAnalyzer:
                 errors=[f"Tool not installed: {tool_name}"]
             )
 
+        # Validate directory before use (security measure)
+        if not self.directory.exists() or not self.directory.is_dir():
+            return StaticAnalysisResult(
+                tool=tool_name,
+                passed=False,
+                issues_count=0,
+                output="",
+                errors=["Invalid directory path"]
+            )
+
         tool_config = self.TOOLS[tool_name]
-        command = tool_config["command"] + [str(self.directory)]
+        # Use absolute path to avoid relative path issues
+        command = tool_config["command"] + [str(self.directory.resolve())]
 
         try:
             result = subprocess.run(
@@ -133,7 +144,7 @@ class StaticAnalyzer:
                 passed=False,
                 issues_count=0,
                 output="",
-                errors=[f"Tool timed out after 120 seconds"]
+                errors=["Tool timed out after 120 seconds"]
             )
         except Exception as e:
             return StaticAnalysisResult(
