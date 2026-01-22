@@ -42,11 +42,23 @@ uv run codereview /path/to/code
 # With model selection
 uv run codereview /path/to/code --model-id global.anthropic.claude-sonnet-4-5-20250929-v1:0
 
+# With static analysis (ruff, mypy, black, isort)
+uv run codereview /path/to/code --static-analysis
+
 # With options
 uv run codereview ./src --output report.md --severity high --verbose
 
 # Direct Python invocation (for debugging)
 uv run python -m codereview.cli /path/to/code
+```
+
+**Static Analysis Integration:**
+```bash
+# Install optional tools for static analysis
+pip install ruff mypy black isort
+
+# Run combined AI + static analysis review
+uv run codereview ./src --static-analysis --output comprehensive-review.md
 ```
 
 ## Architecture

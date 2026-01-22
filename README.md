@@ -159,6 +159,30 @@ codereview /path/to/code --model-id global.anthropic.claude-haiku-4-5-20251001-v
 - **Sonnet 4.5**: Balanced performance and cost, suitable for most reviews ($3/M input, $15/M output)
 - **Haiku 4.5**: Fastest and most economical, good for large codebases ($0.25/M input, $1.25/M output)
 
+### Run Static Analysis
+
+Combine AI review with Python static analysis tools:
+
+```bash
+# Run with ruff, mypy, black, and isort
+codereview /path/to/code --static-analysis
+
+# First install the tools (optional but recommended)
+pip install ruff mypy black isort
+```
+
+**Static Analysis Tools:**
+- **ruff**: Fast Python linter (replaces flake8, pylint)
+- **mypy**: Static type checker
+- **black**: Code formatter checker
+- **isort**: Import sorter checker
+
+**Output includes:**
+- Tool pass/fail status
+- Issue counts per tool
+- Detailed output for failed checks
+- Integrated into Markdown reports
+
 ### Verbose Mode
 
 ```bash
@@ -178,6 +202,7 @@ codereview /path/to/code \
   --aws-region us-west-2 \
   --aws-profile production \
   --model-id global.anthropic.claude-sonnet-4-5-20250929-v1:0 \
+  --static-analysis \
   --verbose
 ```
 

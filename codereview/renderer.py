@@ -173,10 +173,17 @@ class MarkdownExporter:
             self._header(),
             self._summary(report),
             self._metrics(report),
+        ]
+
+        # Add static analysis section if it was run
+        if report.metrics.get("static_analysis_run"):
+            sections.append(self._static_analysis(report))
+
+        sections.extend([
             self._issues(report),
             self._system_design(report),
             self._recommendations(report),
-        ]
+        ])
 
         return "\n\n".join(sections)
 
@@ -228,6 +235,33 @@ class MarkdownExporter:
                 lines.append(f"- **Estimated Cost:** ${total_cost:.4f} USD")
                 lines.append(f"  - Input cost: ${input_cost:.4f} (${input_price:.2f}/M tokens)")
                 lines.append(f"  - Output cost: ${output_cost:.4f} (${output_price:.2f}/M tokens)")
+
+        return "\n".join(lines)
+
+    def _static_analysis(self, report: CodeReviewReport) -> str:
+        """Generate static analysis section."""
+        if not report.metrics.get("static_analysis_run"):
+            return ""
+
+        lines = ["## Static Analysis\n"]
+
+        tools_passed = report.metrics.get("static_tools_passed", 0)
+        tools_failed = report.metrics.get("static_tools_failed", 0)
+        issues_found = report.metrics.get("static_issues_found", 0)
+
+        if tools_failed == 0:
+            lines.append("✅ All static analysis tools passed!\n")
+        else:
+            lines.append(f"⚠️ {tools_failed} tool(s) found {issues_found} issue(s)\n")
+
+        lines.append("| Tool | Status | Issues |")
+        lines.append("|------|--------|--------|")
+
+        # We don't have individual tool results in metrics, so just show summary
+        lines.append(f"| All Tools | {tools_passed} passed, {tools_failed} failed | {issues_found} |")
+
+        lines.append("\n**Tools run:** ruff, mypy, black, isort (when available)")
+        lines.append("\n*Run with `--static-analysis` flag to see detailed output in terminal.*")
 
         return "\n".join(lines)
 
