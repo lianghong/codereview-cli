@@ -45,3 +45,14 @@ htmlcov/
 # Other
 *.log
 .mypy_cache/
+
+# Environment and Secrets
+.env
+.env.*
+.env.local
+.env.production
+*.pem
+*.key
+.aws/
+credentials
+secrets.json

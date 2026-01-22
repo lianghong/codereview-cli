@@ -3,6 +3,19 @@ name = "codereview-cli"
 version = "0.1.0"
 description = "LangChain-based code review CLI tool with AWS Bedrock"
 requires-python = ">=3.14"
+authors = [
+    {name = "Lianghong Fei", email = "feilianghong@gmail.com"}
+]
+license = {text = "MIT"}
+readme = "README.md"
+keywords = ["code-review", "langchain", "aws-bedrock", "claude", "cli"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.14",
+]
 dependencies = [
     "langchain>=0.3.0",
     "langchain-aws>=0.2.0",
