@@ -141,6 +141,24 @@ codereview /path/to/code --exclude "**/tests/**" --exclude "**/deprecated/**"
 codereview /path/to/code --aws-region us-east-1
 ```
 
+### Choose Claude Model
+
+```bash
+# Use Claude Opus 4.5 (default - highest quality)
+codereview /path/to/code --model-id global.anthropic.claude-opus-4-5-20251101-v1:0
+
+# Use Claude Sonnet 4.5 (balanced performance and cost)
+codereview /path/to/code --model-id global.anthropic.claude-sonnet-4-5-20250929-v1:0
+
+# Use Claude Haiku 4.5 (fastest and most cost-effective)
+codereview /path/to/code --model-id global.anthropic.claude-haiku-4-5-20251001-v1:0
+```
+
+**Model Comparison:**
+- **Opus 4.5** (default): Highest quality analysis, best for critical code reviews ($15/M input, $75/M output)
+- **Sonnet 4.5**: Balanced performance and cost, suitable for most reviews ($3/M input, $15/M output)
+- **Haiku 4.5**: Fastest and most economical, good for large codebases ($0.25/M input, $1.25/M output)
+
 ### Verbose Mode
 
 ```bash
@@ -159,6 +177,7 @@ codereview /path/to/code \
   --exclude "**/vendor/**" \
   --aws-region us-west-2 \
   --aws-profile production \
+  --model-id global.anthropic.claude-sonnet-4-5-20250929-v1:0 \
   --verbose
 ```
 

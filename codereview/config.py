@@ -52,6 +52,28 @@ MODEL_CONFIG = {
     "temperature": 0.1,
 }
 
+# Supported models and their configurations
+SUPPORTED_MODELS = {
+    "global.anthropic.claude-opus-4-5-20251101-v1:0": {
+        "name": "Claude Opus 4.5",
+        "input_price_per_million": 15.00,
+        "output_price_per_million": 75.00,
+    },
+    "global.anthropic.claude-sonnet-4-5-20250929-v1:0": {
+        "name": "Claude Sonnet 4.5",
+        "input_price_per_million": 3.00,
+        "output_price_per_million": 15.00,
+    },
+    "global.anthropic.claude-haiku-4-5-20251001-v1:0": {
+        "name": "Claude Haiku 4.5",
+        "input_price_per_million": 0.25,
+        "output_price_per_million": 1.25,
+    },
+}
+
+# Default model
+DEFAULT_MODEL_ID = "global.anthropic.claude-opus-4-5-20251101-v1:0"
+
 SYSTEM_PROMPT = """You are an expert code reviewer with deep knowledge of:
 - Python and Go best practices
 - Security vulnerabilities (OWASP Top 10, CWE)

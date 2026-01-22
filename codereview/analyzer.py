@@ -9,16 +9,18 @@ from codereview.config import MODEL_CONFIG, SYSTEM_PROMPT
 
 
 class CodeAnalyzer:
-    """Analyzes code using Claude Opus 4.5 via AWS Bedrock."""
+    """Analyzes code using Claude models via AWS Bedrock."""
 
-    def __init__(self, region: str | None = None):
+    def __init__(self, region: str | None = None, model_id: str | None = None):
         """
         Initialize analyzer.
 
         Args:
             region: AWS region (uses MODEL_CONFIG default if not provided)
+            model_id: Model ID to use (uses MODEL_CONFIG default if not provided)
         """
         self.region = region or MODEL_CONFIG["region"]
+        self.model_id = model_id or MODEL_CONFIG["model_id"]
         self.model = self._create_model()
         self.total_input_tokens = 0
         self.total_output_tokens = 0
@@ -26,7 +28,7 @@ class CodeAnalyzer:
     def _create_model(self):
         """Create LangChain model with structured output."""
         base_model = ChatBedrockConverse(
-            model=MODEL_CONFIG["model_id"],
+            model=self.model_id,
             region_name=self.region,
             temperature=MODEL_CONFIG["temperature"],
             max_tokens=MODEL_CONFIG["max_tokens"],

@@ -208,17 +208,26 @@ class MarkdownExporter:
         # Add token usage section if available
         if token_metrics:
             lines.append("\n### Token Usage & Cost\n")
+
+            # Get pricing information from metrics
+            input_price = report.metrics.get("input_price_per_million", 15.00)
+            output_price = report.metrics.get("output_price_per_million", 75.00)
+            model_name = report.metrics.get("model_name", "Claude Opus 4.5")
+
+            # Display model name
+            lines.append(f"**Model:** {model_name}\n")
+
             for key, value in sorted(token_metrics.items()):
                 lines.append(f"- **{key.replace('_', ' ').title()}:** {value:,}")
 
             # Calculate and display cost if we have token counts
             if 'input_tokens' in token_metrics and 'output_tokens' in token_metrics:
-                input_cost = (token_metrics['input_tokens'] / 1_000_000) * 15.00
-                output_cost = (token_metrics['output_tokens'] / 1_000_000) * 75.00
+                input_cost = (token_metrics['input_tokens'] / 1_000_000) * input_price
+                output_cost = (token_metrics['output_tokens'] / 1_000_000) * output_price
                 total_cost = input_cost + output_cost
                 lines.append(f"- **Estimated Cost:** ${total_cost:.4f} USD")
-                lines.append(f"  - Input cost: ${input_cost:.4f} (${15.00}/M tokens)")
-                lines.append(f"  - Output cost: ${output_cost:.4f} (${75.00}/M tokens)")
+                lines.append(f"  - Input cost: ${input_cost:.4f} (${input_price:.2f}/M tokens)")
+                lines.append(f"  - Output cost: ${output_cost:.4f} (${output_price:.2f}/M tokens)")
 
         return "\n".join(lines)
 

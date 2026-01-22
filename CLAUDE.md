@@ -36,8 +36,11 @@ uv run pytest tests/ --cov=codereview --cov-report=html
 
 ### Running the Tool
 ```bash
-# Basic usage
+# Basic usage (uses Claude Opus 4.5 by default)
 uv run codereview /path/to/code
+
+# With model selection
+uv run codereview /path/to/code --model-id global.anthropic.claude-sonnet-4-5-20250929-v1:0
 
 # With options
 uv run codereview ./src --output report.md --severity high --verbose
@@ -84,10 +87,15 @@ All in `codereview/config.py`:
 - `DEFAULT_EXCLUDE_PATTERNS`: File patterns to skip (.venv, __pycache__, etc.)
 - `DEFAULT_EXCLUDE_EXTENSIONS`: Extensions to skip (.json, .md, binaries, etc.)
 - `MODEL_CONFIG`: AWS Bedrock settings (model_id, region, temperature, max_tokens)
+- `SUPPORTED_MODELS`: Dict of available models with pricing information
+  - Claude Opus 4.5: $15/M input, $75/M output (default)
+  - Claude Sonnet 4.5: $3/M input, $15/M output
+  - Claude Haiku 4.5: $0.25/M input, $1.25/M output
+- `DEFAULT_MODEL_ID`: Default model (Claude Opus 4.5)
 - `SYSTEM_PROMPT`: Instructions for Claude including "avoid overdesign" rule
 - `MAX_FILE_SIZE_KB`: File size limit (default 10KB)
 
-**Important:** Model ID is `global.anthropic.claude-opus-4-5-20251101-v1:0` (region-agnostic)
+**Important:** All model IDs use region-agnostic `global.anthropic.*` format
 
 ## Testing Patterns
 

@@ -9,6 +9,7 @@ from codereview.batcher import SmartBatcher
 from codereview.analyzer import CodeAnalyzer
 from codereview.renderer import TerminalRenderer, MarkdownExporter
 from codereview.models import CodeReviewReport, ReviewIssue
+from codereview.config import SUPPORTED_MODELS
 
 console = Console()
 
@@ -53,6 +54,16 @@ console = Console()
     help='AWS CLI profile to use'
 )
 @click.option(
+    '--model-id',
+    type=click.Choice([
+        'global.anthropic.claude-opus-4-5-20251101-v1:0',
+        'global.anthropic.claude-sonnet-4-5-20250929-v1:0',
+        'global.anthropic.claude-haiku-4-5-20251001-v1:0'
+    ], case_sensitive=False),
+    default='global.anthropic.claude-opus-4-5-20251101-v1:0',
+    help='Claude model to use (default: Opus 4.5)'
+)
+@click.option(
     '--verbose', '-v',
     is_flag=True,
     help='Show detailed progress'
@@ -66,16 +77,22 @@ def main(
     max_file_size: int,
     aws_region: str | None,
     aws_profile: str | None,
+    model_id: str,
     verbose: bool
 ):
     """
     Analyze code in DIRECTORY and generate a comprehensive review report.
 
-    Reviews Python and Go files using Claude Opus 4.5 via AWS Bedrock.
+    Reviews Python and Go files using Claude models via AWS Bedrock.
     """
     try:
+        # Get model information
+        model_info = SUPPORTED_MODELS.get(model_id)
+        model_name = model_info["name"] if model_info else "Unknown"
+
         console.print(f"\n[bold cyan]🔍 Code Review Tool[/bold cyan]\n")
-        console.print(f"📂 Scanning directory: {directory}\n")
+        console.print(f"📂 Scanning directory: {directory}")
+        console.print(f"🤖 Model: {model_name}\n")
 
         # Step 1: Scan files
         with Progress(
@@ -106,7 +123,7 @@ def main(
         console.print(f"📦 Created {len(batches)} batches\n")
 
         # Step 3: Analyze batches
-        analyzer = CodeAnalyzer(region=aws_region)
+        analyzer = CodeAnalyzer(region=aws_region, model_id=model_id)
         all_issues = []
         total_files = len(files)
 
@@ -166,6 +183,9 @@ def main(
                 "input_tokens": analyzer.total_input_tokens,
                 "output_tokens": analyzer.total_output_tokens,
                 "total_tokens": analyzer.total_input_tokens + analyzer.total_output_tokens,
+                "model_name": model_name,
+                "input_price_per_million": model_info["input_price_per_million"] if model_info else 0,
+                "output_price_per_million": model_info["output_price_per_million"] if model_info else 0,
             },
             issues=all_issues,
             system_design_insights="Analysis complete",
@@ -178,12 +198,14 @@ def main(
         console.print(f"   Output tokens: {analyzer.total_output_tokens:,}")
         console.print(f"   Total tokens:  {analyzer.total_input_tokens + analyzer.total_output_tokens:,}")
 
-        # Calculate approximate cost (Claude Opus 4.5 pricing)
-        # $15.00 per million input tokens, $75.00 per million output tokens
-        input_cost = (analyzer.total_input_tokens / 1_000_000) * 15.00
-        output_cost = (analyzer.total_output_tokens / 1_000_000) * 75.00
-        total_cost = input_cost + output_cost
-        console.print(f"   [bold]Estimated cost: ${total_cost:.4f}[/bold]")
+        # Calculate cost using model's pricing
+        if model_info:
+            input_price = model_info["input_price_per_million"]
+            output_price = model_info["output_price_per_million"]
+            input_cost = (analyzer.total_input_tokens / 1_000_000) * input_price
+            output_cost = (analyzer.total_output_tokens / 1_000_000) * output_price
+            total_cost = input_cost + output_cost
+            console.print(f"   [bold]Estimated cost: ${total_cost:.4f}[/bold]")
         console.print()
 
         # Step 5: Render results
