@@ -76,9 +76,40 @@ Analyze only the first 50 files:
 codereview ./large-project --max-files 50
 ```
 
+### Example 6: Model Selection
+
+Choose the right model for your use case:
+
+```bash
+# High-quality review with Opus (critical code)
+codereview ./src/auth --model-id global.anthropic.claude-opus-4-5-20251101-v1:0
+
+# Balanced review with Sonnet (daily development)
+codereview ./src --model-id global.anthropic.claude-sonnet-4-5-20250929-v1:0
+
+# Fast review with Haiku (large codebase)
+codereview ./monorepo --model-id global.anthropic.claude-haiku-4-5-20251001-v1:0 --max-files 1000
+```
+
+**Output with Model Information**:
+```
+🔍 Code Review Tool
+
+📂 Scanning directory: ./src
+🤖 Model: Claude Sonnet 4.5
+
+✓ Found 50 files to review
+
+💰 Token Usage & Cost Estimate:
+   Input tokens:  25,000
+   Output tokens: 8,000
+   Total tokens:  33,000
+   Estimated cost: $0.1950
+```
+
 ## Advanced Examples
 
-### Example 6: Multi-Module Review
+### Example 7: Multi-Module Review
 
 Review multiple modules separately:
 
@@ -99,7 +130,7 @@ done
 echo "All reviews complete in $OUTPUT_DIR"
 ```
 
-### Example 7: Incremental Review Script
+### Example 8: Incremental Review Script
 
 Review only changed files since last commit:
 
@@ -125,20 +156,33 @@ for dir in $DIRS; do
 done
 ```
 
-### Example 8: Cost-Conscious Review
+### Example 9: Cost-Conscious Review with Model Selection
 
-Minimize AWS costs while maintaining quality:
+Minimize AWS costs while maintaining quality by choosing the right model:
 
 ```bash
-# Focus on critical paths only
+# Option 1: Sonnet for balanced cost/quality
 codereview ./src/core ./src/security \
+  --model-id global.anthropic.claude-sonnet-4-5-20250929-v1:0 \
   --severity high \
   --max-files 100 \
   --max-file-size 10 \
   --output critical-review.md
+
+# Option 2: Haiku for large scans
+codereview ./src \
+  --model-id global.anthropic.claude-haiku-4-5-20251001-v1:0 \
+  --max-files 500 \
+  --severity high \
+  --output large-scan.md
 ```
 
-### Example 9: Region-Specific Configuration
+**Cost Comparison**:
+- Opus (100 files): ~$1.50
+- Sonnet (100 files): ~$0.30
+- Haiku (500 files): ~$0.20
+
+### Example 10: Region-Specific Configuration
 
 Use different AWS regions for redundancy:
 
@@ -149,7 +193,7 @@ codereview ./src --aws-region us-west-2 --output review-west.md || \
 codereview ./src --aws-region us-east-1 --output review-east.md
 ```
 
-### Example 10: Verbose Debugging
+### Example 11: Verbose Debugging
 
 Debug issues with detailed output:
 
@@ -161,6 +205,8 @@ codereview ./problematic-module \
 ```
 
 ## CI/CD Integration
+
+**Cost-Effective CI/CD**: Use Haiku or Sonnet in CI/CD to reduce costs while maintaining quality gates.
 
 ### GitHub Actions
 
@@ -207,6 +253,7 @@ jobs:
       - name: Run code review
         run: |
           codereview ./src \
+            --model-id global.anthropic.claude-sonnet-4-5-20250929-v1:0 \
             --output review-report.md \
             --severity high \
             --max-files 100
@@ -258,6 +305,7 @@ code-review:
   script:
     - |
       codereview ./src \
+        --model-id global.anthropic.claude-haiku-4-5-20251001-v1:0 \
         --output review-report.md \
         --severity high \
         --max-files 100
@@ -312,6 +360,7 @@ pipeline {
                 ]) {
                     sh '''
                         codereview ./src \
+                            --model-id global.anthropic.claude-haiku-4-5-20251001-v1:0 \
                             --output review-report.md \
                             --severity high \
                             --max-files 100 \
@@ -687,21 +736,40 @@ diff before.md after.md
 
 ## Tips for CI/CD Integration
 
-1. **Use Artifacts**: Always save review reports as build artifacts
+1. **Choose Cost-Effective Models**:
+   - **Haiku** for CI/CD quality gates (fastest, cheapest)
+   - **Sonnet** for PR reviews (balanced)
+   - **Opus** for production releases only (highest quality)
 
-2. **Set Severity Thresholds**: Fail builds only on Critical/High issues
+2. **Use Artifacts**: Always save review reports as build artifacts
 
-3. **Limit Scope**: Use `--max-files` to control costs and time
+3. **Set Severity Thresholds**: Fail builds only on Critical/High issues
 
-4. **Cache Dependencies**: Cache the tool installation for faster builds
+4. **Limit Scope**: Use `--max-files` to control costs and time
 
-5. **Parallel Reviews**: Review different modules in parallel jobs
+5. **Cache Dependencies**: Cache the tool installation for faster builds
 
-6. **Scheduled Reviews**: Run full reviews nightly, not on every commit
+6. **Parallel Reviews**: Review different modules in parallel jobs
 
-7. **Notification Integration**: Send review summaries to Slack/email
+7. **Scheduled Reviews**: Run full reviews nightly, not on every commit
 
-8. **Store Metrics**: Track issue trends over time in dashboards
+8. **Notification Integration**: Send review summaries to Slack/email
+
+9. **Store Metrics**: Track issue trends over time in dashboards
+
+10. **Cost Monitoring**: Track token usage and costs across builds
+
+**Cost Optimization Example**:
+```yaml
+# Use Haiku for pull requests (fast + cheap)
+- name: PR Review
+  run: codereview ./src --model-id global.anthropic.claude-haiku-4-5-20251001-v1:0
+
+# Use Opus for main branch only (quality)
+- name: Production Review
+  if: github.ref == 'refs/heads/main'
+  run: codereview ./src --model-id global.anthropic.claude-opus-4-5-20251101-v1:0
+```
 
 ## Troubleshooting CI/CD
 

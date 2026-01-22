@@ -302,14 +302,36 @@ Provides:
 - Full error traces
 - AWS API call details
 
-### 9. Monitor Token Usage
+### 9. Choose the Right Model
 
-Be aware of costs:
-- Claude Opus 4.5 is powerful but expensive
+Match the model to your use case:
+
+**Opus 4.5** - Critical reviews:
+```bash
+codereview ./src/auth --model-id global.anthropic.claude-opus-4-5-20251101-v1:0
+```
+
+**Sonnet 4.5** - Daily development:
+```bash
+codereview ./src --model-id global.anthropic.claude-sonnet-4-5-20250929-v1:0
+```
+
+**Haiku 4.5** - Large codebases:
+```bash
+codereview ./src --model-id global.anthropic.claude-haiku-4-5-20251001-v1:0 --max-files 500
+```
+
+### 10. Monitor Token Usage and Costs
+
+Be aware of costs and choose models accordingly:
+- **Opus 4.5**: Highest quality but most expensive ($15/M input, $75/M output)
+- **Sonnet 4.5**: Balanced option for daily use ($3/M input, $15/M output)
+- **Haiku 4.5**: Most economical for large codebases ($0.25/M input, $1.25/M output)
 - Use `--max-files` to limit scope
 - Focus on critical paths first
+- The tool displays estimated cost after each run
 
-### 10. Act on Findings Systematically
+### 11. Act on Findings Systematically
 
 Don't try to fix everything at once:
 
@@ -370,6 +392,42 @@ codereview ./src --aws-profile production
 # - Multiple AWS accounts
 # - Different IAM roles
 # - Environment separation
+```
+
+### Model Selection
+
+Choose the right Claude model for your needs:
+
+```bash
+# Claude Opus 4.5 (default) - Highest quality
+codereview ./src --model-id global.anthropic.claude-opus-4-5-20251101-v1:0
+
+# Claude Sonnet 4.5 - Balanced performance and cost
+codereview ./src --model-id global.anthropic.claude-sonnet-4-5-20250929-v1:0
+
+# Claude Haiku 4.5 - Fastest and most economical
+codereview ./src --model-id global.anthropic.claude-haiku-4-5-20251001-v1:0
+```
+
+**When to use each model:**
+
+| Model | Use Case | Pricing |
+|-------|----------|---------|
+| **Opus 4.5** (default) | Critical code reviews, security audits, production releases | $15/M input, $75/M output |
+| **Sonnet 4.5** | Daily development, PR reviews, general code quality | $3/M input, $15/M output |
+| **Haiku 4.5** | Large codebases, quick checks, CI/CD integration | $0.25/M input, $1.25/M output |
+
+**Model Selection Strategy:**
+
+```bash
+# Production-critical code → Opus
+codereview ./src/auth --model-id global.anthropic.claude-opus-4-5-20251101-v1:0
+
+# Daily development → Sonnet
+codereview ./src --model-id global.anthropic.claude-sonnet-4-5-20250929-v1:0
+
+# Large codebase scanning → Haiku
+codereview ./monorepo --model-id global.anthropic.claude-haiku-4-5-20251001-v1:0 --max-files 500
 ```
 
 ## Understanding Results
@@ -483,20 +541,43 @@ For projects with 1000+ files:
 
 ### Managing AWS Costs
 
-Claude Opus 4.5 pricing considerations:
+**Choose the right model for your budget:**
 
-1. **Estimate tokens**: ~100 tokens per 4 lines of code
-2. **Use max-files**: Limit scope for cost control
-3. **Review incrementally**: Analyze changes, not entire codebase
-4. **Filter by severity**: Reduce output size with severity filters
+| Scenario | Recommended Model | Estimated Cost* |
+|----------|-------------------|-----------------|
+| 100 files, critical review | Opus 4.5 | $0.50-$2.00 |
+| 100 files, daily review | Sonnet 4.5 | $0.10-$0.40 |
+| 1000 files, bulk scan | Haiku 4.5 | $0.10-$0.50 |
 
-Example cost-conscious workflow:
+*Actual costs depend on file size and complexity
+
+**Cost optimization strategies:**
+
+1. **Choose appropriate model**: Use Haiku for large scans, Sonnet for daily work, Opus for critical reviews
+2. **Estimate tokens**: ~100 tokens per 4 lines of code
+3. **Use max-files**: Limit scope for cost control
+4. **Review incrementally**: Analyze changes, not entire codebase
+5. **Filter by severity**: Reduce output size with severity filters
+
+Example cost-conscious workflows:
+
 ```bash
-# Focus on high-priority issues only
+# Daily development with Sonnet (balanced cost/quality)
 codereview ./src \
+  --model-id global.anthropic.claude-sonnet-4-5-20250929-v1:0 \
   --severity high \
-  --max-files 50 \
+  --max-files 50
+
+# Large codebase scan with Haiku (most economical)
+codereview ./src \
+  --model-id global.anthropic.claude-haiku-4-5-20251001-v1:0 \
+  --max-files 500 \
   --max-file-size 10
+
+# Critical security audit with Opus (highest quality)
+codereview ./src/auth \
+  --model-id global.anthropic.claude-opus-4-5-20251101-v1:0 \
+  --severity medium
 ```
 
 ## Advanced Usage
