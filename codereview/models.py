@@ -1,6 +1,6 @@
 # codereview/models.py
-from pydantic import BaseModel, Field
-from typing import Literal
+from pydantic import BaseModel, Field, model_validator
+from typing import Literal, Any
 
 
 class ReviewIssue(BaseModel):
@@ -31,12 +31,21 @@ class ReviewIssue(BaseModel):
     rationale: str = Field(description="Why this matters")
     references: list[str] = Field(default_factory=list, description="Reference links")
 
+    @model_validator(mode='after')
+    def validate_line_range(self) -> 'ReviewIssue':
+        """Ensure line_end is not before line_start."""
+        if self.line_end is not None and self.line_end < self.line_start:
+            raise ValueError(
+                f"line_end ({self.line_end}) must be >= line_start ({self.line_start})"
+            )
+        return self
+
 
 class CodeReviewReport(BaseModel):
     """Aggregated code review report."""
 
     summary: str = Field(description="Executive summary")
-    metrics: dict = Field(description="Analysis metrics")
+    metrics: dict[str, Any] = Field(description="Analysis metrics")
     issues: list[ReviewIssue] = Field(description="All identified issues")
     system_design_insights: str = Field(description="Architectural observations")
     recommendations: list[str] = Field(description="Top priority actions")

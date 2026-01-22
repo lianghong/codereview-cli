@@ -1,5 +1,6 @@
 # tests/test_models.py
 import pytest
+from pydantic import ValidationError
 from codereview.models import ReviewIssue, CodeReviewReport
 
 
@@ -64,3 +65,60 @@ def test_code_review_report():
     assert report.summary == "Found 1 security issue"
     assert len(report.issues) == 1
     assert report.metrics["files"] == 5
+
+
+def test_invalid_category():
+    """Test that invalid category raises ValidationError."""
+    with pytest.raises(ValidationError):
+        ReviewIssue(
+            category="InvalidCategory",
+            severity="High",
+            file_path="app.py",
+            line_start=1,
+            title="Test",
+            description="Test",
+            rationale="Test"
+        )
+
+
+def test_invalid_severity():
+    """Test that invalid severity raises ValidationError."""
+    with pytest.raises(ValidationError):
+        ReviewIssue(
+            category="Security",
+            severity="SuperCritical",
+            file_path="app.py",
+            line_start=1,
+            title="Test",
+            description="Test",
+            rationale="Test"
+        )
+
+
+def test_invalid_line_start():
+    """Test that line_start < 1 raises ValidationError."""
+    with pytest.raises(ValidationError):
+        ReviewIssue(
+            category="Security",
+            severity="High",
+            file_path="app.py",
+            line_start=0,
+            title="Test",
+            description="Test",
+            rationale="Test"
+        )
+
+
+def test_line_end_before_line_start():
+    """Test that line_end < line_start raises ValidationError."""
+    with pytest.raises(ValidationError):
+        ReviewIssue(
+            category="Security",
+            severity="High",
+            file_path="app.py",
+            line_start=50,
+            line_end=40,
+            title="Test",
+            description="Test",
+            rationale="Test"
+        )
