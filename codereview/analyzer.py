@@ -1,5 +1,7 @@
 """LLM-based code analyzer using AWS Bedrock."""
 from pathlib import Path
+import time
+from botocore.exceptions import ClientError
 from langchain_aws import ChatBedrockConverse
 from codereview.models import CodeReviewReport
 from codereview.batcher import FileBatch
@@ -31,15 +33,19 @@ class CodeAnalyzer:
         # Configure for structured output
         return base_model.with_structured_output(CodeReviewReport)
 
-    def analyze_batch(self, batch: FileBatch) -> CodeReviewReport:
+    def analyze_batch(self, batch: FileBatch, max_retries: int = 3) -> CodeReviewReport:
         """
-        Analyze a batch of files.
+        Analyze a batch of files with retry logic.
 
         Args:
             batch: FileBatch to analyze
+            max_retries: Maximum number of retries for rate limiting (default: 3)
 
         Returns:
             CodeReviewReport with findings
+
+        Raises:
+            ClientError: If AWS API call fails after all retries
         """
         context = self._prepare_batch_context(batch)
 
@@ -48,8 +54,33 @@ class CodeAnalyzer:
             {"role": "user", "content": context}
         ]
 
-        result = self.model.invoke(messages)
-        return result
+        last_error = None
+        for attempt in range(max_retries + 1):
+            try:
+                result = self.model.invoke(messages)
+                return result
+
+            except ClientError as e:
+                error_code = e.response.get('Error', {}).get('Code', '')
+                last_error = e
+
+                # Check if it's a throttling error
+                if error_code in ['ThrottlingException', 'TooManyRequestsException']:
+                    if attempt < max_retries:
+                        # Exponential backoff: 2^attempt seconds
+                        wait_time = 2 ** attempt
+                        time.sleep(wait_time)
+                        continue
+
+                # For other errors, raise immediately
+                raise
+
+            except Exception as e:
+                # For non-AWS errors, raise immediately
+                raise
+
+        # If we exhausted all retries
+        raise last_error
 
     def _prepare_batch_context(self, batch: FileBatch) -> str:
         """

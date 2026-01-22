@@ -1,6 +1,7 @@
 """CLI entry point for code review tool."""
 import click
 from pathlib import Path
+from botocore.exceptions import ClientError, NoCredentialsError
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from codereview.scanner import FileScanner
@@ -127,6 +128,23 @@ def main(
                     report = analyzer.analyze_batch(batch)
                     all_issues.extend(report.issues)
 
+                except ClientError as e:
+                    error_code = e.response.get('Error', {}).get('Code', '')
+                    error_msg = e.response.get('Error', {}).get('Message', '')
+
+                    if error_code == 'AccessDeniedException':
+                        console.print(f"[red]✗ AWS Access Denied: {error_msg}[/red]")
+                        console.print("[yellow]Check that you have access to AWS Bedrock Claude Opus 4.5[/yellow]")
+                    elif error_code in ['ThrottlingException', 'TooManyRequestsException']:
+                        console.print(f"[red]✗ Rate limit exceeded on batch {i}[/red]")
+                        console.print("[yellow]Consider reducing batch size or waiting before retrying[/yellow]")
+                    else:
+                        console.print(f"[red]✗ AWS Error on batch {i} ({error_code}): {error_msg}[/red]")
+
+                    if verbose:
+                        import traceback
+                        console.print(traceback.format_exc())
+
                 except Exception as e:
                     console.print(f"[red]✗ Error analyzing batch {i}: {e}[/red]")
                     if verbose:
@@ -160,6 +178,34 @@ def main(
             exporter = MarkdownExporter()
             exporter.export(final_report, output)
             console.print(f"\n[green]✓ Report exported to: {output}[/green]\n")
+
+    except NoCredentialsError:
+        console.print("\n[red]✗ AWS credentials not found[/red]\n")
+        console.print("[yellow]Please configure AWS credentials:[/yellow]")
+        console.print("  1. Run: aws configure")
+        console.print("  2. Or set environment variables: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY")
+        console.print("  3. Or use --aws-profile flag\n")
+        raise click.Abort()
+
+    except ClientError as e:
+        error_code = e.response.get('Error', {}).get('Code', '')
+        error_msg = e.response.get('Error', {}).get('Message', '')
+
+        console.print(f"\n[red]✗ AWS Error ({error_code}): {error_msg}[/red]\n")
+
+        if error_code == 'AccessDeniedException':
+            console.print("[yellow]Troubleshooting:[/yellow]")
+            console.print("  1. Ensure you have access to AWS Bedrock in your region")
+            console.print("  2. Check that Claude Opus 4.5 model access is enabled")
+            console.print("  3. Verify your IAM permissions include 'bedrock:InvokeModel'\n")
+        elif error_code == 'ResourceNotFoundException':
+            console.print("[yellow]The Claude Opus 4.5 model may not be available in your region.[/yellow]")
+            console.print("Try using --aws-region with a supported region (e.g., us-west-2)\n")
+
+        if verbose:
+            import traceback
+            console.print(traceback.format_exc())
+        raise click.Abort()
 
     except Exception as e:
         console.print(f"\n[red]✗ Error: {e}[/red]\n")
