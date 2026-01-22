@@ -163,11 +163,28 @@ def main(
                 "high": sum(1 for i in all_issues if i.severity == "High"),
                 "medium": sum(1 for i in all_issues if i.severity == "Medium"),
                 "low": sum(1 for i in all_issues if i.severity == "Low"),
+                "input_tokens": analyzer.total_input_tokens,
+                "output_tokens": analyzer.total_output_tokens,
+                "total_tokens": analyzer.total_input_tokens + analyzer.total_output_tokens,
             },
             issues=all_issues,
             system_design_insights="Analysis complete",
             recommendations=_generate_recommendations(all_issues)
         )
+
+        # Display token usage and cost
+        console.print(f"\n[cyan]💰 Token Usage & Cost Estimate:[/cyan]")
+        console.print(f"   Input tokens:  {analyzer.total_input_tokens:,}")
+        console.print(f"   Output tokens: {analyzer.total_output_tokens:,}")
+        console.print(f"   Total tokens:  {analyzer.total_input_tokens + analyzer.total_output_tokens:,}")
+
+        # Calculate approximate cost (Claude Opus 4.5 pricing)
+        # $15.00 per million input tokens, $75.00 per million output tokens
+        input_cost = (analyzer.total_input_tokens / 1_000_000) * 15.00
+        output_cost = (analyzer.total_output_tokens / 1_000_000) * 75.00
+        total_cost = input_cost + output_cost
+        console.print(f"   [bold]Estimated cost: ${total_cost:.4f}[/bold]")
+        console.print()
 
         # Step 5: Render results
         renderer = TerminalRenderer()

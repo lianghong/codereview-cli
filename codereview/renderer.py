@@ -193,8 +193,32 @@ class MarkdownExporter:
         """Generate metrics section."""
         lines = ["## Metrics\n"]
 
-        for key, value in report.metrics.items():
-            lines.append(f"- **{key.replace('_', ' ').title()}:** {value}")
+        # Separate token metrics from other metrics
+        token_keys = {"input_tokens", "output_tokens", "total_tokens"}
+        regular_metrics = {k: v for k, v in report.metrics.items() if k not in token_keys}
+        token_metrics = {k: v for k, v in report.metrics.items() if k in token_keys}
+
+        # Display regular metrics first
+        for key, value in regular_metrics.items():
+            if isinstance(value, int):
+                lines.append(f"- **{key.replace('_', ' ').title()}:** {value:,}")
+            else:
+                lines.append(f"- **{key.replace('_', ' ').title()}:** {value}")
+
+        # Add token usage section if available
+        if token_metrics:
+            lines.append("\n### Token Usage & Cost\n")
+            for key, value in sorted(token_metrics.items()):
+                lines.append(f"- **{key.replace('_', ' ').title()}:** {value:,}")
+
+            # Calculate and display cost if we have token counts
+            if 'input_tokens' in token_metrics and 'output_tokens' in token_metrics:
+                input_cost = (token_metrics['input_tokens'] / 1_000_000) * 15.00
+                output_cost = (token_metrics['output_tokens'] / 1_000_000) * 75.00
+                total_cost = input_cost + output_cost
+                lines.append(f"- **Estimated Cost:** ${total_cost:.4f} USD")
+                lines.append(f"  - Input cost: ${input_cost:.4f} (${15.00}/M tokens)")
+                lines.append(f"  - Output cost: ${output_cost:.4f} (${75.00}/M tokens)")
 
         return "\n".join(lines)
 

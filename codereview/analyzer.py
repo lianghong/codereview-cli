@@ -20,6 +20,8 @@ class CodeAnalyzer:
         """
         self.region = region or MODEL_CONFIG["region"]
         self.model = self._create_model()
+        self.total_input_tokens = 0
+        self.total_output_tokens = 0
 
     def _create_model(self):
         """Create LangChain model with structured output."""
@@ -58,6 +60,15 @@ class CodeAnalyzer:
         for attempt in range(max_retries + 1):
             try:
                 result = self.model.invoke(messages)
+
+                # Track approximate token usage based on context
+                # AWS Bedrock returns actual usage, but for estimation we use ~4 chars per token
+                input_tokens = len(context) // 4  # Rough approximation
+                output_tokens = len(str(result.summary)) // 4  # Rough output size
+
+                self.total_input_tokens += input_tokens
+                self.total_output_tokens += output_tokens
+
                 return result
 
             except ClientError as e:
