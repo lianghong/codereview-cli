@@ -3,7 +3,12 @@ from unittest.mock import Mock, patch
 import pytest
 from openai import RateLimitError
 
-from codereview.config.models import AzureOpenAIConfig, InferenceParams, ModelConfig, PricingConfig
+from codereview.config.models import (
+    AzureOpenAIConfig,
+    InferenceParams,
+    ModelConfig,
+    PricingConfig,
+)
 from codereview.models import CodeReviewReport
 from codereview.providers.azure_openai import AzureOpenAIProvider
 
@@ -98,8 +103,14 @@ def test_token_tracking(model_config, provider_config, mock_report):
         mock_report_with_metadata.model_dump_json.return_value = "{}"
 
         # Copy attributes from mock_report
-        for attr in ["summary", "metrics", "issues", "system_design_insights",
-                     "recommendations", "improvement_suggestions"]:
+        for attr in [
+            "summary",
+            "metrics",
+            "issues",
+            "system_design_insights",
+            "recommendations",
+            "improvement_suggestions",
+        ]:
             setattr(mock_report_with_metadata, attr, getattr(mock_report, attr))
 
         mock_instance = Mock()
@@ -181,8 +192,10 @@ def test_get_model_display_name(model_config, provider_config):
 
 def test_retry_logic_on_rate_limit(model_config, provider_config, mock_report):
     """Test exponential backoff retry on rate limit."""
-    with patch("codereview.providers.azure_openai.AzureChatOpenAI") as mock_azure, \
-         patch("time.sleep") as mock_sleep:
+    with (
+        patch("codereview.providers.azure_openai.AzureChatOpenAI") as mock_azure,
+        patch("time.sleep") as mock_sleep,
+    ):
 
         mock_instance = Mock()
         mock_structured = Mock()
@@ -193,7 +206,7 @@ def test_retry_logic_on_rate_limit(model_config, provider_config, mock_report):
         rate_limit_error = RateLimitError(
             "Rate limit exceeded",
             response=mock_response,
-            body={"error": {"message": "Rate limit exceeded"}}
+            body={"error": {"message": "Rate limit exceeded"}},
         )
 
         # First two calls raise RateLimitError, third succeeds

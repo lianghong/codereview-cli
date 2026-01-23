@@ -57,7 +57,7 @@ providers:
 @pytest.fixture
 def temp_config_file():
     """Create temporary YAML config file."""
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
         f.write(create_test_yaml())
         temp_path = Path(f.name)
 

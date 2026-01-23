@@ -1,6 +1,5 @@
 """Tests for error handling and retry logic."""
 
-from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
@@ -16,7 +15,9 @@ def sample_batch(tmp_path):
     """Create a sample file batch for testing."""
     test_file = tmp_path / "test_file.py"
     test_file.write_text("def test(): pass")
-    return FileBatch(files=[test_file], batch_number=1, total_batches=1, total_tokens=100)
+    return FileBatch(
+        files=[test_file], batch_number=1, total_batches=1, total_tokens=100
+    )
 
 
 @pytest.fixture
@@ -107,7 +108,9 @@ class TestErrorPropagation:
 
         assert str(exc_info.value) == "Something went wrong"
 
-    def test_max_retries_parameter_passed_to_provider(self, mock_provider, sample_batch):
+    def test_max_retries_parameter_passed_to_provider(
+        self, mock_provider, sample_batch
+    ):
         """Test that max_retries parameter is passed to provider."""
         mock_report = CodeReviewReport(
             summary="Test",
@@ -169,5 +172,3 @@ class TestErrorMessages:
 
         error_code = error.response.get("Error", {}).get("Code", "")
         assert error_code == "ResourceNotFoundException"
-
-

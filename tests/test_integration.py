@@ -184,8 +184,10 @@ class TestFullWorkflow:
         """Test CLI end-to-end with mocked AWS calls."""
         runner = CliRunner()
 
-        with patch("codereview.cli.CodeAnalyzer") as mock_analyzer_class, \
-             patch("codereview.cli.ProviderFactory") as mock_factory_class:
+        with (
+            patch("codereview.cli.CodeAnalyzer") as mock_analyzer_class,
+            patch("codereview.cli.ProviderFactory") as mock_factory_class,
+        ):
 
             # Setup factory mock
             mock_factory = Mock()
@@ -221,8 +223,10 @@ class TestFullWorkflow:
         runner = CliRunner()
         output_file = tmp_path / "cli-report.md"
 
-        with patch("codereview.cli.CodeAnalyzer") as mock_analyzer_class, \
-             patch("codereview.cli.ProviderFactory") as mock_factory_class:
+        with (
+            patch("codereview.cli.CodeAnalyzer") as mock_analyzer_class,
+            patch("codereview.cli.ProviderFactory") as mock_factory_class,
+        ):
 
             # Setup factory mock
             mock_factory = Mock()
@@ -258,8 +262,10 @@ class TestFullWorkflow:
         """Test CLI with severity filtering."""
         runner = CliRunner()
 
-        with patch("codereview.cli.CodeAnalyzer") as mock_analyzer_class, \
-             patch("codereview.cli.ProviderFactory") as mock_factory_class:
+        with (
+            patch("codereview.cli.CodeAnalyzer") as mock_analyzer_class,
+            patch("codereview.cli.ProviderFactory") as mock_factory_class,
+        ):
 
             # Setup factory mock
             mock_factory = Mock()
@@ -291,8 +297,10 @@ class TestFullWorkflow:
         """Test CLI with max files limit."""
         runner = CliRunner()
 
-        with patch("codereview.cli.CodeAnalyzer") as mock_analyzer_class, \
-             patch("codereview.cli.ProviderFactory") as mock_factory_class:
+        with (
+            patch("codereview.cli.CodeAnalyzer") as mock_analyzer_class,
+            patch("codereview.cli.ProviderFactory") as mock_factory_class,
+        ):
 
             # Setup factory mock
             mock_factory = Mock()
@@ -322,8 +330,10 @@ class TestFullWorkflow:
         """Test CLI with verbose output."""
         runner = CliRunner()
 
-        with patch("codereview.cli.CodeAnalyzer") as mock_analyzer_class, \
-             patch("codereview.cli.ProviderFactory") as mock_factory_class:
+        with (
+            patch("codereview.cli.CodeAnalyzer") as mock_analyzer_class,
+            patch("codereview.cli.ProviderFactory") as mock_factory_class,
+        ):
 
             # Setup factory mock
             mock_factory = Mock()
@@ -381,8 +391,10 @@ class TestWorkflowWithFixtures:
 
         runner = CliRunner()
 
-        with patch("codereview.cli.CodeAnalyzer") as mock_analyzer_class, \
-             patch("codereview.cli.ProviderFactory") as mock_factory_class:
+        with (
+            patch("codereview.cli.CodeAnalyzer") as mock_analyzer_class,
+            patch("codereview.cli.ProviderFactory") as mock_factory_class,
+        ):
 
             # Setup factory mock
             mock_factory = Mock()
@@ -416,8 +428,10 @@ class TestErrorHandlingIntegration:
         """Test handling of empty directory."""
         runner = CliRunner()
 
-        with runner.isolated_filesystem(), \
-             patch("codereview.cli.ProviderFactory") as mock_factory_class:
+        with (
+            runner.isolated_filesystem(),
+            patch("codereview.cli.ProviderFactory") as mock_factory_class,
+        ):
 
             # Setup factory mock
             mock_factory = Mock()
@@ -473,8 +487,10 @@ class TestOutputFormats:
         runner = CliRunner()
         output_file = tmp_path / "both-outputs.md"
 
-        with patch("codereview.cli.CodeAnalyzer") as mock_analyzer_class, \
-             patch("codereview.cli.ProviderFactory") as mock_factory_class:
+        with (
+            patch("codereview.cli.CodeAnalyzer") as mock_analyzer_class,
+            patch("codereview.cli.ProviderFactory") as mock_factory_class,
+        ):
 
             # Setup factory mock
             mock_factory = Mock()
@@ -541,8 +557,10 @@ class TestBatchProcessing:
         """Test processing multiple batches."""
         runner = CliRunner()
 
-        with patch("codereview.cli.CodeAnalyzer") as mock_analyzer_class, \
-             patch("codereview.cli.ProviderFactory") as mock_factory_class:
+        with (
+            patch("codereview.cli.CodeAnalyzer") as mock_analyzer_class,
+            patch("codereview.cli.ProviderFactory") as mock_factory_class,
+        ):
 
             # Setup factory mock
             mock_factory = Mock()
@@ -612,8 +630,10 @@ class TestBatchProcessing:
             recommendations=[],
         )
 
-        with patch("codereview.cli.CodeAnalyzer") as mock_analyzer_class, \
-             patch("codereview.cli.ProviderFactory") as mock_factory_class:
+        with (
+            patch("codereview.cli.CodeAnalyzer") as mock_analyzer_class,
+            patch("codereview.cli.ProviderFactory") as mock_factory_class,
+        ):
 
             # Setup factory mock
             mock_factory = Mock()

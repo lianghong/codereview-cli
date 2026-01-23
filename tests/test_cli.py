@@ -1,6 +1,7 @@
+from unittest.mock import Mock, patch
+
 import pytest
 from click.testing import CliRunner
-from unittest.mock import Mock, patch
 
 from codereview.cli import main
 
@@ -36,9 +37,11 @@ def test_cli_help(cli_runner):
 
 def test_cli_with_directory(cli_runner, sample_code_dir):
     """Test CLI with directory argument."""
-    with patch("codereview.cli.CodeAnalyzer") as mock_analyzer_cls, \
-         patch("codereview.cli.FileScanner") as mock_scanner_cls, \
-         patch("codereview.cli.ProviderFactory") as mock_factory_cls:
+    with (
+        patch("codereview.cli.CodeAnalyzer") as mock_analyzer_cls,
+        patch("codereview.cli.FileScanner") as mock_scanner_cls,
+        patch("codereview.cli.ProviderFactory") as mock_factory_cls,
+    ):
 
         # Setup factory mock
         mock_factory = Mock()
@@ -81,10 +84,12 @@ def test_cli_with_directory(cli_runner, sample_code_dir):
 
 def test_cli_output_option(cli_runner, sample_code_dir, tmp_path):
     """Test CLI with output file option."""
-    with patch("codereview.cli.CodeAnalyzer") as mock_analyzer_cls, \
-         patch("codereview.cli.FileScanner") as mock_scanner_cls, \
-         patch("codereview.cli.ProviderFactory") as mock_factory_cls, \
-         patch("codereview.cli.MarkdownExporter") as mock_exporter_cls:
+    with (
+        patch("codereview.cli.CodeAnalyzer") as mock_analyzer_cls,
+        patch("codereview.cli.FileScanner") as mock_scanner_cls,
+        patch("codereview.cli.ProviderFactory") as mock_factory_cls,
+        patch("codereview.cli.MarkdownExporter") as mock_exporter_cls,
+    ):
 
         # Setup factory mock
         mock_factory = Mock()
@@ -186,9 +191,11 @@ def test_list_models_exits_without_directory(cli_runner, monkeypatch):
 
 def test_cli_with_model_option(cli_runner, sample_code_dir):
     """Test CLI with --model option uses model_name parameter."""
-    with patch("codereview.cli.CodeAnalyzer") as mock_analyzer_cls, \
-         patch("codereview.cli.FileScanner") as mock_scanner_cls, \
-         patch("codereview.cli.ProviderFactory") as mock_factory_cls:
+    with (
+        patch("codereview.cli.CodeAnalyzer") as mock_analyzer_cls,
+        patch("codereview.cli.FileScanner") as mock_scanner_cls,
+        patch("codereview.cli.ProviderFactory") as mock_factory_cls,
+    ):
 
         # Setup factory mock
         mock_factory = Mock()
@@ -240,9 +247,11 @@ def test_cli_with_model_option(cli_runner, sample_code_dir):
 
 def test_cli_default_model(cli_runner, sample_code_dir):
     """Test CLI uses default model (opus)."""
-    with patch("codereview.cli.CodeAnalyzer") as mock_analyzer_cls, \
-         patch("codereview.cli.FileScanner") as mock_scanner_cls, \
-         patch("codereview.cli.ProviderFactory") as mock_factory_cls:
+    with (
+        patch("codereview.cli.CodeAnalyzer") as mock_analyzer_cls,
+        patch("codereview.cli.FileScanner") as mock_scanner_cls,
+        patch("codereview.cli.ProviderFactory") as mock_factory_cls,
+    ):
 
         # Setup factory mock
         mock_factory = Mock()
@@ -277,7 +286,7 @@ def test_cli_default_model(cli_runner, sample_code_dir):
         mock_scanner.skipped_files = []
         mock_scanner_cls.return_value = mock_scanner
 
-        result = cli_runner.invoke(main, [str(sample_code_dir)])
+        cli_runner.invoke(main, [str(sample_code_dir)])
 
         # Verify default model is "opus"
         mock_analyzer_cls.assert_called_once()
@@ -287,9 +296,11 @@ def test_cli_default_model(cli_runner, sample_code_dir):
 
 def test_cli_model_short_name(cli_runner, sample_code_dir):
     """Test CLI accepts short model names like 'haiku'."""
-    with patch("codereview.cli.CodeAnalyzer") as mock_analyzer_cls, \
-         patch("codereview.cli.FileScanner") as mock_scanner_cls, \
-         patch("codereview.cli.ProviderFactory") as mock_factory_cls:
+    with (
+        patch("codereview.cli.CodeAnalyzer") as mock_analyzer_cls,
+        patch("codereview.cli.FileScanner") as mock_scanner_cls,
+        patch("codereview.cli.ProviderFactory") as mock_factory_cls,
+    ):
 
         # Setup factory mock
         mock_factory = Mock()

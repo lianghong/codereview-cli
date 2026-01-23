@@ -4,7 +4,12 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from codereview.config.models import BedrockConfig, InferenceParams, ModelConfig, PricingConfig
+from codereview.config.models import (
+    BedrockConfig,
+    InferenceParams,
+    ModelConfig,
+    PricingConfig,
+)
 from codereview.models import CodeReviewReport
 from codereview.providers.bedrock import BedrockProvider
 
@@ -96,8 +101,14 @@ def test_token_tracking(model_config, provider_config, mock_report):
         mock_report_with_metadata.model_dump_json.return_value = "{}"
 
         # Copy attributes from mock_report
-        for attr in ["summary", "metrics", "issues", "system_design_insights",
-                     "recommendations", "improvement_suggestions"]:
+        for attr in [
+            "summary",
+            "metrics",
+            "issues",
+            "system_design_insights",
+            "recommendations",
+            "improvement_suggestions",
+        ]:
             setattr(mock_report_with_metadata, attr, getattr(mock_report, attr))
 
         mock_instance = Mock()
@@ -186,9 +197,10 @@ def test_retry_logic_on_throttling(model_config, provider_config, mock_report):
             mock_structured = Mock()
 
             from botocore.exceptions import ClientError
+
             throttle_error = ClientError(
                 {"Error": {"Code": "ThrottlingException", "Message": "Rate exceeded"}},
-                "InvokeModel"
+                "InvokeModel",
             )
 
             mock_structured.invoke.side_effect = [

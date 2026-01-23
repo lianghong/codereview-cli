@@ -173,7 +173,7 @@ class StaticAnalyzer:
                 # Only mark as available if the command succeeds
                 if result.returncode == 0:
                     available.append(tool_name)
-            except (FileNotFoundError, subprocess.TimeoutExpired):
+            except FileNotFoundError, subprocess.TimeoutExpired:
                 pass
         return available
 
@@ -305,7 +305,9 @@ class StaticAnalyzer:
             cwd = self.directory
         elif tool_name == "prettier":
             # Prettier accepts directory with glob pattern
-            command = base_command + [f"{dir_path}/**/*.{{js,jsx,ts,tsx,json,css,html}}"]
+            command = base_command + [
+                f"{dir_path}/**/*.{{js,jsx,ts,tsx,json,css,html}}"
+            ]
             cwd = self.directory
         elif tool_name == "tsc":
             # TypeScript compiler runs in project directory
@@ -368,13 +370,17 @@ class StaticAnalyzer:
                         indicators.extend(["sc", "note", "info"])
                     elif language == "cpp":
                         # C++ tools indicators
-                        indicators.extend(["style", "performance", "portability", "cppcheck"])
+                        indicators.extend(
+                            ["style", "performance", "portability", "cppcheck"]
+                        )
                     elif language == "java":
                         # Checkstyle indicators
                         indicators.extend(["audit", "violation", "checkstyle"])
                     elif language in ("javascript", "typescript"):
                         # ESLint/Prettier/TSC indicators
-                        indicators.extend(["eslint", "prettier", "ts", "problems found"])
+                        indicators.extend(
+                            ["eslint", "prettier", "ts", "problems found"]
+                        )
 
                     for line in output.split("\n"):
                         if any(indicator in line.lower() for indicator in indicators):

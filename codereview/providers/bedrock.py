@@ -6,12 +6,11 @@ from typing import Any
 from botocore.exceptions import ClientError
 from langchain_aws import ChatBedrockConverse
 
+# Import system prompt from config
+from codereview.config import SYSTEM_PROMPT  # type: ignore[attr-defined]
 from codereview.config.models import BedrockConfig, ModelConfig
 from codereview.models import CodeReviewReport
 from codereview.providers.base import ModelProvider
-
-# Import system prompt from config
-from codereview.config import SYSTEM_PROMPT
 
 
 class BedrockProvider(ModelProvider):
@@ -64,6 +63,12 @@ class BedrockProvider(ModelProvider):
 
     def _create_model(self) -> Any:
         """Create LangChain Bedrock model with structured output."""
+        # Ensure full_id is present for Bedrock models
+        if not self.model_config.full_id:
+            raise ValueError(
+                f"Bedrock model {self.model_config.id} missing required full_id"
+            )
+
         # Build additional model request fields
         additional_fields: dict = {}
         if self.top_p is not None:
@@ -204,6 +209,13 @@ class BedrockProvider(ModelProvider):
         """Get human-readable model name."""
         return self.model_config.name
 
+    def get_pricing(self) -> dict[str, float]:
+        """Get pricing information for the model."""
+        return {
+            "input_price_per_million": self.model_config.pricing.input_per_million,
+            "output_price_per_million": self.model_config.pricing.output_per_million,
+        }
+
     def reset_state(self) -> None:
         """Reset token counters."""
         self._total_input_tokens = 0
@@ -224,7 +236,9 @@ class BedrockProvider(ModelProvider):
         pricing = self.model_config.pricing
 
         input_cost = (self._total_input_tokens / 1_000_000) * pricing.input_per_million
-        output_cost = (self._total_output_tokens / 1_000_000) * pricing.output_per_million
+        output_cost = (
+            self._total_output_tokens / 1_000_000
+        ) * pricing.output_per_million
 
         return {
             "input_tokens": self._total_input_tokens,

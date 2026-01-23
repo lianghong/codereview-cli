@@ -38,6 +38,15 @@ class ModelProvider(ABC):
         """
         pass
 
+    @abstractmethod
+    def get_pricing(self) -> dict[str, float]:
+        """Get pricing information for the model.
+
+        Returns:
+            Dictionary with keys: input_price_per_million, output_price_per_million
+        """
+        pass
+
     def reset_state(self) -> None:
         """Reset token counters and state for fresh run.
 

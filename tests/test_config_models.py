@@ -14,10 +14,7 @@ from codereview.config.models import (
 
 def test_pricing_config_valid():
     """Test that PricingConfig accepts valid positive prices."""
-    config = PricingConfig(
-        input_per_million=1.5,
-        output_per_million=5.0
-    )
+    config = PricingConfig(input_per_million=1.5, output_per_million=5.0)
     assert config.input_per_million == 1.5
     assert config.output_per_million == 5.0
 
@@ -25,20 +22,14 @@ def test_pricing_config_valid():
 def test_pricing_config_rejects_negative():
     """Test that PricingConfig rejects negative prices."""
     with pytest.raises(ValidationError) as exc_info:
-        PricingConfig(
-            input_per_million=-1.0,
-            output_per_million=5.0
-        )
+        PricingConfig(input_per_million=-1.0, output_per_million=5.0)
     assert "greater than 0" in str(exc_info.value).lower()
 
 
 def test_pricing_config_rejects_zero():
     """Test that PricingConfig rejects zero prices."""
     with pytest.raises(ValidationError) as exc_info:
-        PricingConfig(
-            input_per_million=0.0,
-            output_per_million=5.0
-        )
+        PricingConfig(input_per_million=0.0, output_per_million=5.0)
     assert "greater than 0" in str(exc_info.value).lower()
 
 
@@ -90,15 +81,9 @@ def test_inference_params_top_p_range():
 
 def test_model_config_creation():
     """Test that ModelConfig can be created with all fields."""
-    pricing = PricingConfig(
-        input_per_million=3.0,
-        output_per_million=15.0
-    )
+    pricing = PricingConfig(input_per_million=3.0, output_per_million=15.0)
     inference = InferenceParams(
-        temperature=0.1,
-        top_p=0.9,
-        top_k=50,
-        max_output_tokens=4096
+        temperature=0.1, top_p=0.9, top_k=50, max_output_tokens=4096
     )
     model = ModelConfig(
         id="test-model",
@@ -107,7 +92,7 @@ def test_model_config_creation():
         pricing=pricing,
         inference_params=inference,
         full_id="provider.test-model-v1",
-        deployment_name="test-deployment"
+        deployment_name="test-deployment",
     )
 
     assert model.id == "test-model"
@@ -144,7 +129,7 @@ def test_azure_config_requires_fields():
     config = AzureOpenAIConfig(
         endpoint="https://example.openai.azure.com",
         api_key="test-key",
-        api_version="2024-02-01"
+        api_version="2024-02-01",
     )
     assert str(config.endpoint) == "https://example.openai.azure.com/"
     assert config.api_key == "test-key"
@@ -154,27 +139,16 @@ def test_azure_config_requires_fields():
 
 def test_model_config_rejects_empty_strings():
     """Test that ModelConfig rejects empty strings for id and name."""
-    pricing = PricingConfig(
-        input_per_million=3.0,
-        output_per_million=15.0
-    )
+    pricing = PricingConfig(input_per_million=3.0, output_per_million=15.0)
 
     # Empty id should be rejected
     with pytest.raises(ValidationError) as exc_info:
-        ModelConfig(
-            id="",
-            name="Test Model",
-            pricing=pricing
-        )
+        ModelConfig(id="", name="Test Model", pricing=pricing)
     assert "at least 1 character" in str(exc_info.value).lower()
 
     # Empty name should be rejected
     with pytest.raises(ValidationError) as exc_info:
-        ModelConfig(
-            id="test-model",
-            name="",
-            pricing=pricing
-        )
+        ModelConfig(id="test-model", name="", pricing=pricing)
     assert "at least 1 character" in str(exc_info.value).lower()
 
 
@@ -183,19 +157,13 @@ def test_azure_config_invalid_url():
     # Invalid URL format
     with pytest.raises(ValidationError) as exc_info:
         AzureOpenAIConfig(
-            endpoint="not-a-valid-url",
-            api_key="test-key",
-            api_version="2024-02-01"
+            endpoint="not-a-valid-url", api_key="test-key", api_version="2024-02-01"
         )
     assert "url" in str(exc_info.value).lower()
 
     # Empty endpoint
     with pytest.raises(ValidationError) as exc_info:
-        AzureOpenAIConfig(
-            endpoint="",
-            api_key="test-key",
-            api_version="2024-02-01"
-        )
+        AzureOpenAIConfig(endpoint="", api_key="test-key", api_version="2024-02-01")
     errors = str(exc_info.value).lower()
     assert "url" in errors or "endpoint" in errors
 
@@ -204,7 +172,7 @@ def test_azure_config_invalid_url():
         AzureOpenAIConfig(
             endpoint="https://example.openai.azure.com",
             api_key="",
-            api_version="2024-02-01"
+            api_version="2024-02-01",
         )
     assert "at least 1 character" in str(exc_info.value).lower()
 
@@ -213,7 +181,7 @@ def test_azure_config_invalid_url():
         AzureOpenAIConfig(
             endpoint="https://example.openai.azure.com",
             api_key="test-key",
-            api_version=""
+            api_version="",
         )
     assert "at least 1 character" in str(exc_info.value).lower()
 
@@ -221,10 +189,7 @@ def test_azure_config_invalid_url():
 def test_models_are_immutable():
     """Test that all model classes are immutable (frozen)."""
     # PricingConfig
-    pricing = PricingConfig(
-        input_per_million=3.0,
-        output_per_million=15.0
-    )
+    pricing = PricingConfig(input_per_million=3.0, output_per_million=15.0)
     with pytest.raises(ValidationError) as exc_info:
         pricing.input_per_million = 5.0
     assert "frozen" in str(exc_info.value).lower()
@@ -236,11 +201,7 @@ def test_models_are_immutable():
     assert "frozen" in str(exc_info.value).lower()
 
     # ModelConfig
-    model = ModelConfig(
-        id="test",
-        name="Test Model",
-        pricing=pricing
-    )
+    model = ModelConfig(id="test", name="Test Model", pricing=pricing)
     with pytest.raises(ValidationError) as exc_info:
         model.id = "new-test"
     assert "frozen" in str(exc_info.value).lower()
@@ -255,7 +216,7 @@ def test_models_are_immutable():
     azure = AzureOpenAIConfig(
         endpoint="https://example.openai.azure.com",
         api_key="test-key",
-        api_version="2024-02-01"
+        api_version="2024-02-01",
     )
     with pytest.raises(ValidationError) as exc_info:
         azure.api_key = "new-key"

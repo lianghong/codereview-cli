@@ -86,7 +86,7 @@ class ReviewIssue(BaseModel):
 
     @field_validator("category", mode="before")
     @classmethod
-    def normalize_category(cls, v: str) -> str:
+    def normalize_category(_cls, v: str) -> str:  # noqa: N805
         """Normalize category to valid value, handling LLM variations."""
         if v in VALID_CATEGORIES:
             return v

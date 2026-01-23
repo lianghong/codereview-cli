@@ -51,8 +51,12 @@ def test_model_aliases_exist():
 def test_resolve_model_id_with_alias():
     """Test resolving short model names to full IDs."""
     assert resolve_model_id("opus") == "global.anthropic.claude-opus-4-5-20251101-v1:0"
-    assert resolve_model_id("sonnet") == "global.anthropic.claude-sonnet-4-5-20250929-v1:0"
-    assert resolve_model_id("haiku") == "global.anthropic.claude-haiku-4-5-20251001-v1:0"
+    assert (
+        resolve_model_id("sonnet") == "global.anthropic.claude-sonnet-4-5-20250929-v1:0"
+    )
+    assert (
+        resolve_model_id("haiku") == "global.anthropic.claude-haiku-4-5-20251001-v1:0"
+    )
     assert resolve_model_id("minimax") == "minimax.minimax-m2"
     assert resolve_model_id("qwen") == "qwen.qwen3-coder-480b-a35b-v1:0"
 
@@ -72,4 +76,6 @@ def test_resolve_model_id_with_full_id():
 def test_all_aliases_map_to_supported_models():
     """Test all aliases map to models in SUPPORTED_MODELS."""
     for alias, model_id in MODEL_ALIASES.items():
-        assert model_id in SUPPORTED_MODELS, f"Alias '{alias}' maps to unknown model '{model_id}'"
+        assert (
+            model_id in SUPPORTED_MODELS
+        ), f"Alias '{alias}' maps to unknown model '{model_id}'"

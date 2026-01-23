@@ -4,7 +4,6 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import ValidationError
 
 from codereview.config.models import (
     AzureOpenAIConfig,
@@ -30,7 +29,9 @@ class ConfigLoader:
 
         self.config_path = config_path
         self._raw_config: dict[str, Any] = {}
-        self._models_by_id: dict[str, tuple[str, ModelConfig]] = {}  # {id: (provider, config)}
+        self._models_by_id: dict[str, tuple[str, ModelConfig]] = (
+            {}
+        )  # {id: (provider, config)}
         self._providers: dict[str, ProviderConfig] = {}
 
         self._load_config()
@@ -59,6 +60,7 @@ class ConfigLoader:
         Returns:
             Text with variables expanded
         """
+
         def replacer(match: re.Match) -> str:
             var_name = match.group(1)
             value = os.environ.get(var_name, "")
@@ -68,7 +70,7 @@ class ConfigLoader:
                 return ""
             return value
 
-        return re.sub(r'\$\{([A-Z_]+)\}', replacer, text)
+        return re.sub(r"\$\{([A-Z_]+)\}", replacer, text)
 
     def _parse_providers(self) -> None:
         """Parse provider configurations and models."""
@@ -145,9 +147,9 @@ class ConfigLoader:
         if "inference_params" in model_data:
             params_data = model_data["inference_params"]
             inference_params = InferenceParams(
-                default_temperature=params_data.get("default_temperature"),
-                default_top_p=params_data.get("default_top_p"),
-                default_top_k=params_data.get("default_top_k"),
+                temperature=params_data.get("default_temperature"),
+                top_p=params_data.get("default_top_p"),
+                top_k=params_data.get("default_top_k"),
                 max_output_tokens=params_data.get("max_output_tokens"),
             )
 

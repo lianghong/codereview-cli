@@ -6,12 +6,11 @@ from typing import Any
 from langchain_openai import AzureChatOpenAI
 from openai import RateLimitError
 
+# Import system prompt from config
+from codereview.config import SYSTEM_PROMPT  # type: ignore[attr-defined]
 from codereview.config.models import AzureOpenAIConfig, ModelConfig
 from codereview.models import CodeReviewReport
 from codereview.providers.base import ModelProvider
-
-# Import system prompt from config
-from codereview.config import SYSTEM_PROMPT
 
 
 class AzureOpenAIProvider(ModelProvider):
@@ -67,14 +66,15 @@ class AzureOpenAIProvider(ModelProvider):
         if self.top_p is not None:
             model_kwargs["top_p"] = self.top_p
 
+        from pydantic import SecretStr
+
         base_model = AzureChatOpenAI(
-            deployment_name=self.model_config.deployment_name,
+            azure_deployment=self.model_config.deployment_name,
             azure_endpoint=str(self.provider_config.endpoint),
-            api_key=self.provider_config.api_key,
+            api_key=SecretStr(self.provider_config.api_key),  # type: ignore[arg-type]
             api_version=self.provider_config.api_version,
             temperature=self.temperature,
-            max_tokens=self.max_tokens,
-            model_kwargs=model_kwargs,
+            model_kwargs={**model_kwargs, "max_tokens": self.max_tokens},
         )
 
         # Configure for structured output
@@ -197,6 +197,13 @@ class AzureOpenAIProvider(ModelProvider):
         """Get human-readable model name."""
         return self.model_config.name
 
+    def get_pricing(self) -> dict[str, float]:
+        """Get pricing information for the model."""
+        return {
+            "input_price_per_million": self.model_config.pricing.input_per_million,
+            "output_price_per_million": self.model_config.pricing.output_per_million,
+        }
+
     def reset_state(self) -> None:
         """Reset token counters."""
         self._total_input_tokens = 0
@@ -226,7 +233,9 @@ class AzureOpenAIProvider(ModelProvider):
         pricing = self.model_config.pricing
 
         input_cost = (self._total_input_tokens / 1_000_000) * pricing.input_per_million
-        output_cost = (self._total_output_tokens / 1_000_000) * pricing.output_per_million
+        output_cost = (
+            self._total_output_tokens / 1_000_000
+        ) * pricing.output_per_million
 
         return {
             "input_tokens": self._total_input_tokens,

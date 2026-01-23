@@ -65,8 +65,9 @@ def test_analyzer_initialization_with_temperature(mock_provider):
 
 def test_analyzer_legacy_parameters_deprecated():
     """Test legacy parameters show deprecation warning."""
-    with patch("codereview.analyzer.ProviderFactory") as mock_factory, pytest.warns(
-        DeprecationWarning, match="model_id.*deprecated"
+    with (
+        patch("codereview.analyzer.ProviderFactory") as mock_factory,
+        pytest.warns(DeprecationWarning, match="model_id.*deprecated"),
     ):
         mock_factory.return_value.create_provider.return_value = Mock()
         CodeAnalyzer(model_id="global.anthropic.claude-opus-4-5-20251101-v1:0")
@@ -74,8 +75,9 @@ def test_analyzer_legacy_parameters_deprecated():
 
 def test_analyzer_legacy_model_id_mapping(mock_provider):
     """Test legacy model_id is mapped to new short name."""
-    with patch("codereview.analyzer.ProviderFactory") as mock_factory, pytest.warns(
-        DeprecationWarning
+    with (
+        patch("codereview.analyzer.ProviderFactory") as mock_factory,
+        pytest.warns(DeprecationWarning),
     ):
         mock_factory.return_value.create_provider.return_value = mock_provider
 

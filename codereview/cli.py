@@ -20,7 +20,7 @@ from rich.table import Table
 
 from codereview.analyzer import CodeAnalyzer
 from codereview.batcher import FileBatcher
-from codereview.config import (
+from codereview.config import (  # type: ignore[attr-defined]
     DEFAULT_EXCLUDE_PATTERNS,
     MAX_FILE_SIZE_KB,
     MODEL_ALIASES,
@@ -40,7 +40,9 @@ def display_available_models() -> None:
     models_by_provider = factory.list_available_models()
 
     # Create table
-    table = Table(title="Available Models", show_header=True, header_style="bold magenta")
+    table = Table(
+        title="Available Models", show_header=True, header_style="bold magenta"
+    )
     table.add_column("ID", style="cyan", no_wrap=True)
     table.add_column("Name", style="green")
     table.add_column("Provider", style="yellow")
@@ -339,7 +341,8 @@ def main(
             "low": sum(1 for i in all_issues if i.severity == "Low"),
             "input_tokens": analyzer.provider.total_input_tokens,
             "output_tokens": analyzer.provider.total_output_tokens,
-            "total_tokens": analyzer.provider.total_input_tokens + analyzer.provider.total_output_tokens,
+            "total_tokens": analyzer.provider.total_input_tokens
+            + analyzer.provider.total_output_tokens,
             "model_name": model_display_name,
             "input_price_per_million": pricing["input_price_per_million"],
             "output_price_per_million": pricing["output_price_per_million"],
@@ -556,7 +559,7 @@ def _render_dry_run(files, batches, model_name, model_display_name, console) -> 
         try:
             content = file_path.read_text(encoding="utf-8")
             return len(content) // 4
-        except (OSError, UnicodeDecodeError):
+        except OSError, UnicodeDecodeError:
             return 0
 
     # Build file table

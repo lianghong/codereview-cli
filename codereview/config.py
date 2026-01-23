@@ -179,6 +179,7 @@ def resolve_model_id(model: str) -> str:
     # Otherwise return as-is (assumed to be full model ID)
     return model
 
+
 SYSTEM_PROMPT = """You are an expert code reviewer with deep knowledge of:
 - Python, Go, Shell Script (Bash), C++, Java, and JavaScript best practices
 - Security vulnerabilities (OWASP Top 10, CWE, command injection, memory safety)

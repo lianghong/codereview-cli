@@ -1,4 +1,3 @@
-import os
 import tempfile
 from pathlib import Path
 
@@ -56,7 +55,7 @@ providers:
 @pytest.fixture
 def temp_config_file():
     """Create temporary YAML config file."""
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
         f.write(create_test_yaml())
         temp_path = Path(f.name)
 
@@ -161,7 +160,7 @@ def test_missing_env_vars_handled(temp_config_file, monkeypatch):
     # Should not crash during loading, but validation may fail
     # This tests that env var expansion doesn't crash
     try:
-        loader = ConfigLoader(temp_config_file)
+        ConfigLoader(temp_config_file)
         # If Pydantic validation is strict, this might raise
     except Exception:
         # Expected if validation enforces non-empty values

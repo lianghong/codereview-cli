@@ -82,10 +82,12 @@ class ProviderFactory:
         for provider_name, model_configs in models_by_provider.items():
             result[provider_name] = []
             for model_config in model_configs:
-                result[provider_name].append({
-                    "id": model_config.id,
-                    "name": model_config.name,
-                    "aliases": ", ".join(model_config.aliases),
-                })
+                result[provider_name].append(
+                    {
+                        "id": model_config.id,
+                        "name": model_config.name,
+                        "aliases": ", ".join(model_config.aliases),
+                    }
+                )
 
         return result

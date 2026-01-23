@@ -14,14 +14,10 @@ class PricingConfig(BaseModel):
     model_config = {"frozen": True}
 
     input_per_million: float = Field(
-        ...,
-        gt=0,
-        description="Cost per million input tokens in USD"
+        ..., gt=0, description="Cost per million input tokens in USD"
     )
     output_per_million: float = Field(
-        ...,
-        gt=0,
-        description="Cost per million output tokens in USD"
+        ..., gt=0, description="Cost per million output tokens in USD"
     )
 
 
@@ -38,26 +34,14 @@ class InferenceParams(BaseModel):
     model_config = {"frozen": True}
 
     temperature: float | None = Field(
-        None,
-        ge=0.0,
-        le=2.0,
-        description="Sampling temperature (0.0-2.0)"
+        None, ge=0.0, le=2.0, description="Sampling temperature (0.0-2.0)"
     )
     top_p: float | None = Field(
-        None,
-        ge=0.0,
-        le=1.0,
-        description="Nucleus sampling parameter (0.0-1.0)"
+        None, ge=0.0, le=1.0, description="Nucleus sampling parameter (0.0-1.0)"
     )
-    top_k: int | None = Field(
-        None,
-        ge=0,
-        description="Top-k sampling parameter (>=0)"
-    )
+    top_k: int | None = Field(None, ge=0, description="Top-k sampling parameter (>=0)")
     max_output_tokens: int | None = Field(
-        None,
-        gt=0,
-        description="Maximum number of tokens to generate"
+        None, gt=0, description="Maximum number of tokens to generate"
     )
 
 
@@ -79,23 +63,19 @@ class ModelConfig(BaseModel):
     id: str = Field(..., min_length=1, description="Short identifier for CLI usage")
     name: str = Field(..., min_length=1, description="Human-readable display name")
     aliases: list[str] = Field(
-        default_factory=list,
-        description="Alternative names for CLI"
+        default_factory=list, description="Alternative names for CLI"
     )
     pricing: PricingConfig = Field(..., description="Token pricing configuration")
     inference_params: InferenceParams | None = Field(
-        None,
-        description="Default inference parameters"
+        None, description="Default inference parameters"
     )
     full_id: str | None = Field(
         None,
         min_length=1,
-        description="Full model ID for API calls (provider-specific)"
+        description="Full model ID for API calls (provider-specific)",
     )
     deployment_name: str | None = Field(
-        None,
-        min_length=1,
-        description="Deployment name for Azure"
+        None, min_length=1, description="Deployment name for Azure"
     )
 
 
@@ -109,8 +89,7 @@ class ProviderConfig(BaseModel):
     model_config = {"frozen": True}
 
     models: list[ModelConfig] = Field(
-        default_factory=list,
-        description="List of model configurations"
+        default_factory=list, description="List of model configurations"
     )
 
 
@@ -127,7 +106,7 @@ class BedrockConfig(ProviderConfig):
     region: str = Field(
         default="us-west-2",
         min_length=1,
-        description="AWS region for Bedrock API calls"
+        description="AWS region for Bedrock API calls",
     )
 
 
@@ -147,7 +126,7 @@ class AzureOpenAIConfig(ProviderConfig):
     api_key: str = Field(
         ...,
         min_length=1,
-        description="Azure OpenAI API key or environment variable reference"
+        description="Azure OpenAI API key or environment variable reference",
     )
     api_version: str = Field(..., min_length=1, description="Azure OpenAI API version")
 
@@ -162,6 +141,5 @@ class ModelsConfigFile(BaseModel):
     model_config = {"frozen": True}
 
     providers: dict[str, ProviderConfig | BedrockConfig | AzureOpenAIConfig] = Field(
-        default_factory=dict,
-        description="Provider configurations"
+        default_factory=dict, description="Provider configurations"
     )

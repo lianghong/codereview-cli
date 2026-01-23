@@ -4,7 +4,7 @@
 from pathlib import Path, PurePath
 from typing import List, Tuple
 
-from codereview.config import (
+from codereview.config import (  # type: ignore[attr-defined]
     DEFAULT_EXCLUDE_EXTENSIONS,
     DEFAULT_EXCLUDE_PATTERNS,
     MAX_FILE_SIZE_KB,
@@ -78,7 +78,7 @@ class FileScanner:
                 resolved_path = file_path.resolve()
                 if not resolved_path.is_relative_to(resolved_root):
                     continue  # Skip files outside root directory
-            except (OSError, ValueError):
+            except OSError, ValueError:
                 continue  # Skip files that can't be resolved
 
             # Skip excluded extensions

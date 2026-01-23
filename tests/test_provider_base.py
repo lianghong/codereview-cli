@@ -34,6 +34,13 @@ class ConcreteProvider(ModelProvider):
     def get_model_display_name(self) -> str:
         return self._display_name
 
+    def get_pricing(self) -> dict[str, float]:
+        # Test pricing: $1 per million tokens
+        return {
+            "input_price_per_million": 1.0,
+            "output_price_per_million": 1.0,
+        }
+
     @property
     def total_input_tokens(self) -> int:
         return self._input_tokens
