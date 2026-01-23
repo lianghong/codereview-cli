@@ -24,8 +24,6 @@ from codereview.config import (
     DEFAULT_EXCLUDE_PATTERNS,
     MAX_FILE_SIZE_KB,
     MODEL_ALIASES,
-    SUPPORTED_MODELS,
-    resolve_model_id,
 )
 from codereview.models import CodeReviewReport, ReviewIssue
 from codereview.providers.factory import ProviderFactory
@@ -93,7 +91,6 @@ def display_available_models() -> None:
     default=MAX_FILE_SIZE_KB,
     help=f"Maximum file size in KB (default: {MAX_FILE_SIZE_KB})",
 )
-@click.option("--aws-region", type=str, help="AWS region for Bedrock")
 @click.option("--aws-profile", type=str, help="AWS CLI profile to use")
 @click.option(
     "--model",
@@ -134,7 +131,6 @@ def main(
     exclude: tuple[str, ...],
     max_files: int | None,
     max_file_size: int,
-    aws_region: str | None,
     aws_profile: str | None,
     model_name: str,
     static_analysis: bool,
@@ -154,8 +150,6 @@ def main(
         display_available_models()
         return
 
-    # Resolve model name to full model ID
-    model_id = resolve_model_id(model_name)
     # Show help if no directory provided
     if directory is None:
         click.echo(ctx.get_help())
@@ -166,13 +160,13 @@ def main(
         if aws_profile:
             os.environ["AWS_PROFILE"] = aws_profile
 
-        # Get model information
-        model_info = SUPPORTED_MODELS.get(model_id)
-        model_name = model_info["name"] if model_info else "Unknown"
+        # Get model display name from factory
+        factory = ProviderFactory()
+        model_display_name = factory.get_model_display_name(model_name)
 
         console.print("\n[bold cyan]🔍 Code Review Tool[/bold cyan]\n")
         console.print(f"📂 Scanning directory: {directory}")
-        console.print(f"🤖 Model: {model_name} (AWS Bedrock)\n")
+        console.print(f"🤖 Model: {model_display_name}\n")
 
         # Step 1: Scan files
         with Progress(
@@ -247,12 +241,13 @@ def main(
 
         # Handle dry-run mode
         if dry_run:
-            _render_dry_run(files, batches, model_info, model_name, console)
+            _render_dry_run(files, batches, model_name, model_display_name, console)
             return
 
         # Step 3: Analyze batches
         analyzer = CodeAnalyzer(
-            region=aws_region, model_id=model_id, temperature=temperature
+            model_name=model_name,
+            temperature=temperature,
         )
         all_issues = []
         all_suggestions = []
@@ -331,6 +326,9 @@ def main(
                 progress.update(task, advance=1)
 
         # Step 4: Create final report
+        # Get pricing from provider
+        pricing = analyzer.provider.get_pricing()
+
         metrics = {
             "files_analyzed": total_files,
             "total_issues": len(all_issues),
@@ -338,16 +336,12 @@ def main(
             "high": sum(1 for i in all_issues if i.severity == "High"),
             "medium": sum(1 for i in all_issues if i.severity == "Medium"),
             "low": sum(1 for i in all_issues if i.severity == "Low"),
-            "input_tokens": analyzer.total_input_tokens,
-            "output_tokens": analyzer.total_output_tokens,
-            "total_tokens": analyzer.total_input_tokens + analyzer.total_output_tokens,
-            "model_name": model_name,
-            "input_price_per_million": (
-                model_info["input_price_per_million"] if model_info else 0
-            ),
-            "output_price_per_million": (
-                model_info["output_price_per_million"] if model_info else 0
-            ),
+            "input_tokens": analyzer.provider.total_input_tokens,
+            "output_tokens": analyzer.provider.total_output_tokens,
+            "total_tokens": analyzer.provider.total_input_tokens + analyzer.provider.total_output_tokens,
+            "model_name": model_display_name,
+            "input_price_per_million": pricing["input_price_per_million"],
+            "output_price_per_million": pricing["output_price_per_million"],
         }
 
         # Add static analysis metrics if available
@@ -378,20 +372,19 @@ def main(
 
         # Display token usage and cost
         console.print("\n[cyan]💰 Token Usage & Cost Estimate:[/cyan]")
-        console.print(f"   Input tokens:  {analyzer.total_input_tokens:,}")
-        console.print(f"   Output tokens: {analyzer.total_output_tokens:,}")
+        console.print(f"   Input tokens:  {analyzer.provider.total_input_tokens:,}")
+        console.print(f"   Output tokens: {analyzer.provider.total_output_tokens:,}")
         console.print(
-            f"   Total tokens:  {analyzer.total_input_tokens + analyzer.total_output_tokens:,}"
+            f"   Total tokens:  {analyzer.provider.total_input_tokens + analyzer.provider.total_output_tokens:,}"
         )
 
         # Calculate cost using model's pricing
-        if model_info:
-            input_price = float(model_info["input_price_per_million"])
-            output_price = float(model_info["output_price_per_million"])
-            input_cost = (analyzer.total_input_tokens / 1_000_000) * input_price
-            output_cost = (analyzer.total_output_tokens / 1_000_000) * output_price
-            total_cost = input_cost + output_cost
-            console.print(f"   [bold]Estimated cost: ${total_cost:.4f}[/bold]")
+        input_price = float(pricing["input_price_per_million"])
+        output_price = float(pricing["output_price_per_million"])
+        input_cost = (analyzer.provider.total_input_tokens / 1_000_000) * input_price
+        output_cost = (analyzer.provider.total_output_tokens / 1_000_000) * output_price
+        total_cost = input_cost + output_cost
+        console.print(f"   [bold]Estimated cost: ${total_cost:.4f}[/bold]")
         console.print()
 
         # Warn if any files were skipped
@@ -440,10 +433,10 @@ def main(
             )
         elif error_code == "ResourceNotFoundException":
             console.print(
-                "[yellow]The Claude Opus 4.5 model may not be available in your region.[/yellow]"
+                "[yellow]The requested model may not be available in your AWS region.[/yellow]"
             )
             console.print(
-                "Try using --aws-region with a supported region (e.g., us-west-2)\n"
+                "Check that the model is enabled in your AWS Bedrock settings.\n"
             )
 
         if verbose:
@@ -541,9 +534,18 @@ def _generate_recommendations(issues: list[ReviewIssue]) -> list[str]:
     return recommendations[:5]
 
 
-def _render_dry_run(files, batches, model_info, model_name, console) -> None:
+def _render_dry_run(files, batches, model_name, model_display_name, console) -> None:
     """Render dry-run output showing files and estimated costs."""
     from rich.table import Table
+
+    # Get pricing info from factory
+    factory = ProviderFactory()
+    try:
+        provider = factory.create_provider(model_name)
+        pricing = provider.get_pricing()
+    except Exception:
+        # If we can't get pricing, use zeros
+        pricing = {"input_price_per_million": 0, "output_price_per_million": 0}
 
     console.print("[bold cyan]📋 Dry Run Mode[/bold cyan]\n")
 
@@ -584,18 +586,15 @@ def _render_dry_run(files, batches, model_info, model_name, console) -> None:
     estimated_output_tokens = int(total_input_tokens * 0.2)
 
     # Calculate cost
-    if model_info:
-        input_price = float(model_info["input_price_per_million"])
-        output_price = float(model_info["output_price_per_million"])
-        input_cost = (total_input_tokens / 1_000_000) * input_price
-        output_cost = (estimated_output_tokens / 1_000_000) * output_price
-        total_cost = input_cost + output_cost
-    else:
-        input_price = output_price = total_cost = 0
+    input_price = float(pricing["input_price_per_million"])
+    output_price = float(pricing["output_price_per_million"])
+    input_cost = (total_input_tokens / 1_000_000) * input_price
+    output_cost = (estimated_output_tokens / 1_000_000) * output_price
+    total_cost = input_cost + output_cost
 
     # Summary
     console.print("[bold]💰 Estimated Cost Summary[/bold]")
-    console.print(f"   Model: {model_name}")
+    console.print(f"   Model: {model_display_name}")
     console.print(f"   Files: {len(files)}")
     console.print(f"   Batches: {len(batches)}")
     console.print(f"   Est. input tokens: ~{total_input_tokens:,}")

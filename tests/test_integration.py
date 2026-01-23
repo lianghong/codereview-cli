@@ -184,17 +184,32 @@ class TestFullWorkflow:
         """Test CLI end-to-end with mocked AWS calls."""
         runner = CliRunner()
 
-        with patch("codereview.cli.CodeAnalyzer") as mock_analyzer_class:
+        with patch("codereview.cli.CodeAnalyzer") as mock_analyzer_class, \
+             patch("codereview.cli.ProviderFactory") as mock_factory_class:
+
+            # Setup factory mock
+            mock_factory = Mock()
+            mock_factory.get_model_display_name.return_value = "Claude Opus 4.5"
+            mock_factory_class.return_value = mock_factory
+
+            # Setup analyzer mock
+            mock_provider = Mock()
+            mock_provider.total_input_tokens = 1000
+            mock_provider.total_output_tokens = 500
+            mock_provider.get_pricing.return_value = {
+                "input_price_per_million": 5.0,
+                "output_price_per_million": 25.0,
+            }
+
             mock_analyzer = Mock()
+            mock_analyzer.provider = mock_provider
             mock_analyzer.analyze_batch.return_value = mock_code_review_report
-            mock_analyzer.total_input_tokens = 1000
-            mock_analyzer.total_output_tokens = 500
             mock_analyzer.skipped_files = []
             mock_analyzer_class.return_value = mock_analyzer
 
             result = runner.invoke(main, [str(sample_project_dir)])
 
-            assert result.exit_code == 0
+            assert result.exit_code == 0, f"CLI failed with: {result.output}"
             assert "Code Review Tool" in result.output
             assert "Found" in result.output
             assert "files to review" in result.output
@@ -206,11 +221,26 @@ class TestFullWorkflow:
         runner = CliRunner()
         output_file = tmp_path / "cli-report.md"
 
-        with patch("codereview.cli.CodeAnalyzer") as mock_analyzer_class:
+        with patch("codereview.cli.CodeAnalyzer") as mock_analyzer_class, \
+             patch("codereview.cli.ProviderFactory") as mock_factory_class:
+
+            # Setup factory mock
+            mock_factory = Mock()
+            mock_factory.get_model_display_name.return_value = "Claude Opus 4.5"
+            mock_factory_class.return_value = mock_factory
+
+            # Setup analyzer mock
+            mock_provider = Mock()
+            mock_provider.total_input_tokens = 1000
+            mock_provider.total_output_tokens = 500
+            mock_provider.get_pricing.return_value = {
+                "input_price_per_million": 5.0,
+                "output_price_per_million": 25.0,
+            }
+
             mock_analyzer = Mock()
+            mock_analyzer.provider = mock_provider
             mock_analyzer.analyze_batch.return_value = mock_code_review_report
-            mock_analyzer.total_input_tokens = 1000
-            mock_analyzer.total_output_tokens = 500
             mock_analyzer.skipped_files = []
             mock_analyzer_class.return_value = mock_analyzer
 
@@ -218,7 +248,7 @@ class TestFullWorkflow:
                 main, [str(sample_project_dir), "--output", str(output_file)]
             )
 
-            assert result.exit_code == 0
+            assert result.exit_code == 0, f"CLI failed with: {result.output}"
             assert output_file.exists()
             assert "Report exported to" in result.output
 
@@ -228,11 +258,26 @@ class TestFullWorkflow:
         """Test CLI with severity filtering."""
         runner = CliRunner()
 
-        with patch("codereview.cli.CodeAnalyzer") as mock_analyzer_class:
+        with patch("codereview.cli.CodeAnalyzer") as mock_analyzer_class, \
+             patch("codereview.cli.ProviderFactory") as mock_factory_class:
+
+            # Setup factory mock
+            mock_factory = Mock()
+            mock_factory.get_model_display_name.return_value = "Claude Opus 4.5"
+            mock_factory_class.return_value = mock_factory
+
+            # Setup analyzer mock
+            mock_provider = Mock()
+            mock_provider.total_input_tokens = 1000
+            mock_provider.total_output_tokens = 500
+            mock_provider.get_pricing.return_value = {
+                "input_price_per_million": 5.0,
+                "output_price_per_million": 25.0,
+            }
+
             mock_analyzer = Mock()
+            mock_analyzer.provider = mock_provider
             mock_analyzer.analyze_batch.return_value = mock_code_review_report
-            mock_analyzer.total_input_tokens = 1000
-            mock_analyzer.total_output_tokens = 500
             mock_analyzer.skipped_files = []
             mock_analyzer_class.return_value = mock_analyzer
 
@@ -240,39 +285,69 @@ class TestFullWorkflow:
                 main, [str(sample_project_dir), "--severity", "high"]
             )
 
-            assert result.exit_code == 0
+            assert result.exit_code == 0, f"CLI failed with: {result.output}"
 
     def test_cli_with_max_files(self, sample_project_dir, mock_code_review_report):
         """Test CLI with max files limit."""
         runner = CliRunner()
 
-        with patch("codereview.cli.CodeAnalyzer") as mock_analyzer_class:
+        with patch("codereview.cli.CodeAnalyzer") as mock_analyzer_class, \
+             patch("codereview.cli.ProviderFactory") as mock_factory_class:
+
+            # Setup factory mock
+            mock_factory = Mock()
+            mock_factory.get_model_display_name.return_value = "Claude Opus 4.5"
+            mock_factory_class.return_value = mock_factory
+
+            # Setup analyzer mock
+            mock_provider = Mock()
+            mock_provider.total_input_tokens = 1000
+            mock_provider.total_output_tokens = 500
+            mock_provider.get_pricing.return_value = {
+                "input_price_per_million": 5.0,
+                "output_price_per_million": 25.0,
+            }
+
             mock_analyzer = Mock()
+            mock_analyzer.provider = mock_provider
             mock_analyzer.analyze_batch.return_value = mock_code_review_report
-            mock_analyzer.total_input_tokens = 1000
-            mock_analyzer.total_output_tokens = 500
             mock_analyzer.skipped_files = []
             mock_analyzer_class.return_value = mock_analyzer
 
             result = runner.invoke(main, [str(sample_project_dir), "--max-files", "1"])
 
-            assert result.exit_code == 0
+            assert result.exit_code == 0, f"CLI failed with: {result.output}"
 
     def test_cli_with_verbose_mode(self, sample_project_dir, mock_code_review_report):
         """Test CLI with verbose output."""
         runner = CliRunner()
 
-        with patch("codereview.cli.CodeAnalyzer") as mock_analyzer_class:
+        with patch("codereview.cli.CodeAnalyzer") as mock_analyzer_class, \
+             patch("codereview.cli.ProviderFactory") as mock_factory_class:
+
+            # Setup factory mock
+            mock_factory = Mock()
+            mock_factory.get_model_display_name.return_value = "Claude Opus 4.5"
+            mock_factory_class.return_value = mock_factory
+
+            # Setup analyzer mock
+            mock_provider = Mock()
+            mock_provider.total_input_tokens = 1000
+            mock_provider.total_output_tokens = 500
+            mock_provider.get_pricing.return_value = {
+                "input_price_per_million": 5.0,
+                "output_price_per_million": 25.0,
+            }
+
             mock_analyzer = Mock()
+            mock_analyzer.provider = mock_provider
             mock_analyzer.analyze_batch.return_value = mock_code_review_report
-            mock_analyzer.total_input_tokens = 1000
-            mock_analyzer.total_output_tokens = 500
             mock_analyzer.skipped_files = []
             mock_analyzer_class.return_value = mock_analyzer
 
             result = runner.invoke(main, [str(sample_project_dir), "--verbose"])
 
-            assert result.exit_code == 0
+            assert result.exit_code == 0, f"CLI failed with: {result.output}"
             assert "Batch" in result.output
 
 
@@ -306,17 +381,32 @@ class TestWorkflowWithFixtures:
 
         runner = CliRunner()
 
-        with patch("codereview.cli.CodeAnalyzer") as mock_analyzer_class:
+        with patch("codereview.cli.CodeAnalyzer") as mock_analyzer_class, \
+             patch("codereview.cli.ProviderFactory") as mock_factory_class:
+
+            # Setup factory mock
+            mock_factory = Mock()
+            mock_factory.get_model_display_name.return_value = "Claude Opus 4.5"
+            mock_factory_class.return_value = mock_factory
+
+            # Setup analyzer mock
+            mock_provider = Mock()
+            mock_provider.total_input_tokens = 1000
+            mock_provider.total_output_tokens = 500
+            mock_provider.get_pricing.return_value = {
+                "input_price_per_million": 5.0,
+                "output_price_per_million": 25.0,
+            }
+
             mock_analyzer = Mock()
+            mock_analyzer.provider = mock_provider
             mock_analyzer.analyze_batch.return_value = mock_code_review_report
-            mock_analyzer.total_input_tokens = 1000
-            mock_analyzer.total_output_tokens = 500
             mock_analyzer.skipped_files = []
             mock_analyzer_class.return_value = mock_analyzer
 
             result = runner.invoke(main, [str(fixtures_dir)])
 
-            assert result.exit_code == 0
+            assert result.exit_code == 0, f"CLI failed with: {result.output}"
 
 
 class TestErrorHandlingIntegration:
@@ -326,11 +416,18 @@ class TestErrorHandlingIntegration:
         """Test handling of empty directory."""
         runner = CliRunner()
 
-        with runner.isolated_filesystem():
+        with runner.isolated_filesystem(), \
+             patch("codereview.cli.ProviderFactory") as mock_factory_class:
+
+            # Setup factory mock
+            mock_factory = Mock()
+            mock_factory.get_model_display_name.return_value = "Claude Opus 4.5"
+            mock_factory_class.return_value = mock_factory
+
             Path("empty_dir").mkdir()
             result = runner.invoke(main, ["empty_dir"])
 
-            assert result.exit_code == 0
+            assert result.exit_code == 0, f"CLI failed with: {result.output}"
             assert "No files found" in result.output
 
     def test_nonexistent_directory(self):
@@ -376,11 +473,26 @@ class TestOutputFormats:
         runner = CliRunner()
         output_file = tmp_path / "both-outputs.md"
 
-        with patch("codereview.cli.CodeAnalyzer") as mock_analyzer_class:
+        with patch("codereview.cli.CodeAnalyzer") as mock_analyzer_class, \
+             patch("codereview.cli.ProviderFactory") as mock_factory_class:
+
+            # Setup factory mock
+            mock_factory = Mock()
+            mock_factory.get_model_display_name.return_value = "Claude Opus 4.5"
+            mock_factory_class.return_value = mock_factory
+
+            # Setup analyzer mock
+            mock_provider = Mock()
+            mock_provider.total_input_tokens = 1000
+            mock_provider.total_output_tokens = 500
+            mock_provider.get_pricing.return_value = {
+                "input_price_per_million": 5.0,
+                "output_price_per_million": 25.0,
+            }
+
             mock_analyzer = Mock()
+            mock_analyzer.provider = mock_provider
             mock_analyzer.analyze_batch.return_value = mock_code_review_report
-            mock_analyzer.total_input_tokens = 1000
-            mock_analyzer.total_output_tokens = 500
             mock_analyzer.skipped_files = []
             mock_analyzer_class.return_value = mock_analyzer
 
@@ -389,7 +501,7 @@ class TestOutputFormats:
             )
 
             # Both terminal output and file should be generated
-            assert result.exit_code == 0
+            assert result.exit_code == 0, f"CLI failed with: {result.output}"
             assert "Code Review Report" in result.output  # Terminal output
             assert output_file.exists()  # File output
 
@@ -429,17 +541,32 @@ class TestBatchProcessing:
         """Test processing multiple batches."""
         runner = CliRunner()
 
-        with patch("codereview.cli.CodeAnalyzer") as mock_analyzer_class:
+        with patch("codereview.cli.CodeAnalyzer") as mock_analyzer_class, \
+             patch("codereview.cli.ProviderFactory") as mock_factory_class:
+
+            # Setup factory mock
+            mock_factory = Mock()
+            mock_factory.get_model_display_name.return_value = "Claude Opus 4.5"
+            mock_factory_class.return_value = mock_factory
+
+            # Setup analyzer mock
+            mock_provider = Mock()
+            mock_provider.total_input_tokens = 1000
+            mock_provider.total_output_tokens = 500
+            mock_provider.get_pricing.return_value = {
+                "input_price_per_million": 5.0,
+                "output_price_per_million": 25.0,
+            }
+
             mock_analyzer = Mock()
+            mock_analyzer.provider = mock_provider
             mock_analyzer.analyze_batch.return_value = mock_code_review_report
-            mock_analyzer.total_input_tokens = 1000
-            mock_analyzer.total_output_tokens = 500
             mock_analyzer.skipped_files = []
             mock_analyzer_class.return_value = mock_analyzer
 
             result = runner.invoke(main, [str(sample_project_dir)])
 
-            assert result.exit_code == 0
+            assert result.exit_code == 0, f"CLI failed with: {result.output}"
             # Verify batches were processed
             assert mock_analyzer.analyze_batch.called
 
@@ -485,17 +612,32 @@ class TestBatchProcessing:
             recommendations=[],
         )
 
-        with patch("codereview.cli.CodeAnalyzer") as mock_analyzer_class:
+        with patch("codereview.cli.CodeAnalyzer") as mock_analyzer_class, \
+             patch("codereview.cli.ProviderFactory") as mock_factory_class:
+
+            # Setup factory mock
+            mock_factory = Mock()
+            mock_factory.get_model_display_name.return_value = "Claude Opus 4.5"
+            mock_factory_class.return_value = mock_factory
+
+            # Setup analyzer mock
+            mock_provider = Mock()
+            mock_provider.total_input_tokens = 2000
+            mock_provider.total_output_tokens = 1000
+            mock_provider.get_pricing.return_value = {
+                "input_price_per_million": 5.0,
+                "output_price_per_million": 25.0,
+            }
+
             mock_analyzer = Mock()
+            mock_analyzer.provider = mock_provider
             mock_analyzer.analyze_batch.side_effect = [report1, report2]
-            mock_analyzer.total_input_tokens = 2000
-            mock_analyzer.total_output_tokens = 1000
             mock_analyzer.skipped_files = []
             mock_analyzer_class.return_value = mock_analyzer
 
             result = runner.invoke(main, [str(sample_project_dir)])
 
-            assert result.exit_code == 0
+            assert result.exit_code == 0, f"CLI failed with: {result.output}"
             # Both issues should be in final report
             # (This is implicit in the aggregation logic)
 

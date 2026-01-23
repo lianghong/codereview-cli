@@ -1,5 +1,6 @@
 import pytest
 from click.testing import CliRunner
+from unittest.mock import Mock, patch
 
 from codereview.cli import main
 
@@ -35,21 +36,102 @@ def test_cli_help(cli_runner):
 
 def test_cli_with_directory(cli_runner, sample_code_dir):
     """Test CLI with directory argument."""
-    # Note: This will fail without AWS credentials
-    # We'll add proper mocking in integration tests
-    result = cli_runner.invoke(main, [str(sample_code_dir)])
-    # Just check it attempts to run
-    assert "directory" in result.output.lower() or result.exit_code == 0
+    with patch("codereview.cli.CodeAnalyzer") as mock_analyzer_cls, \
+         patch("codereview.cli.FileScanner") as mock_scanner_cls, \
+         patch("codereview.cli.ProviderFactory") as mock_factory_cls:
+
+        # Setup factory mock
+        mock_factory = Mock()
+        mock_factory.get_model_display_name.return_value = "Claude Opus 4.5"
+        mock_factory_cls.return_value = mock_factory
+
+        # Setup analyzer mock
+        mock_analyzer = Mock()
+        mock_provider = Mock()
+        mock_provider.total_input_tokens = 100
+        mock_provider.total_output_tokens = 50
+        mock_provider.get_pricing.return_value = {
+            "input_price_per_million": 5.0,
+            "output_price_per_million": 25.0,
+        }
+        mock_analyzer.provider = mock_provider
+        mock_analyzer.analyze_batch.return_value = Mock(
+            summary="Test",
+            files_analyzed=1,
+            issues_found=0,
+            critical_issues=0,
+            issues=[],
+            improvement_suggestions=[],
+            system_design_insights="No issues",
+        )
+        mock_analyzer.skipped_files = []
+        mock_analyzer_cls.return_value = mock_analyzer
+
+        # Setup scanner mock
+        mock_scanner = Mock()
+        mock_scanner.scan.return_value = [sample_code_dir / "test.py"]
+        mock_scanner.skipped_files = []
+        mock_scanner_cls.return_value = mock_scanner
+
+        result = cli_runner.invoke(main, [str(sample_code_dir)])
+
+        # Should succeed
+        assert result.exit_code == 0, f"CLI failed with: {result.output}"
 
 
 def test_cli_output_option(cli_runner, sample_code_dir, tmp_path):
     """Test CLI with output file option."""
-    output_file = tmp_path / "report.md"
-    result = cli_runner.invoke(
-        main, [str(sample_code_dir), "--output", str(output_file)]
-    )
-    # Command should accept the argument
-    assert "--output" not in result.output or result.exit_code == 0
+    with patch("codereview.cli.CodeAnalyzer") as mock_analyzer_cls, \
+         patch("codereview.cli.FileScanner") as mock_scanner_cls, \
+         patch("codereview.cli.ProviderFactory") as mock_factory_cls, \
+         patch("codereview.cli.MarkdownExporter") as mock_exporter_cls:
+
+        # Setup factory mock
+        mock_factory = Mock()
+        mock_factory.get_model_display_name.return_value = "Claude Opus 4.5"
+        mock_factory_cls.return_value = mock_factory
+
+        # Setup analyzer mock
+        mock_analyzer = Mock()
+        mock_provider = Mock()
+        mock_provider.total_input_tokens = 100
+        mock_provider.total_output_tokens = 50
+        mock_provider.get_pricing.return_value = {
+            "input_price_per_million": 5.0,
+            "output_price_per_million": 25.0,
+        }
+        mock_analyzer.provider = mock_provider
+        mock_analyzer.analyze_batch.return_value = Mock(
+            summary="Test",
+            files_analyzed=1,
+            issues_found=0,
+            critical_issues=0,
+            issues=[],
+            improvement_suggestions=[],
+            system_design_insights="No issues",
+        )
+        mock_analyzer.skipped_files = []
+        mock_analyzer_cls.return_value = mock_analyzer
+
+        # Setup scanner mock
+        mock_scanner = Mock()
+        mock_scanner.scan.return_value = [sample_code_dir / "test.py"]
+        mock_scanner.skipped_files = []
+        mock_scanner_cls.return_value = mock_scanner
+
+        # Setup exporter mock
+        mock_exporter = Mock()
+        mock_exporter_cls.return_value = mock_exporter
+
+        output_file = tmp_path / "report.md"
+        result = cli_runner.invoke(
+            main, [str(sample_code_dir), "--output", str(output_file)]
+        )
+
+        # Command should succeed
+        assert result.exit_code == 0, f"CLI failed with: {result.output}"
+        # Verify exporter was called
+        mock_exporter.export.assert_called_once()
 
 
 def test_list_models_flag(cli_runner, monkeypatch):
@@ -87,8 +169,6 @@ def test_list_models_flag(cli_runner, monkeypatch):
 
 def test_list_models_exits_without_directory(cli_runner, monkeypatch):
     """Test --list-models doesn't require directory argument."""
-    from unittest.mock import Mock, patch
-
     monkeypatch.setenv("AZURE_OPENAI_ENDPOINT", "https://test.com")
     monkeypatch.setenv("AZURE_OPENAI_API_KEY", "test-key")
 
@@ -102,3 +182,152 @@ def test_list_models_exits_without_directory(cli_runner, monkeypatch):
         assert result.exit_code == 0
         # Should not attempt directory validation
         assert "Scanning" not in result.output
+
+
+def test_cli_with_model_option(cli_runner, sample_code_dir):
+    """Test CLI with --model option uses model_name parameter."""
+    with patch("codereview.cli.CodeAnalyzer") as mock_analyzer_cls, \
+         patch("codereview.cli.FileScanner") as mock_scanner_cls, \
+         patch("codereview.cli.ProviderFactory") as mock_factory_cls:
+
+        # Setup factory mock
+        mock_factory = Mock()
+        mock_factory.get_model_display_name.return_value = "Claude Sonnet 4.5"
+        mock_factory_cls.return_value = mock_factory
+
+        # Setup analyzer mock
+        mock_analyzer = Mock()
+        mock_provider = Mock()
+        mock_provider.total_input_tokens = 100
+        mock_provider.total_output_tokens = 50
+        mock_provider.get_pricing.return_value = {
+            "input_price_per_million": 3.0,
+            "output_price_per_million": 15.0,
+        }
+        mock_analyzer.provider = mock_provider
+        mock_analyzer.analyze_batch.return_value = Mock(
+            summary="Test",
+            files_analyzed=1,
+            issues_found=0,
+            critical_issues=0,
+            issues=[],
+            improvement_suggestions=[],
+            system_design_insights="No issues",
+        )
+        mock_analyzer.skipped_files = []
+        mock_analyzer_cls.return_value = mock_analyzer
+
+        # Setup scanner mock
+        mock_scanner = Mock()
+        mock_scanner.scan.return_value = [sample_code_dir / "test.py"]
+        mock_scanner.skipped_files = []
+        mock_scanner_cls.return_value = mock_scanner
+
+        result = cli_runner.invoke(main, [str(sample_code_dir), "--model", "sonnet"])
+
+        # Should succeed
+        assert result.exit_code == 0, f"CLI failed with: {result.output}"
+
+        # Verify CodeAnalyzer was called with model_name
+        mock_analyzer_cls.assert_called_once()
+        call_kwargs = mock_analyzer_cls.call_args[1]
+        assert "model_name" in call_kwargs
+        assert call_kwargs["model_name"] == "sonnet"
+        # Should not have old parameters
+        assert "model_id" not in call_kwargs
+        assert "region" not in call_kwargs
+
+
+def test_cli_default_model(cli_runner, sample_code_dir):
+    """Test CLI uses default model (opus)."""
+    with patch("codereview.cli.CodeAnalyzer") as mock_analyzer_cls, \
+         patch("codereview.cli.FileScanner") as mock_scanner_cls, \
+         patch("codereview.cli.ProviderFactory") as mock_factory_cls:
+
+        # Setup factory mock
+        mock_factory = Mock()
+        mock_factory.get_model_display_name.return_value = "Claude Opus 4.5"
+        mock_factory_cls.return_value = mock_factory
+
+        # Setup analyzer mock
+        mock_analyzer = Mock()
+        mock_provider = Mock()
+        mock_provider.total_input_tokens = 100
+        mock_provider.total_output_tokens = 50
+        mock_provider.get_pricing.return_value = {
+            "input_price_per_million": 5.0,
+            "output_price_per_million": 25.0,
+        }
+        mock_analyzer.provider = mock_provider
+        mock_analyzer.analyze_batch.return_value = Mock(
+            summary="Test",
+            files_analyzed=1,
+            issues_found=0,
+            critical_issues=0,
+            issues=[],
+            improvement_suggestions=[],
+            system_design_insights="No issues",
+        )
+        mock_analyzer.skipped_files = []
+        mock_analyzer_cls.return_value = mock_analyzer
+
+        # Setup scanner mock
+        mock_scanner = Mock()
+        mock_scanner.scan.return_value = [sample_code_dir / "test.py"]
+        mock_scanner.skipped_files = []
+        mock_scanner_cls.return_value = mock_scanner
+
+        result = cli_runner.invoke(main, [str(sample_code_dir)])
+
+        # Verify default model is "opus"
+        mock_analyzer_cls.assert_called_once()
+        call_kwargs = mock_analyzer_cls.call_args[1]
+        assert call_kwargs["model_name"] == "opus"
+
+
+def test_cli_model_short_name(cli_runner, sample_code_dir):
+    """Test CLI accepts short model names like 'haiku'."""
+    with patch("codereview.cli.CodeAnalyzer") as mock_analyzer_cls, \
+         patch("codereview.cli.FileScanner") as mock_scanner_cls, \
+         patch("codereview.cli.ProviderFactory") as mock_factory_cls:
+
+        # Setup factory mock
+        mock_factory = Mock()
+        mock_factory.get_model_display_name.return_value = "Claude Haiku 4.5"
+        mock_factory_cls.return_value = mock_factory
+
+        # Setup analyzer mock
+        mock_analyzer = Mock()
+        mock_provider = Mock()
+        mock_provider.total_input_tokens = 100
+        mock_provider.total_output_tokens = 50
+        mock_provider.get_pricing.return_value = {
+            "input_price_per_million": 1.0,
+            "output_price_per_million": 5.0,
+        }
+        mock_analyzer.provider = mock_provider
+        mock_analyzer.analyze_batch.return_value = Mock(
+            summary="Test",
+            files_analyzed=1,
+            issues_found=0,
+            critical_issues=0,
+            issues=[],
+            improvement_suggestions=[],
+            system_design_insights="No issues",
+        )
+        mock_analyzer.skipped_files = []
+        mock_analyzer_cls.return_value = mock_analyzer
+
+        # Setup scanner mock
+        mock_scanner = Mock()
+        mock_scanner.scan.return_value = [sample_code_dir / "test.py"]
+        mock_scanner.skipped_files = []
+        mock_scanner_cls.return_value = mock_scanner
+
+        result = cli_runner.invoke(main, [str(sample_code_dir), "-m", "haiku"])
+
+        # Should succeed with short name
+        assert result.exit_code == 0, f"CLI failed with: {result.output}"
+        mock_analyzer_cls.assert_called_once()
+        call_kwargs = mock_analyzer_cls.call_args[1]
+        assert call_kwargs["model_name"] == "haiku"
