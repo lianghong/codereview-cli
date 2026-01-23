@@ -1,126 +1,130 @@
 # Model Configuration for Code Review Tool
 # This file defines all available AI models for code review analysis
 
-# AWS Bedrock Models
-bedrock:
-  # Claude Models (Anthropic)
-  - id: opus
-    full_id: global.anthropic.claude-opus-4-5-20251101-v1:0
-    name: Claude Opus 4.5
-    aliases:
-      - opus
-      - claude-opus
-    pricing:
-      input_per_million: 5.00
-      output_per_million: 25.00
-    inference_params:
-      default_temperature: 0.1
+version: "1.0"
 
-  - id: sonnet
-    full_id: global.anthropic.claude-sonnet-4-5-20250929-v1:0
-    name: Claude Sonnet 4.5
-    aliases:
-      - sonnet
-      - claude-sonnet
-    pricing:
-      input_per_million: 3.00
-      output_per_million: 15.00
-    inference_params:
-      default_temperature: 0.1
+providers:
+  # AWS Bedrock Provider
+  bedrock:
+    region: us-west-2
+    models:
+      # Claude Models (Anthropic)
+      - id: opus
+        full_id: global.anthropic.claude-opus-4-5-20251101-v1:0
+        name: Claude Opus 4.5
+        aliases:
+          - opus
+          - claude-opus
+        pricing:
+          input_per_million: 5.00
+          output_per_million: 25.00
+        inference_params:
+          default_temperature: 0.1
 
-  - id: haiku
-    full_id: global.anthropic.claude-haiku-4-5-20251001-v1:0
-    name: Claude Haiku 4.5
-    aliases:
-      - haiku
-      - claude-haiku
-    pricing:
-      input_per_million: 1.00
-      output_per_million: 5.00
-    inference_params:
-      default_temperature: 0.1
+      - id: sonnet
+        full_id: global.anthropic.claude-sonnet-4-5-20250929-v1:0
+        name: Claude Sonnet 4.5
+        aliases:
+          - sonnet
+          - claude-sonnet
+        pricing:
+          input_per_million: 3.00
+          output_per_million: 15.00
+        inference_params:
+          default_temperature: 0.1
 
-  # Minimax Model
-  - id: minimax
-    full_id: minimax.minimax-m2
-    name: Minimax M2
-    aliases:
-      - minimax
-      - minimax-m2
-    pricing:
-      input_per_million: 0.30
-      output_per_million: 1.20
-    inference_params:
-      default_temperature: 1.0
-      default_top_p: 0.95
-      default_top_k: 40
-      max_output_tokens: 8192
+      - id: haiku
+        full_id: global.anthropic.claude-haiku-4-5-20251001-v1:0
+        name: Claude Haiku 4.5
+        aliases:
+          - haiku
+          - claude-haiku
+        pricing:
+          input_per_million: 1.00
+          output_per_million: 5.00
+        inference_params:
+          default_temperature: 0.1
 
-  # Mistral Model
-  - id: mistral
-    full_id: mistral.mistral-large-3-675b-instruct
-    name: Mistral Large 3
-    aliases:
-      - mistral
-      - mistral-large
-    pricing:
-      input_per_million: 2.00
-      output_per_million: 6.00
-    inference_params:
-      default_temperature: 0.1
-      default_top_p: 0.5
-      default_top_k: 5
+      # Minimax Model
+      - id: minimax
+        full_id: minimax.minimax-m2
+        name: Minimax M2
+        aliases:
+          - minimax
+          - minimax-m2
+        pricing:
+          input_per_million: 0.30
+          output_per_million: 1.20
+        inference_params:
+          default_temperature: 1.0
+          default_top_p: 0.95
+          default_top_k: 40
+          max_output_tokens: 8192
 
-  # Kimi Model (Moonshot)
-  - id: kimi
-    full_id: moonshot.kimi-k2-thinking
-    name: Kimi K2 Thinking
-    aliases:
-      - kimi
-      - kimi-k2
-    pricing:
-      input_per_million: 0.50
-      output_per_million: 2.00
-    inference_params:
-      default_temperature: 1.0
-      max_output_tokens: 16000  # Can go up to 256K
+      # Mistral Model
+      - id: mistral
+        full_id: mistral.mistral-large-3-675b-instruct
+        name: Mistral Large 3
+        aliases:
+          - mistral
+          - mistral-large
+        pricing:
+          input_per_million: 2.00
+          output_per_million: 6.00
+        inference_params:
+          default_temperature: 0.1
+          default_top_p: 0.5
+          default_top_k: 5
 
-  # Qwen Model
-  - id: qwen
-    full_id: qwen.qwen3-coder-480b-a35b-v1:0
-    name: Qwen3 Coder 480B
-    aliases:
-      - qwen
-      - qwen-coder
-    pricing:
-      input_per_million: 0.22
-      output_per_million: 1.40  # Range: $0.95-$1.80 depending on endpoint
-    inference_params:
-      default_temperature: 0.7
-      default_top_p: 0.8
-      default_top_k: 20
-      max_output_tokens: 65536
+      # Kimi Model (Moonshot)
+      - id: kimi
+        full_id: moonshot.kimi-k2-thinking
+        name: Kimi K2 Thinking
+        aliases:
+          - kimi
+          - kimi-k2
+        pricing:
+          input_per_million: 0.50
+          output_per_million: 2.00
+        inference_params:
+          default_temperature: 1.0
+          max_output_tokens: 16000  # Can go up to 256K
 
-# Azure OpenAI Models
-azure_openai:
-  - id: gpt-5.2-codex
-    deployment_name: gpt-52-codex-turbo
-    name: GPT-5.2 Codex Turbo
-    aliases:
-      - gpt-5.2-codex
-      - gpt52
-      - codex
-    pricing:
-      input_per_million: 2.50
-      output_per_million: 10.00
-    inference_params:
-      default_temperature: 0.1
-      max_output_tokens: 16000
-    # Azure-specific configuration (use environment variables)
-    azure_config:
-      endpoint: ${AZURE_OPENAI_ENDPOINT}
-      api_key: ${AZURE_OPENAI_API_KEY}
-      api_version: "2024-12-01-preview"
+      # Qwen Model
+      - id: qwen
+        full_id: qwen.qwen3-coder-480b-a35b-v1:0
+        name: Qwen3 Coder 480B
+        aliases:
+          - qwen
+          - qwen-coder
+        pricing:
+          input_per_million: 0.22
+          output_per_million: 1.40  # Range: $0.95-$1.80 depending on endpoint
+        inference_params:
+          default_temperature: 0.7
+          default_top_p: 0.8
+          default_top_k: 20
+          max_output_tokens: 65536
+
+  # Azure OpenAI Provider
+  azure_openai:
+    endpoint: "${AZURE_OPENAI_ENDPOINT}"
+    api_key: "${AZURE_OPENAI_API_KEY}"
+    api_version: "2026-01-14"
+    models:
+      - id: gpt-5.2-codex
+        deployment_name: gpt-5.2-codex
+        name: GPT-5.2 Codex
+        aliases:
+          - gpt52
+          - codex
+        pricing:
+          input_per_million: 1.75
+          output_per_million: 14.00
+        inference_params:
+          default_temperature: 0.0
+          default_top_p: 0.95
+          max_output_tokens: 16000
 
 # Default model configuration
 defaults:
