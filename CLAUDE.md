@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-LangChain-based CLI tool for AI-powered code reviews via AWS Bedrock. Supports multiple models including Claude (Opus, Sonnet, Haiku), Minimax M2, Mistral Large 3, Kimi K2 Thinking, and Qwen3 Coder. Reviews **Python, Go, Shell Script, C++, Java, JavaScript, and TypeScript** codebases with structured output (categories, severity levels, line numbers, suggested fixes).
+LangChain-based CLI tool for AI-powered code reviews via AWS Bedrock and Azure OpenAI. Supports multiple models including Claude (Opus, Sonnet, Haiku), GPT-5.2 Codex, Minimax M2, Mistral Large 3, Kimi K2 Thinking, and Qwen3 Coder. Reviews **Python, Go, Shell Script, C++, Java, JavaScript, and TypeScript** codebases with structured output (categories, severity levels, line numbers, suggested fixes).
 
-**Tech Stack:** Python 3.14, LangChain, AWS Bedrock, Pydantic V2, Click, Rich
+**Tech Stack:** Python 3.14, LangChain, AWS Bedrock, Azure OpenAI, Pydantic V2, Click, Rich
 
 ## Development Commands
 
@@ -42,6 +42,7 @@ uv run codereview /path/to/code
 # With model selection (use short names!)
 uv run codereview /path/to/code --model sonnet
 uv run codereview /path/to/code -m haiku
+uv run codereview /path/to/code -m gpt  # Azure OpenAI
 uv run codereview /path/to/code -m qwen
 uv run codereview /path/to/code -m mistral
 
@@ -74,7 +75,6 @@ uv run python -m codereview.cli /path/to/code
 | `--exclude, -e` | Additional exclusion patterns | None |
 | `--max-files` | Maximum files to analyze | None |
 | `--max-file-size` | Maximum file size in KB | 500 |
-| `--aws-region` | AWS region for Bedrock | us-west-2 |
 | `--aws-profile` | AWS CLI profile to use | None |
 
 ### Model Names
@@ -85,6 +85,7 @@ Use short names for convenience (case-insensitive):
 | `opus` | `claude-opus` | `global.anthropic.claude-opus-4-5-20251101-v1:0` |
 | `sonnet` | `claude-sonnet` | `global.anthropic.claude-sonnet-4-5-20250929-v1:0` |
 | `haiku` | `claude-haiku` | `global.anthropic.claude-haiku-4-5-20251001-v1:0` |
+| `gpt` | `gpt-5.2-codex`, `gpt-codex` | `gpt-5.2-codex` |
 | `minimax` | `minimax-m2` | `minimax.minimax-m2` |
 | `mistral` | `mistral-large` | `mistral.mistral-large-3-675b-instruct` |
 | `kimi` | `kimi-k2` | `moonshot.kimi-k2-thinking` |
@@ -130,19 +131,47 @@ uv run codereview ./src --static-analysis --output comprehensive-review.md
 
 ### Pipeline Flow
 ```
-FileScanner → FileBatcher → CodeAnalyzer → Aggregation → TerminalRenderer/MarkdownExporter
+FileScanner → FileBatcher → CodeAnalyzer → ProviderFactory → BedrockProvider/AzureOpenAIProvider → Aggregation → TerminalRenderer/MarkdownExporter
 ```
 
 1. **FileScanner** (`scanner.py`): Discovers code files (.py, .go, .sh, .bash, .cpp, .cc, .cxx, .h, .hpp, .java, .js, .jsx, .mjs, .ts, .tsx), applies exclusion patterns, validates paths
 2. **FileBatcher** (`batcher.py`): Groups files into batches (default 10 files/batch) for token efficiency
-3. **CodeAnalyzer** (`analyzer.py`): Sends batches to LLM via LangChain with structured output
-4. **Aggregation** (`cli.py`): Merges results from all batches (issues, suggestions, design insights)
-5. **Renderers** (`renderer.py`): Outputs to Rich terminal UI or Markdown file
+3. **CodeAnalyzer** (`analyzer.py`): Orchestrates analysis using provider abstraction
+4. **ProviderFactory** (`providers/factory.py`): Auto-detects provider based on model name
+5. **Providers** (`providers/`):
+   - **BedrockProvider**: AWS Bedrock implementation (Claude, Mistral, Minimax, Kimi, Qwen)
+   - **AzureOpenAIProvider**: Azure OpenAI implementation (GPT models)
+6. **Aggregation** (`cli.py`): Merges results from all batches (issues, suggestions, design insights)
+7. **Renderers** (`renderer.py`): Outputs to Rich terminal UI or Markdown file
 
 ### Key Architectural Patterns
 
+**Provider Abstraction Pattern:**
+- `ModelProvider` abstract base class defines interface for all LLM providers
+- Required methods: `analyze_batch()`, `get_model_display_name()`
+- Optional methods: `reset_state()`, `estimate_cost()`, token tracking properties
+- **ProviderFactory** auto-detects provider based on model name (ID or alias)
+- Creates appropriate provider instance (Bedrock or Azure)
+- Uses ConfigLoader to resolve model configuration
+
+**Benefits:**
+- Easy to add new providers (implement `ModelProvider` interface)
+- Clean separation between orchestration (CodeAnalyzer) and provider-specific logic
+- Simplified testing (mock at provider level)
+- Transparent to CLI users (just specify model name)
+
+**Configuration System:**
+- **models.yaml** (`config/models.yaml`): Central configuration for all models and providers
+- Defines model IDs, names, aliases, pricing, inference parameters
+- Provider-specific settings (AWS region, Azure endpoint/key)
+- Environment variable expansion for secrets (`${AZURE_OPENAI_API_KEY}`)
+- **ConfigLoader** (`config/loader.py`): Parses YAML with Pydantic validation
+- Resolves model names (IDs and aliases) to provider and ModelConfig
+- Provides access to provider-specific configuration
+- **Pydantic Models** (`config/models.py`): Type-safe configuration with Field validation
+
 **LangChain Structured Output Integration:**
-- Uses `.with_structured_output(CodeReviewReport)` on ChatBedrockConverse
+- Uses `.with_structured_output(CodeReviewReport)` on provider-specific LLM clients
 - Returns Pydantic models directly from LLM (no manual JSON parsing)
 - System prompt in `config.py` specifies JSON schema expectations
 - Category normalization handles non-Claude model variations (see `models.py`)
@@ -159,9 +188,11 @@ Non-Claude models may return non-standard category names. The `ReviewIssue` mode
 - Unknown categories default to "Code Quality"
 
 **Retry Logic with Exponential Backoff:**
-- `CodeAnalyzer.analyze_batch()` has built-in retry for AWS rate limiting
-- Handles `ThrottlingException` and `TooManyRequestsException`
-- Backoff: 2^attempt seconds (1s, 2s, 4s)
+Provider-specific retry logic:
+- **BedrockProvider**: Handles `ThrottlingException` and `TooManyRequestsException`
+- **AzureOpenAIProvider**: Handles `RateLimitError`
+- Both use exponential backoff: 2^attempt seconds (1s, 2s, 4s)
+- Max 3 retries by default (configurable)
 
 **Parallel Static Analysis:**
 - `StaticAnalyzer.run_all(parallel=True)` runs tools concurrently
@@ -170,8 +201,9 @@ Non-Claude models may return non-standard category names. The `ReviewIssue` mode
 
 ### Supported Models
 
-All in `codereview/config.py` `SUPPORTED_MODELS`:
+Models defined in `codereview/config/models.yaml`:
 
+**AWS Bedrock Models:**
 | Model | Model ID | Input $/M | Output $/M | Defaults |
 |-------|----------|-----------|------------|----------|
 | Claude Opus 4.5 | `global.anthropic.claude-opus-4-5-20251101-v1:0` | $5.00 | $25.00 | temp=0.1 |
@@ -182,28 +214,44 @@ All in `codereview/config.py` `SUPPORTED_MODELS`:
 | Kimi K2 Thinking | `moonshot.kimi-k2-thinking` | $0.50 | $2.00 | temp=1.0, max=16K-256K |
 | Qwen3 Coder 480B | `qwen.qwen3-coder-480b-a35b-v1:0` | $0.22 | $1.40 | temp=0.7, top_p=0.8, top_k=20, max=65536 |
 
+**Azure OpenAI Models:**
+| Model | Deployment Name | Input $/M | Output $/M | Defaults |
+|-------|-----------------|-----------|------------|----------|
+| GPT-5.2 Codex | `gpt-5.2-codex` | $1.75 | $14.00 | temp=0.0, top_p=0.95, max=16000 |
+
 **Default model:** Claude Opus 4.5
 
 ### Configuration Constants
 
-All in `codereview/config.py`:
+**Core configuration** (`config/`):
+- `models.yaml`: All model and provider definitions
+- `models.py`: Pydantic data models for validation
+- `loader.py`: YAML parsing and model resolution
+- `config.py`: Legacy constants and SYSTEM_PROMPT (maintained for backward compatibility)
+
+**File processing** (`scanner.py`, `config.py`):
 - `DEFAULT_EXCLUDE_PATTERNS`: File patterns to skip (.venv, __pycache__, etc.)
 - `DEFAULT_EXCLUDE_EXTENSIONS`: Extensions to skip (.json, .md, binaries, etc.)
-- `MODEL_CONFIG`: Default AWS Bedrock settings (TypedDict)
-- `SUPPORTED_MODELS`: Dict of available models with pricing and inference parameters
-- `ModelInfo`: TypedDict with optional fields for model-specific parameters
 - `SYSTEM_PROMPT`: Instructions for LLM including language-specific rules
 - `MAX_FILE_SIZE_KB`: File size limit (default 500KB)
 
 ## Testing Patterns
 
-### Mocking AWS Bedrock
-All tests mock AWS calls to avoid real API usage:
+### Mocking Providers
+All tests mock provider calls to avoid real API usage:
 
 ```python
 from unittest.mock import Mock, patch
 
-with patch('codereview.analyzer.ChatBedrockConverse') as mock_bedrock:
+# Mock at provider level (preferred)
+with patch('codereview.providers.factory.ProviderFactory.create') as mock_factory:
+    mock_provider = Mock()
+    mock_provider.analyze_batch.return_value = mock_report
+    mock_factory.return_value = mock_provider
+    # Test code here
+
+# Mock specific provider implementation
+with patch('codereview.providers.bedrock.ChatBedrockConverse') as mock_bedrock:
     mock_instance = Mock()
     mock_instance.with_structured_output.return_value.invoke.return_value = mock_report
     mock_bedrock.return_value = mock_instance
@@ -221,29 +269,99 @@ with patch('codereview.analyzer.ChatBedrockConverse') as mock_bedrock:
 
 See `tests/test_models.py` for validation patterns.
 
-## AWS Configuration Requirements
+## Provider Configuration Requirements
 
+### AWS Bedrock
 **Runtime Prerequisites:**
 1. AWS credentials configured (via `aws configure`, env vars, or IAM role)
-2. Bedrock access enabled in AWS region
+2. Bedrock access enabled in AWS region (configured in `models.yaml`)
 3. Model access approved for chosen model
 4. IAM permissions: `bedrock:InvokeModel` and `bedrock:InvokeModelWithResponseStream`
 
+**Configuration:**
+- Set AWS region in `config/models.yaml` under `bedrock.region`
+- Or use `AWS_PROFILE` env var for specific profiles
+
+### Azure OpenAI
+**Runtime Prerequisites:**
+1. Azure OpenAI subscription with approved model access
+2. Azure OpenAI endpoint and API key
+3. Deployed model (e.g., `gpt-5.2-codex`)
+
+**Configuration:**
+- Set `AZURE_OPENAI_API_KEY` environment variable
+- Configure endpoint in `config/models.yaml` under `azure_openai.endpoint`
+- Or set `AZURE_OPENAI_ENDPOINT` environment variable
+
 **For Development/Testing:**
-- All AWS calls are mocked in tests (no real credentials needed)
-- Use `--aws-region` flag to test different regions
-- Set `AWS_PROFILE` env var for specific profiles
+- All provider calls are mocked in tests (no real credentials needed)
+- Mock at provider level using `ProviderFactory.create`
 
 ## Code Modifications
 
 ### Adding New Models
-1. Add model entry to `SUPPORTED_MODELS` in `config.py` with:
+1. Add model entry to `config/models.yaml` under appropriate provider section:
+   - `id`: Full model identifier
    - `name`: Display name
-   - `input_price_per_million`: Input token price
-   - `output_price_per_million`: Output token price
-   - Optional: `default_temperature`, `default_top_p`, `default_top_k`, `max_output_tokens`
-2. Add model ID to CLI choices in `cli.py`
+   - `aliases`: List of alternative names
+   - `pricing`: Input and output prices per million tokens
+   - `inference_params`: Temperature, top_p, top_k, max_tokens, etc.
+2. No code changes needed - ConfigLoader automatically picks up new models
 3. Update this document's Supported Models table
+
+**Example (AWS Bedrock model):**
+```yaml
+bedrock:
+  models:
+    - id: "new.model-id"
+      name: "New Model Name"
+      aliases: ["short-name", "alt-name"]
+      pricing:
+        input_per_million: 1.00
+        output_per_million: 5.00
+      inference_params:
+        temperature: 0.1
+```
+
+**Example (Azure OpenAI model):**
+```yaml
+azure_openai:
+  models:
+    - id: "gpt-6-turbo"
+      name: "GPT-6 Turbo"
+      aliases: ["gpt6", "turbo"]
+      pricing:
+        input_per_million: 2.00
+        output_per_million: 8.00
+      inference_params:
+        temperature: 0.0
+```
+
+### Adding New Providers
+1. Create new provider class in `codereview/providers/` implementing `ModelProvider` interface:
+   - `analyze_batch(files, batch_context)`: Main analysis method
+   - `get_model_display_name()`: Return display name for UI
+   - Optional: `reset_state()`, `estimate_cost()`, token properties
+2. Add provider configuration section to `config/models.yaml`
+3. Update `ProviderFactory.create()` to detect and instantiate new provider
+4. Add provider-specific tests in `tests/`
+
+**Example provider skeleton:**
+```python
+from codereview.providers.base import ModelProvider
+
+class NewProvider(ModelProvider):
+    def __init__(self, model_config: ModelConfig, provider_config: dict):
+        self.model_config = model_config
+        self.provider_config = provider_config
+
+    def analyze_batch(self, files, batch_context):
+        # Implementation here
+        pass
+
+    def get_model_display_name(self) -> str:
+        return self.model_config.name
+```
 
 ### Adding New Review Categories
 1. Update `models.py`: Add to `ReviewIssue.category` Literal and `VALID_CATEGORIES`
@@ -287,10 +405,17 @@ Edit `SYSTEM_PROMPT` in `config.py`. Keep JSON output format specification intac
 - Check SYSTEM_PROMPT mentions JSON output format
 - Ensure model returned from `.with_structured_output()` is used
 
-**AWS ClientError in Tests:**
-- Make sure to mock `ChatBedrockConverse` BEFORE importing analyzer
-- Use `patch('codereview.analyzer.ChatBedrockConverse')` not `patch('langchain_aws.ChatBedrockConverse')`
+**Provider Errors in Tests:**
+- Mock at provider level using `ProviderFactory.create` for cleaner tests
+- For provider-specific tests, mock the provider implementation (e.g., `ChatBedrockConverse`, `AzureChatOpenAI`)
+- Ensure mocks are set up BEFORE importing modules that use them
+
+**Configuration Issues:**
+- Verify `config/models.yaml` exists and is valid YAML
+- Check environment variables are set for provider credentials
+- Use `--list-models` to verify model configuration is loaded correctly
 
 **Reusing CodeAnalyzer Instance:**
-- Call `analyzer.reset_state()` between runs to clear token counts and skipped files
-- Or create a new instance for each analysis
+- Provider state is managed internally
+- CodeAnalyzer delegates to provider, no need to manually reset
+- Create new analyzer instance if you need fresh state
