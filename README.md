@@ -1,27 +1,30 @@
 # Code Review CLI
 
-> AI-powered code review tool using Claude Opus 4.5 via AWS Bedrock
+> AI-powered code review tool with multiple LLM providers (AWS Bedrock, Azure OpenAI)
 
-A LangChain-based CLI tool that provides comprehensive, intelligent code reviews for Python and Go projects using Claude Opus 4.5 through AWS Bedrock.
+A LangChain-based CLI tool that provides comprehensive, intelligent code reviews for Python, Go, Shell Script, C++, Java, JavaScript, and TypeScript projects using Claude, GPT, and other leading models through AWS Bedrock and Azure OpenAI.
 
 ## Features
 
-- **AI-Powered Analysis**: Leverages Claude Opus 4.5 for deep code understanding and insightful reviews
-- **Multi-Language Support**: Reviews Python and Go codebases
+- **Multi-Provider Support**: AWS Bedrock (Claude, Mistral, Minimax, Kimi, Qwen) and Azure OpenAI (GPT models)
+- **AI-Powered Analysis**: Leverages Claude Opus 4.5, GPT-5.2 Codex, and other leading models for deep code understanding
+- **Multi-Language Support**: Reviews Python, Go, Shell Script, C++, Java, JavaScript, and TypeScript codebases
 - **Smart Batching**: Automatically groups files for efficient token usage
 - **Structured Output**: Get categorized issues with severity levels and actionable suggestions
+- **Static Analysis Integration**: Combine AI review with ruff, mypy, black, eslint, and other tools
 - **Terminal UI**: Rich, colorful terminal output with progress indicators
 - **Markdown Export**: Generate shareable review reports in Markdown format
-- **Error Handling**: Robust retry logic with exponential backoff for AWS rate limits
-- **Flexible Configuration**: Customize file size limits, exclusion patterns, and AWS regions
+- **Error Handling**: Robust retry logic with exponential backoff for API rate limits
+- **Flexible Configuration**: Customize file size limits, exclusion patterns, and provider settings
 
 ## Installation
 
 ### Prerequisites
 
 - Python 3.14+
-- AWS account with Bedrock access
-- Claude Opus 4.5 model access in AWS Bedrock
+- **One of the following:**
+  - AWS account with Bedrock access (for Claude, Mistral, Minimax, Kimi, Qwen models)
+  - Azure OpenAI resource with GPT model deployment (for GPT models)
 
 ### Install with uv (recommended)
 
@@ -93,13 +96,104 @@ Ensure your IAM user/role has the following permissions:
 }
 ```
 
+## Azure OpenAI Configuration (Alternative to AWS)
+
+### 1. Set Environment Variables
+
+```bash
+export AZURE_OPENAI_ENDPOINT="https://your-resource.openai.azure.com"
+export AZURE_OPENAI_API_KEY="your-api-key"
+```
+
+### 2. Create Azure OpenAI Deployment
+
+1. Create an Azure OpenAI resource in Azure Portal
+2. Deploy a GPT model (e.g., GPT-4, GPT-3.5-Turbo, or GPT-5.2 Codex if available)
+3. Note your deployment name, endpoint, and API key
+
+### 3. Update Configuration
+
+Edit `codereview/config/models.yaml` to add your deployment:
+
+```yaml
+providers:
+  azure_openai:
+    endpoint: "${AZURE_OPENAI_ENDPOINT}"
+    api_key: "${AZURE_OPENAI_API_KEY}"
+    api_version: "2024-12-01-preview"
+    models:
+      - id: gpt-5.2-codex
+        deployment_name: gpt-5.2-codex  # Your Azure deployment name
+        name: GPT-5.2 Codex
+        aliases: [gpt52, codex]
+        pricing:
+          input_per_million: 1.75
+          output_per_million: 14.00
+      - id: gpt-4o
+        deployment_name: gpt-4o  # Your Azure deployment name
+        name: GPT-4o
+        aliases: [gpt4o]
+        pricing:
+          input_per_million: 2.50
+          output_per_million: 10.00
+```
+
+### 4. Test Connection
+
+```bash
+codereview --list-models  # Should show Azure models
+```
+
+**Note:** Azure OpenAI models require you to deploy them in your Azure resource first. The deployment names in your configuration must match your actual Azure deployments.
+
 ## Usage
 
 ### Basic Usage
 
 ```bash
+# Uses Claude Opus 4.5 by default
 codereview /path/to/your/codebase
 ```
+
+### Choose Your Model
+
+```bash
+# List all available models
+codereview --list-models
+
+# AWS Bedrock Models (Claude family)
+codereview /path/to/code --model opus      # Claude Opus 4.5 (highest quality)
+codereview /path/to/code --model sonnet    # Claude Sonnet 4.5 (balanced)
+codereview /path/to/code --model haiku     # Claude Haiku 4.5 (fastest)
+
+# AWS Bedrock (other providers)
+codereview /path/to/code --model minimax   # Minimax M2
+codereview /path/to/code --model mistral   # Mistral Large 3
+codereview /path/to/code --model kimi      # Kimi K2 Thinking
+codereview /path/to/code --model qwen      # Qwen3 Coder 480B
+
+# Azure OpenAI Models
+codereview /path/to/code --model gpt-5.2-codex  # GPT-5.2 Codex
+codereview /path/to/code --model gpt4o          # GPT-4o
+
+# Short aliases work too
+codereview /path/to/code -m haiku
+codereview /path/to/code -m qwen
+```
+
+**Model Comparison:**
+
+| Model | Provider | Use Case | Input $/M | Output $/M |
+|-------|----------|----------|-----------|------------|
+| Opus 4.5 | AWS Bedrock | Highest quality, critical reviews | $5.00 | $25.00 |
+| Sonnet 4.5 | AWS Bedrock | Balanced performance and cost | $3.00 | $15.00 |
+| Haiku 4.5 | AWS Bedrock | Fast, economical, large codebases | $1.00 | $5.00 |
+| GPT-5.2 Codex | Azure OpenAI | Code-specialized, Microsoft ecosystem | $1.75 | $14.00 |
+| GPT-4o | Azure OpenAI | Multimodal, general purpose | $2.50 | $10.00 |
+| Minimax M2 | AWS Bedrock | Cost-effective, good for testing | $0.30 | $1.20 |
+| Mistral Large 3 | AWS Bedrock | Open-source focused, multilingual | $2.00 | $6.00 |
+| Kimi K2 | AWS Bedrock | Large context window (up to 256K) | $0.50 | $2.00 |
+| Qwen3 Coder 480B | AWS Bedrock | Ultra-large model, deep analysis | $0.22 | $1.40 |
 
 ### Export to Markdown
 
@@ -135,53 +229,33 @@ codereview /path/to/code --max-file-size 20
 codereview /path/to/code --exclude "**/tests/**" --exclude "**/deprecated/**"
 ```
 
-### Specify AWS Region
-
-```bash
-codereview /path/to/code --aws-region us-east-1
-```
-
-### Choose Claude Model
-
-```bash
-# Use Claude Opus 4.5 (default - highest quality)
-codereview /path/to/code --model-id global.anthropic.claude-opus-4-5-20251101-v1:0
-
-# Use Claude Sonnet 4.5 (balanced performance and cost)
-codereview /path/to/code --model-id global.anthropic.claude-sonnet-4-5-20250929-v1:0
-
-# Use Claude Haiku 4.5 (fastest and most cost-effective)
-codereview /path/to/code --model-id global.anthropic.claude-haiku-4-5-20251001-v1:0
-```
-
-**Model Comparison:**
-- **Opus 4.5** (default): Highest quality analysis, best for critical code reviews ($15/M input, $75/M output)
-- **Sonnet 4.5**: Balanced performance and cost, suitable for most reviews ($3/M input, $15/M output)
-- **Haiku 4.5**: Fastest and most economical, good for large codebases ($0.25/M input, $1.25/M output)
-
 ### Run Static Analysis
 
-Combine AI review with Python static analysis tools:
+Combine AI review with static analysis tools (runs in parallel for speed):
 
 ```bash
-# Run with ruff, mypy, black, and isort
+# Run with all available static analysis tools
 codereview /path/to/code --static-analysis
 
-# First install the tools (optional but recommended)
-pip install ruff mypy black isort
+# Combine with specific model
+codereview /path/to/code --model sonnet --static-analysis --output comprehensive-review.md
 ```
 
-**Static Analysis Tools:**
-- **ruff**: Fast Python linter (replaces flake8, pylint)
-- **mypy**: Static type checker
-- **black**: Code formatter checker
-- **isort**: Import sorter checker
+**Supported Static Analysis Tools:**
+- **Python:** ruff (linter), mypy (type checker), black (formatter), isort (import sorter), vulture (dead code finder)
+- **Go:** golangci-lint (meta-linter), go vet (static analyzer), gofmt (formatter)
+- **Shell:** shellcheck (static analyzer for shell scripts)
+- **C++:** clang-tidy (linter), cppcheck (static analysis), clang-format (formatter)
+- **Java:** checkstyle (style checker)
+- **JavaScript/TypeScript:** eslint (linter), prettier (formatter), tsc (TypeScript type checker)
 
 **Output includes:**
 - Tool pass/fail status
 - Issue counts per tool
 - Detailed output for failed checks
 - Integrated into Markdown reports
+
+**Note:** Only installed tools are run. Tools run in parallel using ThreadPoolExecutor for faster execution.
 
 ### Verbose Mode
 
@@ -194,14 +268,12 @@ codereview /path/to/code --verbose
 
 ```bash
 codereview /path/to/code \
+  --model sonnet \
   --output report.md \
   --severity medium \
   --max-files 100 \
   --max-file-size 15 \
   --exclude "**/vendor/**" \
-  --aws-region us-west-2 \
-  --aws-profile production \
-  --model-id global.anthropic.claude-sonnet-4-5-20250929-v1:0 \
   --static-analysis \
   --verbose
 ```
@@ -255,43 +327,51 @@ Generated reports include:
 
 ## Troubleshooting
 
-### AWS Credentials Not Found
+### Provider Credentials Not Found
 
 ```
 Error: AWS credentials not found
+Error: Azure OpenAI credentials not found
 ```
 
-**Solution**: Configure AWS credentials using `aws configure` or set environment variables.
+**Solutions**:
+- **AWS**: Configure credentials using `aws configure` or set `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` environment variables
+- **Azure**: Set `AZURE_OPENAI_ENDPOINT` and `AZURE_OPENAI_API_KEY` environment variables
 
 ### Access Denied
 
 ```
-Error: AccessDeniedException
+Error: AccessDeniedException (AWS)
+Error: 401 Unauthorized (Azure)
 ```
 
 **Solutions**:
-1. Verify Bedrock access in AWS Console
-2. Check IAM permissions include `bedrock:InvokeModel`
-3. Ensure Claude Opus 4.5 model access is enabled in your region
+- **AWS**: Verify Bedrock access in AWS Console, check IAM permissions include `bedrock:InvokeModel`
+- **Azure**: Verify API key is correct and resource is active in Azure Portal
 
 ### Model Not Available
 
 ```
-Error: ResourceNotFoundException
+Error: ResourceNotFoundException (AWS)
+Error: DeploymentNotFound (Azure)
 ```
 
-**Solution**: Claude Opus 4.5 may not be available in your region. Try using `--aws-region us-west-2`.
+**Solutions**:
+- **AWS**: Model may not be available in your region. Request access in AWS Bedrock Console
+- **Azure**: Ensure you have deployed the model in your Azure OpenAI resource. Check deployment name matches configuration
 
 ### Rate Limiting
 
 ```
-Error: ThrottlingException
+Error: ThrottlingException (AWS)
+Error: 429 Too Many Requests (Azure)
 ```
 
 **Solution**: The tool automatically retries with exponential backoff. If issues persist:
 - Reduce batch size by analyzing fewer files (`--max-files`)
 - Use smaller file size limit (`--max-file-size`)
 - Wait a few minutes before retrying
+- Consider using a different model with higher rate limits
 
 ### No Files Found
 
@@ -305,6 +385,14 @@ Warning: No files found to review
 - File size limits are too restrictive
 
 **Solution**: Check exclusion patterns and adjust `--max-file-size` if needed.
+
+### Configuration File Not Found
+
+```
+Error: models.yaml not found
+```
+
+**Solution**: Ensure `codereview/config/models.yaml` exists. If using a custom configuration location, verify the path is correct.
 
 ## Development
 
@@ -341,21 +429,32 @@ uv run pytest tests/ --cov=codereview --cov-report=html
 langchain_projects/
 ├── codereview/
 │   ├── __init__.py
-│   ├── analyzer.py       # LLM-based code analysis
-│   ├── batcher.py        # Smart file batching
-│   ├── cli.py            # CLI entry point
-│   ├── config.py         # Configuration constants
-│   ├── models.py         # Pydantic data models
-│   ├── renderer.py       # Terminal and Markdown rendering
-│   └── scanner.py        # File system scanning
+│   ├── analyzer.py           # LLM-based code analysis
+│   ├── batcher.py            # Smart file batching
+│   ├── cli.py                # CLI entry point
+│   ├── config.py             # Configuration constants
+│   ├── models.py             # Pydantic data models for review output
+│   ├── renderer.py           # Terminal and Markdown rendering
+│   ├── scanner.py            # File system scanning
+│   ├── static_analysis.py    # Static analysis tool integration
+│   ├── config/
+│   │   ├── models.yaml       # Provider and model configuration
+│   │   ├── config_models.py  # Pydantic models for configuration
+│   │   └── loader.py         # YAML configuration loader
+│   └── providers/
+│       ├── base.py           # ModelProvider abstract base class
+│       ├── factory.py        # Provider factory with auto-detection
+│       ├── bedrock.py        # AWS Bedrock provider implementation
+│       └── azure_openai.py   # Azure OpenAI provider implementation
 ├── tests/
-│   ├── test_*.py         # Unit tests
-│   └── fixtures/         # Test fixtures
+│   ├── test_*.py             # Unit tests
+│   └── fixtures/             # Test fixtures
 ├── docs/
-│   ├── usage.md          # Detailed usage guide
-│   └── examples.md       # Example commands and workflows
-├── pyproject.toml        # Project configuration
-└── README.md             # This file
+│   ├── usage.md              # Detailed usage guide
+│   └── examples.md           # Example commands and workflows
+├── pyproject.toml            # Project configuration
+├── CLAUDE.md                 # Claude Code instructions
+└── README.md                 # This file
 ```
 
 ### Code Quality
@@ -390,10 +489,19 @@ For issues, questions, or contributions:
 
 ## Version History
 
-### v0.1.0 (Current)
+### v0.2.0 (Current)
+- **Multi-Provider Support**: Added Azure OpenAI alongside AWS Bedrock
+- **Provider Architecture**: Abstract provider system with factory pattern
+- **YAML Configuration**: Centralized model configuration in `models.yaml`
+- **Enhanced Model Selection**: Simplified `--model` option with aliases
+- **Extended Language Support**: Added Shell Script, C++, Java, JavaScript, and TypeScript
+- **Static Analysis Integration**: Parallel execution of language-specific linters and formatters
+- **Improved CLI**: Added `--list-models` flag and better error messages
+
+### v0.1.0
 - Initial release
 - Support for Python and Go
-- Claude Opus 4.5 integration
+- Claude Opus 4.5 integration via AWS Bedrock
 - Smart batching and token management
 - Terminal and Markdown output
 - Comprehensive error handling
@@ -402,6 +510,7 @@ For issues, questions, or contributions:
 ## Acknowledgments
 
 - Built with [LangChain](https://github.com/langchain-ai/langchain)
-- Powered by [Anthropic Claude](https://www.anthropic.com/)
-- AWS Bedrock for model hosting
+- Powered by [Anthropic Claude](https://www.anthropic.com/) and [OpenAI GPT](https://openai.com/)
+- [AWS Bedrock](https://aws.amazon.com/bedrock/) and [Azure OpenAI](https://azure.microsoft.com/en-us/products/ai-services/openai-service) for model hosting
 - Rich library for beautiful terminal output
+- Static analysis tools: ruff, mypy, eslint, golangci-lint, shellcheck, and more
