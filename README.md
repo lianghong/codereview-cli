@@ -459,13 +459,40 @@ langchain_projects/
 
 ### Code Quality
 
-The codebase follows:
+The codebase follows strict quality standards:
+
+**Code Standards:**
 - Python 3.14+ modern syntax
 - Type hints throughout
-- Pydantic for data validation
+- Pydantic V2 for data validation
 - Rich for terminal UI
 - Click for CLI interface
-- Comprehensive test coverage
+- Comprehensive test coverage (162 tests)
+
+**Static Analysis Tools:**
+```bash
+# Install development tools
+uv pip install ruff mypy black isort vulture types-PyYAML
+
+# Run all checks
+uv run ruff check codereview/ tests/
+uv run mypy codereview/ --ignore-missing-imports
+uv run black --check codereview/ tests/
+uv run isort --check-only codereview/ tests/
+uv run vulture codereview/ --min-confidence 80
+
+# Auto-fix formatting
+uv run black codereview/ tests/
+uv run isort codereview/ tests/
+uv run ruff check --fix codereview/ tests/
+```
+
+**Quality Requirements:**
+- All code must pass: ruff (linting), mypy (type checking), black (formatting), isort (import sorting), vulture (dead code)
+- All tests must pass (162/162)
+- Type hints required for public APIs
+- No unused imports or variables
+- Provider implementations must include `get_pricing()` method
 
 ## Contributing
 
@@ -473,8 +500,13 @@ Contributions are welcome! Please:
 1. Fork the repository
 2. Create a feature branch
 3. Add tests for new functionality
-4. Ensure all tests pass
-5. Submit a pull request
+4. **Ensure code quality checks pass:**
+   - Run `uv run pytest tests/ -v` (all tests must pass)
+   - Run static analysis tools (ruff, mypy, black, isort, vulture)
+   - See "Code Quality" section above for commands
+5. Follow existing code style and architecture patterns
+6. Update documentation if adding new features
+7. Submit a pull request
 
 ## License
 

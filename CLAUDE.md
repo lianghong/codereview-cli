@@ -34,6 +34,39 @@ uv run pytest tests/test_models.py::test_review_issue_creation -v
 uv run pytest tests/ --cov=codereview --cov-report=html
 ```
 
+### Code Quality & Static Analysis
+```bash
+# Install development dependencies (if not already installed)
+uv pip install ruff mypy black isort vulture types-PyYAML
+
+# Run all static analysis tools
+uv run ruff check codereview/ tests/        # Linting
+uv run mypy codereview/ --ignore-missing-imports  # Type checking
+uv run black codereview/ tests/             # Code formatting
+uv run isort codereview/ tests/             # Import sorting
+uv run vulture codereview/ --min-confidence 80  # Dead code detection
+
+# Auto-fix issues where possible
+uv run ruff check --fix codereview/ tests/
+uv run black codereview/ tests/
+uv run isort codereview/ tests/
+
+# Verify all tools pass (run before committing)
+uv run ruff check codereview/ tests/ && \
+uv run black --check codereview/ tests/ && \
+uv run isort --check-only codereview/ tests/ && \
+uv run mypy codereview/ --ignore-missing-imports && \
+uv run vulture codereview/ --min-confidence 80 && \
+echo "✓ All static analysis checks passed"
+```
+
+**Quality Standards:**
+- All code must pass ruff, black, isort, mypy, and vulture checks
+- Type hints required for all public APIs
+- Minimum 80% confidence for vulture (dead code detection)
+- Unused imports/variables must be removed
+- All provider implementations must include `get_pricing()` method
+
 ### Running the Tool
 ```bash
 # Basic usage (uses Claude Opus 4.5 by default)
@@ -148,7 +181,7 @@ FileScanner → FileBatcher → CodeAnalyzer → ProviderFactory → BedrockProv
 
 **Provider Abstraction Pattern:**
 - `ModelProvider` abstract base class defines interface for all LLM providers
-- Required methods: `analyze_batch()`, `get_model_display_name()`
+- Required methods: `analyze_batch()`, `get_model_display_name()`, `get_pricing()`
 - Optional methods: `reset_state()`, `estimate_cost()`, token tracking properties
 - **ProviderFactory** auto-detects provider based on model name (ID or alias)
 - Creates appropriate provider instance (Bedrock or Azure)
@@ -339,28 +372,43 @@ azure_openai:
 
 ### Adding New Providers
 1. Create new provider class in `codereview/providers/` implementing `ModelProvider` interface:
-   - `analyze_batch(files, batch_context)`: Main analysis method
-   - `get_model_display_name()`: Return display name for UI
-   - Optional: `reset_state()`, `estimate_cost()`, token properties
+   - **Required methods:**
+     - `analyze_batch(files, batch_context)`: Main analysis method
+     - `get_model_display_name()`: Return display name for UI
+     - `get_pricing()`: Return pricing information dict
+   - **Optional methods:** `reset_state()`, `estimate_cost()`, token properties
 2. Add provider configuration section to `config/models.yaml`
-3. Update `ProviderFactory.create()` to detect and instantiate new provider
+3. Update `ProviderFactory.create_provider()` to detect and instantiate new provider
 4. Add provider-specific tests in `tests/`
 
 **Example provider skeleton:**
 ```python
 from codereview.providers.base import ModelProvider
+from codereview.config.models import ModelConfig
 
 class NewProvider(ModelProvider):
     def __init__(self, model_config: ModelConfig, provider_config: dict):
         self.model_config = model_config
         self.provider_config = provider_config
 
-    def analyze_batch(self, files, batch_context):
+    def analyze_batch(
+        self,
+        batch_number: int,
+        total_batches: int,
+        files_content: dict[str, str],
+        max_retries: int = 3,
+    ) -> CodeReviewReport:
         # Implementation here
         pass
 
     def get_model_display_name(self) -> str:
         return self.model_config.name
+
+    def get_pricing(self) -> dict[str, float]:
+        return {
+            "input_price_per_million": self.model_config.pricing.input_per_million,
+            "output_price_per_million": self.model_config.pricing.output_per_million,
+        }
 ```
 
 ### Adding New Review Categories
