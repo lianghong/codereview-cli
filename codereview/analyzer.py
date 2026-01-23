@@ -1,94 +1,91 @@
-"""LLM-based code analyzer using AWS Bedrock."""
+"""LLM-based code analyzer using provider abstraction."""
 
-import time
-from typing import Any, List, Tuple
-
-from botocore.exceptions import ClientError
-from langchain_aws import ChatBedrockConverse
+import warnings
+from typing import List, Tuple
 
 from codereview.batcher import FileBatch
-from codereview.config import MODEL_CONFIG, SUPPORTED_MODELS, SYSTEM_PROMPT, ModelInfo
 from codereview.models import CodeReviewReport
+from codereview.providers.factory import ProviderFactory
 
 
 class CodeAnalyzer:
-    """Analyzes code using LLM models via AWS Bedrock."""
+    """Analyzes code using LLM models via provider abstraction."""
 
     def __init__(
         self,
+        model_name: str = "opus",
+        temperature: float | None = None,
+        provider_factory: ProviderFactory | None = None,
+        # Legacy parameters for backward compatibility
         region: str | None = None,
         model_id: str | None = None,
-        temperature: float | None = None,
     ):
-        """
-        Initialize analyzer.
+        """Initialize analyzer.
 
         Args:
-            region: AWS region (uses MODEL_CONFIG default if not provided)
-            model_id: Model ID to use (uses MODEL_CONFIG default if not provided)
+            model_name: Model name (ID or alias) - e.g., "opus", "gpt-5.2-codex"
             temperature: Temperature for inference (uses model-specific default if not provided)
+            provider_factory: ProviderFactory instance (creates default if not provided)
+            region: DEPRECATED - Use model_name instead
+            model_id: DEPRECATED - Use model_name instead
         """
-        self.region = region or MODEL_CONFIG["region"]
-        self.model_id = model_id or MODEL_CONFIG["model_id"]
-
-        # Get model-specific defaults
-        model_info: ModelInfo | None = SUPPORTED_MODELS.get(self.model_id)
-        if model_info:
-            default_temp = model_info.get(
-                "default_temperature", MODEL_CONFIG["temperature"]
+        # Handle legacy parameters
+        if model_id is not None or region is not None:
+            warnings.warn(
+                "The 'model_id' and 'region' parameters are deprecated. "
+                "Use 'model_name' instead. "
+                "Example: CodeAnalyzer(model_name='opus')",
+                DeprecationWarning,
+                stacklevel=2,
             )
-        else:
-            default_temp = MODEL_CONFIG["temperature"]
-        self.temperature = temperature if temperature is not None else default_temp
+            # Map old model_id to new model_name if possible
+            if model_id:
+                model_name = self._map_legacy_model_id(model_id)
 
-        # Get optional inference parameters (model-specific)
-        self.top_p = model_info.get("default_top_p") if model_info else None
-        self.top_k = model_info.get("default_top_k") if model_info else None
-        self.max_tokens = (
-            model_info.get("max_output_tokens", MODEL_CONFIG["max_tokens"])
-            if model_info
-            else MODEL_CONFIG["max_tokens"]
-        )
+        self.model_name = model_name
+        self.temperature = temperature
+        self.factory = provider_factory or ProviderFactory()
 
-        self.model = self._create_model()
-        self.reset_state()
+        # Create provider
+        self.provider = self.factory.create_provider(model_name, temperature)
+
+        # Tracking state (analyzer-level, not delegated to provider)
+        self.skipped_files: List[Tuple[str, str]] = []
+
+    @staticmethod
+    def _map_legacy_model_id(model_id: str) -> str:
+        """Map legacy full model IDs to new short names.
+
+        Args:
+            model_id: Old full model ID
+
+        Returns:
+            New short model name
+        """
+        # Map common legacy IDs to new names
+        legacy_mappings = {
+            "global.anthropic.claude-opus-4-5-20251101-v1:0": "opus",
+            "global.anthropic.claude-sonnet-4-5-20250929-v1:0": "sonnet",
+            "global.anthropic.claude-haiku-4-5-20251001-v1:0": "haiku",
+            "minimax.minimax-m2": "minimax",
+            "mistral.mistral-large-3-675b-instruct": "mistral",
+            "moonshot.kimi-k2-thinking": "kimi",
+            "qwen.qwen3-coder-480b-a35b-v1:0": "qwen",
+        }
+
+        return legacy_mappings.get(model_id, model_id)
 
     def reset_state(self) -> None:
         """Reset analysis state for a fresh run."""
-        self.total_input_tokens = 0
-        self.total_output_tokens = 0
-        self.skipped_files: List[Tuple[str, str]] = []
+        self.provider.reset_state()
+        self.skipped_files = []
 
-    def _create_model(self) -> Any:
-        """Create LangChain model with structured output."""
-        # Build additional model request fields for non-standard parameters
-        # These are passed to the Bedrock Converse API's inferenceConfig
-        additional_fields: dict = {}
-        if self.top_p is not None:
-            additional_fields["top_p"] = self.top_p
-        if self.top_k is not None:
-            additional_fields["top_k"] = self.top_k
-
-        base_model = ChatBedrockConverse(
-            model=self.model_id,
-            region_name=self.region,
-            temperature=self.temperature,
-            max_tokens=self.max_tokens,
-            additional_model_request_fields=(
-                additional_fields if additional_fields else None
-            ),
-        )
-
-        # Configure for structured output
-        return base_model.with_structured_output(CodeReviewReport)
-
-    def _estimate_tokens(self, text: str) -> int:
-        """Estimate token count (~4 chars per token heuristic)."""
-        return len(text) // 4
-
-    def analyze_batch(self, batch: FileBatch, max_retries: int = 3) -> CodeReviewReport:
-        """
-        Analyze a batch of files with retry logic.
+    def analyze_batch(
+        self,
+        batch: FileBatch,
+        max_retries: int = 3,
+    ) -> CodeReviewReport:
+        """Analyze a batch of files with retry logic.
 
         Args:
             batch: FileBatch to analyze
@@ -96,100 +93,42 @@ class CodeAnalyzer:
 
         Returns:
             CodeReviewReport with findings
-
-        Raises:
-            ClientError: If AWS API call fails after all retries
         """
-        context = self._prepare_batch_context(batch)
-
-        messages = [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": context},
-        ]
-
-        last_error: ClientError | None = None
-        for attempt in range(max_retries + 1):
-            try:
-                result = self.model.invoke(messages)
-
-                # Track token usage from AWS Bedrock response metadata
-                # Try to access actual usage from response, fall back to estimation
-                input_tokens = 0
-                output_tokens = 0
-
-                if hasattr(result, "response_metadata"):
-                    usage = result.response_metadata.get("usage", {})
-                    input_tokens = usage.get("input_tokens", 0)
-                    output_tokens = usage.get("output_tokens", 0)
-
-                # Fallback to estimation if actual counts unavailable
-                if input_tokens == 0:
-                    input_tokens = self._estimate_tokens(context)
-                    output_tokens = self._estimate_tokens(str(result.model_dump_json()))
-
-                self.total_input_tokens += input_tokens
-                self.total_output_tokens += output_tokens
-
-                return result
-
-            except ClientError as e:
-                error_code = e.response.get("Error", {}).get("Code", "")
-                last_error = e
-
-                # Check if it's a throttling error
-                if error_code in ["ThrottlingException", "TooManyRequestsException"]:
-                    if attempt < max_retries:
-                        # Exponential backoff: 2^attempt seconds
-                        wait_time = 2**attempt
-                        time.sleep(wait_time)
-                        continue
-
-                # For other errors, raise immediately
-                raise
-
-        # If we exhausted all retries (should only happen with throttling errors)
-        if last_error is None:
-            raise RuntimeError("Unexpected: last_error is None after retry loop")
-        raise last_error
-
-    def _prepare_batch_context(self, batch: FileBatch) -> str:
-        """
-        Prepare context string for LLM.
-
-        Args:
-            batch: FileBatch to prepare
-
-        Returns:
-            Formatted context string
-        """
-        lines = [
-            f"Analyzing Batch {batch.batch_number}/{batch.total_batches}",
-            f"Files in this batch: {len(batch.files)}",
-            "",
-            "=" * 80,
-            "",
-        ]
+        # Prepare files_content dict
+        files_content: dict[str, str] = {}
 
         for file_path in batch.files:
             try:
                 content = file_path.read_text(encoding="utf-8")
-                lines.append(f"File: {file_path.name}")
-                lines.append(f"Path: {file_path}")
-                lines.append("-" * 80)
-
-                # Add line numbers
-                for i, line in enumerate(content.splitlines(), start=1):
-                    lines.append(f"{i:4d} | {line}")
-
-                lines.append("")
-                lines.append("=" * 80)
-                lines.append("")
-
+                files_content[str(file_path)] = content
             except (OSError, IOError, UnicodeDecodeError) as e:
-                error_msg = f"ERROR reading {file_path}: {e}"
-                lines.append(error_msg)
-                lines.append("")
                 # Track skipped file for reporting
                 self.skipped_files.append((str(file_path), str(e)))
 
-        return "\n".join(lines)
+        # Delegate to provider
+        return self.provider.analyze_batch(
+            batch_number=batch.batch_number,
+            total_batches=batch.total_batches,
+            files_content=files_content,
+            max_retries=max_retries,
+        )
+
+    # Properties that delegate to provider
+
+    @property
+    def total_input_tokens(self) -> int:
+        """Get total input tokens used."""
+        return self.provider.total_input_tokens
+
+    @property
+    def total_output_tokens(self) -> int:
+        """Get total output tokens used."""
+        return self.provider.total_output_tokens
+
+    def estimate_cost(self) -> dict[str, float]:
+        """Calculate cost from token usage."""
+        return self.provider.estimate_cost()
+
+    def get_model_display_name(self) -> str:
+        """Get human-readable model name."""
+        return self.provider.get_model_display_name()

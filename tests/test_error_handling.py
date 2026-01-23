@@ -12,25 +12,32 @@ from codereview.models import CodeReviewReport
 
 
 @pytest.fixture
-def sample_batch():
+def sample_batch(tmp_path):
     """Create a sample file batch for testing."""
-    files = [Path("test_file.py")]
-    return FileBatch(files=files, batch_number=1, total_batches=1, total_tokens=100)
+    test_file = tmp_path / "test_file.py"
+    test_file.write_text("def test(): pass")
+    return FileBatch(files=[test_file], batch_number=1, total_batches=1, total_tokens=100)
 
 
 @pytest.fixture
-def mock_analyzer():
-    """Create a mocked CodeAnalyzer."""
-    with patch("codereview.analyzer.ChatBedrockConverse"):
-        analyzer = CodeAnalyzer()
-        return analyzer
+def mock_provider():
+    """Create a mock provider for testing."""
+    provider = Mock()
+    provider.total_input_tokens = 0
+    provider.total_output_tokens = 0
+    provider.reset_state.return_value = None
+    return provider
 
 
-class TestRetryLogic:
-    """Test retry logic with exponential backoff."""
+class TestErrorPropagation:
+    """Test error propagation from provider to analyzer.
 
-    def test_successful_analysis_on_first_try(self, mock_analyzer, sample_batch):
-        """Test that successful analysis doesn't retry."""
+    Note: Retry logic is tested in test_bedrock_provider.py since it's
+    implemented in the provider layer, not the analyzer layer.
+    """
+
+    def test_successful_analysis(self, mock_provider, sample_batch):
+        """Test that successful analysis works correctly."""
         mock_report = CodeReviewReport(
             summary="Test summary",
             metrics={},
@@ -39,103 +46,86 @@ class TestRetryLogic:
             recommendations=[],
         )
 
-        mock_analyzer.model.invoke = Mock(return_value=mock_report)
+        mock_provider.analyze_batch.return_value = mock_report
 
-        result = mock_analyzer.analyze_batch(sample_batch)
+        with patch("codereview.analyzer.ProviderFactory") as mock_factory:
+            mock_factory.return_value.create_provider.return_value = mock_provider
+            analyzer = CodeAnalyzer(model_name="opus")
+            result = analyzer.analyze_batch(sample_batch)
 
         assert result == mock_report
-        assert mock_analyzer.model.invoke.call_count == 1
+        assert mock_provider.analyze_batch.call_count == 1
 
-    def test_retry_on_throttling_exception(self, mock_analyzer, sample_batch):
-        """Test retry logic for throttling exceptions."""
-        mock_report = CodeReviewReport(
-            summary="Test summary",
-            metrics={},
-            issues=[],
-            system_design_insights="",
-            recommendations=[],
-        )
-
-        # First call raises throttling error, second succeeds
+    def test_throttling_error_propagated(self, mock_provider, sample_batch):
+        """Test that throttling errors from provider are propagated."""
         throttling_error = ClientError(
             {"Error": {"Code": "ThrottlingException", "Message": "Rate exceeded"}},
             "InvokeModel",
         )
 
-        mock_analyzer.model.invoke = Mock(side_effect=[throttling_error, mock_report])
+        mock_provider.analyze_batch.side_effect = throttling_error
 
-        with patch("time.sleep"):  # Mock sleep to speed up test
-            result = mock_analyzer.analyze_batch(sample_batch, max_retries=3)
+        with patch("codereview.analyzer.ProviderFactory") as mock_factory:
+            mock_factory.return_value.create_provider.return_value = mock_provider
+            analyzer = CodeAnalyzer(model_name="opus")
 
-        assert result == mock_report
-        assert mock_analyzer.model.invoke.call_count == 2
-
-    def test_exhausted_retries_raises_error(self, mock_analyzer, sample_batch):
-        """Test that exhausted retries raise the last error."""
-        throttling_error = ClientError(
-            {"Error": {"Code": "ThrottlingException", "Message": "Rate exceeded"}},
-            "InvokeModel",
-        )
-
-        mock_analyzer.model.invoke = Mock(side_effect=throttling_error)
-
-        with patch("time.sleep"):
             with pytest.raises(ClientError) as exc_info:
-                mock_analyzer.analyze_batch(sample_batch, max_retries=2)
+                analyzer.analyze_batch(sample_batch, max_retries=3)
 
         assert exc_info.value.response["Error"]["Code"] == "ThrottlingException"
-        # Should try initial + 2 retries = 3 times
-        assert mock_analyzer.model.invoke.call_count == 3
 
-    def test_exponential_backoff_timing(self, mock_analyzer, sample_batch):
-        """Test that exponential backoff increases wait time."""
-        throttling_error = ClientError(
-            {
-                "Error": {
-                    "Code": "TooManyRequestsException",
-                    "Message": "Too many requests",
-                }
-            },
-            "InvokeModel",
-        )
-
-        mock_analyzer.model.invoke = Mock(side_effect=throttling_error)
-
-        with patch("time.sleep") as mock_sleep:
-            with pytest.raises(ClientError):
-                mock_analyzer.analyze_batch(sample_batch, max_retries=3)
-
-            # Should have called sleep with 1, 2, 4 seconds (2^0, 2^1, 2^2)
-            sleep_calls = [call[0][0] for call in mock_sleep.call_args_list]
-            assert sleep_calls == [1, 2, 4]
-
-    def test_non_throttling_error_no_retry(self, mock_analyzer, sample_batch):
-        """Test that non-throttling errors don't trigger retries."""
+    def test_access_denied_error_propagated(self, mock_provider, sample_batch):
+        """Test that access denied errors are propagated."""
         access_error = ClientError(
             {"Error": {"Code": "AccessDeniedException", "Message": "Access denied"}},
             "InvokeModel",
         )
 
-        mock_analyzer.model.invoke = Mock(side_effect=access_error)
+        mock_provider.analyze_batch.side_effect = access_error
 
-        with pytest.raises(ClientError) as exc_info:
-            mock_analyzer.analyze_batch(sample_batch, max_retries=3)
+        with patch("codereview.analyzer.ProviderFactory") as mock_factory:
+            mock_factory.return_value.create_provider.return_value = mock_provider
+            analyzer = CodeAnalyzer(model_name="opus")
+
+            with pytest.raises(ClientError) as exc_info:
+                analyzer.analyze_batch(sample_batch, max_retries=3)
 
         assert exc_info.value.response["Error"]["Code"] == "AccessDeniedException"
-        # Should only try once (no retries for non-throttling errors)
-        assert mock_analyzer.model.invoke.call_count == 1
 
-    def test_generic_exception_no_retry(self, mock_analyzer, sample_batch):
-        """Test that generic exceptions don't trigger retries."""
+    def test_generic_exception_propagated(self, mock_provider, sample_batch):
+        """Test that generic exceptions are propagated."""
         generic_error = ValueError("Something went wrong")
 
-        mock_analyzer.model.invoke = Mock(side_effect=generic_error)
+        mock_provider.analyze_batch.side_effect = generic_error
 
-        with pytest.raises(ValueError):
-            mock_analyzer.analyze_batch(sample_batch, max_retries=3)
+        with patch("codereview.analyzer.ProviderFactory") as mock_factory:
+            mock_factory.return_value.create_provider.return_value = mock_provider
+            analyzer = CodeAnalyzer(model_name="opus")
 
-        # Should only try once
-        assert mock_analyzer.model.invoke.call_count == 1
+            with pytest.raises(ValueError) as exc_info:
+                analyzer.analyze_batch(sample_batch, max_retries=3)
+
+        assert str(exc_info.value) == "Something went wrong"
+
+    def test_max_retries_parameter_passed_to_provider(self, mock_provider, sample_batch):
+        """Test that max_retries parameter is passed to provider."""
+        mock_report = CodeReviewReport(
+            summary="Test",
+            metrics={},
+            issues=[],
+            system_design_insights="",
+            recommendations=[],
+        )
+        mock_provider.analyze_batch.return_value = mock_report
+
+        with patch("codereview.analyzer.ProviderFactory") as mock_factory:
+            mock_factory.return_value.create_provider.return_value = mock_provider
+            analyzer = CodeAnalyzer(model_name="opus")
+            analyzer.analyze_batch(sample_batch, max_retries=5)
+
+        # Verify max_retries was passed to provider
+        call_kwargs = mock_provider.analyze_batch.call_args[1]
+        assert call_kwargs["max_retries"] == 5
 
 
 class TestErrorMessages:
@@ -181,37 +171,3 @@ class TestErrorMessages:
         assert error_code == "ResourceNotFoundException"
 
 
-class TestMaxRetriesParameter:
-    """Test max_retries parameter behavior."""
-
-    def test_zero_retries(self, mock_analyzer, sample_batch):
-        """Test that max_retries=0 means no retries."""
-        throttling_error = ClientError(
-            {"Error": {"Code": "ThrottlingException", "Message": "Rate exceeded"}},
-            "InvokeModel",
-        )
-
-        mock_analyzer.model.invoke = Mock(side_effect=throttling_error)
-
-        with patch("time.sleep"):
-            with pytest.raises(ClientError):
-                mock_analyzer.analyze_batch(sample_batch, max_retries=0)
-
-        # Should only try once (initial attempt, no retries)
-        assert mock_analyzer.model.invoke.call_count == 1
-
-    def test_custom_max_retries(self, mock_analyzer, sample_batch):
-        """Test custom max_retries value."""
-        throttling_error = ClientError(
-            {"Error": {"Code": "ThrottlingException", "Message": "Rate exceeded"}},
-            "InvokeModel",
-        )
-
-        mock_analyzer.model.invoke = Mock(side_effect=throttling_error)
-
-        with patch("time.sleep"):
-            with pytest.raises(ClientError):
-                mock_analyzer.analyze_batch(sample_batch, max_retries=5)
-
-        # Should try initial + 5 retries = 6 times
-        assert mock_analyzer.model.invoke.call_count == 6

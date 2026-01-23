@@ -8,12 +8,28 @@ from codereview.models import CodeReviewReport
 
 
 @pytest.fixture
-def mock_bedrock_client():
-    """Mock AWS Bedrock client."""
-    with patch("codereview.analyzer.ChatBedrockConverse") as mock:
-        mock_instance = Mock()
-        mock.return_value = mock_instance
-        yield mock_instance
+def mock_provider():
+    """Create mock provider."""
+    provider = Mock()
+    provider.analyze_batch.return_value = CodeReviewReport(
+        summary="Test summary",
+        metrics={"files": 1, "issues": 0},
+        issues=[],
+        system_design_insights="Test insights",
+        recommendations=[],
+    )
+    provider.total_input_tokens = 100
+    provider.total_output_tokens = 50
+    provider.get_model_display_name.return_value = "Test Model"
+    provider.estimate_cost.return_value = {
+        "input_tokens": 100,
+        "output_tokens": 50,
+        "input_cost": 0.5,
+        "output_cost": 1.25,
+        "total_cost": 1.75,
+    }
+    provider.reset_state.return_value = None
+    return provider
 
 
 @pytest.fixture
@@ -25,39 +41,138 @@ def sample_batch(tmp_path):
     return FileBatch(files=[test_file], batch_number=1, total_batches=1)
 
 
-def test_analyzer_initialization(mock_bedrock_client):
-    """Test analyzer can be initialized."""
-    analyzer = CodeAnalyzer(region="us-west-2")
-    assert analyzer is not None
+def test_analyzer_initialization_with_model_name(mock_provider):
+    """Test new model_name parameter."""
+    with patch("codereview.analyzer.ProviderFactory") as mock_factory:
+        mock_factory.return_value.create_provider.return_value = mock_provider
+
+        analyzer = CodeAnalyzer(model_name="opus")
+
+        assert analyzer.model_name == "opus"
+        mock_factory.return_value.create_provider.assert_called_once_with("opus", None)
 
 
-def test_prepare_batch_context(sample_batch, mock_bedrock_client):
-    """Test preparing context from batch."""
-    analyzer = CodeAnalyzer()
-    context = analyzer._prepare_batch_context(sample_batch)
+def test_analyzer_initialization_with_temperature(mock_provider):
+    """Test temperature parameter is passed to provider."""
+    with patch("codereview.analyzer.ProviderFactory") as mock_factory:
+        mock_factory.return_value.create_provider.return_value = mock_provider
 
-    assert "test.py" in context
-    assert "def foo()" in context
-    assert "Batch 1/1" in context
+        analyzer = CodeAnalyzer(model_name="sonnet", temperature=0.5)
+
+        assert analyzer.temperature == 0.5
+        mock_factory.return_value.create_provider.assert_called_once_with("sonnet", 0.5)
 
 
-def test_analyze_batch_returns_report(sample_batch, mock_bedrock_client):
-    """Test analyze_batch returns CodeReviewReport."""
-    # Mock LLM response
-    mock_response = CodeReviewReport(
-        summary="No issues found",
-        metrics={"files": 1, "issues": 0},
-        issues=[],
-        system_design_insights="Simple code",
-        recommendations=[],
-    )
+def test_analyzer_legacy_parameters_deprecated():
+    """Test legacy parameters show deprecation warning."""
+    with patch("codereview.analyzer.ProviderFactory") as mock_factory, pytest.warns(
+        DeprecationWarning, match="model_id.*deprecated"
+    ):
+        mock_factory.return_value.create_provider.return_value = Mock()
+        CodeAnalyzer(model_id="global.anthropic.claude-opus-4-5-20251101-v1:0")
 
-    mock_bedrock_client.with_structured_output.return_value.invoke.return_value = (
-        mock_response
-    )
 
-    analyzer = CodeAnalyzer()
-    result = analyzer.analyze_batch(sample_batch)
+def test_analyzer_legacy_model_id_mapping(mock_provider):
+    """Test legacy model_id is mapped to new short name."""
+    with patch("codereview.analyzer.ProviderFactory") as mock_factory, pytest.warns(
+        DeprecationWarning
+    ):
+        mock_factory.return_value.create_provider.return_value = mock_provider
 
-    assert isinstance(result, CodeReviewReport)
-    assert result.summary == "No issues found"
+        analyzer = CodeAnalyzer(
+            model_id="global.anthropic.claude-opus-4-5-20251101-v1:0"
+        )
+
+        # Should map to "opus"
+        assert analyzer.model_name == "opus"
+        mock_factory.return_value.create_provider.assert_called_once_with("opus", None)
+
+
+def test_analyzer_delegates_to_provider(mock_provider, sample_batch):
+    """Test analyzer delegates analyze_batch to provider."""
+    with patch("codereview.analyzer.ProviderFactory") as mock_factory:
+        mock_factory.return_value.create_provider.return_value = mock_provider
+
+        analyzer = CodeAnalyzer(model_name="opus")
+        result = analyzer.analyze_batch(sample_batch)
+
+        # Verify provider was called
+        mock_provider.analyze_batch.assert_called_once()
+        call_args = mock_provider.analyze_batch.call_args
+        assert call_args[1]["batch_number"] == 1
+        assert call_args[1]["total_batches"] == 1
+        assert call_args[1]["max_retries"] == 3
+        # Verify file content was passed
+        files_content = call_args[1]["files_content"]
+        assert len(files_content) == 1
+        assert "test.py" in str(list(files_content.keys())[0])
+        assert "def foo()" in list(files_content.values())[0]
+
+        # Verify result
+        assert isinstance(result, CodeReviewReport)
+        assert result.summary == "Test summary"
+
+
+def test_analyzer_tracks_skipped_files(mock_provider, tmp_path):
+    """Test analyzer tracks files that fail to read."""
+    # Create a batch with an unreadable file (nonexistent)
+    test_file = tmp_path / "test.py"
+    test_file.write_text("def foo(): pass")
+    bad_file = tmp_path / "nonexistent.py"
+
+    batch = FileBatch(files=[test_file, bad_file], batch_number=1, total_batches=1)
+
+    with patch("codereview.analyzer.ProviderFactory") as mock_factory:
+        mock_factory.return_value.create_provider.return_value = mock_provider
+
+        analyzer = CodeAnalyzer(model_name="opus")
+        analyzer.analyze_batch(batch)
+
+        # Should have tracked the skipped file
+        assert len(analyzer.skipped_files) == 1
+        assert "nonexistent.py" in analyzer.skipped_files[0][0]
+
+
+def test_analyzer_properties_delegate_to_provider(mock_provider):
+    """Test properties delegate to provider."""
+    with patch("codereview.analyzer.ProviderFactory") as mock_factory:
+        mock_factory.return_value.create_provider.return_value = mock_provider
+
+        analyzer = CodeAnalyzer(model_name="opus")
+
+        assert analyzer.total_input_tokens == 100
+        assert analyzer.total_output_tokens == 50
+        assert analyzer.get_model_display_name() == "Test Model"
+        cost = analyzer.estimate_cost()
+        assert cost["total_cost"] == 1.75
+
+
+def test_analyzer_reset_state(mock_provider, sample_batch):
+    """Test reset_state delegates to provider and clears skipped files."""
+    with patch("codereview.analyzer.ProviderFactory") as mock_factory:
+        mock_factory.return_value.create_provider.return_value = mock_provider
+
+        analyzer = CodeAnalyzer(model_name="opus")
+
+        # Add some skipped files
+        analyzer.skipped_files = [("file1.py", "error1"), ("file2.py", "error2")]
+
+        # Reset state
+        analyzer.reset_state()
+
+        # Verify provider reset was called
+        mock_provider.reset_state.assert_called_once()
+
+        # Verify skipped files were cleared
+        assert len(analyzer.skipped_files) == 0
+
+
+def test_analyzer_with_custom_factory(mock_provider):
+    """Test analyzer accepts custom provider factory."""
+    custom_factory = Mock()
+    custom_factory.create_provider.return_value = mock_provider
+
+    analyzer = CodeAnalyzer(model_name="opus", provider_factory=custom_factory)
+
+    assert analyzer.factory == custom_factory
+    custom_factory.create_provider.assert_called_once_with("opus", None)

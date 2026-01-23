@@ -143,9 +143,14 @@ class TestFullWorkflow:
         assert all(batch.files for batch in batches)
 
         # Step 3: Mock analyzer and analyze
-        with patch("codereview.analyzer.ChatBedrockConverse"):
-            analyzer = CodeAnalyzer()
-            analyzer.model.invoke = Mock(return_value=mock_code_review_report)
+        mock_provider = Mock()
+        mock_provider.analyze_batch.return_value = mock_code_review_report
+        mock_provider.total_input_tokens = 1000
+        mock_provider.total_output_tokens = 500
+
+        with patch("codereview.analyzer.ProviderFactory") as mock_factory:
+            mock_factory.return_value.create_provider.return_value = mock_provider
+            analyzer = CodeAnalyzer(model_name="opus")
 
             results = []
             for batch in batches:
