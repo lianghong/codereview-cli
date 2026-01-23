@@ -160,9 +160,10 @@ def main(
         if aws_profile:
             os.environ["AWS_PROFILE"] = aws_profile
 
-        # Get model display name from factory
+        # Get model display name from provider
         factory = ProviderFactory()
-        model_display_name = factory.get_model_display_name(model_name)
+        provider = factory.create_provider(model_name, temperature)
+        model_display_name = provider.get_model_display_name()
 
         console.print("\n[bold cyan]🔍 Code Review Tool[/bold cyan]\n")
         console.print(f"📂 Scanning directory: {directory}")
