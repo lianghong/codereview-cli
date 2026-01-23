@@ -28,11 +28,40 @@ from codereview.config import (
     resolve_model_id,
 )
 from codereview.models import CodeReviewReport, ReviewIssue
+from codereview.providers.factory import ProviderFactory
 from codereview.renderer import MarkdownExporter, TerminalRenderer
 from codereview.scanner import FileScanner
 from codereview.static_analysis import StaticAnalyzer
 
 console = Console()
+
+
+def display_available_models() -> None:
+    """Display all available models in a formatted table."""
+    factory = ProviderFactory()
+    models_by_provider = factory.list_available_models()
+
+    # Create table
+    table = Table(title="Available Models", show_header=True, header_style="bold magenta")
+    table.add_column("ID", style="cyan", no_wrap=True)
+    table.add_column("Name", style="green")
+    table.add_column("Provider", style="yellow")
+    table.add_column("Aliases", style="blue")
+
+    # Add rows grouped by provider
+    for provider_name, models in sorted(models_by_provider.items()):
+        for model in models:
+            table.add_row(
+                model["id"],
+                model["name"],
+                provider_name,
+                model["aliases"],
+            )
+
+    console.print(table)
+    console.print()
+    console.print("[bold]Usage:[/bold] codereview <directory> --model <id>")
+    console.print("[dim]Example: codereview ./src --model opus[/dim]")
 
 
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
@@ -91,6 +120,11 @@ console = Console()
     help="Show files and estimated cost without making API calls",
 )
 @click.option("--verbose", "-v", is_flag=True, help="Show detailed progress")
+@click.option(
+    "--list-models",
+    is_flag=True,
+    help="List all available models and exit",
+)
 @click.pass_context
 def main(
     ctx: click.Context,
@@ -107,6 +141,7 @@ def main(
     temperature: float,
     dry_run: bool,
     verbose: bool,
+    list_models: bool,
 ) -> None:
     """
     Analyze code in DIRECTORY and generate a comprehensive review report.
@@ -114,6 +149,11 @@ def main(
     Reviews Python, Go, Shell, C++, Java, JavaScript, and TypeScript files using
     LLM models via AWS Bedrock.
     """
+    # Handle --list-models flag first
+    if list_models:
+        display_available_models()
+        return
+
     # Resolve model name to full model ID
     model_id = resolve_model_id(model_name)
     # Show help if no directory provided
