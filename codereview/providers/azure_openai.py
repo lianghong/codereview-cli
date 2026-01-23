@@ -74,7 +74,7 @@ class AzureOpenAIProvider(ModelProvider):
             api_version=self.provider_config.api_version,
             temperature=self.temperature,
             max_tokens=self.max_tokens,
-            model_kwargs=model_kwargs if model_kwargs else None,
+            model_kwargs=model_kwargs,
         )
 
         # Configure for structured output
