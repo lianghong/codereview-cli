@@ -95,22 +95,34 @@ class ConfigLoader:
         # Parse Azure OpenAI provider
         if "azure_openai" in providers_section:
             azure_data = providers_section["azure_openai"]
-            azure_config = AzureOpenAIConfig(
-                endpoint=azure_data["endpoint"],
-                api_key=azure_data["api_key"],
-                api_version=azure_data["api_version"],
-            )
-            self._providers["azure_openai"] = azure_config
 
-            # Parse Azure models
-            for model_data in azure_data.get("models", []):
-                model_config = self._parse_model_config(model_data)
-                model_id = model_config.id
-                self._models_by_id[model_id] = ("azure_openai", model_config)
+            # Only register Azure provider if credentials are present
+            # This allows users to have Azure models in config without using them
+            endpoint = azure_data.get("endpoint", "")
+            api_key = azure_data.get("api_key", "")
 
-                # Register aliases
-                for alias in model_config.aliases:
-                    self._models_by_id[alias] = ("azure_openai", model_config)
+            if endpoint and api_key:
+                try:
+                    azure_config = AzureOpenAIConfig(
+                        endpoint=endpoint,
+                        api_key=api_key,
+                        api_version=azure_data["api_version"],
+                    )
+                    self._providers["azure_openai"] = azure_config
+
+                    # Parse Azure models
+                    for model_data in azure_data.get("models", []):
+                        model_config = self._parse_model_config(model_data)
+                        model_id = model_config.id
+                        self._models_by_id[model_id] = ("azure_openai", model_config)
+
+                        # Register aliases
+                        for alias in model_config.aliases:
+                            self._models_by_id[alias] = ("azure_openai", model_config)
+                except Exception:
+                    # Skip Azure provider if configuration is invalid
+                    # Users can still use Bedrock models
+                    pass
 
     def _parse_model_config(self, model_data: dict[str, Any]) -> ModelConfig:
         """Parse model configuration from YAML data.
