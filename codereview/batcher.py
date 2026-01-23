@@ -1,4 +1,6 @@
-"""Smart batching for managing context window limits."""
+"""File batching for managing context window limits."""
+
+import math
 from pathlib import Path
 from typing import List
 
@@ -15,8 +17,8 @@ class FileBatch(BaseModel):
     total_batches: int
 
 
-class SmartBatcher:
-    """Batches files intelligently for LLM analysis."""
+class FileBatcher:
+    """Batches files into chunks for LLM analysis."""
 
     def __init__(self, max_files_per_batch: int = 10):
         """
@@ -40,17 +42,17 @@ class SmartBatcher:
         if not files:
             return []
 
-        batches = []
-        total_batches = (len(files) + self.max_files_per_batch - 1) // self.max_files_per_batch
+        batches: List[FileBatch] = []
+        total_batches = math.ceil(len(files) / self.max_files_per_batch)
 
         for i in range(0, len(files), self.max_files_per_batch):
-            batch_files = files[i:i + self.max_files_per_batch]
+            batch_files = files[i : i + self.max_files_per_batch]
             batch_number = len(batches) + 1
 
             batch = FileBatch(
                 files=batch_files,
                 batch_number=batch_number,
-                total_batches=total_batches
+                total_batches=total_batches,
             )
             batches.append(batch)
 

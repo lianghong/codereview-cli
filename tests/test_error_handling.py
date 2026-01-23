@@ -1,8 +1,11 @@
 """Tests for error handling and retry logic."""
-import pytest
-from unittest.mock import Mock, patch, MagicMock
+
 from pathlib import Path
+from unittest.mock import Mock, patch
+
+import pytest
 from botocore.exceptions import ClientError
+
 from codereview.analyzer import CodeAnalyzer
 from codereview.batcher import FileBatch
 from codereview.models import CodeReviewReport
@@ -18,7 +21,7 @@ def sample_batch():
 @pytest.fixture
 def mock_analyzer():
     """Create a mocked CodeAnalyzer."""
-    with patch('codereview.analyzer.ChatBedrockConverse'):
+    with patch("codereview.analyzer.ChatBedrockConverse"):
         analyzer = CodeAnalyzer()
         return analyzer
 
@@ -33,7 +36,7 @@ class TestRetryLogic:
             metrics={},
             issues=[],
             system_design_insights="",
-            recommendations=[]
+            recommendations=[],
         )
 
         mock_analyzer.model.invoke = Mock(return_value=mock_report)
@@ -50,25 +53,18 @@ class TestRetryLogic:
             metrics={},
             issues=[],
             system_design_insights="",
-            recommendations=[]
+            recommendations=[],
         )
 
         # First call raises throttling error, second succeeds
         throttling_error = ClientError(
-            {
-                'Error': {
-                    'Code': 'ThrottlingException',
-                    'Message': 'Rate exceeded'
-                }
-            },
-            'InvokeModel'
+            {"Error": {"Code": "ThrottlingException", "Message": "Rate exceeded"}},
+            "InvokeModel",
         )
 
-        mock_analyzer.model.invoke = Mock(
-            side_effect=[throttling_error, mock_report]
-        )
+        mock_analyzer.model.invoke = Mock(side_effect=[throttling_error, mock_report])
 
-        with patch('time.sleep'):  # Mock sleep to speed up test
+        with patch("time.sleep"):  # Mock sleep to speed up test
             result = mock_analyzer.analyze_batch(sample_batch, max_retries=3)
 
         assert result == mock_report
@@ -77,22 +73,17 @@ class TestRetryLogic:
     def test_exhausted_retries_raises_error(self, mock_analyzer, sample_batch):
         """Test that exhausted retries raise the last error."""
         throttling_error = ClientError(
-            {
-                'Error': {
-                    'Code': 'ThrottlingException',
-                    'Message': 'Rate exceeded'
-                }
-            },
-            'InvokeModel'
+            {"Error": {"Code": "ThrottlingException", "Message": "Rate exceeded"}},
+            "InvokeModel",
         )
 
         mock_analyzer.model.invoke = Mock(side_effect=throttling_error)
 
-        with patch('time.sleep'):
+        with patch("time.sleep"):
             with pytest.raises(ClientError) as exc_info:
                 mock_analyzer.analyze_batch(sample_batch, max_retries=2)
 
-        assert exc_info.value.response['Error']['Code'] == 'ThrottlingException'
+        assert exc_info.value.response["Error"]["Code"] == "ThrottlingException"
         # Should try initial + 2 retries = 3 times
         assert mock_analyzer.model.invoke.call_count == 3
 
@@ -100,17 +91,17 @@ class TestRetryLogic:
         """Test that exponential backoff increases wait time."""
         throttling_error = ClientError(
             {
-                'Error': {
-                    'Code': 'TooManyRequestsException',
-                    'Message': 'Too many requests'
+                "Error": {
+                    "Code": "TooManyRequestsException",
+                    "Message": "Too many requests",
                 }
             },
-            'InvokeModel'
+            "InvokeModel",
         )
 
         mock_analyzer.model.invoke = Mock(side_effect=throttling_error)
 
-        with patch('time.sleep') as mock_sleep:
+        with patch("time.sleep") as mock_sleep:
             with pytest.raises(ClientError):
                 mock_analyzer.analyze_batch(sample_batch, max_retries=3)
 
@@ -121,13 +112,8 @@ class TestRetryLogic:
     def test_non_throttling_error_no_retry(self, mock_analyzer, sample_batch):
         """Test that non-throttling errors don't trigger retries."""
         access_error = ClientError(
-            {
-                'Error': {
-                    'Code': 'AccessDeniedException',
-                    'Message': 'Access denied'
-                }
-            },
-            'InvokeModel'
+            {"Error": {"Code": "AccessDeniedException", "Message": "Access denied"}},
+            "InvokeModel",
         )
 
         mock_analyzer.model.invoke = Mock(side_effect=access_error)
@@ -135,7 +121,7 @@ class TestRetryLogic:
         with pytest.raises(ClientError) as exc_info:
             mock_analyzer.analyze_batch(sample_batch, max_retries=3)
 
-        assert exc_info.value.response['Error']['Code'] == 'AccessDeniedException'
+        assert exc_info.value.response["Error"]["Code"] == "AccessDeniedException"
         # Should only try once (no retries for non-throttling errors)
         assert mock_analyzer.model.invoke.call_count == 1
 
@@ -158,47 +144,41 @@ class TestErrorMessages:
     def test_client_error_response_structure(self):
         """Test that ClientError has expected response structure."""
         error = ClientError(
-            {
-                'Error': {
-                    'Code': 'TestError',
-                    'Message': 'Test message'
-                }
-            },
-            'TestOperation'
+            {"Error": {"Code": "TestError", "Message": "Test message"}}, "TestOperation"
         )
 
-        assert error.response['Error']['Code'] == 'TestError'
-        assert error.response['Error']['Message'] == 'Test message'
+        assert error.response["Error"]["Code"] == "TestError"
+        assert error.response["Error"]["Message"] == "Test message"
 
     def test_access_denied_error(self):
         """Test AccessDeniedException handling."""
         error = ClientError(
             {
-                'Error': {
-                    'Code': 'AccessDeniedException',
-                    'Message': 'User is not authorized'
+                "Error": {
+                    "Code": "AccessDeniedException",
+                    "Message": "User is not authorized",
                 }
             },
-            'InvokeModel'
+            "InvokeModel",
         )
 
-        error_code = error.response.get('Error', {}).get('Code', '')
-        assert error_code == 'AccessDeniedException'
+        error_code = error.response.get("Error", {}).get("Code", "")
+        assert error_code == "AccessDeniedException"
 
     def test_resource_not_found_error(self):
         """Test ResourceNotFoundException handling."""
         error = ClientError(
             {
-                'Error': {
-                    'Code': 'ResourceNotFoundException',
-                    'Message': 'Model not found'
+                "Error": {
+                    "Code": "ResourceNotFoundException",
+                    "Message": "Model not found",
                 }
             },
-            'InvokeModel'
+            "InvokeModel",
         )
 
-        error_code = error.response.get('Error', {}).get('Code', '')
-        assert error_code == 'ResourceNotFoundException'
+        error_code = error.response.get("Error", {}).get("Code", "")
+        assert error_code == "ResourceNotFoundException"
 
 
 class TestMaxRetriesParameter:
@@ -207,18 +187,13 @@ class TestMaxRetriesParameter:
     def test_zero_retries(self, mock_analyzer, sample_batch):
         """Test that max_retries=0 means no retries."""
         throttling_error = ClientError(
-            {
-                'Error': {
-                    'Code': 'ThrottlingException',
-                    'Message': 'Rate exceeded'
-                }
-            },
-            'InvokeModel'
+            {"Error": {"Code": "ThrottlingException", "Message": "Rate exceeded"}},
+            "InvokeModel",
         )
 
         mock_analyzer.model.invoke = Mock(side_effect=throttling_error)
 
-        with patch('time.sleep'):
+        with patch("time.sleep"):
             with pytest.raises(ClientError):
                 mock_analyzer.analyze_batch(sample_batch, max_retries=0)
 
@@ -228,18 +203,13 @@ class TestMaxRetriesParameter:
     def test_custom_max_retries(self, mock_analyzer, sample_batch):
         """Test custom max_retries value."""
         throttling_error = ClientError(
-            {
-                'Error': {
-                    'Code': 'ThrottlingException',
-                    'Message': 'Rate exceeded'
-                }
-            },
-            'InvokeModel'
+            {"Error": {"Code": "ThrottlingException", "Message": "Rate exceeded"}},
+            "InvokeModel",
         )
 
         mock_analyzer.model.invoke = Mock(side_effect=throttling_error)
 
-        with patch('time.sleep'):
+        with patch("time.sleep"):
             with pytest.raises(ClientError):
                 mock_analyzer.analyze_batch(sample_batch, max_retries=5)
 

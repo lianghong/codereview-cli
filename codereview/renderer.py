@@ -1,7 +1,7 @@
 """Rich terminal and Markdown output rendering."""
+
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List
 
 from rich.console import Console
 from rich.panel import Panel
@@ -35,31 +35,30 @@ class TerminalRenderer:
         """Initialize renderer."""
         self.console = Console()
 
-    def render(self, report: CodeReviewReport):
+    def render(self, report: CodeReviewReport, min_severity: str = "info") -> None:
         """
         Render full report to terminal.
 
         Args:
             report: CodeReviewReport to render
+            min_severity: Minimum severity level to display (default: "info")
         """
         self.console.print()
         self._render_header()
         self._render_summary(report)
-        self._render_issues(report)
+        self._render_issues(report, min_severity)
         self._render_recommendations(report)
+        self._render_improvement_suggestions(report)
         self.console.print()
 
-    def _render_header(self):
-        """Render header."""
+    def _render_header(self) -> None:
+        """Render report header panel."""
         self.console.print(
-            Panel.fit(
-                "[bold cyan]Code Review Report[/bold cyan]",
-                border_style="cyan"
-            )
+            Panel.fit("[bold cyan]Code Review Report[/bold cyan]", border_style="cyan")
         )
 
-    def _render_summary(self, report: CodeReviewReport):
-        """Render summary section."""
+    def _render_summary(self, report: CodeReviewReport) -> None:
+        """Render summary section panel."""
         summary = self._format_summary(report)
         self.console.print(Panel(summary, title="Summary", border_style="green"))
 
@@ -68,18 +67,39 @@ class TerminalRenderer:
         lines = [
             f"[bold]{report.summary}[/bold]",
             "",
-            f"📊 Files analyzed: {report.metrics.get('files', 0)}",
-            f"🐛 Total issues: {report.metrics.get('issues', 0)}",
+            f"📊 Files analyzed: {report.metrics.get('files_analyzed', 0)}",
+            f"🐛 Total issues: {report.metrics.get('total_issues', 0)}",
         ]
         return "\n".join(lines)
 
-    def _render_issues(self, report: CodeReviewReport):
-        """Render issues grouped by severity."""
+    def _render_issues(
+        self, report: CodeReviewReport, min_severity: str = "info"
+    ) -> None:
+        """Render issues grouped by severity, filtered by minimum severity."""
         if not report.issues:
             self.console.print("[green]✓ No issues found![/green]\n")
             return
 
-        grouped = self._group_by_severity(report.issues)
+        # Get minimum severity index (case-insensitive)
+        min_severity_title = min_severity.title()
+        if min_severity_title not in self.SEVERITY_ORDER:
+            min_severity_title = "Info"
+        min_index = self.SEVERITY_ORDER.index(min_severity_title)
+
+        # Filter issues by minimum severity
+        filtered_issues = [
+            issue
+            for issue in report.issues
+            if self.SEVERITY_ORDER.index(issue.severity) <= min_index
+        ]
+
+        if not filtered_issues:
+            self.console.print(
+                f"[green]✓ No issues at {min_severity_title} severity or above![/green]\n"
+            )
+            return
+
+        grouped = self._group_by_severity(filtered_issues)
 
         for severity in self.SEVERITY_ORDER:
             if severity not in grouped:
@@ -89,33 +109,42 @@ class TerminalRenderer:
             color = self._get_severity_color(severity)
             icon = self.SEVERITY_ICONS[severity]
 
-            self.console.print(f"\n{icon} [bold {color}]{severity} ({len(issues)})[/bold {color}]")
+            self.console.print(
+                f"\n{icon} [bold {color}]{severity} ({len(issues)})[/bold {color}]"
+            )
 
             for issue in issues:
                 self._render_issue(issue)
 
-    def _render_issue(self, issue: ReviewIssue):
-        """Render single issue."""
+    def _render_issue(self, issue: ReviewIssue) -> None:
+        """Render single issue as a formatted table with prominent labels."""
         color = self._get_severity_color(issue.severity)
 
-        table = Table(show_header=False, border_style=color, box=None)
-        table.add_column("Key", style="bold")
-        table.add_column("Value")
+        table = Table(
+            show_header=False,
+            border_style=color,
+            box=None,
+            padding=(0, 1),
+        )
+        table.add_column("Key", style="bold cyan", width=10, justify="right")
+        table.add_column("Value", overflow="fold")
 
-        table.add_row("Category", issue.category)
-        table.add_row("File", f"{issue.file_path}:{issue.line_start}")
-        table.add_row("Issue", issue.title)
-        table.add_row("Details", issue.description)
-        table.add_row("Why", issue.rationale)
+        table.add_row("[bold cyan]Category[/]", issue.category)
+        table.add_row(
+            "[bold cyan]File[/]", f"[underline]{issue.file_path}:{issue.line_start}[/]"
+        )
+        table.add_row("[bold cyan]Issue[/]", f"[bold]{issue.title}[/]")
+        table.add_row("[bold cyan]Details[/]", issue.description)
+        table.add_row("[bold cyan]Why[/]", issue.rationale)
 
         if issue.suggested_code:
-            table.add_row("Fix", f"```\n{issue.suggested_code}\n```")
+            table.add_row("[bold cyan]Fix[/]", f"```\n{issue.suggested_code}\n```")
 
         self.console.print(table)
         self.console.print()
 
-    def _render_recommendations(self, report: CodeReviewReport):
-        """Render top recommendations."""
+    def _render_recommendations(self, report: CodeReviewReport) -> None:
+        """Render top recommendations panel."""
         if not report.recommendations:
             return
 
@@ -124,16 +153,31 @@ class TerminalRenderer:
             lines.append(f"{i}. {rec}")
 
         self.console.print(
+            Panel("\n".join(lines), title="Top Recommendations", border_style="yellow")
+        )
+
+    def _render_improvement_suggestions(self, report: CodeReviewReport) -> None:
+        """Render improvement suggestions panel."""
+        if not report.improvement_suggestions:
+            return
+
+        lines = []
+        for i, suggestion in enumerate(report.improvement_suggestions, 1):
+            lines.append(f"{i}. {suggestion}")
+
+        self.console.print(
             Panel(
                 "\n".join(lines),
-                title="Top Recommendations",
-                border_style="yellow"
+                title="💡 Improvement Suggestions",
+                border_style="cyan",
             )
         )
 
-    def _group_by_severity(self, issues: List[ReviewIssue]) -> Dict[str, List[ReviewIssue]]:
+    def _group_by_severity(
+        self, issues: list[ReviewIssue]
+    ) -> dict[str, list[ReviewIssue]]:
         """Group issues by severity level."""
-        grouped = {}
+        grouped: dict[str, list[ReviewIssue]] = {}
         for issue in issues:
             if issue.severity not in grouped:
                 grouped[issue.severity] = []
@@ -156,17 +200,52 @@ class MarkdownExporter:
         "Info": "⚪",
     }
 
-    def export(self, report: CodeReviewReport, output_path: Path | str):
+    # File extension to language mapping for code blocks
+    LANGUAGE_EXTENSIONS = {
+        ".py": "python",
+        ".go": "go",
+        ".sh": "bash",
+        ".bash": "bash",
+        ".js": "javascript",
+        ".jsx": "javascript",
+        ".mjs": "javascript",
+        ".ts": "typescript",
+        ".tsx": "typescript",
+        ".rs": "rust",
+        ".rb": "ruby",
+        ".java": "java",
+        ".c": "c",
+        ".cpp": "cpp",
+        ".cc": "cpp",
+        ".cxx": "cpp",
+        ".h": "c",
+        ".hpp": "cpp",
+    }
+
+    def _detect_language(self, file_path: str) -> str:
+        """Detect programming language from file extension."""
+        for ext, lang in self.LANGUAGE_EXTENSIONS.items():
+            if file_path.endswith(ext):
+                return lang
+        return "text"
+
+    def export(self, report: CodeReviewReport, output_path: Path | str) -> None:
         """
         Export report to Markdown file.
 
         Args:
             report: CodeReviewReport to export
             output_path: Path to output Markdown file
+
+        Raises:
+            RuntimeError: If file write fails
         """
         output_path = Path(output_path)
         content = self._generate_markdown(report)
-        output_path.write_text(content)
+        try:
+            output_path.write_text(content, encoding="utf-8")
+        except (OSError, IOError) as e:
+            raise RuntimeError(f"Failed to write report to {output_path}: {e}") from e
 
     def _generate_markdown(self, report: CodeReviewReport) -> str:
         """Generate Markdown content."""
@@ -180,11 +259,14 @@ class MarkdownExporter:
         if report.metrics.get("static_analysis_run"):
             sections.append(self._static_analysis(report))
 
-        sections.extend([
-            self._issues(report),
-            self._system_design(report),
-            self._recommendations(report),
-        ])
+        sections.extend(
+            [
+                self._issues(report),
+                self._system_design(report),
+                self._recommendations(report),
+                self._improvement_suggestions(report),
+            ]
+        )
 
         return "\n\n".join(sections)
 
@@ -203,7 +285,9 @@ class MarkdownExporter:
 
         # Separate token metrics from other metrics
         token_keys = {"input_tokens", "output_tokens", "total_tokens"}
-        regular_metrics = {k: v for k, v in report.metrics.items() if k not in token_keys}
+        regular_metrics = {
+            k: v for k, v in report.metrics.items() if k not in token_keys
+        }
         token_metrics = {k: v for k, v in report.metrics.items() if k in token_keys}
 
         # Display regular metrics first
@@ -229,13 +313,19 @@ class MarkdownExporter:
                 lines.append(f"- **{key.replace('_', ' ').title()}:** {value:,}")
 
             # Calculate and display cost if we have token counts
-            if 'input_tokens' in token_metrics and 'output_tokens' in token_metrics:
-                input_cost = (token_metrics['input_tokens'] / 1_000_000) * input_price
-                output_cost = (token_metrics['output_tokens'] / 1_000_000) * output_price
+            if "input_tokens" in token_metrics and "output_tokens" in token_metrics:
+                input_cost = (token_metrics["input_tokens"] / 1_000_000) * input_price
+                output_cost = (
+                    token_metrics["output_tokens"] / 1_000_000
+                ) * output_price
                 total_cost = input_cost + output_cost
                 lines.append(f"- **Estimated Cost:** ${total_cost:.4f} USD")
-                lines.append(f"  - Input cost: ${input_cost:.4f} (${input_price:.2f}/M tokens)")
-                lines.append(f"  - Output cost: ${output_cost:.4f} (${output_price:.2f}/M tokens)")
+                lines.append(
+                    f"  - Input cost: ${input_cost:.4f} (${input_price:.2f}/M tokens)"
+                )
+                lines.append(
+                    f"  - Output cost: ${output_cost:.4f} (${output_price:.2f}/M tokens)"
+                )
 
         return "\n".join(lines)
 
@@ -259,10 +349,14 @@ class MarkdownExporter:
         lines.append("|------|--------|--------|")
 
         # We don't have individual tool results in metrics, so just show summary
-        lines.append(f"| All Tools | {tools_passed} passed, {tools_failed} failed | {issues_found} |")
+        lines.append(
+            f"| All Tools | {tools_passed} passed, {tools_failed} failed | {issues_found} |"
+        )
 
         lines.append("\n**Tools run:** ruff, mypy, black, isort (when available)")
-        lines.append("\n*Run with `--static-analysis` flag to see detailed output in terminal.*")
+        lines.append(
+            "\n*Run with `--static-analysis` flag to see detailed output in terminal.*"
+        )
 
         return "\n".join(lines)
 
@@ -274,7 +368,7 @@ class MarkdownExporter:
         lines = ["## Issues by Severity\n"]
 
         # Group by severity
-        grouped = {}
+        grouped: dict[str, list[ReviewIssue]] = {}
         for issue in report.issues:
             if issue.severity not in grouped:
                 grouped[issue.severity] = []
@@ -306,8 +400,9 @@ class MarkdownExporter:
         ]
 
         if issue.suggested_code:
+            lang = self._detect_language(issue.file_path)
             lines.append("**Suggested Fix:**")
-            lines.append(f"```python\n{issue.suggested_code}\n```\n")
+            lines.append(f"```{lang}\n{issue.suggested_code}\n```\n")
 
         if issue.references:
             lines.append("**References:**")
@@ -331,5 +426,20 @@ class MarkdownExporter:
 
         for i, rec in enumerate(report.recommendations, 1):
             lines.append(f"{i}. {rec}")
+
+        return "\n".join(lines)
+
+    def _improvement_suggestions(self, report: CodeReviewReport) -> str:
+        """Generate improvement suggestions section."""
+        if not report.improvement_suggestions:
+            return ""
+
+        lines = ["## 💡 Improvement Suggestions\n"]
+        lines.append(
+            "*These are constructive enhancement ideas beyond fixing issues:*\n"
+        )
+
+        for i, suggestion in enumerate(report.improvement_suggestions, 1):
+            lines.append(f"{i}. {suggestion}")
 
         return "\n".join(lines)

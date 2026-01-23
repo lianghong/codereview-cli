@@ -1,16 +1,19 @@
 """Integration tests for full workflow."""
-import pytest
+
+import shutil
+import tempfile
 from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
+
+import pytest
 from click.testing import CliRunner
+
+from codereview.analyzer import CodeAnalyzer
+from codereview.batcher import FileBatcher
 from codereview.cli import main
 from codereview.models import CodeReviewReport, ReviewIssue
-from codereview.scanner import FileScanner
-from codereview.batcher import SmartBatcher
-from codereview.analyzer import CodeAnalyzer
 from codereview.renderer import MarkdownExporter
-import tempfile
-import shutil
+from codereview.scanner import FileScanner
 
 
 @pytest.fixture
@@ -81,7 +84,7 @@ def mock_code_review_report():
                 description="Using append in loop is inefficient",
                 suggested_code="return [item * 2 for item in data]",
                 rationale="List comprehensions are more Pythonic and efficient",
-                references=["https://docs.python.org/3/tutorial/datastructures.html"]
+                references=["https://docs.python.org/3/tutorial/datastructures.html"],
             ),
             ReviewIssue(
                 category="Best Practices",
@@ -93,7 +96,7 @@ def mock_code_review_report():
                 description="Function lacks type annotations",
                 suggested_code="def calculate_sum(a: int, b: int) -> int:",
                 rationale="Type hints improve code clarity and enable static analysis",
-                references=["https://peps.python.org/pep-0484/"]
+                references=["https://peps.python.org/pep-0484/"],
             ),
             ReviewIssue(
                 category="Documentation",
@@ -105,7 +108,7 @@ def mock_code_review_report():
                 description="Public function lacks documentation",
                 suggested_code="// main is the entry point\nfunc main() {",
                 rationale="Go convention requires comments on exported functions",
-                references=["https://go.dev/doc/effective_go#commentary"]
+                references=["https://go.dev/doc/effective_go#commentary"],
             ),
         ],
         system_design_insights="Simple utility functions, no major architectural concerns.",
@@ -113,14 +116,16 @@ def mock_code_review_report():
             "Use list comprehensions instead of loops",
             "Add type hints to all functions",
             "Document all exported functions",
-        ]
+        ],
     )
 
 
 class TestFullWorkflow:
     """Test complete end-to-end workflow."""
 
-    def test_scan_batch_analyze_workflow(self, sample_project_dir, mock_code_review_report):
+    def test_scan_batch_analyze_workflow(
+        self, sample_project_dir, mock_code_review_report
+    ):
         """Test the full workflow: scan -> batch -> analyze."""
         # Step 1: Scan files
         scanner = FileScanner(sample_project_dir)
@@ -131,14 +136,14 @@ class TestFullWorkflow:
         assert any(f.name == "test.go" for f in files)
 
         # Step 2: Create batches
-        batcher = SmartBatcher()
+        batcher = FileBatcher()
         batches = batcher.create_batches(files)
 
         assert len(batches) >= 1
         assert all(batch.files for batch in batches)
 
         # Step 3: Mock analyzer and analyze
-        with patch('codereview.analyzer.ChatBedrockConverse'):
+        with patch("codereview.analyzer.ChatBedrockConverse"):
             analyzer = CodeAnalyzer()
             analyzer.model.invoke = Mock(return_value=mock_code_review_report)
 
@@ -150,7 +155,9 @@ class TestFullWorkflow:
             assert len(results) > 0
             assert all(isinstance(r, CodeReviewReport) for r in results)
 
-    def test_markdown_export_integration(self, sample_project_dir, mock_code_review_report, tmp_path):
+    def test_markdown_export_integration(
+        self, sample_project_dir, mock_code_review_report, tmp_path
+    ):
         """Test markdown export with real report."""
         output_file = tmp_path / "test-report.md"
 
@@ -166,11 +173,13 @@ class TestFullWorkflow:
         assert "src/test.py" in content
         assert "Inefficient list building" in content
 
-    def test_cli_full_workflow_mocked(self, sample_project_dir, mock_code_review_report):
+    def test_cli_full_workflow_mocked(
+        self, sample_project_dir, mock_code_review_report
+    ):
         """Test CLI end-to-end with mocked AWS calls."""
         runner = CliRunner()
 
-        with patch('codereview.cli.CodeAnalyzer') as mock_analyzer_class:
+        with patch("codereview.cli.CodeAnalyzer") as mock_analyzer_class:
             mock_analyzer = Mock()
             mock_analyzer.analyze_batch.return_value = mock_code_review_report
             mock_analyzer.total_input_tokens = 1000
@@ -185,12 +194,14 @@ class TestFullWorkflow:
             assert "Found" in result.output
             assert "files to review" in result.output
 
-    def test_cli_with_markdown_export(self, sample_project_dir, mock_code_review_report, tmp_path):
+    def test_cli_with_markdown_export(
+        self, sample_project_dir, mock_code_review_report, tmp_path
+    ):
         """Test CLI with markdown export option."""
         runner = CliRunner()
         output_file = tmp_path / "cli-report.md"
 
-        with patch('codereview.cli.CodeAnalyzer') as mock_analyzer_class:
+        with patch("codereview.cli.CodeAnalyzer") as mock_analyzer_class:
             mock_analyzer = Mock()
             mock_analyzer.analyze_batch.return_value = mock_code_review_report
             mock_analyzer.total_input_tokens = 1000
@@ -198,20 +209,21 @@ class TestFullWorkflow:
             mock_analyzer.skipped_files = []
             mock_analyzer_class.return_value = mock_analyzer
 
-            result = runner.invoke(main, [
-                str(sample_project_dir),
-                '--output', str(output_file)
-            ])
+            result = runner.invoke(
+                main, [str(sample_project_dir), "--output", str(output_file)]
+            )
 
             assert result.exit_code == 0
             assert output_file.exists()
             assert "Report exported to" in result.output
 
-    def test_cli_with_severity_filter(self, sample_project_dir, mock_code_review_report):
+    def test_cli_with_severity_filter(
+        self, sample_project_dir, mock_code_review_report
+    ):
         """Test CLI with severity filtering."""
         runner = CliRunner()
 
-        with patch('codereview.cli.CodeAnalyzer') as mock_analyzer_class:
+        with patch("codereview.cli.CodeAnalyzer") as mock_analyzer_class:
             mock_analyzer = Mock()
             mock_analyzer.analyze_batch.return_value = mock_code_review_report
             mock_analyzer.total_input_tokens = 1000
@@ -219,10 +231,9 @@ class TestFullWorkflow:
             mock_analyzer.skipped_files = []
             mock_analyzer_class.return_value = mock_analyzer
 
-            result = runner.invoke(main, [
-                str(sample_project_dir),
-                '--severity', 'high'
-            ])
+            result = runner.invoke(
+                main, [str(sample_project_dir), "--severity", "high"]
+            )
 
             assert result.exit_code == 0
 
@@ -230,7 +241,7 @@ class TestFullWorkflow:
         """Test CLI with max files limit."""
         runner = CliRunner()
 
-        with patch('codereview.cli.CodeAnalyzer') as mock_analyzer_class:
+        with patch("codereview.cli.CodeAnalyzer") as mock_analyzer_class:
             mock_analyzer = Mock()
             mock_analyzer.analyze_batch.return_value = mock_code_review_report
             mock_analyzer.total_input_tokens = 1000
@@ -238,10 +249,7 @@ class TestFullWorkflow:
             mock_analyzer.skipped_files = []
             mock_analyzer_class.return_value = mock_analyzer
 
-            result = runner.invoke(main, [
-                str(sample_project_dir),
-                '--max-files', '1'
-            ])
+            result = runner.invoke(main, [str(sample_project_dir), "--max-files", "1"])
 
             assert result.exit_code == 0
 
@@ -249,7 +257,7 @@ class TestFullWorkflow:
         """Test CLI with verbose output."""
         runner = CliRunner()
 
-        with patch('codereview.cli.CodeAnalyzer') as mock_analyzer_class:
+        with patch("codereview.cli.CodeAnalyzer") as mock_analyzer_class:
             mock_analyzer = Mock()
             mock_analyzer.analyze_batch.return_value = mock_code_review_report
             mock_analyzer.total_input_tokens = 1000
@@ -257,10 +265,7 @@ class TestFullWorkflow:
             mock_analyzer.skipped_files = []
             mock_analyzer_class.return_value = mock_analyzer
 
-            result = runner.invoke(main, [
-                str(sample_project_dir),
-                '--verbose'
-            ])
+            result = runner.invoke(main, [str(sample_project_dir), "--verbose"])
 
             assert result.exit_code == 0
             assert "Batch" in result.output
@@ -282,7 +287,7 @@ class TestWorkflowWithFixtures:
         # Should find at least the Python and Go files
         assert len(files) >= 2
 
-        batcher = SmartBatcher()
+        batcher = FileBatcher()
         batches = batcher.create_batches(files)
 
         assert len(batches) >= 1
@@ -296,7 +301,7 @@ class TestWorkflowWithFixtures:
 
         runner = CliRunner()
 
-        with patch('codereview.cli.CodeAnalyzer') as mock_analyzer_class:
+        with patch("codereview.cli.CodeAnalyzer") as mock_analyzer_class:
             mock_analyzer = Mock()
             mock_analyzer.analyze_batch.return_value = mock_code_review_report
             mock_analyzer.total_input_tokens = 1000
@@ -337,15 +342,20 @@ class TestErrorHandlingIntegration:
 
         runner = CliRunner()
 
-        with patch('codereview.cli.CodeAnalyzer') as mock_analyzer_class:
+        with patch("codereview.cli.CodeAnalyzer") as mock_analyzer_class:
             mock_analyzer = Mock()
             mock_analyzer.analyze_batch.side_effect = ClientError(
-                {'Error': {'Code': 'AccessDeniedException', 'Message': 'Access denied'}},
-                'InvokeModel'
+                {
+                    "Error": {
+                        "Code": "AccessDeniedException",
+                        "Message": "Access denied",
+                    }
+                },
+                "InvokeModel",
             )
             mock_analyzer_class.return_value = mock_analyzer
 
-            result = runner.invoke(main, [str(sample_project_dir), '--verbose'])
+            result = runner.invoke(main, [str(sample_project_dir), "--verbose"])
 
             # Should handle error gracefully (not crash)
             assert "AWS" in result.output or "Error" in result.output
@@ -354,12 +364,14 @@ class TestErrorHandlingIntegration:
 class TestOutputFormats:
     """Test different output formats."""
 
-    def test_terminal_and_markdown_output(self, sample_project_dir, mock_code_review_report, tmp_path):
+    def test_terminal_and_markdown_output(
+        self, sample_project_dir, mock_code_review_report, tmp_path
+    ):
         """Test generating both terminal and markdown output."""
         runner = CliRunner()
         output_file = tmp_path / "both-outputs.md"
 
-        with patch('codereview.cli.CodeAnalyzer') as mock_analyzer_class:
+        with patch("codereview.cli.CodeAnalyzer") as mock_analyzer_class:
             mock_analyzer = Mock()
             mock_analyzer.analyze_batch.return_value = mock_code_review_report
             mock_analyzer.total_input_tokens = 1000
@@ -367,10 +379,9 @@ class TestOutputFormats:
             mock_analyzer.skipped_files = []
             mock_analyzer_class.return_value = mock_analyzer
 
-            result = runner.invoke(main, [
-                str(sample_project_dir),
-                '--output', str(output_file)
-            ])
+            result = runner.invoke(
+                main, [str(sample_project_dir), "--output", str(output_file)]
+            )
 
             # Both terminal output and file should be generated
             assert result.exit_code == 0
@@ -407,11 +418,13 @@ class TestOutputFormats:
 class TestBatchProcessing:
     """Test batch processing in integration."""
 
-    def test_multiple_batches_processing(self, sample_project_dir, mock_code_review_report):
+    def test_multiple_batches_processing(
+        self, sample_project_dir, mock_code_review_report
+    ):
         """Test processing multiple batches."""
         runner = CliRunner()
 
-        with patch('codereview.cli.CodeAnalyzer') as mock_analyzer_class:
+        with patch("codereview.cli.CodeAnalyzer") as mock_analyzer_class:
             mock_analyzer = Mock()
             mock_analyzer.analyze_batch.return_value = mock_code_review_report
             mock_analyzer.total_input_tokens = 1000
@@ -441,11 +454,11 @@ class TestBatchProcessing:
                     line_end=1,
                     title="Issue 1",
                     description="Test",
-                    rationale="Test"
+                    rationale="Test",
                 )
             ],
             system_design_insights="",
-            recommendations=[]
+            recommendations=[],
         )
 
         report2 = CodeReviewReport(
@@ -460,14 +473,14 @@ class TestBatchProcessing:
                     line_end=1,
                     title="Issue 2",
                     description="Test",
-                    rationale="Test"
+                    rationale="Test",
                 )
             ],
             system_design_insights="",
-            recommendations=[]
+            recommendations=[],
         )
 
-        with patch('codereview.cli.CodeAnalyzer') as mock_analyzer_class:
+        with patch("codereview.cli.CodeAnalyzer") as mock_analyzer_class:
             mock_analyzer = Mock()
             mock_analyzer.analyze_batch.side_effect = [report1, report2]
             mock_analyzer.total_input_tokens = 2000

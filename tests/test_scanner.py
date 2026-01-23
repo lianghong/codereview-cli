@@ -1,6 +1,8 @@
 # tests/test_scanner.py
-import pytest
 from pathlib import Path
+
+import pytest
+
 from codereview.scanner import FileScanner
 
 
@@ -55,3 +57,56 @@ def test_scanner_excludes_pycache(sample_dir):
 
     cache_files = [f for f in files if "__pycache__" in str(f)]
     assert len(cache_files) == 0
+
+
+def test_scanner_finds_shell_scripts(sample_dir):
+    """Test scanner finds .sh and .bash files."""
+    scanner = FileScanner(sample_dir)
+    files = scanner.scan()
+
+    sh_files = [f for f in files if f.suffix in (".sh", ".bash")]
+    assert len(sh_files) > 0
+    assert any("setup.sh" in str(f) for f in sh_files)
+
+
+def test_scanner_finds_cpp_files(sample_dir):
+    """Test scanner finds C++ files (.cpp, .cc, .cxx, .h, .hpp)."""
+    scanner = FileScanner(sample_dir)
+    files = scanner.scan()
+
+    cpp_extensions = {".cpp", ".cc", ".cxx", ".h", ".hpp"}
+    cpp_files = [f for f in files if f.suffix in cpp_extensions]
+    assert len(cpp_files) > 0
+    assert any("example.cpp" in str(f) for f in cpp_files)
+
+
+def test_scanner_finds_java_files(sample_dir):
+    """Test scanner finds .java files."""
+    scanner = FileScanner(sample_dir)
+    files = scanner.scan()
+
+    java_files = [f for f in files if f.suffix == ".java"]
+    assert len(java_files) > 0
+    assert any("Example.java" in str(f) for f in java_files)
+
+
+def test_scanner_finds_javascript_files(sample_dir):
+    """Test scanner finds JavaScript files (.js, .jsx, .mjs)."""
+    scanner = FileScanner(sample_dir)
+    files = scanner.scan()
+
+    js_extensions = {".js", ".jsx", ".mjs"}
+    js_files = [f for f in files if f.suffix in js_extensions]
+    assert len(js_files) > 0
+    assert any("example.js" in str(f) for f in js_files)
+
+
+def test_scanner_finds_typescript_files(sample_dir):
+    """Test scanner finds TypeScript files (.ts, .tsx)."""
+    scanner = FileScanner(sample_dir)
+    files = scanner.scan()
+
+    ts_extensions = {".ts", ".tsx"}
+    ts_files = [f for f in files if f.suffix in ts_extensions]
+    assert len(ts_files) > 0
+    assert any("example.ts" in str(f) for f in ts_files)

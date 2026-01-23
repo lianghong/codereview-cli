@@ -1,7 +1,8 @@
 # tests/test_models.py
 import pytest
 from pydantic import ValidationError
-from codereview.models import ReviewIssue, CodeReviewReport
+
+from codereview.models import CodeReviewReport, ReviewIssue
 
 
 def test_review_issue_creation():
@@ -16,7 +17,7 @@ def test_review_issue_creation():
         description="User input not sanitized",
         suggested_code="Use parameterized queries",
         rationale="Prevents SQL injection attacks",
-        references=["https://owasp.org/sql-injection"]
+        references=["https://owasp.org/sql-injection"],
     )
 
     assert issue.category == "Security"
@@ -34,7 +35,7 @@ def test_review_issue_minimal():
         line_start=10,
         title="Complex function",
         description="Function has high cyclomatic complexity",
-        rationale="Hard to maintain"
+        rationale="Hard to maintain",
     )
 
     assert issue.line_end is None
@@ -51,7 +52,7 @@ def test_code_review_report():
         line_start=1,
         title="Issue",
         description="Description",
-        rationale="Rationale"
+        rationale="Rationale",
     )
 
     report = CodeReviewReport(
@@ -59,7 +60,7 @@ def test_code_review_report():
         metrics={"files": 5, "lines": 100, "issues": 1},
         issues=[issue],
         system_design_insights="Architecture looks good",
-        recommendations=["Fix security issue"]
+        recommendations=["Fix security issue"],
     )
 
     assert report.summary == "Found 1 security issue"
@@ -67,18 +68,42 @@ def test_code_review_report():
     assert report.metrics["files"] == 5
 
 
-def test_invalid_category():
-    """Test that invalid category raises ValidationError."""
-    with pytest.raises(ValidationError):
-        ReviewIssue(
-            category="InvalidCategory",
-            severity="High",
-            file_path="app.py",
-            line_start=1,
-            title="Test",
-            description="Test",
-            rationale="Test"
-        )
+def test_category_normalization():
+    """Test that unknown categories are normalized to valid values."""
+    # Unknown category defaults to "Code Quality"
+    issue = ReviewIssue(
+        category="InvalidCategory",
+        severity="High",
+        file_path="app.py",
+        line_start=1,
+        title="Test",
+        description="Test",
+        rationale="Test",
+    )
+    assert issue.category == "Code Quality"
+
+    # Known variations are mapped correctly
+    issue2 = ReviewIssue(
+        category="error handling",
+        severity="High",
+        file_path="app.py",
+        line_start=1,
+        title="Test",
+        description="Test",
+        rationale="Test",
+    )
+    assert issue2.category == "Code Quality"
+
+    issue3 = ReviewIssue(
+        category="architecture",
+        severity="High",
+        file_path="app.py",
+        line_start=1,
+        title="Test",
+        description="Test",
+        rationale="Test",
+    )
+    assert issue3.category == "System Design"
 
 
 def test_invalid_severity():
@@ -91,7 +116,7 @@ def test_invalid_severity():
             line_start=1,
             title="Test",
             description="Test",
-            rationale="Test"
+            rationale="Test",
         )
 
 
@@ -105,7 +130,7 @@ def test_invalid_line_start():
             line_start=0,
             title="Test",
             description="Test",
-            rationale="Test"
+            rationale="Test",
         )
 
 
@@ -120,5 +145,5 @@ def test_line_end_before_line_start():
             line_end=40,
             title="Test",
             description="Test",
-            rationale="Test"
+            rationale="Test",
         )

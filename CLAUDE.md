@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-LangChain-based CLI tool for AI-powered code reviews using Claude Opus 4.5 via AWS Bedrock. Reviews Python and Go codebases with structured output (categories, severity levels, line numbers, suggested fixes).
+LangChain-based CLI tool for AI-powered code reviews via AWS Bedrock. Supports multiple models including Claude (Opus, Sonnet, Haiku), Minimax M2, Mistral Large 3, Kimi K2 Thinking, and Qwen3 Coder. Reviews **Python, Go, Shell Script, C++, Java, JavaScript, and TypeScript** codebases with structured output (categories, severity levels, line numbers, suggested fixes).
 
 **Tech Stack:** Python 3.14, LangChain, AWS Bedrock, Pydantic V2, Click, Rich
 
@@ -39,39 +39,104 @@ uv run pytest tests/ --cov=codereview --cov-report=html
 # Basic usage (uses Claude Opus 4.5 by default)
 uv run codereview /path/to/code
 
-# With model selection
-uv run codereview /path/to/code --model-id global.anthropic.claude-sonnet-4-5-20250929-v1:0
+# With model selection (use short names!)
+uv run codereview /path/to/code --model sonnet
+uv run codereview /path/to/code -m haiku
+uv run codereview /path/to/code -m qwen
+uv run codereview /path/to/code -m mistral
 
-# With static analysis (ruff, mypy, black, isort)
+# With static analysis (runs tools in parallel for speed)
 uv run codereview /path/to/code --static-analysis
 
-# With options
-uv run codereview ./src --output report.md --severity high --verbose
+# With severity filtering (show only high and above)
+uv run codereview ./src --severity high
+
+# Dry run (preview files and estimated cost without API calls)
+uv run codereview ./src --dry-run
+
+# With all options
+uv run codereview ./src -m sonnet --output report.md --severity medium --verbose
 
 # Direct Python invocation (for debugging)
 uv run python -m codereview.cli /path/to/code
 ```
 
-**Static Analysis Integration:**
+### CLI Options
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--model, -m` | Model to use (see Model Names below) | opus |
+| `--output, -o` | Export report to Markdown file | None |
+| `--severity, -s` | Minimum severity to display (critical/high/medium/low/info) | info |
+| `--temperature` | Model temperature (0.0-1.0) | Model-specific |
+| `--static-analysis` | Run static analysis tools (parallel) | False |
+| `--dry-run` | Preview files and cost without API calls | False |
+| `--verbose, -v` | Show detailed progress | False |
+| `--exclude, -e` | Additional exclusion patterns | None |
+| `--max-files` | Maximum files to analyze | None |
+| `--max-file-size` | Maximum file size in KB | 500 |
+| `--aws-region` | AWS region for Bedrock | us-west-2 |
+| `--aws-profile` | AWS CLI profile to use | None |
+
+### Model Names
+Use short names for convenience (case-insensitive):
+
+| Short Name | Aliases | Full Model ID |
+|------------|---------|---------------|
+| `opus` | `claude-opus` | `global.anthropic.claude-opus-4-5-20251101-v1:0` |
+| `sonnet` | `claude-sonnet` | `global.anthropic.claude-sonnet-4-5-20250929-v1:0` |
+| `haiku` | `claude-haiku` | `global.anthropic.claude-haiku-4-5-20251001-v1:0` |
+| `minimax` | `minimax-m2` | `minimax.minimax-m2` |
+| `mistral` | `mistral-large` | `mistral.mistral-large-3-675b-instruct` |
+| `kimi` | `kimi-k2` | `moonshot.kimi-k2-thinking` |
+| `qwen` | `qwen-coder` | `qwen.qwen3-coder-480b-a35b-v1:0` |
+
+### Static Analysis Integration
 ```bash
-# Install optional tools for static analysis
-pip install ruff mypy black isort
+# Install Python static analysis tools
+pip install ruff mypy black isort vulture
+
+# Install Go static analysis tools (requires Go installed)
+go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+
+# Install Shell script static analysis (Ubuntu/Debian)
+sudo apt install shellcheck
+# Or on macOS: brew install shellcheck
+
+# Install C++ static analysis tools (Ubuntu/Debian)
+sudo apt install clang-tidy cppcheck clang-format
+# Or on macOS: brew install llvm cppcheck
+
+# Install Java static analysis (requires Java)
+# Download checkstyle JAR from https://checkstyle.org/
+
+# Install JavaScript/TypeScript static analysis
+npm install -g eslint prettier typescript
 
 # Run combined AI + static analysis review
 uv run codereview ./src --static-analysis --output comprehensive-review.md
 ```
 
+**Supported Static Analysis Tools:**
+- **Python:** ruff (linter), mypy (type checker), black (formatter), isort (import sorter), vulture (dead code finder)
+- **Go:** golangci-lint (meta-linter), go vet (static analyzer), gofmt (formatter)
+- **Shell:** shellcheck (static analyzer for shell scripts)
+- **C++:** clang-tidy (linter), cppcheck (static analysis), clang-format (formatter)
+- **Java:** checkstyle (style checker)
+- **JavaScript/TypeScript:** eslint (linter), prettier (formatter), tsc (TypeScript type checker)
+
+**Note:** Static analysis tools run in parallel using `ThreadPoolExecutor` for faster execution. Only installed tools are run.
+
 ## Architecture
 
 ### Pipeline Flow
 ```
-FileScanner → SmartBatcher → CodeAnalyzer → Aggregation → TerminalRenderer/MarkdownExporter
+FileScanner → FileBatcher → CodeAnalyzer → Aggregation → TerminalRenderer/MarkdownExporter
 ```
 
-1. **FileScanner** (`scanner.py`): Discovers .py/.go files, applies exclusion patterns from `config.py`
-2. **SmartBatcher** (`batcher.py`): Groups files into batches (default 10 files/batch) for token efficiency
-3. **CodeAnalyzer** (`analyzer.py`): Sends batches to Claude via LangChain with structured output
-4. **Aggregation** (`cli.py`): Merges results from all batches into single report
+1. **FileScanner** (`scanner.py`): Discovers code files (.py, .go, .sh, .bash, .cpp, .cc, .cxx, .h, .hpp, .java, .js, .jsx, .mjs, .ts, .tsx), applies exclusion patterns, validates paths
+2. **FileBatcher** (`batcher.py`): Groups files into batches (default 10 files/batch) for token efficiency
+3. **CodeAnalyzer** (`analyzer.py`): Sends batches to LLM via LangChain with structured output
+4. **Aggregation** (`cli.py`): Merges results from all batches (issues, suggestions, design insights)
 5. **Renderers** (`renderer.py`): Outputs to Rich terminal UI or Markdown file
 
 ### Key Architectural Patterns
@@ -80,34 +145,55 @@ FileScanner → SmartBatcher → CodeAnalyzer → Aggregation → TerminalRender
 - Uses `.with_structured_output(CodeReviewReport)` on ChatBedrockConverse
 - Returns Pydantic models directly from LLM (no manual JSON parsing)
 - System prompt in `config.py` specifies JSON schema expectations
-- See `analyzer.py:34` and `models.py` for the Pydantic → LangChain flow
+- Category normalization handles non-Claude model variations (see `models.py`)
 
 **Pydantic Data Models:**
-- `ReviewIssue`: Single finding (category, severity, file_path, line_start, description, etc.)
+- `ReviewIssue`: Single finding with category normalization for LLM compatibility
 - `CodeReviewReport`: Aggregated results (summary, metrics, issues list, recommendations)
-- Models have validators (e.g., `line_end >= line_start` check in `models.py`)
+- Models have validators (e.g., `line_end >= line_start`, category mapping)
+
+**Category Normalization:**
+Non-Claude models may return non-standard category names. The `ReviewIssue` model includes a `@field_validator` that maps variations to valid categories:
+- "error handling", "errorhandling" → "Code Quality"
+- "architecture", "design" → "System Design"
+- Unknown categories default to "Code Quality"
 
 **Retry Logic with Exponential Backoff:**
 - `CodeAnalyzer.analyze_batch()` has built-in retry for AWS rate limiting
 - Handles `ThrottlingException` and `TooManyRequestsException`
-- Backoff: 2^attempt × 2 seconds (2s, 4s, 8s)
-- See `analyzer.py:36-80` for implementation
+- Backoff: 2^attempt seconds (1s, 2s, 4s)
+
+**Parallel Static Analysis:**
+- `StaticAnalyzer.run_all(parallel=True)` runs tools concurrently
+- Uses `ThreadPoolExecutor` for I/O-bound subprocess calls
+- Reduces total time from sum of tools to ~slowest tool
+
+### Supported Models
+
+All in `codereview/config.py` `SUPPORTED_MODELS`:
+
+| Model | Model ID | Input $/M | Output $/M | Defaults |
+|-------|----------|-----------|------------|----------|
+| Claude Opus 4.5 | `global.anthropic.claude-opus-4-5-20251101-v1:0` | $5.00 | $25.00 | temp=0.1 |
+| Claude Sonnet 4.5 | `global.anthropic.claude-sonnet-4-5-20250929-v1:0` | $3.00 | $15.00 | temp=0.1 |
+| Claude Haiku 4.5 | `global.anthropic.claude-haiku-4-5-20251001-v1:0` | $1.00 | $5.00 | temp=0.1 |
+| Minimax M2 | `minimax.minimax-m2` | $0.30 | $1.20 | temp=1.0, top_p=0.95, top_k=40, max=8192 |
+| Mistral Large 3 | `mistral.mistral-large-3-675b-instruct` | $2.00 | $6.00 | temp=0.1, top_p=0.5, top_k=5 |
+| Kimi K2 Thinking | `moonshot.kimi-k2-thinking` | $0.50 | $2.00 | temp=1.0, max=16K-256K |
+| Qwen3 Coder 480B | `qwen.qwen3-coder-480b-a35b-v1:0` | $0.22 | $1.40 | temp=0.7, top_p=0.8, top_k=20, max=65536 |
+
+**Default model:** Claude Opus 4.5
 
 ### Configuration Constants
 
 All in `codereview/config.py`:
 - `DEFAULT_EXCLUDE_PATTERNS`: File patterns to skip (.venv, __pycache__, etc.)
 - `DEFAULT_EXCLUDE_EXTENSIONS`: Extensions to skip (.json, .md, binaries, etc.)
-- `MODEL_CONFIG`: AWS Bedrock settings (model_id, region, temperature, max_tokens)
-- `SUPPORTED_MODELS`: Dict of available models with pricing information
-  - Claude Opus 4.5: $15/M input, $75/M output (default)
-  - Claude Sonnet 4.5: $3/M input, $15/M output
-  - Claude Haiku 4.5: $0.25/M input, $1.25/M output
-- `DEFAULT_MODEL_ID`: Default model (Claude Opus 4.5)
-- `SYSTEM_PROMPT`: Instructions for Claude including "avoid overdesign" rule
-- `MAX_FILE_SIZE_KB`: File size limit (default 10KB)
-
-**Important:** All model IDs use region-agnostic `global.anthropic.*` format
+- `MODEL_CONFIG`: Default AWS Bedrock settings (TypedDict)
+- `SUPPORTED_MODELS`: Dict of available models with pricing and inference parameters
+- `ModelInfo`: TypedDict with optional fields for model-specific parameters
+- `SYSTEM_PROMPT`: Instructions for LLM including language-specific rules
+- `MAX_FILE_SIZE_KB`: File size limit (default 500KB)
 
 ## Testing Patterns
 
@@ -115,26 +201,21 @@ All in `codereview/config.py`:
 All tests mock AWS calls to avoid real API usage:
 
 ```python
-# Standard pattern in tests
 from unittest.mock import Mock, patch
 
 with patch('codereview.analyzer.ChatBedrockConverse') as mock_bedrock:
     mock_instance = Mock()
     mock_instance.with_structured_output.return_value.invoke.return_value = mock_report
     mock_bedrock.return_value = mock_instance
-
     # Test code here
 ```
 
-See `tests/test_analyzer.py` and `tests/test_integration.py` for examples.
-
 ### Test Fixtures
-- `tests/fixtures/sample_code/`: Test files for scanner (.py, .go, .json)
-- Fixtures verify exclusion logic (venv, pycache, json files excluded)
+- `tests/fixtures/sample_code/`: Test files for scanner (.py, .go, .sh, .cpp, .java, .js, .ts, .json)
+- Fixtures verify inclusion (code files) and exclusion logic (venv, pycache, json files excluded)
 
 ### Pydantic Validation Tests
-Test both positive cases and `ValidationError` exceptions:
-- Invalid categories/severities raise ValidationError
+- Category normalization tested (unknown categories map to "Code Quality")
 - Line number constraints (ge=1) enforced
 - Custom validators (line_end >= line_start) tested
 
@@ -145,7 +226,7 @@ See `tests/test_models.py` for validation patterns.
 **Runtime Prerequisites:**
 1. AWS credentials configured (via `aws configure`, env vars, or IAM role)
 2. Bedrock access enabled in AWS region
-3. Claude Opus 4.5 model access approved
+3. Model access approved for chosen model
 4. IAM permissions: `bedrock:InvokeModel` and `bedrock:InvokeModelWithResponseStream`
 
 **For Development/Testing:**
@@ -155,10 +236,19 @@ See `tests/test_models.py` for validation patterns.
 
 ## Code Modifications
 
+### Adding New Models
+1. Add model entry to `SUPPORTED_MODELS` in `config.py` with:
+   - `name`: Display name
+   - `input_price_per_million`: Input token price
+   - `output_price_per_million`: Output token price
+   - Optional: `default_temperature`, `default_top_p`, `default_top_k`, `max_output_tokens`
+2. Add model ID to CLI choices in `cli.py`
+3. Update this document's Supported Models table
+
 ### Adding New Review Categories
-1. Update `models.py`: Add to `ReviewIssue.category` Literal
-2. Update `config.py`: Add category description to SYSTEM_PROMPT
-3. Update `README.md`: Add to "Review Categories" section
+1. Update `models.py`: Add to `ReviewIssue.category` Literal and `VALID_CATEGORIES`
+2. Update `CATEGORY_MAPPING` in `models.py` for common variations
+3. Update `config.py`: Add category description to SYSTEM_PROMPT
 
 ### Changing Default Exclusions
 Edit `DEFAULT_EXCLUDE_PATTERNS` or `DEFAULT_EXCLUDE_EXTENSIONS` in `config.py`
@@ -167,20 +257,30 @@ Edit `DEFAULT_EXCLUDE_PATTERNS` or `DEFAULT_EXCLUDE_EXTENSIONS` in `config.py`
 Edit `SYSTEM_PROMPT` in `config.py`. Keep JSON output format specification intact for structured output to work.
 
 ### Adding Support for New Languages
-1. Add extension to `scanner.py:58` target_extensions
+1. Add extension to `scanner.py` target_extensions set
 2. Update SYSTEM_PROMPT in `config.py` with language-specific guidance
-3. Test with fixture files in `tests/fixtures/`
+3. Add language to `LANGUAGE_EXTENSIONS` in `renderer.py`
+4. Test with fixture files in `tests/fixtures/`
+
+### Adding New Static Analysis Tools
+1. Add tool config to `StaticAnalyzer.TOOLS` in `static_analysis.py`
+2. Include: name, description, command, language, optional version_command
+3. Handle tool-specific output parsing in `run_tool()` if needed
 
 ## Common Issues
+
+**Category Validation Errors with Non-Claude Models:**
+- Non-Claude models may return non-standard category names
+- The `normalize_category` validator in `models.py` handles this automatically
+- Unknown categories default to "Code Quality"
 
 **Pydantic V1 Compatibility Warning (Python 3.14):**
 - LangChain uses Pydantic V1 compat layer
 - Shows warning but code works fine
-- Documented in `docs/python-compatibility-notes.txt`
 
 **Test Failures Related to Pydantic:**
-- Ensure using `pytest.raises(ValidationError)` not `ValueError`
-- Import: `from pydantic import ValidationError`
+- Category validation now normalizes instead of raising errors
+- Use `test_category_normalization` pattern for testing
 
 **LangChain Structured Output Not Working:**
 - Verify Pydantic model has proper `Field()` descriptions
@@ -190,3 +290,7 @@ Edit `SYSTEM_PROMPT` in `config.py`. Keep JSON output format specification intac
 **AWS ClientError in Tests:**
 - Make sure to mock `ChatBedrockConverse` BEFORE importing analyzer
 - Use `patch('codereview.analyzer.ChatBedrockConverse')` not `patch('langchain_aws.ChatBedrockConverse')`
+
+**Reusing CodeAnalyzer Instance:**
+- Call `analyzer.reset_state()` between runs to clear token counts and skipped files
+- Or create a new instance for each analysis

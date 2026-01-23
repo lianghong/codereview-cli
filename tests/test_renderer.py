@@ -1,7 +1,7 @@
 import pytest
-from io import StringIO
-from codereview.renderer import TerminalRenderer
+
 from codereview.models import CodeReviewReport, ReviewIssue
+from codereview.renderer import TerminalRenderer
 
 
 @pytest.fixture
@@ -32,7 +32,7 @@ def sample_report():
         metrics={"files": 2, "issues": 2, "critical": 1, "low": 1},
         issues=[issue1, issue2],
         system_design_insights="Architecture is solid",
-        recommendations=["Fix SQL injection", "Refactor complex function"]
+        recommendations=["Fix SQL injection", "Refactor complex function"],
     )
 
 

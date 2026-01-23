@@ -1,6 +1,6 @@
-import pytest
 from pathlib import Path
-from codereview.batcher import SmartBatcher, FileBatch
+
+from codereview.batcher import FileBatch, FileBatcher
 
 
 def test_batch_creation():
@@ -16,7 +16,7 @@ def test_batch_creation():
 def test_batcher_single_batch():
     """Test batcher with small number of files."""
     files = [Path(f"file{i}.py") for i in range(3)]
-    batcher = SmartBatcher(max_files_per_batch=10)
+    batcher = FileBatcher(max_files_per_batch=10)
     batches = batcher.create_batches(files)
 
     assert len(batches) == 1
@@ -26,7 +26,7 @@ def test_batcher_single_batch():
 def test_batcher_multiple_batches():
     """Test batcher splits into multiple batches."""
     files = [Path(f"file{i}.py") for i in range(25)]
-    batcher = SmartBatcher(max_files_per_batch=10)
+    batcher = FileBatcher(max_files_per_batch=10)
     batches = batcher.create_batches(files)
 
     assert len(batches) == 3
@@ -38,7 +38,7 @@ def test_batcher_multiple_batches():
 def test_batch_numbers_correct():
     """Test batch numbers are sequential and correct."""
     files = [Path(f"file{i}.py") for i in range(15)]
-    batcher = SmartBatcher(max_files_per_batch=5)
+    batcher = FileBatcher(max_files_per_batch=5)
     batches = batcher.create_batches(files)
 
     assert batches[0].batch_number == 1

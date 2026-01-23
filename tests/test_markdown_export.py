@@ -1,7 +1,7 @@
 import pytest
-from pathlib import Path
-from codereview.renderer import MarkdownExporter
+
 from codereview.models import CodeReviewReport, ReviewIssue
+from codereview.renderer import MarkdownExporter
 
 
 @pytest.fixture
@@ -17,7 +17,7 @@ def sample_report():
         description="User input not sanitized",
         suggested_code="cursor.execute('SELECT * FROM users WHERE id = ?', (user_id,))",
         rationale="Prevents SQL injection",
-        references=["https://owasp.org/sql-injection"]
+        references=["https://owasp.org/sql-injection"],
     )
 
     return CodeReviewReport(
@@ -25,7 +25,7 @@ def sample_report():
         metrics={"files": 1, "issues": 1, "critical": 1},
         issues=[issue],
         system_design_insights="Single file reviewed",
-        recommendations=["Fix SQL injection immediately"]
+        recommendations=["Fix SQL injection immediately"],
     )
 
 

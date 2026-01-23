@@ -1,6 +1,6 @@
 import pytest
 from click.testing import CliRunner
-from pathlib import Path
+
 from codereview.cli import main
 
 
@@ -21,7 +21,9 @@ def sample_code_dir(tmp_path):
 def test_cli_no_args(cli_runner):
     """Test CLI with no arguments shows help."""
     result = cli_runner.invoke(main, [])
-    assert result.exit_code != 0
+    assert result.exit_code == 0
+    assert "Usage:" in result.output
+    assert "DIRECTORY" in result.output
 
 
 def test_cli_help(cli_runner):
@@ -43,9 +45,8 @@ def test_cli_with_directory(cli_runner, sample_code_dir):
 def test_cli_output_option(cli_runner, sample_code_dir, tmp_path):
     """Test CLI with output file option."""
     output_file = tmp_path / "report.md"
-    result = cli_runner.invoke(main, [
-        str(sample_code_dir),
-        "--output", str(output_file)
-    ])
+    result = cli_runner.invoke(
+        main, [str(sample_code_dir), "--output", str(output_file)]
+    )
     # Command should accept the argument
     assert "--output" not in result.output or result.exit_code == 0
