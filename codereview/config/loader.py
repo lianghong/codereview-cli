@@ -11,6 +11,7 @@ from codereview.config.models import (
     BedrockConfig,
     InferenceParams,
     ModelConfig,
+    NVIDIAConfig,
     PricingConfig,
     ProviderConfig,
     ScanningConfig,
@@ -48,8 +49,8 @@ class ConfigLoader:
             # Expand environment variables
             expanded_yaml = self._expand_env_vars(raw_yaml)
 
-            # Parse YAML
-            self._raw_config = yaml.safe_load(expanded_yaml)
+            # Parse YAML (handle empty files by defaulting to empty dict)
+            self._raw_config = yaml.safe_load(expanded_yaml) or {}
 
             # Parse providers and models
             self._parse_providers()
@@ -143,6 +144,37 @@ class ConfigLoader:
                         "AZURE_OPENAI_API_VERSION environment variables to enable Azure models."
                     )
 
+        # Parse NVIDIA provider
+        if "nvidia" in providers_section:
+            nvidia_data = providers_section["nvidia"]
+
+            # Always register NVIDIA models for display (--list-models)
+            for model_data in nvidia_data.get("models", []):
+                model_config = self._parse_model_config(model_data)
+                model_id = model_config.id
+                self._models_by_id[model_id] = ("nvidia", model_config)
+
+                # Register aliases
+                for alias in model_config.aliases:
+                    self._models_by_id[alias] = ("nvidia", model_config)
+
+            # Only register provider config if API key is present
+            # (required for actual API calls, not for listing models)
+            api_key = nvidia_data.get("api_key", "")
+
+            if api_key:
+                try:
+                    nvidia_config = NVIDIAConfig(
+                        api_key=api_key,
+                        base_url=nvidia_data.get("base_url"),
+                    )
+                    self._providers["nvidia"] = nvidia_config
+                except (KeyError, ValueError, TypeError) as e:
+                    logging.info(
+                        f"NVIDIA provider not configured: {e}. "
+                        "Set NVIDIA_API_KEY environment variable to enable NVIDIA models."
+                    )
+
     def _parse_scanning_config(self) -> None:
         """Parse file scanning configuration."""
         scanning_data = self._raw_config.get("scanning", {})
@@ -195,6 +227,7 @@ class ConfigLoader:
             inference_params=inference_params,
             full_id=model_data.get("full_id"),
             deployment_name=model_data.get("deployment_name"),
+            use_responses_api=model_data.get("use_responses_api"),
         )
 
     def resolve_model(self, name: str) -> tuple[str, ModelConfig]:

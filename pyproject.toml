@@ -19,10 +19,11 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 dependencies = [
-    "langchain>=0.3.0",
+    "langchain>=1.2.7",
     "langchain-aws>=0.2.0",
     "langchain-openai>=0.2.14",
-    "boto3>=1.35.0",
+    "langchain-nvidia-ai-endpoints>=0.3.0",
+    "boto3>=1.42.34",
     "click>=8.1.0",
     "rich>=13.7.0",
     "pydantic>=2.9.0",

@@ -23,14 +23,14 @@ def test_pricing_config_rejects_negative():
     """Test that PricingConfig rejects negative prices."""
     with pytest.raises(ValidationError) as exc_info:
         PricingConfig(input_per_million=-1.0, output_per_million=5.0)
-    assert "greater than 0" in str(exc_info.value).lower()
+    assert "greater than or equal to 0" in str(exc_info.value).lower()
 
 
-def test_pricing_config_rejects_zero():
-    """Test that PricingConfig rejects zero prices."""
-    with pytest.raises(ValidationError) as exc_info:
-        PricingConfig(input_per_million=0.0, output_per_million=5.0)
-    assert "greater than 0" in str(exc_info.value).lower()
+def test_pricing_config_accepts_zero():
+    """Test that PricingConfig accepts zero prices (for free tier models)."""
+    config = PricingConfig(input_per_million=0.0, output_per_million=0.0)
+    assert config.input_per_million == 0.0
+    assert config.output_per_million == 0.0
 
 
 def test_inference_params_temperature_range():

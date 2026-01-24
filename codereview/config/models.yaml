@@ -1,7 +1,10 @@
 # Model Configuration for Code Review Tool
 # This file defines all available AI models for code review analysis
+#
+# Pricing and parameters researched: January 2026
+# Sources: AWS Bedrock, Azure OpenAI, Anthropic, Mistral, Moonshot, Alibaba docs
 
-version: "1.0"
+version: "1.1"
 
 providers:
   # AWS Bedrock Provider
@@ -9,6 +12,8 @@ providers:
     region: us-west-2
     models:
       # Claude Models (Anthropic)
+      # Context: 200K tokens, Max output: 64K tokens
+      # Best for: Comprehensive code review, complex reasoning, security analysis
       - id: opus
         full_id: global.anthropic.claude-opus-4-5-20251101-v1:0
         name: Claude Opus 4.5
@@ -16,10 +21,19 @@ providers:
           - opus
           - claude-opus
         pricing:
-          input_per_million: 5.00
+          input_per_million: 5.00    # Verified: Anthropic pricing
           output_per_million: 25.00
+          cache_write_per_million: 6.25   # Prompt caching available
+          cache_read_per_million: 0.50
         inference_params:
-          default_temperature: 0.1
+          default_temperature: 0.1   # Low temp for deterministic code analysis
+          max_output_tokens: 64000   # Supports up to 64K output
+        context_window: 200000
+        capabilities:
+          - code_review
+          - security_analysis
+          - reasoning
+          - computer_use
 
       - id: sonnet
         full_id: global.anthropic.claude-sonnet-4-5-20250929-v1:0
@@ -28,10 +42,20 @@ providers:
           - sonnet
           - claude-sonnet
         pricing:
-          input_per_million: 3.00
+          input_per_million: 3.00    # Verified: Anthropic pricing
           output_per_million: 15.00
+          cache_write_per_million: 3.75
+          cache_read_per_million: 0.30
         inference_params:
-          default_temperature: 0.1
+          default_temperature: 0.1   # Low temp for accurate code review
+          max_output_tokens: 64000
+        context_window: 200000
+        capabilities:
+          - code_review
+          - coding
+          - agents
+          - computer_use
+        notes: "77.2% SWE-bench Verified, best balance of cost/performance"
 
       - id: haiku
         full_id: global.anthropic.claude-haiku-4-5-20251001-v1:0
@@ -40,12 +64,23 @@ providers:
           - haiku
           - claude-haiku
         pricing:
-          input_per_million: 1.00
+          input_per_million: 1.00    # Verified: Anthropic pricing
           output_per_million: 5.00
+          cache_write_per_million: 1.25
+          cache_read_per_million: 0.10
         inference_params:
-          default_temperature: 0.1
+          default_temperature: 0.1   # Low temp for consistent output
+          max_output_tokens: 64000
+        context_window: 200000
+        capabilities:
+          - code_review
+          - real_time_assistants
+          - parallel_agents
+        notes: "73.3% SWE-bench Verified, fast and cost-effective"
 
-      # Minimax Model
+      # Minimax M2 Model
+      # MoE: 230B total, 10B active parameters
+      # Best for: Fast code analysis, agentic tasks
       - id: minimax
         full_id: minimax.minimax-m2
         name: Minimax M2
@@ -53,15 +88,24 @@ providers:
           - minimax
           - minimax-m2
         pricing:
-          input_per_million: 0.30
+          input_per_million: 0.30    # Verified: AWS Bedrock pricing
           output_per_million: 1.20
         inference_params:
-          default_temperature: 1.0
-          default_top_p: 0.95
+          default_temperature: 0.3   # Lower for code review (default is 1.0)
+          default_top_p: 0.9
           default_top_k: 40
           max_output_tokens: 8192
+        context_window: 256000
+        architecture: "MoE (230B total, 10B active)"
+        capabilities:
+          - coding
+          - agentic_tasks
+          - general_intelligence
+        notes: "Compact, fast MoE model optimized for coding tasks"
 
-      # Mistral Model
+      # Mistral Large 3 Model
+      # MoE: 675B total, 41B active parameters
+      # Best for: Cost-effective code review, multi-language support
       - id: mistral
         full_id: mistral.mistral-large-3-675b-instruct
         name: Mistral Large 3
@@ -69,14 +113,23 @@ providers:
           - mistral
           - mistral-large
         pricing:
-          input_per_million: 2.00
+          input_per_million: 2.00    # Verified: ~80% cheaper than competitors
           output_per_million: 6.00
         inference_params:
-          default_temperature: 0.1
-          default_top_p: 0.5
-          default_top_k: 5
+          default_temperature: 0.1   # Low temp for precise code analysis
+          default_top_p: 0.9
+          max_output_tokens: 32000
+        context_window: 128000
+        architecture: "MoE (675B total, 41B active)"
+        capabilities:
+          - code_review
+          - multi_language
+          - reasoning
+        notes: "Open source, cost-effective for large-scale analysis"
 
-      # Kimi Model (Moonshot)
+      # Kimi K2 Thinking Model (Moonshot AI)
+      # MoE: 1T total, 32B active parameters
+      # Best for: Complex reasoning, multi-step code analysis
       - id: kimi
         full_id: moonshot.kimi-k2-thinking
         name: Kimi K2 Thinking
@@ -84,13 +137,24 @@ providers:
           - kimi
           - kimi-k2
         pricing:
-          input_per_million: 0.50
-          output_per_million: 2.00
+          input_per_million: 0.60    # Verified: litellm/Bedrock pricing
+          output_per_million: 2.50
         inference_params:
-          default_temperature: 1.0
-          max_output_tokens: 16000  # Can go up to 256K
+          default_temperature: 0.6   # Moonshot recommended setting
+          default_min_p: 0.01        # Suppress unlikely tokens
+          max_output_tokens: 32000   # Can go up to 256K
+        context_window: 256000
+        architecture: "MoE (1T total, 32B active)"
+        capabilities:
+          - reasoning
+          - autonomous_agents
+          - tool_use
+          - multi_step_tasks
+        notes: "Exceptional for autonomous AI agents, maintains coherence over hundreds of tool calls"
 
-      # Qwen Model
+      # Qwen3 Coder Model (Alibaba)
+      # MoE: 480B total, 35B active parameters
+      # Best for: Specialized code generation and review
       - id: qwen
         full_id: qwen.qwen3-coder-480b-a35b-v1:0
         name: Qwen3 Coder 480B
@@ -98,37 +162,176 @@ providers:
           - qwen
           - qwen-coder
         pricing:
-          input_per_million: 0.22
-          output_per_million: 1.40  # Range: $0.95-$1.80 depending on endpoint
+          input_per_million: 0.22    # Verified: AWS Bedrock pricing
+          output_per_million: 1.40
         inference_params:
-          default_temperature: 0.7
-          default_top_p: 0.8
-          default_top_k: 20
+          default_temperature: 0.3   # Lower than default 0.7 for code review
+          default_top_p: 0.8         # Qwen recommended
+          default_top_k: 20          # Qwen recommended
+          repetition_penalty: 1.05   # Qwen recommended
           max_output_tokens: 65536
+        context_window: 131072
+        architecture: "MoE (480B total, 35B active)"
+        capabilities:
+          - code_generation
+          - code_review
+          - agentic_coding
+          - browser_automation
+        notes: "87.9% MultiPL-E score, specialized for coding tasks"
 
   # Azure OpenAI Provider
   azure_openai:
     endpoint: "${AZURE_OPENAI_ENDPOINT}"
     api_key: "${AZURE_OPENAI_API_KEY}"
-    api_version: "2026-01-14"
+    api_version: "2025-04-01-preview"
     models:
+      # GPT-5.2 Codex Model
+      # Best for: Enterprise code review, security-aware analysis
+      # Note: Requires Responses API (doesn't support ChatCompletion API)
       - id: gpt-5.2-codex
         deployment_name: gpt-5.2-codex
         name: GPT-5.2 Codex
         aliases:
+          - gpt
           - gpt52
           - codex
         pricing:
-          input_per_million: 1.75
+          input_per_million: 1.75    # Verified: Microsoft Foundry pricing
           output_per_million: 14.00
+          cached_input_per_million: 0.175  # 90% discount on cached
         inference_params:
-          default_temperature: 0.0
+          default_temperature: 0.0   # Zero temp for deterministic code analysis
           default_top_p: 0.95
-          max_output_tokens: 16000
+          max_output_tokens: 128000
+        use_responses_api: true      # Required: GPT-5.2 Codex uses Responses API, not ChatCompletion
+        context_window: 400000       # 272K input, 128K output
+        capabilities:
+          - reasoning
+          - code_review
+          - security_analysis
+          - structured_output
+          - function_calling
+        notes: "56.4% SWE-Bench Pro, security-aware by design"
+
+  # NVIDIA NIM API Provider
+  # Models available via build.nvidia.com
+  nvidia:
+    api_key: "${NVIDIA_API_KEY}"
+    # base_url: "${NVIDIA_BASE_URL}"  # Optional: for self-hosted NIMs
+    models:
+      # Devstral 2 123B - Mistral's code-specialized model
+      # Best for: Code review, debugging, code generation
+      # 72.2% SWE-Bench Verified score
+      - id: devstral
+        full_id: mistralai/devstral-2-123b-instruct-2512
+        name: Devstral 2 123B
+        aliases:
+          - devstral-2
+        pricing:
+          input_per_million: 0.00    # Currently free tier
+          output_per_million: 0.00   # Update when NVIDIA announces pricing
+        inference_params:
+          default_temperature: 0.15  # Low for deterministic code analysis
+          default_top_p: 0.95
+          max_output_tokens: 8192
+        context_window: 128000
+        capabilities:
+          - code_review
+          - code_generation
+          - debugging
+          - agentic_coding
+        notes: "72.2% SWE-Bench Verified, excellent for code review tasks"
+
+      # MiniMax M2 (via NVIDIA) - Fast reasoning model
+      # Best for: Quick code analysis, general reasoning
+      - id: minimax-nvidia
+        full_id: minimaxai/minimax-m2
+        name: MiniMax M2 (NVIDIA)
+        aliases:
+          - mm2-nvidia
+        pricing:
+          input_per_million: 0.00    # Currently free tier
+          output_per_million: 0.00   # Update when NVIDIA announces pricing
+        inference_params:
+          default_temperature: 1.0   # MiniMax default
+          default_top_p: 0.95
+          max_output_tokens: 8192
+        context_window: 256000
+        capabilities:
+          - coding
+          - reasoning
+          - agentic_tasks
+        notes: "Fast MoE model, good for quick code analysis"
 
 # Default model configuration
 defaults:
   bedrock_default: opus
   azure_default: gpt-5.2-codex
+  nvidia_default: devstral
   aws_region: us-west-2
   max_tokens: 16000
+
+# File scanning configuration
+scanning:
+  max_file_size_kb: 500
+  warn_file_size_kb: 100
+  exclude_patterns:
+    # Dependency directories
+    - "**/node_modules/**"
+    - "**/.venv/**"
+    - "**/venv/**"
+    - "**/vendor/**"
+    # Build outputs
+    - "**/dist/**"
+    - "**/build/**"
+    - "**/__pycache__/**"
+    - "**/*.pyc"
+    - "**/*.pyo"
+    # Version control
+    - "**/.git/**"
+    - "**/.svn/**"
+    # IDE and editors
+    - "**/.vscode/**"
+    - "**/.idea/**"
+    - "**/*.swp"
+    # Test fixtures and generated code
+    - "**/test_data/**"
+    - "**/fixtures/**"
+    - "**/*_pb2.py"
+    - "**/*_pb2_grpc.py"
+    # Common non-review files
+    - "**/*.min.js"
+    - "**/*.min.css"
+    - "**/migrations/**"
+    - "**/*.lock"
+  exclude_extensions:
+    - ".json"
+    - ".yaml"
+    - ".yml"
+    - ".toml"
+    - ".md"
+    - ".txt"
+    - ".rst"
+    - ".jpg"
+    - ".png"
+    - ".gif"
+    - ".svg"
+    - ".bin"
+    - ".exe"
+    - ".so"
+    - ".dylib"
+    - ".pyc"
+    - ".pyo"
+
+# Code Review Specific Recommendations
+#
+# For accurate, deterministic code review:
+# - Use temperature 0.0-0.3 (lower = more consistent)
+# - Use top_p 0.8-0.95 for controlled output
+# - Prefer models with strong SWE-bench scores
+#
+# Model selection by use case:
+# - Quick reviews: Haiku ($1/$5) or Qwen ($0.22/$1.40)
+# - Standard reviews: Sonnet ($3/$15) or Mistral ($2/$6)
+# - Complex/security reviews: Opus ($5/$25) or GPT-5.2-Codex ($1.75/$14)
+# - Budget-conscious: Qwen ($0.22/$1.40) or Minimax ($0.30/$1.20)

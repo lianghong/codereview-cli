@@ -1,10 +1,13 @@
 """Factory for creating provider instances with auto-detection."""
 
+from langchain_core.callbacks import BaseCallbackHandler
+
 from codereview.config.loader import ConfigLoader
-from codereview.config.models import AzureOpenAIConfig, BedrockConfig
+from codereview.config.models import AzureOpenAIConfig, BedrockConfig, NVIDIAConfig
 from codereview.providers.azure_openai import AzureOpenAIProvider
 from codereview.providers.base import ModelProvider
 from codereview.providers.bedrock import BedrockProvider
+from codereview.providers.nvidia import NVIDIAProvider
 
 
 class ProviderFactory:
@@ -26,12 +29,14 @@ class ProviderFactory:
         self,
         model_name: str,
         temperature: float | None = None,
+        callbacks: list[BaseCallbackHandler] | None = None,
     ) -> ModelProvider:
         """Create provider based on model name.
 
         Args:
             model_name: Model ID or alias (e.g., "opus", "gpt-5.2-codex")
             temperature: Optional temperature override
+            callbacks: Optional list of callback handlers for streaming/progress
 
         Returns:
             Instantiated provider (BedrockProvider or AzureOpenAIProvider)
@@ -52,7 +57,9 @@ class ProviderFactory:
                     f"Expected BedrockConfig for bedrock provider, "
                     f"got {type(provider_config).__name__}"
                 )
-            return BedrockProvider(model_config, provider_config, temperature)
+            return BedrockProvider(
+                model_config, provider_config, temperature, callbacks=callbacks
+            )
 
         elif provider_name == "azure_openai":
             if not isinstance(provider_config, AzureOpenAIConfig):
@@ -60,12 +67,24 @@ class ProviderFactory:
                     f"Expected AzureOpenAIConfig for azure_openai provider, "
                     f"got {type(provider_config).__name__}"
                 )
-            return AzureOpenAIProvider(model_config, provider_config, temperature)
+            return AzureOpenAIProvider(
+                model_config, provider_config, temperature, callbacks=callbacks
+            )
+
+        elif provider_name == "nvidia":
+            if not isinstance(provider_config, NVIDIAConfig):
+                raise ValueError(
+                    f"Expected NVIDIAConfig for nvidia provider, "
+                    f"got {type(provider_config).__name__}"
+                )
+            return NVIDIAProvider(
+                model_config, provider_config, temperature, callbacks=callbacks
+            )
 
         else:
             raise ValueError(
                 f"Unknown provider: {provider_name}. "
-                f"Supported providers: bedrock, azure_openai"
+                f"Supported providers: bedrock, azure_openai, nvidia"
             )
 
     def list_available_models(self) -> dict[str, list[dict[str, str]]]:
