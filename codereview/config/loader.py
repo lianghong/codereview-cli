@@ -1,3 +1,4 @@
+import logging
 import os
 import re
 from pathlib import Path
@@ -12,6 +13,7 @@ from codereview.config.models import (
     ModelConfig,
     PricingConfig,
     ProviderConfig,
+    ScanningConfig,
 )
 
 
@@ -33,23 +35,35 @@ class ConfigLoader:
             {}
         )  # {id: (provider, config)}
         self._providers: dict[str, ProviderConfig] = {}
+        self._scanning_config: ScanningConfig = ScanningConfig()
 
         self._load_config()
 
     def _load_config(self) -> None:
         """Load and parse YAML configuration."""
-        # Read YAML file
-        with open(self.config_path) as f:
-            raw_yaml = f.read()
+        try:
+            with open(self.config_path, encoding="utf-8") as f:
+                raw_yaml = f.read()
 
-        # Expand environment variables
-        expanded_yaml = self._expand_env_vars(raw_yaml)
+            # Expand environment variables
+            expanded_yaml = self._expand_env_vars(raw_yaml)
 
-        # Parse YAML
-        self._raw_config = yaml.safe_load(expanded_yaml)
+            # Parse YAML
+            self._raw_config = yaml.safe_load(expanded_yaml)
 
-        # Parse providers and models
-        self._parse_providers()
+            # Parse providers and models
+            self._parse_providers()
+
+            # Parse scanning config
+            self._parse_scanning_config()
+        except FileNotFoundError:
+            raise ValueError(f"Configuration file not found: {self.config_path}")
+        except yaml.YAMLError as e:
+            raise ValueError(f"Invalid YAML in configuration file: {e}")
+        except PermissionError:
+            raise ValueError(
+                f"Permission denied reading configuration: {self.config_path}"
+            )
 
     def _expand_env_vars(self, text: str) -> str:
         """Expand ${VAR_NAME} to environment variable values.
@@ -98,33 +112,52 @@ class ConfigLoader:
         if "azure_openai" in providers_section:
             azure_data = providers_section["azure_openai"]
 
-            # Only register Azure provider if credentials are present
-            # This allows users to have Azure models in config without using them
+            # Always register Azure models for display (--list-models)
+            for model_data in azure_data.get("models", []):
+                model_config = self._parse_model_config(model_data)
+                model_id = model_config.id
+                self._models_by_id[model_id] = ("azure_openai", model_config)
+
+                # Register aliases
+                for alias in model_config.aliases:
+                    self._models_by_id[alias] = ("azure_openai", model_config)
+
+            # Only register provider config if credentials are present
+            # (required for actual API calls, not for listing models)
             endpoint = azure_data.get("endpoint", "")
             api_key = azure_data.get("api_key", "")
+            api_version = azure_data.get("api_version", "")
 
-            if endpoint and api_key:
+            if endpoint and api_key and api_version:
                 try:
                     azure_config = AzureOpenAIConfig(
                         endpoint=endpoint,
                         api_key=api_key,
-                        api_version=azure_data["api_version"],
+                        api_version=api_version,
                     )
                     self._providers["azure_openai"] = azure_config
+                except (KeyError, ValueError, TypeError) as e:
+                    logging.info(
+                        f"Azure OpenAI provider not configured: {e}. "
+                        "Set AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_KEY, and "
+                        "AZURE_OPENAI_API_VERSION environment variables to enable Azure models."
+                    )
 
-                    # Parse Azure models
-                    for model_data in azure_data.get("models", []):
-                        model_config = self._parse_model_config(model_data)
-                        model_id = model_config.id
-                        self._models_by_id[model_id] = ("azure_openai", model_config)
+    def _parse_scanning_config(self) -> None:
+        """Parse file scanning configuration."""
+        scanning_data = self._raw_config.get("scanning", {})
+        if scanning_data:
+            self._scanning_config = ScanningConfig(
+                max_file_size_kb=scanning_data.get("max_file_size_kb", 500),
+                warn_file_size_kb=scanning_data.get("warn_file_size_kb", 100),
+                exclude_patterns=scanning_data.get("exclude_patterns", []),
+                exclude_extensions=scanning_data.get("exclude_extensions", []),
+            )
 
-                        # Register aliases
-                        for alias in model_config.aliases:
-                            self._models_by_id[alias] = ("azure_openai", model_config)
-                except Exception:
-                    # Skip Azure provider if configuration is invalid
-                    # Users can still use Bedrock models
-                    pass
+    @property
+    def scanning_config(self) -> ScanningConfig:
+        """Get file scanning configuration."""
+        return self._scanning_config
 
     def _parse_model_config(self, model_data: dict[str, Any]) -> ModelConfig:
         """Parse model configuration from YAML data.
@@ -226,3 +259,19 @@ class ConfigLoader:
                     result[provider].append(model_config)
 
         return result
+
+    def get_model_aliases(self) -> dict[str, str]:
+        """Get all model aliases mapped to their primary IDs.
+
+        Returns:
+            Dictionary mapping alias names to primary model IDs
+        """
+        aliases: dict[str, str] = {}
+        for model_id, (_, model_config) in self._models_by_id.items():
+            if model_id != model_config.id:
+                # This is an alias
+                aliases[model_id] = model_config.id
+            else:
+                # Primary ID also serves as an alias to itself
+                aliases[model_id] = model_id
+        return aliases

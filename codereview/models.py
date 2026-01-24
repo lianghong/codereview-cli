@@ -15,6 +15,42 @@ VALID_CATEGORIES = (
     "Documentation",
 )
 
+# Valid severity levels
+VALID_SEVERITIES = ("Critical", "High", "Medium", "Low", "Info")
+
+# Map common LLM severity variations to valid severities
+SEVERITY_MAPPING = {
+    # Critical variations
+    "critical": "Critical",
+    "severe": "Critical",
+    "blocker": "Critical",
+    "fatal": "Critical",
+    "error": "Critical",
+    # High variations
+    "high": "High",
+    "major": "High",
+    "important": "High",
+    "significant": "High",
+    # Medium variations
+    "medium": "Medium",
+    "moderate": "Medium",
+    "normal": "Medium",
+    "warning": "Medium",
+    "warn": "Medium",
+    # Low variations
+    "low": "Low",
+    "minor": "Low",
+    "trivial": "Low",
+    "cosmetic": "Low",
+    # Info variations
+    "info": "Info",
+    "information": "Info",
+    "informational": "Info",
+    "note": "Info",
+    "suggestion": "Info",
+    "hint": "Info",
+}
+
 # Map common LLM category variations to valid categories
 CATEGORY_MAPPING = {
     # Code Style variations
@@ -82,12 +118,17 @@ class ReviewIssue(BaseModel):
         "System Design",
         "Testing",
         "Documentation",
-    ] = Field(description="Issue category")
+    ] = Field(default="Code Quality", description="Issue category")
 
     @field_validator("category", mode="before")
     @classmethod
-    def normalize_category(_cls, v: str) -> str:  # noqa: N805
+    def normalize_category(cls, v: Any) -> str:
         """Normalize category to valid value, handling LLM variations."""
+        del cls  # Required by Pydantic but not used in this validator
+        if v is None:
+            return "Code Quality"
+        if not isinstance(v, str):
+            return "Code Quality"
         if v in VALID_CATEGORIES:
             return v
         # Try case-insensitive lookup
@@ -98,17 +139,38 @@ class ReviewIssue(BaseModel):
         return "Code Quality"
 
     severity: Literal["Critical", "High", "Medium", "Low", "Info"] = Field(
-        description="Issue severity level"
+        default="Medium",  # Default for models that don't return severity
+        description="Issue severity level",
     )
 
-    file_path: str = Field(description="Relative path to file")
-    line_start: int = Field(description="Starting line number", ge=1)
+    @field_validator("severity", mode="before")
+    @classmethod
+    def normalize_severity(cls, v: Any) -> str:
+        """Normalize severity to valid value, handling LLM variations."""
+        del cls  # Required by Pydantic but not used in this validator
+        if v is None:
+            return "Medium"  # Default for missing severity
+        if not isinstance(v, str):
+            return "Medium"
+        if v in VALID_SEVERITIES:
+            return v
+        # Try case-insensitive lookup
+        normalized = SEVERITY_MAPPING.get(v.lower().strip())
+        if normalized:
+            return normalized
+        # Default fallback for unknown severities
+        return "Medium"
+
+    file_path: str = Field(default="unknown", description="Relative path to file")
+    line_start: int = Field(default=1, description="Starting line number", ge=1)
     line_end: int | None = Field(default=None, description="Ending line number", ge=1)
 
-    title: str = Field(description="Brief issue summary")
-    description: str = Field(description="Detailed explanation")
+    title: str = Field(default="Issue", description="Brief issue summary")
+    description: str = Field(
+        default="No description provided", description="Detailed explanation"
+    )
     suggested_code: str | None = Field(default=None, description="Suggested fix")
-    rationale: str = Field(description="Why this matters")
+    rationale: str = Field(default="Review recommended", description="Why this matters")
     references: list[str] = Field(default_factory=list, description="Reference links")
 
     @model_validator(mode="after")
@@ -125,15 +187,23 @@ class CodeReviewReport(BaseModel):
     """Aggregated code review report."""
 
     summary: str = Field(
+        default="Code review completed",
         description="Balanced executive summary including: overall quality assessment, "
-        "key strengths, main concerns, and priority focus areas"
+        "key strengths, main concerns, and priority focus areas",
     )
-    metrics: dict[str, Any] = Field(description="Analysis metrics")
-    issues: list[ReviewIssue] = Field(description="All identified issues")
+    metrics: dict[str, Any] = Field(
+        default_factory=dict, description="Analysis metrics"
+    )
+    issues: list[ReviewIssue] = Field(
+        default_factory=list, description="All identified issues"
+    )
     system_design_insights: str = Field(
-        description="Architectural observations covering both strengths and concerns"
+        default="No architectural concerns identified",
+        description="Architectural observations covering both strengths and concerns",
     )
-    recommendations: list[str] = Field(description="Top priority actions")
+    recommendations: list[str] = Field(
+        default_factory=list, description="Top priority actions"
+    )
     improvement_suggestions: list[str] = Field(
         default_factory=list,
         description="Constructive suggestions for code improvement and enhancement "

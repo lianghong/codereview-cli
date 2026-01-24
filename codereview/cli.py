@@ -7,7 +7,6 @@ from pathlib import Path
 import click
 from botocore.exceptions import ClientError, NoCredentialsError
 from rich.console import Console
-from rich.panel import Panel
 from rich.progress import (
     BarColumn,
     MofNCompleteColumn,
@@ -20,16 +19,26 @@ from rich.table import Table
 
 from codereview.analyzer import CodeAnalyzer
 from codereview.batcher import FileBatcher
-from codereview.config import (  # type: ignore[attr-defined]
+from codereview.callbacks import ProgressCallbackHandler, StreamingCallbackHandler
+from codereview.config import (
     DEFAULT_EXCLUDE_PATTERNS,
     MAX_FILE_SIZE_KB,
     MODEL_ALIASES,
 )
 from codereview.models import CodeReviewReport, ReviewIssue
+from codereview.providers.base import ModelProvider
 from codereview.providers.factory import ProviderFactory
-from codereview.renderer import MarkdownExporter, TerminalRenderer
+from codereview.renderer import (
+    MarkdownExporter,
+    StaticAnalysisRenderer,
+    TerminalRenderer,
+    ValidationRenderer,
+)
 from codereview.scanner import FileScanner
 from codereview.static_analysis import StaticAnalyzer
+
+# Get only primary model IDs for CLI display (exclude aliases)
+PRIMARY_MODEL_IDS = sorted(set(MODEL_ALIASES.values()))
 
 console = Console()
 
@@ -73,8 +82,8 @@ def display_available_models() -> None:
 @click.option(
     "--output",
     "-o",
-    type=click.Path(path_type=Path),
-    help="Output Markdown report to file",
+    type=click.Path(dir_okay=False, path_type=Path),
+    help="Output Markdown report to file (e.g., report.md)",
 )
 @click.option(
     "--severity",
@@ -86,21 +95,25 @@ def display_available_models() -> None:
     help="Minimum severity level to display",
 )
 @click.option("--exclude", "-e", multiple=True, help="Additional exclusion patterns")
-@click.option("--max-files", type=int, help="Maximum number of files to analyze")
+@click.option(
+    "--max-files",
+    type=click.IntRange(min=1, max=10000),
+    help="Maximum number of files to analyze (1-10000)",
+)
 @click.option(
     "--max-file-size",
-    type=int,
+    type=click.IntRange(min=1, max=10240),
     default=MAX_FILE_SIZE_KB,
-    help=f"Maximum file size in KB (default: {MAX_FILE_SIZE_KB})",
+    help=f"Maximum file size in KB (default: {MAX_FILE_SIZE_KB}, max: 10240)",
 )
 @click.option("--aws-profile", type=str, help="AWS CLI profile to use")
 @click.option(
     "--model",
     "-m",
     "model_name",
-    type=click.Choice(list(MODEL_ALIASES.keys()), case_sensitive=False),
+    type=click.Choice(PRIMARY_MODEL_IDS, case_sensitive=False),
     default="opus",
-    help="Model to use: opus, sonnet, haiku, minimax, mistral, kimi, qwen (default: opus)",
+    help=f"Model to use: {', '.join(PRIMARY_MODEL_IDS)} (default: opus)",
 )
 @click.option(
     "--static-analysis",
@@ -110,8 +123,8 @@ def display_available_models() -> None:
 @click.option(
     "--temperature",
     type=float,
-    default=0.1,
-    help="Temperature for model inference (default: 0.1)",
+    default=None,
+    help="Temperature for model inference (uses model-specific default if not specified)",
 )
 @click.option(
     "--dry-run",
@@ -119,6 +132,11 @@ def display_available_models() -> None:
     help="Show files and estimated cost without making API calls",
 )
 @click.option("--verbose", "-v", is_flag=True, help="Show detailed progress")
+@click.option(
+    "--stream",
+    is_flag=True,
+    help="Enable streaming output with real-time token display",
+)
 @click.option(
     "--list-models",
     is_flag=True,
@@ -136,16 +154,17 @@ def main(
     aws_profile: str | None,
     model_name: str,
     static_analysis: bool,
-    temperature: float,
+    temperature: float | None,
     dry_run: bool,
     verbose: bool,
+    stream: bool,
     list_models: bool,
 ) -> None:
     """
     Analyze code in DIRECTORY and generate a comprehensive review report.
 
     Reviews Python, Go, Shell, C++, Java, JavaScript, and TypeScript files using
-    LLM models via AWS Bedrock.
+    LLM models via AWS Bedrock or Azure OpenAI.
     """
     # Handle --list-models flag first
     if list_models:
@@ -188,7 +207,10 @@ def main(
             )
             files = scanner.scan()
 
-            if max_files:
+            if max_files and len(files) > max_files:
+                console.print(
+                    f"[yellow]⚠️  Limiting analysis to {max_files} of {len(files)} files[/yellow]"
+                )
                 files = files[:max_files]
 
             progress.update(task, completed=True)
@@ -234,7 +256,7 @@ def main(
                     static_results = analyzer_static.run_all()
                     progress.update(task, completed=True)
 
-                _render_static_analysis_results(static_results)
+                StaticAnalysisRenderer(console).render(static_results)
 
         # Step 2: Create batches
         batcher = FileBatcher()
@@ -244,13 +266,23 @@ def main(
 
         # Handle dry-run mode
         if dry_run:
-            _render_dry_run(files, batches, model_name, model_display_name, console)
+            _render_dry_run(
+                files, batches, model_name, model_display_name, provider, console
+            )
             return
 
         # Step 3: Analyze batches
+        # Set up callbacks for streaming/progress if requested
+        callbacks: list | None = None
+        if stream:
+            callbacks = [StreamingCallbackHandler(console=console, verbose=True)]
+        elif verbose:
+            callbacks = [ProgressCallbackHandler(console=console)]
+
         analyzer = CodeAnalyzer(
             model_name=model_name,
             temperature=temperature,
+            callbacks=callbacks,
         )
         all_issues = []
         all_suggestions = []
@@ -321,8 +353,20 @@ def main(
                     if verbose:
                         console.print(traceback.format_exc())
 
-                except Exception as e:
-                    console.print(f"\n[red]✗ Error analyzing batch {i}: {e}[/red]")
+                except (ValueError, KeyError) as e:
+                    # Parse/validation errors from structured output
+                    console.print(
+                        f"\n[red]✗ Parse error in batch {i}: {type(e).__name__}: {e}[/red]"
+                    )
+                    if verbose:
+                        console.print(traceback.format_exc())
+
+                except (RuntimeError, OSError) as e:
+                    # Recoverable errors - log and continue with other batches
+                    console.print(
+                        f"\n[red]✗ Error analyzing batch {i}: "
+                        f"{type(e).__name__}: {e}[/red]"
+                    )
                     if verbose:
                         console.print(traceback.format_exc())
 
@@ -454,69 +498,6 @@ def main(
         raise click.Abort()
 
 
-def _render_static_analysis_results(results: dict) -> None:
-    """Render static analysis results to terminal."""
-    summary = StaticAnalyzer.get_summary(results)
-
-    # Create summary table
-    table = Table(
-        title="Static Analysis Results", show_header=True, header_style="bold cyan"
-    )
-    table.add_column("Tool", style="cyan")
-    table.add_column("Status", justify="center")
-    table.add_column("Issues", justify="right")
-
-    for tool_name, result in results.items():
-        tool_config = StaticAnalyzer.TOOLS.get(tool_name, {})
-        tool_display = tool_config.get("name", tool_name)
-
-        if result.passed:
-            status = "[green]✓ Passed[/green]"
-        elif result.errors:
-            status = "[red]✗ Error[/red]"
-        else:
-            status = "[yellow]⚠ Issues[/yellow]"
-
-        issues_str = str(result.issues_count) if result.issues_count > 0 else "-"
-
-        table.add_row(tool_display, status, issues_str)
-
-    console.print(table)
-    console.print()
-
-    # Overall summary
-    if summary["passed"]:
-        console.print("[green]✓ All static analysis checks passed![/green]\n")
-    else:
-        console.print(
-            f"[yellow]⚠️  {summary['tools_failed']} tool(s) found issues ({summary['total_issues']} total)[/yellow]\n"
-        )
-
-    # Show details for failed tools
-    for tool_name, result in results.items():
-        if not result.passed and not result.errors and result.output:
-            tool_config = StaticAnalyzer.TOOLS.get(tool_name, {})
-            tool_display = tool_config.get("name", tool_name)
-
-            # Limit output to first 20 lines
-            output_lines = result.output.split("\n")[:20]
-            output_preview = "\n".join(output_lines)
-
-            if len(result.output.split("\n")) > 20:
-                output_preview += (
-                    f"\n... ({len(result.output.split('\n')) - 20} more lines)"
-                )
-
-            console.print(
-                Panel(
-                    output_preview,
-                    title=f"[yellow]{tool_display} Output[/yellow]",
-                    border_style="yellow",
-                )
-            )
-            console.print()
-
-
 def _generate_recommendations(issues: list[ReviewIssue]) -> list[str]:
     """Generate top recommendations from issues."""
     critical = [i for i in issues if i.severity == "Critical"]
@@ -538,28 +519,41 @@ def _generate_recommendations(issues: list[ReviewIssue]) -> list[str]:
     return recommendations[:5]
 
 
-def _render_dry_run(files, batches, model_name, model_display_name, console) -> None:
-    """Render dry-run output showing files and estimated costs."""
-    from rich.table import Table
+def _render_dry_run(
+    files: list[Path],
+    batches: list,
+    _model_name: str,
+    model_display_name: str,
+    provider: ModelProvider,
+    console: Console,
+) -> None:
+    """Render dry-run output showing files, validation, and estimated costs.
 
-    # Get pricing info from factory
-    factory = ProviderFactory()
-    try:
-        provider = factory.create_provider(model_name)
-        pricing = provider.get_pricing()
-    except Exception:
-        # If we can't get pricing, use zeros
-        pricing = {"input_price_per_million": 0, "output_price_per_million": 0}
+    Args:
+        files: List of file paths to analyze
+        batches: List of file batches
+        _model_name: Model name (unused, kept for call-site compatibility)
+        model_display_name: Human-readable model name for display
+        provider: Model provider instance
+        console: Rich console for output
+    """
+    # Get pricing from provider
+    pricing = provider.get_pricing()
 
     console.print("[bold cyan]📋 Dry Run Mode[/bold cyan]\n")
 
-    # Estimate tokens for each file (4 chars ≈ 1 token)
-    def estimate_tokens(file_path: Path) -> int:
-        """Estimate token count for a file (~4 chars per token heuristic)."""
+    # Pre-flight validation
+    console.print("[cyan]🔍 Pre-flight Validation[/cyan]\n")
+    validation = provider.validate_credentials()
+    ValidationRenderer(console).render(validation)
+    console.print()
+
+    # Estimate tokens from file size (avoids reading file content for speed)
+    def estimate_tokens_from_size(file_path: Path) -> int:
+        """Estimate token count from file size (~4 bytes per token heuristic)."""
         try:
-            content = file_path.read_text(encoding="utf-8")
-            return len(content) // 4
-        except OSError, UnicodeDecodeError:
+            return file_path.stat().st_size // 4
+        except OSError:
             return 0
 
     # Build file table
@@ -571,7 +565,7 @@ def _render_dry_run(files, batches, model_name, model_display_name, console) -> 
     total_tokens = 0
     for file_path in files:
         size_kb = file_path.stat().st_size / 1024
-        tokens = estimate_tokens(file_path)
+        tokens = estimate_tokens_from_size(file_path)
         total_tokens += tokens
         table.add_row(
             str(file_path.name),

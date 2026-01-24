@@ -1,10 +1,25 @@
 """Static analysis integration for code quality tools across multiple languages."""
 
+import logging
 import subprocess
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TypedDict
+
+# Maximum number of files to pass to command line tools
+# Prevents "Argument list too long" errors on large repos
+MAX_FILES_PER_TOOL = 500
+
+
+class StaticAnalysisSummary(TypedDict):
+    """Summary of static analysis results."""
+
+    tools_run: int
+    tools_passed: int
+    tools_failed: int
+    total_issues: int
+    passed: bool
 
 
 @dataclass
@@ -173,7 +188,7 @@ class StaticAnalyzer:
                 # Only mark as available if the command succeeds
                 if result.returncode == 0:
                     available.append(tool_name)
-            except FileNotFoundError, subprocess.TimeoutExpired:
+            except (FileNotFoundError, subprocess.TimeoutExpired, PermissionError):  # fmt: skip
                 pass
         return available
 
@@ -247,6 +262,12 @@ class StaticAnalyzer:
                     output="No shell scripts found",
                     errors=[],
                 )
+            if len(shell_files) > MAX_FILES_PER_TOOL:
+                logging.warning(
+                    f"shellcheck: Limiting to {MAX_FILES_PER_TOOL} of "
+                    f"{len(shell_files)} files to avoid command line length limits"
+                )
+                shell_files = shell_files[:MAX_FILES_PER_TOOL]
             command = base_command + [str(f) for f in shell_files]
             cwd = self.directory
         elif tool_name in ("clang-tidy", "clang-format"):
@@ -266,6 +287,12 @@ class StaticAnalyzer:
                     output="No C++ files found",
                     errors=[],
                 )
+            if len(cpp_files) > MAX_FILES_PER_TOOL:
+                logging.warning(
+                    f"{tool_name}: Limiting to {MAX_FILES_PER_TOOL} of "
+                    f"{len(cpp_files)} files to avoid command line length limits"
+                )
+                cpp_files = cpp_files[:MAX_FILES_PER_TOOL]
             command = base_command + [str(f) for f in cpp_files]
             cwd = self.directory
         elif tool_name == "cppcheck":
@@ -283,10 +310,17 @@ class StaticAnalyzer:
                     output="No Java files found",
                     errors=[],
                 )
+            if len(java_files) > MAX_FILES_PER_TOOL:
+                logging.warning(
+                    f"checkstyle: Limiting to {MAX_FILES_PER_TOOL} of "
+                    f"{len(java_files)} files to avoid command line length limits"
+                )
+                java_files = java_files[:MAX_FILES_PER_TOOL]
             command = base_command + [str(f) for f in java_files]
             cwd = self.directory
         elif tool_name == "eslint":
             # ESLint accepts directory, looks for JS/TS files
+            # We collect files to check if any exist, but ESLint uses directory path
             js_files = (
                 list(self.directory.rglob("*.js"))
                 + list(self.directory.rglob("*.jsx"))
@@ -301,13 +335,17 @@ class StaticAnalyzer:
                     output="No JavaScript/TypeScript files found",
                     errors=[],
                 )
+            if len(js_files) > MAX_FILES_PER_TOOL:
+                logging.warning(
+                    f"eslint: Found {len(js_files)} JS/TS files, "
+                    "ESLint may take longer on large codebases"
+                )
             command = base_command + [dir_path]
             cwd = self.directory
         elif tool_name == "prettier":
-            # Prettier accepts directory with glob pattern
-            command = base_command + [
-                f"{dir_path}/**/*.{{js,jsx,ts,tsx,json,css,html}}"
-            ]
+            # Prettier can scan directories directly with --ignore-unknown
+            # to skip unsupported files (glob patterns don't expand without shell=True)
+            command = base_command + ["--ignore-unknown", dir_path]
             cwd = self.directory
         elif tool_name == "tsc":
             # TypeScript compiler runs in project directory
@@ -429,8 +467,10 @@ class StaticAnalyzer:
             return {tool: self.run_tool(tool) for tool in self.available_tools}
 
         # Parallel execution using ThreadPoolExecutor
+        # Cap workers to prevent resource exhaustion in containerized environments
         results = {}
-        with ThreadPoolExecutor(max_workers=len(self.available_tools)) as executor:
+        max_workers = min(len(self.available_tools), 8)
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
             future_to_tool = {
                 executor.submit(self.run_tool, tool): tool
                 for tool in self.available_tools
@@ -451,7 +491,7 @@ class StaticAnalyzer:
         return results
 
     @staticmethod
-    def get_summary(results: dict[str, StaticAnalysisResult]) -> dict[str, Any]:
+    def get_summary(results: dict[str, StaticAnalysisResult]) -> StaticAnalysisSummary:
         """
         Generate summary of static analysis results.
 
@@ -459,7 +499,7 @@ class StaticAnalyzer:
             results: Results from run_all()
 
         Returns:
-            Summary dictionary
+            StaticAnalysisSummary with aggregated metrics
         """
         total_issues = sum(r.issues_count for r in results.values())
         tools_passed = sum(1 for r in results.values() if r.passed)

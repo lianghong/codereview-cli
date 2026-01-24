@@ -3,14 +3,27 @@
 import time
 from typing import Any
 
+from langchain_core.callbacks import BaseCallbackHandler
+from langchain_core.output_parsers import PydanticOutputParser
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.rate_limiters import InMemoryRateLimiter
 from langchain_openai import AzureChatOpenAI
 from openai import RateLimitError
+from pydantic import SecretStr, ValidationError
 
 # Import system prompt from config
-from codereview.config import SYSTEM_PROMPT  # type: ignore[attr-defined]
+from codereview.config import SYSTEM_PROMPT
 from codereview.config.models import AzureOpenAIConfig, ModelConfig
 from codereview.models import CodeReviewReport
-from codereview.providers.base import ModelProvider
+from codereview.providers.base import ModelProvider, ValidationResult
+
+# Shared prompt template for consistent formatting
+BATCH_PROMPT_TEMPLATE = ChatPromptTemplate.from_messages(
+    [
+        ("system", "{system_prompt}"),
+        ("human", "{batch_context}"),
+    ]
+)
 
 
 class AzureOpenAIProvider(ModelProvider):
@@ -21,6 +34,9 @@ class AzureOpenAIProvider(ModelProvider):
         model_config: ModelConfig,
         provider_config: AzureOpenAIConfig,
         temperature: float | None = None,
+        requests_per_second: float = 1.0,
+        callbacks: list[BaseCallbackHandler] | None = None,
+        enable_output_fixing: bool = True,
     ):
         """Initialize Azure OpenAI provider.
 
@@ -28,12 +44,22 @@ class AzureOpenAIProvider(ModelProvider):
             model_config: Model configuration with pricing and inference params
             provider_config: Azure-specific configuration (endpoint, API key, etc.)
             temperature: Override temperature (uses model default if None)
+            requests_per_second: Rate limit for API calls (default: 1.0)
+            callbacks: Optional list of callback handlers for streaming/progress
+            enable_output_fixing: Enable automatic retry on malformed output (default: True)
         """
+        self.callbacks = callbacks or []
+        self.enable_output_fixing = enable_output_fixing
+        self._output_parser = PydanticOutputParser(pydantic_object=CodeReviewReport)
         self.model_config = model_config
         self.provider_config = provider_config
 
         # Determine temperature (override > model default > 0.0 for Azure)
         if temperature is not None:
+            if not 0.0 <= temperature <= 2.0:
+                raise ValueError(
+                    f"Temperature must be between 0.0 and 2.0, got {temperature}"
+                )
             self.temperature = temperature
         elif (
             model_config.inference_params
@@ -56,8 +82,16 @@ class AzureOpenAIProvider(ModelProvider):
         self._total_input_tokens = 0
         self._total_output_tokens = 0
 
-        # Create LangChain model
+        # Rate limiter for API calls
+        self.rate_limiter = InMemoryRateLimiter(
+            requests_per_second=requests_per_second,
+            check_every_n_seconds=0.1,
+            max_bucket_size=10,
+        )
+
+        # Create LangChain model and chain
         self.model = self._create_model()
+        self.chain = self._create_chain()
 
     def _create_model(self) -> Any:
         """Create LangChain Azure OpenAI model with structured output."""
@@ -66,19 +100,24 @@ class AzureOpenAIProvider(ModelProvider):
         if self.top_p is not None:
             model_kwargs["top_p"] = self.top_p
 
-        from pydantic import SecretStr
-
         base_model = AzureChatOpenAI(
             azure_deployment=self.model_config.deployment_name,
             azure_endpoint=str(self.provider_config.endpoint),
             api_key=SecretStr(self.provider_config.api_key),  # type: ignore[arg-type]
             api_version=self.provider_config.api_version,
             temperature=self.temperature,
+            rate_limiter=self.rate_limiter,
+            callbacks=self.callbacks if self.callbacks else None,
+            streaming=bool(self.callbacks),  # Enable streaming if callbacks provided
             model_kwargs={**model_kwargs, "max_tokens": self.max_tokens},
         )
 
         # Configure for structured output
         return base_model.with_structured_output(CodeReviewReport)
+
+    def _create_chain(self) -> Any:
+        """Create LangChain chain with prompt template."""
+        return BATCH_PROMPT_TEMPLATE | self.model
 
     def analyze_batch(
         self,
@@ -101,19 +140,20 @@ class AzureOpenAIProvider(ModelProvider):
         Raises:
             RateLimitError: If Azure API rate limit exceeded after all retries
         """
-        context = self._prepare_batch_context(
+        batch_context = self._prepare_batch_context(
             batch_number, total_batches, files_content
         )
 
-        messages = [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": context},
-        ]
+        # Use chain with prompt template for cleaner invocation
+        chain_input = {
+            "system_prompt": SYSTEM_PROMPT,
+            "batch_context": batch_context,
+        }
 
-        last_error: RateLimitError | None = None
+        last_error: RateLimitError | ValidationError | None = None
         for attempt in range(max_retries + 1):
             try:
-                result = self.model.invoke(messages)
+                result = self.chain.invoke(chain_input)
 
                 # Track token usage from Azure OpenAI response metadata
                 input_tokens = 0
@@ -125,8 +165,9 @@ class AzureOpenAIProvider(ModelProvider):
                     output_tokens = token_usage.get("completion_tokens", 0)
 
                 # Fallback to estimation if actual counts unavailable
-                if input_tokens == 0 and output_tokens == 0:
-                    input_tokens = self._estimate_tokens(context)
+                if input_tokens == 0:
+                    input_tokens = self._estimate_tokens(batch_context)
+                if output_tokens == 0:
                     output_tokens = self._estimate_tokens(str(result.model_dump_json()))
 
                 self._total_input_tokens += input_tokens
@@ -134,9 +175,22 @@ class AzureOpenAIProvider(ModelProvider):
 
                 return result
 
+            except ValidationError as e:
+                # Output parsing/validation failed
+                last_error = e
+
+                if self.enable_output_fixing and attempt < max_retries:
+                    # Try again - LangChain structured output will retry
+                    time.sleep(1)
+                    continue
+
+                raise
+
             except RateLimitError as e:
                 last_error = e
 
+                # Rate limiter handles most cases, but we still need manual retry
+                # for edge cases
                 if attempt < max_retries:
                     # Exponential backoff: 2^attempt seconds
                     wait_time = 2**attempt
@@ -146,52 +200,10 @@ class AzureOpenAIProvider(ModelProvider):
                 # For all retries exhausted, raise
                 raise
 
-        # If we exhausted all retries
-        if last_error is None:
-            raise RuntimeError("Unexpected: last_error is None after retry loop")
+        # If we exhausted all retries, last_error must be set
+        # (loop only exits early on success via return)
+        assert last_error is not None, "Retry loop exited without error or success"
         raise last_error
-
-    def _prepare_batch_context(
-        self,
-        batch_number: int,
-        total_batches: int,
-        files_content: dict[str, str],
-    ) -> str:
-        """Prepare context string for LLM.
-
-        Args:
-            batch_number: Current batch number
-            total_batches: Total number of batches
-            files_content: Dictionary mapping file paths to file contents
-
-        Returns:
-            Formatted context string
-        """
-        lines = [
-            f"Analyzing Batch {batch_number}/{total_batches}",
-            f"Files in this batch: {len(files_content)}",
-            "",
-            "=" * 80,
-            "",
-        ]
-
-        for file_path, content in files_content.items():
-            lines.append(f"File: {file_path}")
-            lines.append("-" * 80)
-
-            # Add line numbers
-            for i, line in enumerate(content.splitlines(), start=1):
-                lines.append(f"{i:4d} | {line}")
-
-            lines.append("")
-            lines.append("=" * 80)
-            lines.append("")
-
-        return "\n".join(lines)
-
-    def _estimate_tokens(self, text: str) -> int:
-        """Estimate token count (~4 chars per token heuristic)."""
-        return len(text) // 4
 
     def get_model_display_name(self) -> str:
         """Get human-readable model name."""
@@ -244,3 +256,155 @@ class AzureOpenAIProvider(ModelProvider):
             "output_cost": output_cost,
             "total_cost": input_cost + output_cost,
         }
+
+    def validate_credentials(self) -> ValidationResult:
+        """Validate Azure OpenAI credentials and configuration.
+
+        Checks:
+        1. API key is configured (not empty/placeholder)
+        2. Endpoint URL is valid
+        3. Deployment name is set
+        4. Optionally tests connection
+
+        Returns:
+            ValidationResult with check details
+        """
+        import os
+        from urllib.parse import urlparse
+
+        result = ValidationResult(valid=True, provider="Azure OpenAI")
+
+        # Check 1: API key configured
+        api_key = self.provider_config.api_key
+        if not api_key or api_key in ("", "your-api-key-here", "placeholder"):
+            result.valid = False
+            result.add_check(
+                "API Key",
+                False,
+                "Azure OpenAI API key not configured",
+            )
+            result.add_suggestion("Set AZURE_OPENAI_API_KEY environment variable")
+            result.add_suggestion(
+                "Or configure api_key in config/models.yaml under azure_openai section"
+            )
+            return result
+
+        # Check if it looks like a placeholder
+        if len(api_key) < 20:
+            result.add_warning("API key seems unusually short. Verify it's correct.")
+
+        result.add_check("API Key", True, "API key configured")
+
+        # Check 2: Endpoint URL valid
+        endpoint = str(self.provider_config.endpoint).rstrip("/")
+        if not endpoint or endpoint in ("", "https://your-resource.openai.azure.com"):
+            result.valid = False
+            result.add_check(
+                "Endpoint",
+                False,
+                "Azure OpenAI endpoint not configured",
+            )
+            result.add_suggestion("Set AZURE_OPENAI_ENDPOINT environment variable")
+            result.add_suggestion(
+                "Or configure endpoint in config/models.yaml under azure_openai section"
+            )
+            return result
+
+        # Also check for placeholder patterns in URL
+        if "your-resource" in endpoint or "your-endpoint" in endpoint:
+            result.valid = False
+            result.add_check(
+                "Endpoint",
+                False,
+                "Azure OpenAI endpoint appears to be a placeholder",
+            )
+            result.add_suggestion(
+                "Replace placeholder endpoint with your actual Azure OpenAI resource URL"
+            )
+            return result
+
+        # Validate URL format
+        try:
+            parsed = urlparse(endpoint)
+            if not parsed.scheme or not parsed.netloc:
+                result.valid = False
+                result.add_check(
+                    "Endpoint",
+                    False,
+                    f"Invalid endpoint URL format: {endpoint}",
+                )
+                result.add_suggestion(
+                    "Endpoint should be like: https://your-resource.openai.azure.com"
+                )
+                return result
+
+            if not endpoint.startswith("https://"):
+                result.add_warning("Endpoint should use HTTPS for security")
+
+            result.add_check("Endpoint", True, f"Endpoint: {endpoint}")
+
+        except Exception as e:
+            result.valid = False
+            result.add_check("Endpoint", False, f"Error parsing endpoint: {e}")
+            return result
+
+        # Check 3: Deployment name
+        deployment = self.model_config.deployment_name
+        if not deployment:
+            result.valid = False
+            result.add_check(
+                "Deployment",
+                False,
+                "Deployment name not configured for model",
+            )
+            result.add_suggestion(
+                f"Configure deployment_name for model '{self.model_config.id}' "
+                "in config/models.yaml"
+            )
+            return result
+
+        result.add_check("Deployment", True, f"Deployment: {deployment}")
+
+        # Check 4: API version
+        api_version = self.provider_config.api_version
+        if api_version:
+            result.add_check("API Version", True, f"Version: {api_version}")
+        else:
+            result.add_warning("No API version specified, using default")
+
+        # Check 5: Optional connection test (lightweight)
+        env_skip_test = os.environ.get("CODEREVIEW_SKIP_CONNECTION_TEST", "").lower()
+        if env_skip_test not in ("1", "true", "yes"):
+            try:
+                import httpx
+
+                # Quick HEAD request to check endpoint is reachable
+                test_url = f"{endpoint.rstrip('/')}/openai/deployments/{deployment}"
+                with httpx.Client(timeout=5.0) as client:
+                    response = client.head(
+                        test_url,
+                        headers={"api-key": api_key},
+                    )
+                    # 401/403 means endpoint exists but we'd need proper auth
+                    # 404 might mean deployment doesn't exist
+                    # Any response means endpoint is reachable
+                    if response.status_code == 404:
+                        result.add_warning(
+                            f"Deployment '{deployment}' may not exist. "
+                            "Verify deployment name in Azure portal."
+                        )
+                    else:
+                        result.add_check(
+                            "Connection",
+                            True,
+                            "Endpoint is reachable",
+                        )
+
+            except ImportError:
+                # httpx not available, skip connection test
+                result.add_warning("Could not test connection (httpx not installed)")
+            except Exception as e:
+                result.add_warning(f"Connection test failed: {e}")
+                result.add_suggestion("Verify endpoint URL and network connectivity")
+
+        return result

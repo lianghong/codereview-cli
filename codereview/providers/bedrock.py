@@ -3,14 +3,28 @@
 import time
 from typing import Any
 
+from botocore.config import Config as BotocoreConfig
 from botocore.exceptions import ClientError
 from langchain_aws import ChatBedrockConverse
+from langchain_core.callbacks import BaseCallbackHandler
+from langchain_core.output_parsers import PydanticOutputParser
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.rate_limiters import InMemoryRateLimiter
+from pydantic import ValidationError
 
 # Import system prompt from config
-from codereview.config import SYSTEM_PROMPT  # type: ignore[attr-defined]
+from codereview.config import SYSTEM_PROMPT
 from codereview.config.models import BedrockConfig, ModelConfig
 from codereview.models import CodeReviewReport
-from codereview.providers.base import ModelProvider
+from codereview.providers.base import ModelProvider, ValidationResult
+
+# Shared prompt template for consistent formatting
+BATCH_PROMPT_TEMPLATE = ChatPromptTemplate.from_messages(
+    [
+        ("system", "{system_prompt}"),
+        ("human", "{batch_context}"),
+    ]
+)
 
 
 class BedrockProvider(ModelProvider):
@@ -21,6 +35,9 @@ class BedrockProvider(ModelProvider):
         model_config: ModelConfig,
         provider_config: BedrockConfig,
         temperature: float | None = None,
+        requests_per_second: float = 1.0,
+        callbacks: list[BaseCallbackHandler] | None = None,
+        enable_output_fixing: bool = True,
     ):
         """Initialize Bedrock provider.
 
@@ -28,12 +45,22 @@ class BedrockProvider(ModelProvider):
             model_config: Model configuration with pricing and inference params
             provider_config: Bedrock-specific configuration (region, etc.)
             temperature: Override temperature (uses model default if None)
+            requests_per_second: Rate limit for API calls (default: 1.0)
+            callbacks: Optional list of callback handlers for streaming/progress
+            enable_output_fixing: Enable automatic retry on malformed output (default: True)
         """
+        self.callbacks = callbacks or []
+        self.enable_output_fixing = enable_output_fixing
+        self._output_parser = PydanticOutputParser(pydantic_object=CodeReviewReport)
         self.model_config = model_config
         self.provider_config = provider_config
 
         # Determine temperature (override > model default > 0.1)
         if temperature is not None:
+            if not 0.0 <= temperature <= 2.0:
+                raise ValueError(
+                    f"Temperature must be between 0.0 and 2.0, got {temperature}"
+                )
             self.temperature = temperature
         elif (
             model_config.inference_params
@@ -58,8 +85,16 @@ class BedrockProvider(ModelProvider):
         self._total_input_tokens = 0
         self._total_output_tokens = 0
 
-        # Create LangChain model
+        # Rate limiter for API calls
+        self.rate_limiter = InMemoryRateLimiter(
+            requests_per_second=requests_per_second,
+            check_every_n_seconds=0.1,
+            max_bucket_size=10,
+        )
+
+        # Create LangChain model and chain
         self.model = self._create_model()
+        self.chain = self._create_chain()
 
     def _create_model(self) -> Any:
         """Create LangChain Bedrock model with structured output."""
@@ -76,11 +111,21 @@ class BedrockProvider(ModelProvider):
         if self.top_k is not None:
             additional_fields["top_k"] = self.top_k
 
+        # Configure botocore with timeout settings
+        botocore_config = BotocoreConfig(
+            read_timeout=self.provider_config.read_timeout,
+            connect_timeout=self.provider_config.connect_timeout,
+            retries={"max_attempts": 0},  # We handle retries ourselves
+        )
+
         base_model = ChatBedrockConverse(
             model=self.model_config.full_id,
             region_name=self.provider_config.region,
             temperature=self.temperature,
             max_tokens=self.max_tokens,
+            config=botocore_config,
+            rate_limiter=self.rate_limiter,
+            callbacks=self.callbacks if self.callbacks else None,
             additional_model_request_fields=(
                 additional_fields if additional_fields else None
             ),
@@ -88,6 +133,10 @@ class BedrockProvider(ModelProvider):
 
         # Configure for structured output
         return base_model.with_structured_output(CodeReviewReport)
+
+    def _create_chain(self) -> Any:
+        """Create LangChain chain with prompt template."""
+        return BATCH_PROMPT_TEMPLATE | self.model
 
     def analyze_batch(
         self,
@@ -110,19 +159,20 @@ class BedrockProvider(ModelProvider):
         Raises:
             ClientError: If AWS API call fails after all retries
         """
-        context = self._prepare_batch_context(
+        batch_context = self._prepare_batch_context(
             batch_number, total_batches, files_content
         )
 
-        messages = [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": context},
-        ]
+        # Use chain with prompt template for cleaner invocation
+        chain_input = {
+            "system_prompt": SYSTEM_PROMPT,
+            "batch_context": batch_context,
+        }
 
-        last_error: ClientError | None = None
+        last_error: ClientError | ValidationError | None = None
         for attempt in range(max_retries + 1):
             try:
-                result = self.model.invoke(messages)
+                result = self.chain.invoke(chain_input)
 
                 # Track token usage from AWS Bedrock response metadata
                 input_tokens = 0
@@ -135,7 +185,8 @@ class BedrockProvider(ModelProvider):
 
                 # Fallback to estimation if actual counts unavailable
                 if input_tokens == 0:
-                    input_tokens = self._estimate_tokens(context)
+                    input_tokens = self._estimate_tokens(batch_context)
+                if output_tokens == 0:
                     output_tokens = self._estimate_tokens(str(result.model_dump_json()))
 
                 self._total_input_tokens += input_tokens
@@ -143,11 +194,23 @@ class BedrockProvider(ModelProvider):
 
                 return result
 
+            except ValidationError as e:
+                # Output parsing/validation failed
+                last_error = e
+
+                if self.enable_output_fixing and attempt < max_retries:
+                    # Try again - LangChain structured output will retry
+                    time.sleep(1)
+                    continue
+
+                raise
+
             except ClientError as e:
                 error_code = e.response.get("Error", {}).get("Code", "")
                 last_error = e
 
-                # Check if it's a throttling error
+                # Check if it's a throttling error (rate limiter handles most cases,
+                # but we still need manual retry for edge cases)
                 if error_code in ["ThrottlingException", "TooManyRequestsException"]:
                     if attempt < max_retries:
                         # Exponential backoff: 2^attempt seconds
@@ -158,52 +221,10 @@ class BedrockProvider(ModelProvider):
                 # For other errors, raise immediately
                 raise
 
-        # If we exhausted all retries
-        if last_error is None:
-            raise RuntimeError("Unexpected: last_error is None after retry loop")
+        # If we exhausted all retries, last_error must be set
+        # (loop only exits early on success via return)
+        assert last_error is not None, "Retry loop exited without error or success"
         raise last_error
-
-    def _prepare_batch_context(
-        self,
-        batch_number: int,
-        total_batches: int,
-        files_content: dict[str, str],
-    ) -> str:
-        """Prepare context string for LLM.
-
-        Args:
-            batch_number: Current batch number
-            total_batches: Total number of batches
-            files_content: Dictionary mapping file paths to file contents
-
-        Returns:
-            Formatted context string
-        """
-        lines = [
-            f"Analyzing Batch {batch_number}/{total_batches}",
-            f"Files in this batch: {len(files_content)}",
-            "",
-            "=" * 80,
-            "",
-        ]
-
-        for file_path, content in files_content.items():
-            lines.append(f"File: {file_path}")
-            lines.append("-" * 80)
-
-            # Add line numbers
-            for i, line in enumerate(content.splitlines(), start=1):
-                lines.append(f"{i:4d} | {line}")
-
-            lines.append("")
-            lines.append("=" * 80)
-            lines.append("")
-
-        return "\n".join(lines)
-
-    def _estimate_tokens(self, text: str) -> int:
-        """Estimate token count (~4 chars per token heuristic)."""
-        return len(text) // 4
 
     def get_model_display_name(self) -> str:
         """Get human-readable model name."""
@@ -247,3 +268,147 @@ class BedrockProvider(ModelProvider):
             "output_cost": output_cost,
             "total_cost": input_cost + output_cost,
         }
+
+    def validate_credentials(self) -> ValidationResult:
+        """Validate AWS credentials and Bedrock access.
+
+        Checks:
+        1. AWS credentials are configured
+        2. Can access AWS STS (identity check)
+        3. Bedrock model is accessible in region
+
+        Returns:
+            ValidationResult with check details
+        """
+        import boto3
+
+        result = ValidationResult(valid=True, provider="AWS Bedrock")
+
+        # Check 1: AWS credentials configured
+        try:
+            session = boto3.Session()
+            credentials = session.get_credentials()
+
+            if credentials is None:
+                result.valid = False
+                result.add_check(
+                    "AWS Credentials",
+                    False,
+                    "No AWS credentials found",
+                )
+                result.add_suggestion("Run 'aws configure' to set up credentials")
+                result.add_suggestion(
+                    "Or set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY environment variables"
+                )
+                result.add_suggestion("Or use --aws-profile flag to specify a profile")
+                return result
+
+            result.add_check("AWS Credentials", True, "Credentials found")
+
+        except Exception as e:
+            result.valid = False
+            result.add_check(
+                "AWS Credentials", False, f"Error checking credentials: {e}"
+            )
+            return result
+
+        # Check 2: STS identity (validates credentials work)
+        try:
+            sts = session.client("sts", region_name=self.provider_config.region)
+            identity = sts.get_caller_identity()
+            account_id = identity.get("Account", "unknown")
+            result.add_check(
+                "AWS Identity",
+                True,
+                f"Authenticated as account {account_id}",
+            )
+
+        except ClientError as e:
+            error_code = e.response.get("Error", {}).get("Code", "")
+            error_msg = e.response.get("Error", {}).get("Message", "")
+            result.valid = False
+            result.add_check(
+                "AWS Identity",
+                False,
+                f"STS error ({error_code}): {error_msg}",
+            )
+            if error_code == "ExpiredToken":
+                result.add_suggestion("Your AWS session token has expired. Refresh it.")
+            elif error_code == "InvalidClientTokenId":
+                result.add_suggestion("Your AWS access key ID is invalid.")
+            return result
+
+        except Exception as e:
+            result.valid = False
+            result.add_check("AWS Identity", False, f"Error: {e}")
+            return result
+
+        # Check 3: Bedrock model access
+        try:
+            bedrock = session.client(
+                "bedrock",
+                region_name=self.provider_config.region,
+            )
+
+            # List foundation models to check access
+            response = bedrock.list_foundation_models(
+                byOutputModality="TEXT",
+            )
+
+            # Check if our model is in the list
+            model_id = self.model_config.full_id or ""
+            available_models = [
+                m.get("modelId", "") for m in response.get("modelSummaries", [])
+            ]
+
+            # For cross-region inference, check base model ID
+            base_model_id: str = model_id
+            if model_id.startswith("global."):
+                # Extract base model from global inference ID
+                # e.g., "global.anthropic.claude-opus-4-5-20251101-v1:0"
+                # -> "anthropic.claude-opus-4-5-20251101-v1:0"
+                parts = model_id.split(".", 1)
+                if len(parts) > 1:
+                    base_model_id = parts[1]
+
+            # Check if model or a variant is available
+            model_found = any(
+                base_model_id in m or m in base_model_id for m in available_models
+            )
+
+            if model_found:
+                result.add_check(
+                    "Model Access",
+                    True,
+                    f"Model {self.model_config.name} is available",
+                )
+            else:
+                result.add_warning(
+                    f"Could not confirm model '{self.model_config.name}' access. "
+                    "It may still work if enabled in Bedrock console."
+                )
+                result.add_suggestion(
+                    f"Ensure '{self.model_config.name}' is enabled in AWS Bedrock console "
+                    f"for region {self.provider_config.region}"
+                )
+
+        except ClientError as e:
+            error_code = e.response.get("Error", {}).get("Code", "")
+            error_msg = e.response.get("Error", {}).get("Message", "")
+
+            if error_code == "AccessDeniedException":
+                result.add_warning(
+                    f"Cannot list Bedrock models: {error_msg}. "
+                    "Model may still work if you have InvokeModel permission."
+                )
+                result.add_suggestion(
+                    "Ensure IAM policy includes 'bedrock:ListFoundationModels' "
+                    "for pre-flight validation"
+                )
+            else:
+                result.add_warning(f"Bedrock check warning ({error_code}): {error_msg}")
+
+        except Exception as e:
+            result.add_warning(f"Could not verify Bedrock access: {e}")
+
+        return result
