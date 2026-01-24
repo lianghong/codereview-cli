@@ -262,7 +262,11 @@ def main(
         batcher = FileBatcher()
         batches = batcher.create_batches(files)
 
-        console.print(f"📦 Created {len(batches)} batches\n")
+        try:
+            console.print(f"📦 Created {len(batches)} batches\n")
+        except OSError:
+            # Handle terminal I/O errors
+            print(f"Created {len(batches)} batches")
 
         # Handle dry-run mode
         if dry_run:

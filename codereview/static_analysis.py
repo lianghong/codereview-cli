@@ -363,9 +363,33 @@ class StaticAnalyzer:
             command = base_command + [dir_path]
             cwd = self.directory
         elif tool_name == "prettier":
-            # Prettier can scan directories directly with --ignore-unknown
-            # to skip unsupported files (glob patterns don't expand without shell=True)
-            command = base_command + ["--ignore-unknown", dir_path]
+            # Prettier needs files to format - check for JS/TS/CSS/HTML files
+            prettier_files = (
+                list(self.directory.rglob("*.js"))
+                + list(self.directory.rglob("*.jsx"))
+                + list(self.directory.rglob("*.ts"))
+                + list(self.directory.rglob("*.tsx"))
+                + list(self.directory.rglob("*.css"))
+                + list(self.directory.rglob("*.html"))
+                + list(self.directory.rglob("*.json"))
+                + list(self.directory.rglob("*.md"))
+            )
+            if not prettier_files:
+                return StaticAnalysisResult(
+                    tool=tool_name,
+                    passed=True,
+                    issues_count=0,
+                    output="No files found for Prettier to format",
+                    errors=[],
+                )
+            # Pass explicit files to prettier (--ignore-unknown may not be supported)
+            if len(prettier_files) > MAX_FILES_PER_TOOL:
+                logging.warning(
+                    f"prettier: Limiting to {MAX_FILES_PER_TOOL} of "
+                    f"{len(prettier_files)} files to avoid command line length limits"
+                )
+                prettier_files = prettier_files[:MAX_FILES_PER_TOOL]
+            command = base_command + [str(f) for f in prettier_files]
             cwd = self.directory
         elif tool_name == "tsc":
             # TypeScript compiler needs tsconfig.json or explicit files
