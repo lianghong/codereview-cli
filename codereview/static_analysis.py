@@ -65,7 +65,7 @@ class StaticAnalyzer:
         "vulture": {
             "name": "Vulture",
             "description": "Dead code finder",
-            "command": ["vulture"],
+            "command": ["vulture", "--min-confidence", "80"],
             "language": "python",
         },
         # Go tools
@@ -241,11 +241,31 @@ class StaticAnalyzer:
         if tool_name == "go-vet":
             # go vet: Uses Go's "./..." pattern to recursively check all packages
             # in the current module. Must run from within the Go module directory.
+            # Check if there are any Go files first
+            go_files = list(self.directory.rglob("*.go"))
+            if not go_files:
+                return StaticAnalysisResult(
+                    tool=tool_name,
+                    passed=True,
+                    issues_count=0,
+                    output="No Go files found",
+                    errors=[],
+                )
             command = base_command + ["./..."]
             cwd = self.directory
         elif tool_name == "golangci-lint":
             # golangci-lint: Automatically finds Go files when run in a Go module.
             # No path argument needed; it uses the current working directory.
+            # Check if there are any Go files first
+            go_files = list(self.directory.rglob("*.go"))
+            if not go_files:
+                return StaticAnalysisResult(
+                    tool=tool_name,
+                    passed=True,
+                    issues_count=0,
+                    output="No Go files found",
+                    errors=[],
+                )
             command = base_command
             cwd = self.directory
         elif tool_name == "shellcheck":
@@ -348,12 +368,50 @@ class StaticAnalyzer:
             command = base_command + ["--ignore-unknown", dir_path]
             cwd = self.directory
         elif tool_name == "tsc":
-            # TypeScript compiler runs in project directory
-            # Looks for tsconfig.json automatically
-            command = base_command
+            # TypeScript compiler needs tsconfig.json or explicit files
+            tsconfig_path = self.directory / "tsconfig.json"
+            if not tsconfig_path.exists():
+                # No tsconfig.json - check for TypeScript files
+                ts_files = list(self.directory.rglob("*.ts")) + list(
+                    self.directory.rglob("*.tsx")
+                )
+                # Filter out .d.ts declaration files
+                ts_files = [f for f in ts_files if not str(f).endswith(".d.ts")]
+                if not ts_files:
+                    return StaticAnalysisResult(
+                        tool=tool_name,
+                        passed=True,
+                        issues_count=0,
+                        output="No TypeScript files found (no tsconfig.json)",
+                        errors=[],
+                    )
+                # Pass explicit files to tsc
+                if len(ts_files) > MAX_FILES_PER_TOOL:
+                    logging.warning(
+                        f"tsc: Limiting to {MAX_FILES_PER_TOOL} of "
+                        f"{len(ts_files)} files to avoid command line length limits"
+                    )
+                    ts_files = ts_files[:MAX_FILES_PER_TOOL]
+                command = base_command + [str(f) for f in ts_files]
+            else:
+                # tsconfig.json exists, tsc will use it
+                command = base_command
             cwd = self.directory
+        elif tool_name == "gofmt":
+            # gofmt accepts a directory path but needs Go files to exist
+            go_files = list(self.directory.rglob("*.go"))
+            if not go_files:
+                return StaticAnalysisResult(
+                    tool=tool_name,
+                    passed=True,
+                    issues_count=0,
+                    output="No Go files found",
+                    errors=[],
+                )
+            command = base_command + [dir_path]
+            cwd = self.directory.parent
         else:
-            # Default (ruff, mypy, black, isort, vulture, gofmt):
+            # Default (ruff, mypy, black, isort, vulture):
             # These tools accept a directory path as the final argument.
             command = base_command + [dir_path]
             cwd = self.directory.parent

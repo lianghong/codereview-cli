@@ -246,7 +246,7 @@ def test_vulture_in_tools():
     vulture_config = StaticAnalyzer.TOOLS["vulture"]
     assert vulture_config["name"] == "Vulture"
     assert vulture_config["description"] == "Dead code finder"
-    assert vulture_config["command"] == ["vulture"]
+    assert vulture_config["command"] == ["vulture", "--min-confidence", "80"]
 
 
 # Go static analysis tests
@@ -280,8 +280,25 @@ def test_go_tools_in_tools():
     assert gofmt_config["language"] == "go"
 
 
+@pytest.fixture
+def go_directory(tmp_path):
+    """Create a sample directory with Go files."""
+    src_dir = tmp_path / "src"
+    src_dir.mkdir()
+
+    # Create a simple Go file
+    (src_dir / "main.go").write_text("""package main
+
+func main() {
+    println("Hello World")
+}
+""")
+
+    return src_dir
+
+
 @patch("subprocess.run")
-def test_run_golangci_lint_with_issues(mock_subprocess, sample_directory):
+def test_run_golangci_lint_with_issues(mock_subprocess, go_directory):
     """Test running golangci-lint when it finds issues."""
     mock_subprocess.return_value = Mock(
         returncode=1,
@@ -289,7 +306,7 @@ def test_run_golangci_lint_with_issues(mock_subprocess, sample_directory):
         stderr="",
     )
 
-    analyzer = StaticAnalyzer(sample_directory)
+    analyzer = StaticAnalyzer(go_directory)
     analyzer.available_tools = ["golangci-lint"]
 
     result = analyzer.run_tool("golangci-lint")
@@ -300,7 +317,7 @@ def test_run_golangci_lint_with_issues(mock_subprocess, sample_directory):
 
 
 @patch("subprocess.run")
-def test_run_go_vet_with_issues(mock_subprocess, sample_directory):
+def test_run_go_vet_with_issues(mock_subprocess, go_directory):
     """Test running go vet when it finds issues."""
     mock_subprocess.return_value = Mock(
         returncode=1,
@@ -308,7 +325,7 @@ def test_run_go_vet_with_issues(mock_subprocess, sample_directory):
         stderr="./main.go:10:2: unreachable code\n./main.go:15:5: error: undefined variable\n",
     )
 
-    analyzer = StaticAnalyzer(sample_directory)
+    analyzer = StaticAnalyzer(go_directory)
     analyzer.available_tools = ["go-vet"]
 
     result = analyzer.run_tool("go-vet")
@@ -319,7 +336,7 @@ def test_run_go_vet_with_issues(mock_subprocess, sample_directory):
 
 
 @patch("subprocess.run")
-def test_run_gofmt_with_unformatted_files(mock_subprocess, sample_directory):
+def test_run_gofmt_with_unformatted_files(mock_subprocess, go_directory):
     """Test running gofmt when it finds unformatted files."""
     mock_subprocess.return_value = Mock(
         returncode=0,  # gofmt returns 0 even with unformatted files
@@ -327,7 +344,7 @@ def test_run_gofmt_with_unformatted_files(mock_subprocess, sample_directory):
         stderr="",
     )
 
-    analyzer = StaticAnalyzer(sample_directory)
+    analyzer = StaticAnalyzer(go_directory)
     analyzer.available_tools = ["gofmt"]
 
     result = analyzer.run_tool("gofmt")
@@ -338,11 +355,11 @@ def test_run_gofmt_with_unformatted_files(mock_subprocess, sample_directory):
 
 
 @patch("subprocess.run")
-def test_run_gofmt_all_formatted(mock_subprocess, sample_directory):
+def test_run_gofmt_all_formatted(mock_subprocess, go_directory):
     """Test running gofmt when all files are formatted."""
     mock_subprocess.return_value = Mock(returncode=0, stdout="", stderr="")
 
-    analyzer = StaticAnalyzer(sample_directory)
+    analyzer = StaticAnalyzer(go_directory)
     analyzer.available_tools = ["gofmt"]
 
     result = analyzer.run_tool("gofmt")
@@ -350,6 +367,17 @@ def test_run_gofmt_all_formatted(mock_subprocess, sample_directory):
     assert result.tool == "gofmt"
     assert result.passed is True
     assert result.issues_count == 0
+
+
+def test_run_go_tools_no_go_files(sample_directory):
+    """Test that Go tools return 'No Go files found' for non-Go directories."""
+    analyzer = StaticAnalyzer(sample_directory)
+    analyzer.available_tools = ["go-vet", "golangci-lint", "gofmt"]
+
+    for tool in ["go-vet", "golangci-lint", "gofmt"]:
+        result = analyzer.run_tool(tool)
+        assert result.passed is True
+        assert result.output == "No Go files found"
 
 
 def test_tools_have_language_field():
