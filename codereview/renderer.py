@@ -8,12 +8,23 @@ from rich.panel import Panel
 from rich.table import Table
 
 from codereview.models import CodeReviewReport, ReviewIssue
+from codereview.providers.base import ValidationResult
+from codereview.static_analysis import StaticAnalysisResult, StaticAnalyzer
+
+# Shared constants for severity display
+SEVERITY_ORDER: list[str] = ["Critical", "High", "Medium", "Low", "Info"]
+
+SEVERITY_ICONS: dict[str, str] = {
+    "Critical": "🔴",
+    "High": "🟠",
+    "Medium": "🟡",
+    "Low": "🔵",
+    "Info": "⚪",
+}
 
 
 class TerminalRenderer:
     """Renders code review results to Rich terminal."""
-
-    SEVERITY_ORDER = ["Critical", "High", "Medium", "Low", "Info"]
 
     SEVERITY_COLORS = {
         "Critical": "red",
@@ -21,14 +32,6 @@ class TerminalRenderer:
         "Medium": "yellow",
         "Low": "blue",
         "Info": "white",
-    }
-
-    SEVERITY_ICONS = {
-        "Critical": "🔴",
-        "High": "🟠",
-        "Medium": "🟡",
-        "Low": "🔵",
-        "Info": "⚪",
     }
 
     def __init__(self):
@@ -82,15 +85,15 @@ class TerminalRenderer:
 
         # Get minimum severity index (case-insensitive)
         min_severity_title = min_severity.title()
-        if min_severity_title not in self.SEVERITY_ORDER:
+        if min_severity_title not in SEVERITY_ORDER:
             min_severity_title = "Info"
-        min_index = self.SEVERITY_ORDER.index(min_severity_title)
+        min_index = SEVERITY_ORDER.index(min_severity_title)
 
         # Filter issues by minimum severity
         filtered_issues = [
             issue
             for issue in report.issues
-            if self.SEVERITY_ORDER.index(issue.severity) <= min_index
+            if SEVERITY_ORDER.index(issue.severity) <= min_index
         ]
 
         if not filtered_issues:
@@ -101,13 +104,13 @@ class TerminalRenderer:
 
         grouped = self._group_by_severity(filtered_issues)
 
-        for severity in self.SEVERITY_ORDER:
+        for severity in SEVERITY_ORDER:
             if severity not in grouped:
                 continue
 
             issues = grouped[severity]
             color = self._get_severity_color(severity)
-            icon = self.SEVERITY_ICONS[severity]
+            icon = SEVERITY_ICONS[severity]
 
             self.console.print(
                 f"\n{icon} [bold {color}]{severity} ({len(issues)})[/bold {color}]"
@@ -189,16 +192,186 @@ class TerminalRenderer:
         return self.SEVERITY_COLORS.get(severity, "white")
 
 
+class StaticAnalysisRenderer:
+    """Renders static analysis results to Rich terminal."""
+
+    def __init__(self, console: Console | None = None):
+        """Initialize renderer.
+
+        Args:
+            console: Rich console for output (creates new one if None)
+        """
+        self.console = console or Console()
+
+    def render(self, results: dict[str, StaticAnalysisResult]) -> None:
+        """Render static analysis results to terminal.
+
+        Args:
+            results: Dictionary mapping tool names to StaticAnalysisResult
+        """
+        summary = StaticAnalyzer.get_summary(results)
+
+        # Create summary table
+        table = Table(
+            title="Static Analysis Results",
+            show_header=True,
+            header_style="bold cyan",
+        )
+        table.add_column("Tool", style="cyan")
+        table.add_column("Status", justify="center")
+        table.add_column("Issues", justify="right")
+
+        for tool_name, result in results.items():
+            tool_config = StaticAnalyzer.TOOLS.get(tool_name, {})
+            tool_display = str(tool_config.get("name", tool_name))
+
+            if result.passed:
+                status = "[green]✓ Passed[/green]"
+            elif result.errors:
+                status = "[red]✗ Error[/red]"
+            else:
+                status = "[yellow]⚠ Issues[/yellow]"
+
+            issues_str = str(result.issues_count) if result.issues_count > 0 else "-"
+
+            table.add_row(tool_display, status, issues_str)
+
+        try:
+            self.console.print(table)
+            self.console.print()
+
+            # Overall summary
+            if summary["passed"]:
+                self.console.print(
+                    "[green]✓ All static analysis checks passed![/green]\n"
+                )
+            else:
+                self.console.print(
+                    f"[yellow]⚠️  {summary['tools_failed']} tool(s) found issues "
+                    f"({summary['total_issues']} total)[/yellow]\n"
+                )
+        except OSError:
+            # Handle terminal I/O errors - fall back to simple output
+            print("\nStatic Analysis Results:")
+            for tool_name, result in results.items():
+                status = "✓" if result.passed else "✗"
+                print(f"  {status} {tool_name}: {result.issues_count} issues")
+            if summary["passed"]:
+                print("\n✓ All static analysis checks passed!")
+            else:
+                print(
+                    f"\n⚠ {summary['tools_failed']} tool(s) found issues "
+                    f"({summary['total_issues']} total)"
+                )
+
+        # Show details for all tools with output
+        self._render_tool_outputs(results)
+
+    def _render_tool_outputs(self, results: dict[str, StaticAnalysisResult]) -> None:
+        """Render output details for all tools that have output.
+
+        Args:
+            results: Dictionary mapping tool names to StaticAnalysisResult
+        """
+        for tool_name, result in results.items():
+            # Show output for any tool that has output (not just failed ones)
+            if result.output:
+                tool_config = StaticAnalyzer.TOOLS.get(tool_name, {})
+                tool_display = str(tool_config.get("name", tool_name))
+
+                # Determine style based on result status
+                if result.passed:
+                    title_style = "green"
+                    border_style = "green"
+                elif result.errors:
+                    title_style = "red"
+                    border_style = "red"
+                else:
+                    title_style = "yellow"
+                    border_style = "yellow"
+
+                # Limit output to first 20 lines
+                output_lines = result.output.split("\n")[:20]
+                output_preview = "\n".join(output_lines)
+
+                total_lines = len(result.output.split("\n"))
+                if total_lines > 20:
+                    output_preview += f"\n... ({total_lines - 20} more lines)"
+
+                try:
+                    self.console.print(
+                        Panel(
+                            output_preview,
+                            title=f"[{title_style}]{tool_display} Output[/{title_style}]",
+                            border_style=border_style,
+                        )
+                    )
+                except OSError:
+                    # Handle terminal I/O errors (e.g., write blocking)
+                    # Fall back to simple print
+                    print(f"\n{tool_display} Output:")
+                    print(output_preview)
+
+
+class ValidationRenderer:
+    """Renders credential validation results to Rich terminal."""
+
+    def __init__(self, console: Console | None = None):
+        """Initialize renderer.
+
+        Args:
+            console: Rich console for output (creates new one if None)
+        """
+        self.console = console or Console()
+
+    def render(self, validation: ValidationResult) -> None:
+        """Render validation result to terminal.
+
+        Args:
+            validation: ValidationResult from provider.validate_credentials()
+        """
+        # Create validation table
+        table = Table(
+            title=f"{validation.provider} Pre-flight Checks",
+            show_header=True,
+            header_style="bold cyan",
+        )
+        table.add_column("Check", style="cyan")
+        table.add_column("Status", justify="center")
+        table.add_column("Details")
+
+        for name, passed, message in validation.checks:
+            status = "[green]✓ Pass[/green]" if passed else "[red]✗ Fail[/red]"
+            table.add_row(name, status, message or "-")
+
+        self.console.print(table)
+
+        # Show warnings
+        if validation.warnings:
+            self.console.print()
+            for warning in validation.warnings:
+                self.console.print(f"[yellow]⚠️  {warning}[/yellow]")
+
+        # Show suggestions if validation failed
+        if not validation.valid and validation.suggestions:
+            self.console.print()
+            self.console.print("[bold]💡 Suggestions:[/bold]")
+            for suggestion in validation.suggestions:
+                self.console.print(f"   • {suggestion}")
+
+        # Overall status
+        self.console.print()
+        if validation.valid:
+            self.console.print("[green]✓ All pre-flight checks passed[/green]")
+        else:
+            self.console.print("[red]✗ Pre-flight validation failed[/red]")
+            self.console.print(
+                "[yellow]Fix the issues above before running the actual analysis[/yellow]"
+            )
+
+
 class MarkdownExporter:
     """Exports code review reports to Markdown format."""
-
-    SEVERITY_ICONS = {
-        "Critical": "🔴",
-        "High": "🟠",
-        "Medium": "🟡",
-        "Low": "🔵",
-        "Info": "⚪",
-    }
 
     # File extension to language mapping for code blocks
     LANGUAGE_EXTENSIONS = {
@@ -224,10 +397,10 @@ class MarkdownExporter:
 
     def _detect_language(self, file_path: str) -> str:
         """Detect programming language from file extension."""
-        for ext, lang in self.LANGUAGE_EXTENSIONS.items():
-            if file_path.endswith(ext):
-                return lang
-        return "text"
+        from pathlib import PurePath
+
+        suffix = PurePath(file_path).suffix
+        return self.LANGUAGE_EXTENSIONS.get(suffix, "text")
 
     def export(self, report: CodeReviewReport, output_path: Path | str) -> None:
         """
@@ -244,7 +417,7 @@ class MarkdownExporter:
         content = self._generate_markdown(report)
         try:
             output_path.write_text(content, encoding="utf-8")
-        except (OSError, IOError) as e:
+        except OSError as e:
             raise RuntimeError(f"Failed to write report to {output_path}: {e}") from e
 
     def _generate_markdown(self, report: CodeReviewReport) -> str:
@@ -379,7 +552,7 @@ class MarkdownExporter:
             if severity not in grouped:
                 continue
 
-            icon = self.SEVERITY_ICONS[severity]
+            icon = SEVERITY_ICONS[severity]
             issues = grouped[severity]
 
             lines.append(f"### {icon} {severity} ({len(issues)})\n")
