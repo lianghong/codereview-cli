@@ -47,8 +47,17 @@ class StreamingCallbackHandler(BaseCallbackHandler):
         if self._live:
             try:
                 self._live.stop()
+            except (OSError, RuntimeError):  # fmt: skip
+                # OSError: terminal I/O errors (e.g., broken pipe, write blocking)
+                # RuntimeError: threading issues during shutdown
+                pass  # Best effort cleanup - expected failure modes
             except Exception:
-                pass  # Best effort cleanup
+                # Log unexpected errors but don't propagate during cleanup
+                import logging
+
+                logging.debug(
+                    "Unexpected error during Live display cleanup", exc_info=True
+                )
             self._live = None
 
     def __del__(self) -> None:

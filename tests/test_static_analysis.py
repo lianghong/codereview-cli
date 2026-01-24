@@ -464,3 +464,72 @@ def test_run_shellcheck_no_scripts(sample_directory):
     assert result.passed is True
     assert result.issues_count == 0
     assert "No shell scripts found" in result.output
+
+
+# Path validation tests
+
+
+def test_validate_file_path_within_directory(sample_directory):
+    """Test that files within directory are validated as safe."""
+    analyzer = StaticAnalyzer(sample_directory)
+
+    # Create a test file
+    test_file = sample_directory / "test.py"
+    test_file.write_text("# test")
+
+    assert analyzer._validate_file_path(test_file) is True
+
+
+def test_validate_file_path_outside_directory(sample_directory, tmp_path):
+    """Test that files outside directory are rejected."""
+    analyzer = StaticAnalyzer(sample_directory)
+
+    # Create a file outside the analysis directory
+    outside_file = tmp_path / "outside" / "test.py"
+    outside_file.parent.mkdir(parents=True, exist_ok=True)
+    outside_file.write_text("# test")
+
+    assert analyzer._validate_file_path(outside_file) is False
+
+
+def test_filter_safe_files(sample_directory, tmp_path):
+    """Test filtering file list to only include safe files."""
+    analyzer = StaticAnalyzer(sample_directory)
+
+    # Create files inside and outside directory
+    inside_file = sample_directory / "inside.py"
+    inside_file.write_text("# inside")
+
+    outside_dir = tmp_path / "outside"
+    outside_dir.mkdir()
+    outside_file = outside_dir / "outside.py"
+    outside_file.write_text("# outside")
+
+    files = [inside_file, outside_file]
+    safe_files = analyzer._filter_safe_files(files)
+
+    assert len(safe_files) == 1
+    assert inside_file in safe_files
+    assert outside_file not in safe_files
+
+
+def test_validate_directory_exists(tmp_path):
+    """Test validation fails for non-existent directory."""
+    non_existent = tmp_path / "does_not_exist"
+    analyzer = StaticAnalyzer(non_existent)
+
+    is_valid, error = analyzer._validate_directory()
+    assert is_valid is False
+    assert "does not exist" in error
+
+
+def test_validate_directory_is_file(tmp_path):
+    """Test validation fails when path is a file, not directory."""
+    file_path = tmp_path / "file.txt"
+    file_path.write_text("test")
+
+    analyzer = StaticAnalyzer(file_path)
+
+    is_valid, error = analyzer._validate_directory()
+    assert is_valid is False
+    assert "not a directory" in error

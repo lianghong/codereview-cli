@@ -175,6 +175,46 @@ class StaticAnalyzer:
 
         return True, ""
 
+    def _validate_file_path(self, file_path: Path) -> bool:
+        """
+        Validate that a file path is within the analysis directory.
+
+        This prevents path traversal attacks where a symlink or crafted
+        path could escape the intended directory.
+
+        Args:
+            file_path: Path to validate
+
+        Returns:
+            True if file is safe to use, False otherwise
+        """
+        try:
+            # Resolve both paths to handle symlinks
+            resolved_file = file_path.resolve()
+            resolved_dir = self.directory.resolve()
+
+            # Check if file is within directory (prevents path traversal)
+            resolved_file.relative_to(resolved_dir)
+            return True
+        except ValueError:
+            # relative_to raises ValueError if path is not relative to directory
+            logging.warning(
+                f"File path {file_path} is outside analysis directory, skipping"
+            )
+            return False
+
+    def _filter_safe_files(self, files: list[Path]) -> list[Path]:
+        """
+        Filter file list to only include files within the analysis directory.
+
+        Args:
+            files: List of file paths from rglob
+
+        Returns:
+            Filtered list containing only safe paths
+        """
+        return [f for f in files if self._validate_file_path(f)]
+
     def _check_available_tools(self) -> list[str]:
         """Check which tools are available."""
         available = []
@@ -274,6 +314,8 @@ class StaticAnalyzer:
             shell_files = list(self.directory.rglob("*.sh")) + list(
                 self.directory.rglob("*.bash")
             )
+            # Validate files are within analysis directory (security measure)
+            shell_files = self._filter_safe_files(shell_files)
             if not shell_files:
                 return StaticAnalysisResult(
                     tool=tool_name,
@@ -299,6 +341,8 @@ class StaticAnalyzer:
                 + list(self.directory.rglob("*.h"))
                 + list(self.directory.rglob("*.hpp"))
             )
+            # Validate files are within analysis directory (security measure)
+            cpp_files = self._filter_safe_files(cpp_files)
             if not cpp_files:
                 return StaticAnalysisResult(
                     tool=tool_name,
@@ -322,6 +366,8 @@ class StaticAnalyzer:
         elif tool_name == "checkstyle":
             # Checkstyle needs explicit Java file list
             java_files = list(self.directory.rglob("*.java"))
+            # Validate files are within analysis directory (security measure)
+            java_files = self._filter_safe_files(java_files)
             if not java_files:
                 return StaticAnalysisResult(
                     tool=tool_name,
@@ -374,6 +420,8 @@ class StaticAnalyzer:
                 + list(self.directory.rglob("*.json"))
                 + list(self.directory.rglob("*.md"))
             )
+            # Validate files are within analysis directory (security measure)
+            prettier_files = self._filter_safe_files(prettier_files)
             if not prettier_files:
                 return StaticAnalysisResult(
                     tool=tool_name,
@@ -401,6 +449,8 @@ class StaticAnalyzer:
                 )
                 # Filter out .d.ts declaration files
                 ts_files = [f for f in ts_files if not str(f).endswith(".d.ts")]
+                # Validate files are within analysis directory (security measure)
+                ts_files = self._filter_safe_files(ts_files)
                 if not ts_files:
                     return StaticAnalysisResult(
                         tool=tool_name,
