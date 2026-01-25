@@ -262,6 +262,30 @@ providers:
           - agentic_tasks
         notes: "Fast MoE model, good for quick code analysis"
 
+      # Qwen3 Coder 480B (via NVIDIA) - Specialized coding model
+      # MoE: 480B total, 35B active parameters
+      # Best for: Code generation, code review, agentic coding
+      - id: qwen-nvidia
+        full_id: qwen/qwen3-coder-480b-a35b-instruct
+        name: Qwen3 Coder 480B (NVIDIA)
+        aliases:
+          - qwen3-nvidia
+          - qwen-coder-nvidia
+        pricing:
+          input_per_million: 0.00    # Currently free tier
+          output_per_million: 0.00   # Update when NVIDIA announces pricing
+        inference_params:
+          default_temperature: 0.7   # NVIDIA recommended
+          default_top_p: 0.8         # NVIDIA recommended
+          max_output_tokens: 4096
+        context_window: 131072
+        architecture: "MoE (480B total, 35B active)"
+        capabilities:
+          - code_generation
+          - code_review
+          - agentic_coding
+        notes: "87.9% MultiPL-E score, specialized for coding tasks via NVIDIA NIM"
+
 # Default model configuration
 defaults:
   bedrock_default: opus

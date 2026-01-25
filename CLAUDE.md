@@ -124,6 +124,7 @@ Use primary model IDs (case-insensitive). Run `codereview --list-models` to see 
 | `devstral` | Devstral 2 123B | nvidia | devstral-2 |
 | `minimax-bedrock` | Minimax M2 (Bedrock) | bedrock | mm2-bedrock |
 | `minimax-nvidia` | MiniMax M2 (NVIDIA) | nvidia | mm2-nvidia |
+| `qwen-nvidia` | Qwen3 Coder 480B (NVIDIA) | nvidia | qwen3-nvidia, qwen-coder-nvidia |
 | `mistral` | Mistral Large 3 | bedrock | mistral-large |
 | `kimi` | Kimi K2 Thinking | bedrock | kimi-k2 |
 | `qwen` | Qwen3 Coder 480B | bedrock | qwen-coder |
@@ -395,6 +396,7 @@ Models defined in `codereview/config/models.yaml`:
 |-------|----------|-----------|------------|----------|
 | Devstral 2 123B | `mistralai/devstral-2-123b-instruct-2512` | $0.00* | $0.00* | temp=0.15, top_p=0.95, max=8192 |
 | MiniMax M2 (NVIDIA) | `minimaxai/minimax-m2` | $0.00* | $0.00* | temp=1.0, top_p=0.95, max=8192 |
+| Qwen3 Coder 480B (NVIDIA) | `qwen/qwen3-coder-480b-a35b-instruct` | $0.00* | $0.00* | temp=0.7, top_p=0.8, max=4096 |
 
 **Note:** *NVIDIA models are currently in free tier. Pricing will be updated when NVIDIA announces production pricing.
 
