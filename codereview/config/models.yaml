@@ -252,8 +252,8 @@ providers:
           input_per_million: 0.00    # Currently free tier
           output_per_million: 0.00   # Update when NVIDIA announces pricing
         inference_params:
-          default_temperature: 1.0   # MiniMax default
-          default_top_p: 0.95
+          default_temperature: 0.3   # Lowered for code review (MiniMax default is 1.0)
+          default_top_p: 0.9
           max_output_tokens: 8192
         context_window: 256000
         capabilities:
@@ -275,9 +275,10 @@ providers:
           input_per_million: 0.00    # Currently free tier
           output_per_million: 0.00   # Update when NVIDIA announces pricing
         inference_params:
-          default_temperature: 0.7   # NVIDIA recommended
-          default_top_p: 0.8         # NVIDIA recommended
-          max_output_tokens: 4096
+          default_temperature: 0.3   # Lowered for code review (matches Bedrock Qwen)
+          default_top_p: 0.8         # Qwen recommended
+          default_top_k: 20          # Qwen recommended
+          max_output_tokens: 16384   # Increased for detailed code review reports
         context_window: 131072
         architecture: "MoE (480B total, 35B active)"
         capabilities:
@@ -298,9 +299,10 @@ providers:
           input_per_million: 0.00    # Currently free tier
           output_per_million: 0.00   # Update when NVIDIA announces pricing
         inference_params:
-          default_temperature: 1.0   # NVIDIA recommended
-          default_top_p: 0.95        # NVIDIA recommended
-          max_output_tokens: 8192
+          default_temperature: 0.5   # Lowered for code review (default is 1.0)
+          default_top_p: 0.9
+          default_min_p: 0.01        # Suppress unlikely tokens (Moonshot recommended)
+          max_output_tokens: 16384   # Increased for detailed reports
         context_window: 256000
         architecture: "MoE (1T total, 32B active)"
         capabilities:
@@ -323,9 +325,9 @@ providers:
           input_per_million: 0.00    # Currently free tier
           output_per_million: 0.00   # Update when NVIDIA announces pricing
         inference_params:
-          default_temperature: 1.0   # NVIDIA recommended
-          default_top_p: 0.95        # NVIDIA recommended
-          max_output_tokens: 8192
+          default_temperature: 0.3   # Lowered for code review (default is 1.0)
+          default_top_p: 0.9
+          max_output_tokens: 16384   # Increased for detailed reports
         context_window: 128000
         architecture: "MoE (671B total, 37B active)"
         capabilities:
