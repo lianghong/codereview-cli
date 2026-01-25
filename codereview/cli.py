@@ -7,6 +7,7 @@ from pathlib import Path
 import click
 from botocore.exceptions import ClientError, NoCredentialsError
 from rich.console import Console
+from rich.markup import escape
 from rich.progress import (
     BarColumn,
     MofNCompleteColumn,
@@ -25,7 +26,7 @@ from codereview.config import (
     MAX_FILE_SIZE_KB,
     MODEL_ALIASES,
 )
-from codereview.models import CodeReviewReport, ReviewIssue
+from codereview.models import CodeReviewReport, ReviewIssue, ReviewMetrics
 from codereview.providers.base import ModelProvider
 from codereview.providers.factory import ProviderFactory
 from codereview.renderer import (
@@ -37,7 +38,9 @@ from codereview.renderer import (
 from codereview.scanner import FileScanner
 from codereview.static_analysis import StaticAnalyzer
 
-# Get only primary model IDs for CLI display (exclude aliases)
+# Get all valid model names (both primary IDs and aliases)
+ALL_MODEL_NAMES = sorted(MODEL_ALIASES.keys())
+# Get only primary model IDs for display
 PRIMARY_MODEL_IDS = sorted(set(MODEL_ALIASES.values()))
 
 console = Console()
@@ -111,9 +114,9 @@ def display_available_models() -> None:
     "--model",
     "-m",
     "model_name",
-    type=click.Choice(PRIMARY_MODEL_IDS, case_sensitive=False),
+    type=click.Choice(ALL_MODEL_NAMES, case_sensitive=False),
     default="opus",
-    help=f"Model to use: {', '.join(PRIMARY_MODEL_IDS)} (default: opus)",
+    help=f"Model to use: {', '.join(PRIMARY_MODEL_IDS)} or aliases (default: opus)",
 )
 @click.option(
     "--static-analysis",
@@ -176,6 +179,10 @@ def main(
         click.echo(ctx.get_help())
         ctx.exit(0)
 
+    # Initialize callback handlers for cleanup in finally block
+    streaming_handler: StreamingCallbackHandler | None = None
+    progress_handler: ProgressCallbackHandler | None = None
+
     try:
         # Set AWS profile if provided
         if aws_profile:
@@ -184,7 +191,7 @@ def main(
         # Get model display name from provider
         factory = ProviderFactory()
         provider = factory.create_provider(model_name, temperature)
-        model_display_name = provider.get_model_display_name()
+        model_display_name = str(provider.get_model_display_name())
 
         console.print("\n[bold cyan]🔍 Code Review Tool[/bold cyan]\n")
         console.print(f"📂 Scanning directory: {directory}")
@@ -279,9 +286,11 @@ def main(
         # Set up callbacks for streaming/progress if requested
         callbacks: list | None = None
         if stream:
-            callbacks = [StreamingCallbackHandler(console=console, verbose=True)]
+            streaming_handler = StreamingCallbackHandler(console=console, verbose=True)
+            callbacks = [streaming_handler]
         elif verbose:
-            callbacks = [ProgressCallbackHandler(console=console)]
+            progress_handler = ProgressCallbackHandler(console=console)
+            callbacks = [progress_handler]
 
         analyzer = CodeAnalyzer(
             model_name=model_name,
@@ -335,7 +344,9 @@ def main(
                     error_msg = e.response.get("Error", {}).get("Message", "")
 
                     if error_code == "AccessDeniedException":
-                        console.print(f"\n[red]✗ AWS Access Denied: {error_msg}[/red]")
+                        console.print(
+                            f"\n[red]✗ AWS Access Denied: {escape(error_msg)}[/red]"
+                        )
                         console.print(
                             "[yellow]Check that you have access to AWS Bedrock Claude Opus 4.5[/yellow]"
                         )
@@ -351,7 +362,7 @@ def main(
                         )
                     else:
                         console.print(
-                            f"\n[red]✗ AWS Error on batch {i} ({error_code}): {error_msg}[/red]"
+                            f"\n[red]✗ AWS Error on batch {i} ({escape(error_code)}): {escape(error_msg)}[/red]"
                         )
 
                     if verbose:
@@ -360,7 +371,7 @@ def main(
                 except (ValueError, KeyError) as e:
                     # Parse/validation errors from structured output
                     console.print(
-                        f"\n[red]✗ Parse error in batch {i}: {type(e).__name__}: {e}[/red]"
+                        f"\n[red]✗ Parse error in batch {i}: {type(e).__name__}: {escape(str(e))}[/red]"
                     )
                     if verbose:
                         console.print(traceback.format_exc())
@@ -369,7 +380,7 @@ def main(
                     # Recoverable errors - log and continue with other batches
                     console.print(
                         f"\n[red]✗ Error analyzing batch {i}: "
-                        f"{type(e).__name__}: {e}[/red]"
+                        f"{type(e).__name__}: {escape(str(e))}[/red]"
                     )
                     if verbose:
                         console.print(traceback.format_exc())
@@ -380,31 +391,36 @@ def main(
         # Get pricing from provider
         pricing = analyzer.provider.get_pricing()
 
-        metrics = {
-            "files_analyzed": total_files,
-            "total_issues": len(all_issues),
-            "critical": sum(1 for i in all_issues if i.severity == "Critical"),
-            "high": sum(1 for i in all_issues if i.severity == "High"),
-            "medium": sum(1 for i in all_issues if i.severity == "Medium"),
-            "low": sum(1 for i in all_issues if i.severity == "Low"),
-            "input_tokens": analyzer.provider.total_input_tokens,
-            "output_tokens": analyzer.provider.total_output_tokens,
-            "total_tokens": analyzer.provider.total_input_tokens
+        # Build metrics object
+        metrics = ReviewMetrics(
+            files_analyzed=total_files,
+            total_issues=len(all_issues),
+            critical=sum(1 for i in all_issues if i.severity == "Critical"),
+            high=sum(1 for i in all_issues if i.severity == "High"),
+            medium=sum(1 for i in all_issues if i.severity == "Medium"),
+            low=sum(1 for i in all_issues if i.severity == "Low"),
+            info=sum(1 for i in all_issues if i.severity == "Info"),
+            input_tokens=analyzer.provider.total_input_tokens,
+            output_tokens=analyzer.provider.total_output_tokens,
+            total_tokens=analyzer.provider.total_input_tokens
             + analyzer.provider.total_output_tokens,
-            "model_name": model_display_name,
-            "input_price_per_million": pricing["input_price_per_million"],
-            "output_price_per_million": pricing["output_price_per_million"],
-        }
+            model_name=model_display_name,
+            input_price_per_million=pricing["input_price_per_million"],
+            output_price_per_million=pricing["output_price_per_million"],
+            static_analysis_run=False,
+        )
 
         # Add static analysis metrics if available
         if static_results:
             static_summary = StaticAnalyzer.get_summary(static_results)
-            metrics["static_analysis_run"] = True
-            metrics["static_tools_passed"] = static_summary["tools_passed"]
-            metrics["static_tools_failed"] = static_summary["tools_failed"]
-            metrics["static_issues_found"] = static_summary["total_issues"]
-        else:
-            metrics["static_analysis_run"] = False
+            # Create a new metrics object with static analysis fields
+            metrics = ReviewMetrics(
+                **metrics.model_dump(exclude_none=True),
+                static_analysis_run=True,
+                static_tools_passed=static_summary["tools_passed"],
+                static_tools_failed=static_summary["tools_failed"],
+                static_issues_found=static_summary["total_issues"],
+            )
 
         # Aggregate system design insights from all batches
         aggregated_insights = (
@@ -456,8 +472,22 @@ def main(
 
         # Step 6: Export to Markdown if requested
         if output:
+            # Collect all skipped files for the report
+            all_skipped_files: list[tuple[str, str]] = []
+
+            # Add scanner skipped files (convert Path to str)
+            for skipped_path, reason in scanner.skipped_files:
+                all_skipped_files.append((str(skipped_path), reason))
+
+            # Add analyzer skipped files (already strings)
+            all_skipped_files.extend(analyzer.skipped_files)
+
             exporter = MarkdownExporter()
-            exporter.export(final_report, output)
+            exporter.export(
+                final_report,
+                output,
+                skipped_files=all_skipped_files if all_skipped_files else None,
+            )
             console.print(f"\n[green]✓ Report exported to: {output}[/green]\n")
 
     except NoCredentialsError:
@@ -474,7 +504,9 @@ def main(
         error_code = e.response.get("Error", {}).get("Code", "")
         error_msg = e.response.get("Error", {}).get("Message", "")
 
-        console.print(f"\n[red]✗ AWS Error ({error_code}): {error_msg}[/red]\n")
+        console.print(
+            f"\n[red]✗ AWS Error ({escape(error_code)}): {escape(error_msg)}[/red]\n"
+        )
 
         if error_code == "AccessDeniedException":
             console.print("[yellow]Troubleshooting:[/yellow]")
@@ -496,10 +528,17 @@ def main(
         raise click.Abort()
 
     except Exception as e:
-        console.print(f"\n[red]✗ Error: {e}[/red]\n")
+        console.print(f"\n[red]✗ Error: {escape(str(e))}[/red]\n")
         if verbose:
             console.print(traceback.format_exc())
         raise click.Abort()
+
+    finally:
+        # Ensure callback handlers are cleaned up
+        if streaming_handler:
+            streaming_handler.cleanup()
+        if progress_handler:
+            progress_handler.cleanup()
 
 
 def _generate_recommendations(issues: list[ReviewIssue]) -> list[str]:
