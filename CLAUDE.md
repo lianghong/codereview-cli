@@ -122,8 +122,8 @@ Use primary model IDs (case-insensitive). Run `codereview --list-models` to see 
 | `haiku` | Claude Haiku 4.5 | bedrock | claude-haiku |
 | `gpt-5.2-codex` | GPT-5.2 Codex | azure_openai | gpt, gpt52, codex |
 | `devstral` | Devstral 2 123B | nvidia | devstral-2 |
+| `minimax-bedrock` | Minimax M2 (Bedrock) | bedrock | mm2-bedrock |
 | `minimax-nvidia` | MiniMax M2 (NVIDIA) | nvidia | mm2-nvidia |
-| `minimax` | Minimax M2 | bedrock | minimax-m2 |
 | `mistral` | Mistral Large 3 | bedrock | mistral-large |
 | `kimi` | Kimi K2 Thinking | bedrock | kimi-k2 |
 | `qwen` | Qwen3 Coder 480B | bedrock | qwen-coder |
@@ -291,7 +291,7 @@ Models defined in `codereview/config/models.yaml`:
 | Claude Opus 4.5 | `global.anthropic.claude-opus-4-5-20251101-v1:0` | $5.00 | $25.00 | temp=0.1 |
 | Claude Sonnet 4.5 | `global.anthropic.claude-sonnet-4-5-20250929-v1:0` | $3.00 | $15.00 | temp=0.1 |
 | Claude Haiku 4.5 | `global.anthropic.claude-haiku-4-5-20251001-v1:0` | $1.00 | $5.00 | temp=0.1 |
-| Minimax M2 | `minimax.minimax-m2` | $0.30 | $1.20 | temp=1.0, top_p=0.95, top_k=40, max=8192 |
+| Minimax M2 (Bedrock) | `minimax.minimax-m2` | $0.30 | $1.20 | temp=0.3, top_p=0.9, top_k=40, max=8192 |
 | Mistral Large 3 | `mistral.mistral-large-3-675b-instruct` | $2.00 | $6.00 | temp=0.1, top_p=0.5, top_k=5 |
 | Kimi K2 Thinking | `moonshot.kimi-k2-thinking` | $0.50 | $2.00 | temp=1.0, max=16K-256K |
 | Qwen3 Coder 480B | `qwen.qwen3-coder-480b-a35b-v1:0` | $0.22 | $1.40 | temp=0.7, top_p=0.8, top_k=20, max=65536 |

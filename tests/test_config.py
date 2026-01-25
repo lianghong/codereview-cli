@@ -44,7 +44,8 @@ def test_model_aliases_exist():
     assert "opus" in MODEL_ALIASES
     assert "sonnet" in MODEL_ALIASES
     assert "haiku" in MODEL_ALIASES
-    assert "minimax" in MODEL_ALIASES
+    assert "minimax-bedrock" in MODEL_ALIASES
+    assert "minimax-nvidia" in MODEL_ALIASES
     assert "mistral" in MODEL_ALIASES
     assert "kimi" in MODEL_ALIASES
     assert "qwen" in MODEL_ALIASES
@@ -62,7 +63,7 @@ def test_resolve_model_id_with_alias():
     provider, model_config = loader.resolve_model("haiku")
     assert model_config.full_id == "global.anthropic.claude-haiku-4-5-20251001-v1:0"
 
-    provider, model_config = loader.resolve_model("minimax")
+    provider, model_config = loader.resolve_model("minimax-bedrock")
     assert model_config.full_id == "minimax.minimax-m2"
 
     provider, model_config = loader.resolve_model("qwen")

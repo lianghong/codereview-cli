@@ -78,15 +78,14 @@ providers:
           - parallel_agents
         notes: "73.3% SWE-bench Verified, fast and cost-effective"
 
-      # Minimax M2 Model
+      # Minimax M2 Model (Bedrock)
       # MoE: 230B total, 10B active parameters
       # Best for: Fast code analysis, agentic tasks
-      - id: minimax
+      - id: minimax-bedrock
         full_id: minimax.minimax-m2
-        name: Minimax M2
+        name: Minimax M2 (Bedrock)
         aliases:
-          - minimax
-          - minimax-m2
+          - mm2-bedrock
         pricing:
           input_per_million: 0.30    # Verified: AWS Bedrock pricing
           output_per_million: 1.20
