@@ -126,6 +126,7 @@ Use primary model IDs (case-insensitive). Run `codereview --list-models` to see 
 | `minimax-nvidia` | MiniMax M2 (NVIDIA) | nvidia | mm2-nvidia |
 | `qwen-nvidia` | Qwen3 Coder 480B (NVIDIA) | nvidia | qwen3-nvidia, qwen-coder-nvidia |
 | `kimi-nvidia` | Kimi K2 Instruct (NVIDIA) | nvidia | kimi-k2-nvidia |
+| `deepseek-nvidia` | DeepSeek V3.2 (NVIDIA) | nvidia | deepseek-v3-nvidia, ds-nvidia |
 | `mistral` | Mistral Large 3 | bedrock | mistral-large |
 | `kimi` | Kimi K2 Thinking | bedrock | kimi-k2 |
 | `qwen` | Qwen3 Coder 480B | bedrock | qwen-coder |
@@ -399,6 +400,7 @@ Models defined in `codereview/config/models.yaml`:
 | MiniMax M2 (NVIDIA) | `minimaxai/minimax-m2` | $0.00* | $0.00* | temp=1.0, top_p=0.95, max=8192 |
 | Qwen3 Coder 480B (NVIDIA) | `qwen/qwen3-coder-480b-a35b-instruct` | $0.00* | $0.00* | temp=0.7, top_p=0.8, max=4096 |
 | Kimi K2 Instruct (NVIDIA) | `moonshotai/kimi-k2-instruct-0905` | $0.00* | $0.00* | temp=1.0, top_p=0.95, max=8192 |
+| DeepSeek V3.2 (NVIDIA) | `deepseek-ai/deepseek-v3.2` | $0.00* | $0.00* | temp=1.0, top_p=0.95, max=8192 |
 
 **Note:** *NVIDIA models are currently in free tier. Pricing will be updated when NVIDIA announces production pricing.
 

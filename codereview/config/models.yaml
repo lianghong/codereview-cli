@@ -310,6 +310,31 @@ providers:
           - multi_step_tasks
         notes: "Exceptional for autonomous AI agents, maintains coherence over hundreds of tool calls"
 
+      # DeepSeek V3.2 (via NVIDIA) - Advanced reasoning model
+      # MoE: 671B total, 37B active parameters
+      # Best for: Complex reasoning, code analysis with thinking
+      - id: deepseek-nvidia
+        full_id: deepseek-ai/deepseek-v3.2
+        name: DeepSeek V3.2 (NVIDIA)
+        aliases:
+          - deepseek-v3-nvidia
+          - ds-nvidia
+        pricing:
+          input_per_million: 0.00    # Currently free tier
+          output_per_million: 0.00   # Update when NVIDIA announces pricing
+        inference_params:
+          default_temperature: 1.0   # NVIDIA recommended
+          default_top_p: 0.95        # NVIDIA recommended
+          max_output_tokens: 8192
+        context_window: 128000
+        architecture: "MoE (671B total, 37B active)"
+        capabilities:
+          - reasoning
+          - code_review
+          - code_generation
+          - thinking
+        notes: "Advanced reasoning with thinking capability, excellent for complex code analysis"
+
 # Default model configuration
 defaults:
   bedrock_default: opus
