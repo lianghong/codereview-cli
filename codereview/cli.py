@@ -1,6 +1,7 @@
 """CLI entry point for code review tool."""
 
 import os
+import time
 import traceback
 from pathlib import Path
 
@@ -196,6 +197,9 @@ def main(
         console.print("\n[bold cyan]🔍 Code Review Tool[/bold cyan]\n")
         console.print(f"📂 Scanning directory: {directory}")
         console.print(f"🤖 Model: {model_display_name}\n")
+
+        # Start timing
+        start_time = time.time()
 
         # Step 1: Scan files
         with Progress(
@@ -469,6 +473,15 @@ def main(
         # Step 5: Render results (with severity filtering)
         renderer = TerminalRenderer()
         renderer.render(final_report, min_severity=severity)
+
+        # Display total elapsed time
+        elapsed_time = time.time() - start_time
+        if elapsed_time >= 60:
+            minutes = int(elapsed_time // 60)
+            seconds = int(elapsed_time % 60)
+            console.print(f"[dim]⏱️  Completed in {minutes}m {seconds}s[/dim]\n")
+        else:
+            console.print(f"[dim]⏱️  Completed in {elapsed_time:.1f}s[/dim]\n")
 
         # Step 6: Export to Markdown if requested
         if output:
