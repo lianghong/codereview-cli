@@ -1,6 +1,7 @@
 """NVIDIA NIM API provider implementation."""
 
 import time
+import warnings
 from typing import Any
 
 import httpx
@@ -118,10 +119,23 @@ class NVIDIAProvider(ModelProvider):
         if self.provider_config.base_url:
             model_params["base_url"] = self.provider_config.base_url
 
-        base_model = ChatNVIDIA(**model_params)
+        # Suppress warnings about unknown model types from langchain-nvidia
+        # These models work but aren't in the library's known list yet
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore",
+                message=".*available_models.*type is unknown.*",
+                category=UserWarning,
+            )
+            warnings.filterwarnings(
+                "ignore",
+                message=".*not known to support structured output.*",
+                category=UserWarning,
+            )
+            base_model = ChatNVIDIA(**model_params)
 
-        # Configure for structured output
-        return base_model.with_structured_output(CodeReviewReport)
+            # Configure for structured output
+            return base_model.with_structured_output(CodeReviewReport)
 
     def _create_chain(self) -> Any:
         """Create LangChain chain with prompt template."""
@@ -161,7 +175,19 @@ class NVIDIAProvider(ModelProvider):
         last_error: httpx.HTTPStatusError | ValidationError | None = None
         for attempt in range(max_retries + 1):
             try:
-                result = self.chain.invoke(chain_input)
+                # Suppress warnings about unknown model types during invocation
+                with warnings.catch_warnings():
+                    warnings.filterwarnings(
+                        "ignore",
+                        message=".*available_models.*type is unknown.*",
+                        category=UserWarning,
+                    )
+                    warnings.filterwarnings(
+                        "ignore",
+                        message=".*not known to support structured output.*",
+                        category=UserWarning,
+                    )
+                    result = self.chain.invoke(chain_input)
 
                 # Track token usage from NVIDIA response metadata
                 input_tokens = 0
