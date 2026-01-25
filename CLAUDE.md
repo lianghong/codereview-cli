@@ -168,6 +168,93 @@ uv run codereview ./src --static-analysis --output comprehensive-review.md
 
 **Note:** Static analysis tools run in parallel using `ThreadPoolExecutor` for faster execution. Only installed tools are run. See `docs/static-analysis.md` for detailed tool documentation.
 
+## Configuration System
+
+The tool is **fully configurable via YAML files** - no code changes required for most customizations.
+
+### Configuration File Location
+```
+codereview/config/
+├── models.yaml      # All models, providers, pricing, inference params, scanning rules
+├── models.py        # Pydantic validation (rarely needs modification)
+├── loader.py        # YAML parser with env var expansion
+└── prompts.py       # AI code review rules and system prompt
+```
+
+### What You Can Configure Without Code Changes
+
+| Configuration | File | Example |
+|---------------|------|---------|
+| Add new models | `models.yaml` | Add entry under provider's `models:` list |
+| Model pricing | `models.yaml` | Update `pricing.input_per_million` |
+| Inference parameters | `models.yaml` | Set `temperature`, `top_p`, `max_output_tokens` |
+| Default AWS region | `models.yaml` | Change `bedrock.region` |
+| File exclusion patterns | `models.yaml` | Add to `scanning.exclude_patterns` |
+| Excluded file extensions | `models.yaml` | Add to `scanning.exclude_extensions` |
+| Max file size | `models.yaml` | Change `scanning.max_file_size_kb` |
+| API credentials | Environment variables | `AZURE_OPENAI_API_KEY`, `NVIDIA_API_KEY` |
+| Code review rules | `prompts.py` | Modify `SYSTEM_PROMPT` |
+
+### Environment Variable Expansion
+
+Secrets are configured via environment variables with `${VAR_NAME}` syntax:
+
+```yaml
+# models.yaml
+azure_openai:
+  endpoint: "${AZURE_OPENAI_ENDPOINT}"
+  api_key: "${AZURE_OPENAI_API_KEY}"
+  api_version: "2025-04-01-preview"
+
+nvidia:
+  api_key: "${NVIDIA_API_KEY}"
+```
+
+### Adding a New Model (No Code Changes)
+
+Simply add to `models.yaml`:
+```yaml
+bedrock:
+  models:
+    - id: my-new-model
+      full_id: vendor.model-name-v1
+      name: My New Model
+      aliases: [mnm, new-model]
+      pricing:
+        input_per_million: 1.00
+        output_per_million: 5.00
+      inference_params:
+        default_temperature: 0.1
+        max_output_tokens: 8192
+```
+
+Then use immediately: `codereview ./src --model my-new-model`
+
+### Customizing File Scanning
+
+Edit `scanning` section in `models.yaml`:
+```yaml
+scanning:
+  max_file_size_kb: 500        # Skip files larger than this
+  warn_file_size_kb: 100       # Warn about files larger than this
+  exclude_patterns:
+    - "**/node_modules/**"     # Skip directories
+    - "**/generated/**"        # Skip generated code
+    - "**/*.min.js"            # Skip minified files
+  exclude_extensions:
+    - ".json"
+    - ".lock"
+    - ".svg"
+```
+
+### Modifying Code Review Behavior
+
+Edit `SYSTEM_PROMPT` in `config/prompts.py` to:
+- Add new severity rules
+- Include/exclude specific issue types
+- Add language-specific guidelines
+- Customize false positive prevention
+
 ## Architecture
 
 ### Pipeline Flow
