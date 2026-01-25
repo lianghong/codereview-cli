@@ -286,6 +286,30 @@ providers:
           - agentic_coding
         notes: "87.9% MultiPL-E score, specialized for coding tasks via NVIDIA NIM"
 
+      # Kimi K2 Instruct (via NVIDIA) - Reasoning model from Moonshot AI
+      # MoE: 1T total, 32B active parameters
+      # Best for: Complex reasoning, multi-step code analysis
+      - id: kimi-nvidia
+        full_id: moonshotai/kimi-k2-instruct-0905
+        name: Kimi K2 Instruct (NVIDIA)
+        aliases:
+          - kimi-k2-nvidia
+        pricing:
+          input_per_million: 0.00    # Currently free tier
+          output_per_million: 0.00   # Update when NVIDIA announces pricing
+        inference_params:
+          default_temperature: 1.0   # NVIDIA recommended
+          default_top_p: 0.95        # NVIDIA recommended
+          max_output_tokens: 8192
+        context_window: 256000
+        architecture: "MoE (1T total, 32B active)"
+        capabilities:
+          - reasoning
+          - autonomous_agents
+          - tool_use
+          - multi_step_tasks
+        notes: "Exceptional for autonomous AI agents, maintains coherence over hundreds of tool calls"
+
 # Default model configuration
 defaults:
   bedrock_default: opus
