@@ -1,10 +1,10 @@
 # codereview/scanner.py
 """File scanner for discovering code files to review."""
 
+import logging
 from pathlib import Path, PurePath
-from typing import List, Tuple
 
-from codereview.config import (  # type: ignore[attr-defined]
+from codereview.config import (
     DEFAULT_EXCLUDE_EXTENSIONS,
     DEFAULT_EXCLUDE_PATTERNS,
     MAX_FILE_SIZE_KB,
@@ -17,7 +17,7 @@ class FileScanner:
     def __init__(
         self,
         root_dir: Path | str,
-        exclude_patterns: List[str] | None = None,
+        exclude_patterns: list[str] | None = None,
         max_file_size_kb: int = MAX_FILE_SIZE_KB,
     ) -> None:
         """
@@ -29,13 +29,15 @@ class FileScanner:
             max_file_size_kb: Maximum file size in KB to include (larger files are skipped)
         """
         self.root_dir = Path(root_dir)
-        self.exclude_patterns = exclude_patterns or DEFAULT_EXCLUDE_PATTERNS
+        self.exclude_patterns = (
+            DEFAULT_EXCLUDE_PATTERNS if exclude_patterns is None else exclude_patterns
+        )
         self.max_file_size_kb = max_file_size_kb
-        self.skipped_files: List[Tuple[Path, str]] = (
+        self.skipped_files: list[tuple[Path, str]] = (
             []
         )  # Track skipped files with reasons
 
-    def scan(self) -> List[Path]:
+    def scan(self) -> list[Path]:
         """Scan directory and return list of files to review."""
         target_extensions = {
             # Python
@@ -77,9 +79,16 @@ class FileScanner:
             try:
                 resolved_path = file_path.resolve()
                 if not resolved_path.is_relative_to(resolved_root):
+                    logging.debug("Skipping file outside root: %s", file_path)
                     continue  # Skip files outside root directory
-            except OSError, ValueError:
-                continue  # Skip files that can't be resolved
+            except OSError as e:
+                # Symlink resolution failed (broken symlink, permission denied, etc.)
+                logging.debug("Skipping file due to OSError: %s - %s", file_path, e)
+                continue
+            except ValueError as e:
+                # Path is not relative to root (shouldn't happen after resolve)
+                logging.debug("Skipping file due to ValueError: %s - %s", file_path, e)
+                continue
 
             # Skip excluded extensions
             if file_path.suffix in DEFAULT_EXCLUDE_EXTENSIONS:
@@ -95,7 +104,11 @@ class FileScanner:
                 continue
 
             # Skip if file too large (but track it)
-            file_size_kb = file_path.stat().st_size / 1024
+            try:
+                file_size_kb = file_path.stat().st_size / 1024
+            except OSError:
+                # Skip files with stat errors (permission denied, broken symlinks, etc.)
+                continue
             if file_size_kb > self.max_file_size_kb:
                 self.skipped_files.append(
                     (

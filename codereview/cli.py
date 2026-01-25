@@ -607,7 +607,10 @@ def _render_dry_run(
 
     total_tokens = 0
     for file_path in files:
-        size_kb = file_path.stat().st_size / 1024
+        try:
+            size_kb = file_path.stat().st_size / 1024
+        except OSError:
+            size_kb = 0.0  # File may have been deleted since scan
         tokens = estimate_tokens_from_size(file_path)
         total_tokens += tokens
         table.add_row(
