@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 from rich.console import Console
 from rich.panel import Panel
@@ -67,11 +68,17 @@ class TerminalRenderer:
 
     def _format_summary(self, report: CodeReviewReport) -> str:
         """Format summary text."""
+        # Convert ReviewMetrics to dict, or use directly if already a dict
+        metrics_dict: dict[str, Any] = (
+            report.metrics.model_dump(exclude_none=True)
+            if hasattr(report.metrics, "model_dump")
+            else report.metrics  # type: ignore[assignment]
+        )
         lines = [
             f"[bold]{report.summary}[/bold]",
             "",
-            f"📊 Files analyzed: {report.metrics.get('files_analyzed', 0)}",
-            f"🐛 Total issues: {report.metrics.get('total_issues', 0)}",
+            f"📊 Files analyzed: {metrics_dict.get('files_analyzed', 0)}",
+            f"🐛 Total issues: {metrics_dict.get('total_issues', 0)}",
         ]
         return "\n".join(lines)
 
@@ -402,25 +409,36 @@ class MarkdownExporter:
         suffix = PurePath(file_path).suffix
         return self.LANGUAGE_EXTENSIONS.get(suffix, "text")
 
-    def export(self, report: CodeReviewReport, output_path: Path | str) -> None:
+    def export(
+        self,
+        report: CodeReviewReport,
+        output_path: Path | str,
+        skipped_files: list[tuple[str, str]] | None = None,
+    ) -> None:
         """
         Export report to Markdown file.
 
         Args:
             report: CodeReviewReport to export
             output_path: Path to output Markdown file
+            skipped_files: Optional list of (file_path, reason) tuples for files
+                that were skipped during scanning or analysis
 
         Raises:
             RuntimeError: If file write fails
         """
         output_path = Path(output_path)
-        content = self._generate_markdown(report)
+        content = self._generate_markdown(report, skipped_files)
         try:
             output_path.write_text(content, encoding="utf-8")
         except OSError as e:
             raise RuntimeError(f"Failed to write report to {output_path}: {e}") from e
 
-    def _generate_markdown(self, report: CodeReviewReport) -> str:
+    def _generate_markdown(
+        self,
+        report: CodeReviewReport,
+        skipped_files: list[tuple[str, str]] | None = None,
+    ) -> str:
         """Generate Markdown content."""
         sections = [
             self._header(),
@@ -428,8 +446,15 @@ class MarkdownExporter:
             self._metrics(report),
         ]
 
+        # Convert ReviewMetrics to dict, or use directly if already a dict
+        metrics_dict: dict[str, Any] = (
+            report.metrics.model_dump(exclude_none=True)
+            if hasattr(report.metrics, "model_dump")
+            else report.metrics  # type: ignore[assignment]
+        )
+
         # Add static analysis section if it was run
-        if report.metrics.get("static_analysis_run"):
+        if metrics_dict.get("static_analysis_run"):
             sections.append(self._static_analysis(report))
 
         sections.extend(
@@ -441,7 +466,38 @@ class MarkdownExporter:
             ]
         )
 
+        # Add skipped files section if any files were skipped
+        if skipped_files:
+            sections.append(self._skipped_files(skipped_files))
+
         return "\n\n".join(sections)
+
+    def _skipped_files(self, skipped_files: list[tuple[str, str]]) -> str:
+        """Generate skipped files section.
+
+        Args:
+            skipped_files: List of (file_path, reason) tuples
+
+        Returns:
+            Markdown formatted skipped files section
+        """
+        lines = [
+            "## Skipped Files",
+            "",
+            f"**{len(skipped_files)} file(s)** were not included in this review:",
+            "",
+        ]
+
+        # Show up to 20 files, then summarize the rest
+        max_display = 20
+        for file_path, reason in skipped_files[:max_display]:
+            lines.append(f"- `{file_path}`: {reason}")
+
+        if len(skipped_files) > max_display:
+            remaining = len(skipped_files) - max_display
+            lines.append(f"- ... and {remaining} more file(s)")
+
+        return "\n".join(lines)
 
     def _header(self) -> str:
         """Generate header section."""
@@ -456,12 +512,17 @@ class MarkdownExporter:
         """Generate metrics section."""
         lines = ["## Metrics\n"]
 
+        # Convert ReviewMetrics to dict, or use directly if already a dict
+        metrics_dict: dict[str, Any] = (
+            report.metrics.model_dump(exclude_none=True)
+            if hasattr(report.metrics, "model_dump")
+            else report.metrics  # type: ignore[assignment]
+        )
+
         # Separate token metrics from other metrics
         token_keys = {"input_tokens", "output_tokens", "total_tokens"}
-        regular_metrics = {
-            k: v for k, v in report.metrics.items() if k not in token_keys
-        }
-        token_metrics = {k: v for k, v in report.metrics.items() if k in token_keys}
+        regular_metrics = {k: v for k, v in metrics_dict.items() if k not in token_keys}
+        token_metrics = {k: v for k, v in metrics_dict.items() if k in token_keys}
 
         # Display regular metrics first
         for key, value in regular_metrics.items():
@@ -474,19 +535,25 @@ class MarkdownExporter:
         if token_metrics:
             lines.append("\n### Token Usage & Cost\n")
 
-            # Get pricing information from metrics
-            input_price = report.metrics.get("input_price_per_million", 15.00)
-            output_price = report.metrics.get("output_price_per_million", 75.00)
-            model_name = report.metrics.get("model_name", "Claude Opus 4.5")
+            # Get pricing information from metrics (no hardcoded defaults)
+            input_price = metrics_dict.get("input_price_per_million")
+            output_price = metrics_dict.get("output_price_per_million")
+            model_name = metrics_dict.get("model_name")
 
-            # Display model name
-            lines.append(f"**Model:** {model_name}\n")
+            # Display model name if available
+            if model_name:
+                lines.append(f"**Model:** {model_name}\n")
 
             for key, value in sorted(token_metrics.items()):
                 lines.append(f"- **{key.replace('_', ' ').title()}:** {value:,}")
 
-            # Calculate and display cost if we have token counts
-            if "input_tokens" in token_metrics and "output_tokens" in token_metrics:
+            # Calculate and display cost only if we have both token counts AND pricing info
+            if (
+                "input_tokens" in token_metrics
+                and "output_tokens" in token_metrics
+                and input_price is not None
+                and output_price is not None
+            ):
                 input_cost = (token_metrics["input_tokens"] / 1_000_000) * input_price
                 output_cost = (
                     token_metrics["output_tokens"] / 1_000_000
@@ -504,14 +571,21 @@ class MarkdownExporter:
 
     def _static_analysis(self, report: CodeReviewReport) -> str:
         """Generate static analysis section."""
-        if not report.metrics.get("static_analysis_run"):
+        # Convert ReviewMetrics to dict, or use directly if already a dict
+        metrics_dict: dict[str, Any] = (
+            report.metrics.model_dump(exclude_none=True)
+            if hasattr(report.metrics, "model_dump")
+            else report.metrics  # type: ignore[assignment]
+        )
+
+        if not metrics_dict.get("static_analysis_run"):
             return ""
 
         lines = ["## Static Analysis\n"]
 
-        tools_passed = report.metrics.get("static_tools_passed", 0)
-        tools_failed = report.metrics.get("static_tools_failed", 0)
-        issues_found = report.metrics.get("static_issues_found", 0)
+        tools_passed = metrics_dict.get("static_tools_passed", 0)
+        tools_failed = metrics_dict.get("static_tools_failed", 0)
+        issues_found = metrics_dict.get("static_issues_found", 0)
 
         if tools_failed == 0:
             lines.append("✅ All static analysis tools passed!\n")

@@ -105,6 +105,7 @@ class AzureOpenAIProvider(ModelProvider):
             "rate_limiter": self.rate_limiter,
             "callbacks": self.callbacks if self.callbacks else None,
             "streaming": bool(self.callbacks),  # Enable streaming if callbacks provided
+            "timeout": self.provider_config.request_timeout,  # Request timeout in seconds
         }
 
         # Enable Responses API if model requires it (e.g., GPT-5.2 Codex)

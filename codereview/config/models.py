@@ -134,6 +134,7 @@ class AzureOpenAIConfig(ProviderConfig):
         endpoint: Azure OpenAI endpoint URL.
         api_key: Azure OpenAI API key or reference to environment variable.
         api_version: Azure OpenAI API version.
+        request_timeout: Request timeout in seconds for API calls.
         models: List of model configurations for Azure.
     """
 
@@ -146,6 +147,11 @@ class AzureOpenAIConfig(ProviderConfig):
         description="Azure OpenAI API key or environment variable reference",
     )
     api_version: str = Field(..., min_length=1, description="Azure OpenAI API version")
+    request_timeout: int = Field(
+        default=300,
+        gt=0,
+        description="Request timeout in seconds for API calls (default: 5 minutes)",
+    )
 
 
 class NVIDIAConfig(ProviderConfig):

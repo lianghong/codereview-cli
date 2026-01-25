@@ -3,8 +3,8 @@
 import time
 from typing import Any
 
-from botocore.config import Config as BotocoreConfig
-from botocore.exceptions import ClientError
+from botocore.config import Config as BotocoreConfig  # type: ignore[import-untyped]
+from botocore.exceptions import ClientError  # type: ignore[import-untyped]
 from langchain_aws import ChatBedrockConverse
 from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.output_parsers import PydanticOutputParser
@@ -287,7 +287,7 @@ class BedrockProvider(ModelProvider):
         Returns:
             ValidationResult with check details
         """
-        import boto3
+        import boto3  # type: ignore[import-untyped]
 
         result = ValidationResult(valid=True, provider="AWS Bedrock")
 

@@ -103,6 +103,8 @@ class NVIDIAProvider(ModelProvider):
             )
 
         # Build model parameters
+        # Note: ChatNVIDIA doesn't support a direct timeout parameter like AzureChatOpenAI.
+        # Timeout configuration for NVIDIA is handled via httpx defaults internally.
         model_params: dict[str, Any] = {
             "model": self.model_config.full_id,
             "api_key": SecretStr(self.provider_config.api_key),  # type: ignore[arg-type]

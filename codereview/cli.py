@@ -5,7 +5,7 @@ import traceback
 from pathlib import Path
 
 import click
-from botocore.exceptions import ClientError, NoCredentialsError
+from botocore.exceptions import ClientError, NoCredentialsError  # type: ignore[import-untyped]
 from rich.console import Console
 from rich.markup import escape
 from rich.progress import (
@@ -19,7 +19,7 @@ from rich.progress import (
 from rich.table import Table
 
 from codereview.analyzer import CodeAnalyzer
-from codereview.batcher import FileBatcher
+from codereview.batcher import FileBatch, FileBatcher
 from codereview.callbacks import ProgressCallbackHandler, StreamingCallbackHandler
 from codereview.config import (
     DEFAULT_EXCLUDE_PATTERNS,
@@ -564,7 +564,7 @@ def _generate_recommendations(issues: list[ReviewIssue]) -> list[str]:
 
 def _render_dry_run(
     files: list[Path],
-    batches: list,
+    batches: list[FileBatch],
     _model_name: str,
     model_display_name: str,
     provider: ModelProvider,
@@ -574,7 +574,7 @@ def _render_dry_run(
 
     Args:
         files: List of file paths to analyze
-        batches: List of file batches
+        batches: List of FileBatch objects
         _model_name: Model name (unused, kept for call-site compatibility)
         model_display_name: Human-readable model name for display
         provider: Model provider instance
