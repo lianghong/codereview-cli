@@ -61,7 +61,7 @@ class StreamingCallbackHandler(BaseCallbackHandler):
             self._live = None
 
     def __del__(self) -> None:
-        """Ensure cleanup on garbage collection."""
+        """Best-effort cleanup on garbage collection (not guaranteed to run)."""
         self.cleanup()
 
     def on_llm_start(
@@ -238,3 +238,16 @@ class ProgressCallbackHandler(BaseCallbackHandler):
             self._status.stop()
             self._status = None
         return None
+
+    def cleanup(self) -> None:
+        """Clean up any active status display."""
+        if self._status:
+            try:
+                self._status.stop()
+            except (OSError, RuntimeError):  # fmt: skip
+                pass
+            self._status = None
+
+    def __del__(self) -> None:
+        """Best-effort cleanup on garbage collection (not guaranteed to run)."""
+        self.cleanup()
