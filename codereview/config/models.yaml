@@ -18,7 +18,6 @@ providers:
         full_id: global.anthropic.claude-opus-4-5-20251101-v1:0
         name: Claude Opus 4.5
         aliases:
-          - opus
           - claude-opus
         pricing:
           input_per_million: 5.00    # Verified: Anthropic pricing
@@ -39,7 +38,6 @@ providers:
         full_id: global.anthropic.claude-sonnet-4-5-20250929-v1:0
         name: Claude Sonnet 4.5
         aliases:
-          - sonnet
           - claude-sonnet
         pricing:
           input_per_million: 3.00    # Verified: Anthropic pricing
@@ -61,7 +59,6 @@ providers:
         full_id: global.anthropic.claude-haiku-4-5-20251001-v1:0
         name: Claude Haiku 4.5
         aliases:
-          - haiku
           - claude-haiku
         pricing:
           input_per_million: 1.00    # Verified: Anthropic pricing
@@ -109,7 +106,6 @@ providers:
         full_id: mistral.mistral-large-3-675b-instruct
         name: Mistral Large 3
         aliases:
-          - mistral
           - mistral-large
         pricing:
           input_per_million: 2.00    # Verified: ~80% cheaper than competitors
@@ -133,7 +129,6 @@ providers:
         full_id: moonshot.kimi-k2-thinking
         name: Kimi K2 Thinking
         aliases:
-          - kimi
           - kimi-k2
         pricing:
           input_per_million: 0.60    # Verified: litellm/Bedrock pricing
@@ -158,7 +153,6 @@ providers:
         full_id: qwen.qwen3-coder-480b-a35b-v1:0
         name: Qwen3 Coder 480B
         aliases:
-          - qwen
           - qwen-coder
         pricing:
           input_per_million: 0.22    # Verified: AWS Bedrock pricing
