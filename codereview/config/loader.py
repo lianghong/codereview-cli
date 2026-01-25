@@ -80,8 +80,8 @@ class ConfigLoader:
             var_name = match.group(1)
             value = os.environ.get(var_name, "")
             if not value:
-                # For required vars like API keys, this is OK during loading
-                # Validation will catch missing required values
+                # Log missing vars for debugging - validation catches required ones later
+                logging.debug(f"Environment variable not set: {var_name}")
                 return ""
             return value
 
