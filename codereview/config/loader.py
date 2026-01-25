@@ -87,6 +87,29 @@ class ConfigLoader:
 
         return re.sub(r"\$\{([A-Z_]+)\}", replacer, text)
 
+    def _register_model(
+        self, provider: str, model_config: "ModelConfig", name: str
+    ) -> None:
+        """Register a model ID or alias, warning on conflicts.
+
+        Args:
+            provider: Provider name (bedrock, azure_openai, nvidia)
+            model_config: Model configuration
+            name: Model ID or alias to register
+        """
+        if name in self._models_by_id:
+            existing_provider, existing_config = self._models_by_id[name]
+            if existing_provider != provider:
+                logging.warning(
+                    f"Model name conflict: '{name}' exists in both "
+                    f"'{existing_provider}' ({existing_config.name}) and "
+                    f"'{provider}' ({model_config.name}). "
+                    f"Using '{existing_provider}'. To use '{provider}', "
+                    f"choose a unique ID or alias."
+                )
+                return  # Keep first registration
+        self._models_by_id[name] = (provider, model_config)
+
     def _parse_providers(self) -> None:
         """Parse provider configurations and models."""
         providers_section = self._raw_config.get("providers", {})
@@ -102,12 +125,11 @@ class ConfigLoader:
             # Parse Bedrock models
             for model_data in bedrock_data.get("models", []):
                 model_config = self._parse_model_config(model_data)
-                model_id = model_config.id
-                self._models_by_id[model_id] = ("bedrock", model_config)
+                self._register_model("bedrock", model_config, model_config.id)
 
                 # Register aliases
                 for alias in model_config.aliases:
-                    self._models_by_id[alias] = ("bedrock", model_config)
+                    self._register_model("bedrock", model_config, alias)
 
         # Parse Azure OpenAI provider
         if "azure_openai" in providers_section:
@@ -116,12 +138,11 @@ class ConfigLoader:
             # Always register Azure models for display (--list-models)
             for model_data in azure_data.get("models", []):
                 model_config = self._parse_model_config(model_data)
-                model_id = model_config.id
-                self._models_by_id[model_id] = ("azure_openai", model_config)
+                self._register_model("azure_openai", model_config, model_config.id)
 
                 # Register aliases
                 for alias in model_config.aliases:
-                    self._models_by_id[alias] = ("azure_openai", model_config)
+                    self._register_model("azure_openai", model_config, alias)
 
             # Only register provider config if credentials are present
             # (required for actual API calls, not for listing models)
@@ -151,12 +172,11 @@ class ConfigLoader:
             # Always register NVIDIA models for display (--list-models)
             for model_data in nvidia_data.get("models", []):
                 model_config = self._parse_model_config(model_data)
-                model_id = model_config.id
-                self._models_by_id[model_id] = ("nvidia", model_config)
+                self._register_model("nvidia", model_config, model_config.id)
 
                 # Register aliases
                 for alias in model_config.aliases:
-                    self._models_by_id[alias] = ("nvidia", model_config)
+                    self._register_model("nvidia", model_config, alias)
 
             # Only register provider config if API key is present
             # (required for actual API calls, not for listing models)
