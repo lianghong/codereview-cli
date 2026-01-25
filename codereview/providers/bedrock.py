@@ -174,6 +174,13 @@ class BedrockProvider(ModelProvider):
             try:
                 result = self.chain.invoke(chain_input)
 
+                # Handle None result (structured output parsing failed)
+                if result is None:
+                    raise ValidationError.from_exception_data(
+                        "Model returned None - structured output parsing failed",
+                        [],
+                    )
+
                 # Track token usage from AWS Bedrock response metadata
                 input_tokens = 0
                 output_tokens = 0

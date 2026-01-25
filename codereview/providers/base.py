@@ -1,8 +1,46 @@
 """Abstract base class for LLM providers."""
 
 from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
 
 from codereview.models import CodeReviewReport
+
+
+@dataclass
+class ValidationResult:
+    """Result of credential/configuration validation.
+
+    Attributes:
+        valid: Whether validation passed
+        provider: Provider name (e.g., "AWS Bedrock", "Azure OpenAI")
+        checks: List of individual check results
+        errors: List of error messages
+        warnings: List of warning messages
+        suggestions: List of fix suggestions
+    """
+
+    valid: bool
+    provider: str
+    checks: list[tuple[str, bool, str]] = field(
+        default_factory=list
+    )  # (name, passed, message)
+    errors: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+    suggestions: list[str] = field(default_factory=list)
+
+    def add_check(self, name: str, passed: bool, message: str = "") -> None:
+        """Add a check result."""
+        self.checks.append((name, passed, message))
+        if not passed and message:
+            self.errors.append(message)
+
+    def add_warning(self, message: str) -> None:
+        """Add a warning message."""
+        self.warnings.append(message)
+
+    def add_suggestion(self, message: str) -> None:
+        """Add a fix suggestion."""
+        self.suggestions.append(message)
 
 
 class ModelProvider(ABC):
@@ -86,3 +124,67 @@ class ModelProvider(ABC):
         Optional to override. Default returns 0.
         """
         return 0
+
+    def _prepare_batch_context(
+        self,
+        batch_number: int,
+        total_batches: int,
+        files_content: dict[str, str],
+    ) -> str:
+        """Prepare context string for LLM.
+
+        Args:
+            batch_number: Current batch number
+            total_batches: Total number of batches
+            files_content: Dictionary mapping file paths to file contents
+
+        Returns:
+            Formatted context string with file contents and line numbers
+        """
+        lines = [
+            f"Analyzing Batch {batch_number}/{total_batches}",
+            f"Files in this batch: {len(files_content)}",
+            "",
+            "=" * 80,
+            "",
+        ]
+
+        for file_path, content in files_content.items():
+            lines.append(f"File: {file_path}")
+            lines.append("-" * 80)
+
+            # Add line numbers
+            for i, line in enumerate(content.splitlines(), start=1):
+                lines.append(f"{i:4d} | {line}")
+
+            lines.append("")
+            lines.append("=" * 80)
+            lines.append("")
+
+        return "\n".join(lines)
+
+    def _estimate_tokens(self, text: str) -> int:
+        """Estimate token count (~4 chars per token heuristic).
+
+        Args:
+            text: Text to estimate token count for
+
+        Returns:
+            Estimated token count
+        """
+        return len(text) // 4
+
+    def validate_credentials(self) -> ValidationResult:
+        """Validate credentials and configuration before making API calls.
+
+        Performs lightweight checks to verify:
+        - Required credentials are present
+        - Configuration is valid
+        - Provider is accessible (optional, may make lightweight API call)
+
+        Returns:
+            ValidationResult with check details and any errors/suggestions
+
+        Optional to override. Default returns valid result.
+        """
+        return ValidationResult(valid=True, provider="Unknown")

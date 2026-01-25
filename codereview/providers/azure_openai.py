@@ -95,22 +95,29 @@ class AzureOpenAIProvider(ModelProvider):
 
     def _create_model(self) -> Any:
         """Create LangChain Azure OpenAI model with structured output."""
-        # Build model kwargs
-        model_kwargs: dict = {}
-        if self.top_p is not None:
-            model_kwargs["top_p"] = self.top_p
+        # Build base parameters
+        model_params: dict[str, Any] = {
+            "azure_deployment": self.model_config.deployment_name,
+            "azure_endpoint": str(self.provider_config.endpoint),
+            "api_key": SecretStr(self.provider_config.api_key),  # type: ignore[arg-type]
+            "api_version": self.provider_config.api_version,
+            "max_tokens": self.max_tokens,
+            "rate_limiter": self.rate_limiter,
+            "callbacks": self.callbacks if self.callbacks else None,
+            "streaming": bool(self.callbacks),  # Enable streaming if callbacks provided
+        }
 
-        base_model = AzureChatOpenAI(
-            azure_deployment=self.model_config.deployment_name,
-            azure_endpoint=str(self.provider_config.endpoint),
-            api_key=SecretStr(self.provider_config.api_key),  # type: ignore[arg-type]
-            api_version=self.provider_config.api_version,
-            temperature=self.temperature,
-            rate_limiter=self.rate_limiter,
-            callbacks=self.callbacks if self.callbacks else None,
-            streaming=bool(self.callbacks),  # Enable streaming if callbacks provided
-            model_kwargs={**model_kwargs, "max_tokens": self.max_tokens},
-        )
+        # Enable Responses API if model requires it (e.g., GPT-5.2 Codex)
+        # Models using Responses API don't support temperature/top_p parameters
+        if self.model_config.use_responses_api:
+            model_params["use_responses_api"] = True
+        else:
+            # Only add temperature/top_p for models that support them
+            model_params["temperature"] = self.temperature
+            if self.top_p is not None:
+                model_params["top_p"] = self.top_p
+
+        base_model = AzureChatOpenAI(**model_params)
 
         # Configure for structured output
         return base_model.with_structured_output(CodeReviewReport)
@@ -154,6 +161,13 @@ class AzureOpenAIProvider(ModelProvider):
         for attempt in range(max_retries + 1):
             try:
                 result = self.chain.invoke(chain_input)
+
+                # Handle None result (structured output parsing failed)
+                if result is None:
+                    raise ValidationError.from_exception_data(
+                        "Model returned None - structured output parsing failed",
+                        [],
+                    )
 
                 # Track token usage from Azure OpenAI response metadata
                 input_tokens = 0
@@ -378,26 +392,43 @@ class AzureOpenAIProvider(ModelProvider):
             try:
                 import httpx
 
-                # Quick HEAD request to check endpoint is reachable
-                test_url = f"{endpoint.rstrip('/')}/openai/deployments/{deployment}"
+                # Normalize endpoint: remove common suffixes that users might add
+                base_endpoint = endpoint.rstrip("/")
+                for suffix in ["/openai/v1", "/openai", "/v1"]:
+                    if base_endpoint.endswith(suffix):
+                        base_endpoint = base_endpoint[: -len(suffix)]
+                        break
+
+                # Quick request to check endpoint is reachable
+                # Use GET on models endpoint as HEAD requests are unreliable on Azure
+                test_url = f"{base_endpoint}/openai/models"
+                params = {"api-version": api_version} if api_version else {}
                 with httpx.Client(timeout=5.0) as client:
-                    response = client.head(
+                    response = client.get(
                         test_url,
                         headers={"api-key": api_key},
+                        params=params,
                     )
-                    # 401/403 means endpoint exists but we'd need proper auth
-                    # 404 might mean deployment doesn't exist
-                    # Any response means endpoint is reachable
-                    if response.status_code == 404:
-                        result.add_warning(
-                            f"Deployment '{deployment}' may not exist. "
-                            "Verify deployment name in Azure portal."
+                    # 200 means endpoint is reachable and auth works
+                    # 401/403 means endpoint exists but auth issue
+                    # Other codes mean endpoint is at least reachable
+                    if response.status_code == 200:
+                        result.add_check(
+                            "Connection",
+                            True,
+                            "Endpoint is reachable and authenticated",
+                        )
+                    elif response.status_code in (401, 403):
+                        result.add_check(
+                            "Connection",
+                            True,
+                            "Endpoint is reachable (auth will be verified on first call)",
                         )
                     else:
                         result.add_check(
                             "Connection",
                             True,
-                            "Endpoint is reachable",
+                            f"Endpoint responded (status: {response.status_code})",
                         )
 
             except ImportError:
