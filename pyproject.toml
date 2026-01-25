@@ -8,7 +8,12 @@ authors = [
 ]
 license = {text = "MIT"}
 readme = "README.md"
-keywords = ["code-review", "langchain", "aws-bedrock", "azure-openai", "claude", "gpt", "cli", "static-analysis"]
+keywords = ["code-review", "langchain", "aws-bedrock", "azure-openai", "nvidia-nim", "claude", "gpt", "devstral", "cli", "static-analysis"]
+
+[project.urls]
+Homepage = "https://github.com/lianghong/codereview-cli"
+Repository = "https://github.com/lianghong/codereview-cli.git"
+Issues = "https://github.com/lianghong/codereview-cli/issues"
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
@@ -28,6 +33,7 @@ dependencies = [
     "rich>=13.7.0",
     "pydantic>=2.9.0",
     "pyyaml>=6.0",
+    "bandit>=1.9.3",
 ]
 
 [project.scripts]

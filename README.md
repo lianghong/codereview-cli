@@ -1,13 +1,17 @@
 # Code Review CLI
 
-> AI-powered code review tool with multiple LLM providers (AWS Bedrock, Azure OpenAI)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.14+](https://img.shields.io/badge/python-3.14+-blue.svg)](https://www.python.org/downloads/)
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
-A LangChain-based CLI tool that provides comprehensive, intelligent code reviews for Python, Go, Shell Script, C++, Java, JavaScript, and TypeScript projects using Claude, GPT, and other leading models through AWS Bedrock and Azure OpenAI.
+> AI-powered code review tool with multiple LLM providers (AWS Bedrock, Azure OpenAI, NVIDIA NIM)
+
+A LangChain-based CLI tool that provides comprehensive, intelligent code reviews for Python, Go, Shell Script, C++, Java, JavaScript, and TypeScript projects using Claude, GPT, Devstral, and other leading models through AWS Bedrock, Azure OpenAI, and NVIDIA NIM.
 
 ## Features
 
-- **Multi-Provider Support**: AWS Bedrock (Claude, Mistral, Minimax, Kimi, Qwen) and Azure OpenAI (GPT models)
-- **AI-Powered Analysis**: Leverages Claude Opus 4.5, GPT-5.2 Codex, and other leading models for deep code understanding
+- **Multi-Provider Support**: AWS Bedrock (Claude, Mistral, Minimax, Kimi, Qwen), Azure OpenAI (GPT), and NVIDIA NIM (Devstral, DeepSeek)
+- **AI-Powered Analysis**: Leverages Claude Opus 4.5, GPT-5.2 Codex, Devstral 2, and other leading models for deep code understanding
 - **Multi-Language Support**: Reviews Python, Go, Shell Script, C++, Java, JavaScript, and TypeScript codebases
 - **Smart Batching**: Automatically groups files for efficient token usage
 - **Structured Output**: Get categorized issues with severity levels and actionable suggestions
@@ -25,13 +29,14 @@ A LangChain-based CLI tool that provides comprehensive, intelligent code reviews
 - **One of the following:**
   - AWS account with Bedrock access (for Claude, Mistral, Minimax, Kimi, Qwen models)
   - Azure OpenAI resource with GPT model deployment (for GPT models)
+  - NVIDIA API key from [build.nvidia.com](https://build.nvidia.com) (for Devstral, DeepSeek, free tier available)
 
 ### Install with uv (recommended)
 
 ```bash
 # Clone the repository
-git clone <repository-url>
-cd langchain_projects
+git clone https://github.com/lianghong/codereview-cli.git
+cd codereview-cli
 
 # Create virtual environment
 uv venv --python 3.14
@@ -146,6 +151,40 @@ codereview --list-models  # Should show Azure models
 
 **Note:** Azure OpenAI models require you to deploy them in your Azure resource first. The deployment names in your configuration must match your actual Azure deployments.
 
+## NVIDIA NIM Configuration (Alternative Provider)
+
+NVIDIA NIM provides access to models like Devstral 2, DeepSeek V3.2, Qwen3 Coder, and more with a free tier for development.
+
+### 1. Get API Key
+
+1. Visit [NVIDIA Build](https://build.nvidia.com/explore/discover)
+2. Sign in or create an account
+3. Generate an API key (format: `nvapi-xxxxx...`)
+
+### 2. Set Environment Variable
+
+```bash
+export NVIDIA_API_KEY="nvapi-your-key-here"
+```
+
+### 3. Use NVIDIA Models
+
+```bash
+# Devstral 2 - Code-specialized model
+codereview /path/to/code --model devstral
+
+# DeepSeek V3.2 - Large reasoning model
+codereview /path/to/code --model deepseek-nvidia
+
+# Qwen3 Coder - Ultra-large coding model
+codereview /path/to/code --model qwen-nvidia
+
+# Kimi K2 - Large context model
+codereview /path/to/code --model kimi-nvidia
+```
+
+**Note:** NVIDIA NIM models are currently in free tier. No charges apply during the preview period.
+
 ## Usage
 
 ### Basic Usage
@@ -176,9 +215,14 @@ codereview /path/to/code --model qwen      # Qwen3 Coder 480B
 codereview /path/to/code --model gpt-5.2-codex  # GPT-5.2 Codex
 codereview /path/to/code --model gpt4o          # GPT-4o
 
+# NVIDIA NIM Models (free tier)
+codereview /path/to/code --model devstral       # Devstral 2 123B
+codereview /path/to/code --model deepseek-nvidia # DeepSeek V3.2
+codereview /path/to/code --model qwen-nvidia    # Qwen3 Coder 480B
+
 # Short aliases work too
 codereview /path/to/code -m haiku
-codereview /path/to/code -m qwen
+codereview /path/to/code -m devstral
 ```
 
 **Model Comparison:**
@@ -190,10 +234,15 @@ codereview /path/to/code -m qwen
 | Haiku 4.5 | AWS Bedrock | Fast, economical, large codebases | $1.00 | $5.00 |
 | GPT-5.2 Codex | Azure OpenAI | Code-specialized, Microsoft ecosystem | $1.75 | $14.00 |
 | GPT-4o | Azure OpenAI | Multimodal, general purpose | $2.50 | $10.00 |
+| Devstral 2 | NVIDIA NIM | Code-specialized, free tier | Free* | Free* |
+| DeepSeek V3.2 | NVIDIA NIM | Large reasoning model, free tier | Free* | Free* |
+| Qwen3 Coder (NIM) | NVIDIA NIM | Ultra-large coding model, free tier | Free* | Free* |
 | Minimax M2 | AWS Bedrock | Cost-effective, good for testing | $0.30 | $1.20 |
 | Mistral Large 3 | AWS Bedrock | Open-source focused, multilingual | $2.00 | $6.00 |
 | Kimi K2 | AWS Bedrock | Large context window (up to 256K) | $0.50 | $2.00 |
 | Qwen3 Coder 480B | AWS Bedrock | Ultra-large model, deep analysis | $0.22 | $1.40 |
+
+*NVIDIA NIM models are currently in free preview tier.
 
 ### Export to Markdown
 
@@ -400,8 +449,8 @@ Error: models.yaml not found
 
 ```bash
 # Clone repository
-git clone <repository-url>
-cd langchain_projects
+git clone https://github.com/lianghong/codereview-cli.git
+cd codereview-cli
 
 # Create virtual environment
 uv venv --python 3.14
@@ -426,33 +475,38 @@ uv run pytest tests/ --cov=codereview --cov-report=html
 ### Project Structure
 
 ```
-langchain_projects/
+codereview-cli/
 ├── codereview/
 │   ├── __init__.py
 │   ├── analyzer.py           # LLM-based code analysis
 │   ├── batcher.py            # Smart file batching
 │   ├── cli.py                # CLI entry point
-│   ├── config.py             # Configuration constants
 │   ├── models.py             # Pydantic data models for review output
 │   ├── renderer.py           # Terminal and Markdown rendering
 │   ├── scanner.py            # File system scanning
 │   ├── static_analysis.py    # Static analysis tool integration
 │   ├── config/
+│   │   ├── __init__.py       # Configuration exports
 │   │   ├── models.yaml       # Provider and model configuration
-│   │   ├── config_models.py  # Pydantic models for configuration
+│   │   ├── models.py         # Pydantic models for configuration
+│   │   ├── prompts.py        # Code review rules and system prompt
 │   │   └── loader.py         # YAML configuration loader
 │   └── providers/
+│       ├── __init__.py
 │       ├── base.py           # ModelProvider abstract base class
 │       ├── factory.py        # Provider factory with auto-detection
 │       ├── bedrock.py        # AWS Bedrock provider implementation
-│       └── azure_openai.py   # Azure OpenAI provider implementation
+│       ├── azure_openai.py   # Azure OpenAI provider implementation
+│       └── nvidia.py         # NVIDIA NIM provider implementation
 ├── tests/
-│   ├── test_*.py             # Unit tests
+│   ├── test_*.py             # Unit tests (162 tests)
 │   └── fixtures/             # Test fixtures
 ├── docs/
 │   ├── usage.md              # Detailed usage guide
-│   └── examples.md           # Example commands and workflows
+│   ├── examples.md           # Example commands and workflows
+│   └── MIGRATION.md          # Migration guide
 ├── pyproject.toml            # Project configuration
+├── LICENSE                   # MIT License
 ├── CLAUDE.md                 # Claude Code instructions
 └── README.md                 # This file
 ```
@@ -510,25 +564,27 @@ Contributions are welcome! Please:
 
 ## License
 
-[Add your license information here]
+MIT License - see [LICENSE](LICENSE) for details.
 
 ## Support
 
 For issues, questions, or contributions:
-- Open an issue on GitHub
+- [Open an issue](https://github.com/lianghong/codereview-cli/issues) on GitHub
 - Check the [Usage Guide](docs/usage.md)
 - Review [Examples](docs/examples.md)
 
 ## Version History
 
 ### v0.2.0 (Current)
-- **Multi-Provider Support**: Added Azure OpenAI alongside AWS Bedrock
+- **Multi-Provider Support**: Added Azure OpenAI and NVIDIA NIM alongside AWS Bedrock
+- **NVIDIA NIM Integration**: Free tier access to Devstral 2, DeepSeek V3.2, Qwen3 Coder, Kimi K2
 - **Provider Architecture**: Abstract provider system with factory pattern
 - **YAML Configuration**: Centralized model configuration in `models.yaml`
 - **Enhanced Model Selection**: Simplified `--model` option with aliases
 - **Extended Language Support**: Added Shell Script, C++, Java, JavaScript, and TypeScript
 - **Static Analysis Integration**: Parallel execution of language-specific linters and formatters
-- **Improved CLI**: Added `--list-models` flag and better error messages
+- **Security Scanning**: Added bandit (Python) and gosec (Go) for security vulnerability detection
+- **Improved CLI**: Added `--list-models`, `--dry-run` flags and better error messages
 
 ### v0.1.0
 - Initial release
@@ -542,7 +598,7 @@ For issues, questions, or contributions:
 ## Acknowledgments
 
 - Built with [LangChain](https://github.com/langchain-ai/langchain)
-- Powered by [Anthropic Claude](https://www.anthropic.com/) and [OpenAI GPT](https://openai.com/)
-- [AWS Bedrock](https://aws.amazon.com/bedrock/) and [Azure OpenAI](https://azure.microsoft.com/en-us/products/ai-services/openai-service) for model hosting
+- Powered by [Anthropic Claude](https://www.anthropic.com/), [OpenAI GPT](https://openai.com/), and [Mistral AI](https://mistral.ai/)
+- [AWS Bedrock](https://aws.amazon.com/bedrock/), [Azure OpenAI](https://azure.microsoft.com/en-us/products/ai-services/openai-service), and [NVIDIA NIM](https://build.nvidia.com/) for model hosting
 - Rich library for beautiful terminal output
-- Static analysis tools: ruff, mypy, eslint, golangci-lint, shellcheck, and more
+- Static analysis tools: ruff, mypy, eslint, golangci-lint, shellcheck, bandit, gosec, and more

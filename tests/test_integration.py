@@ -11,7 +11,7 @@ from click.testing import CliRunner
 from codereview.analyzer import CodeAnalyzer
 from codereview.batcher import FileBatcher
 from codereview.cli import main
-from codereview.models import CodeReviewReport, ReviewIssue
+from codereview.models import CodeReviewReport, ReviewIssue, ReviewMetrics
 from codereview.renderer import MarkdownExporter
 from codereview.scanner import FileScanner
 
@@ -65,14 +65,14 @@ def mock_code_review_report():
     """Create a mock code review report."""
     return CodeReviewReport(
         summary="Test analysis complete",
-        metrics={
-            "files_analyzed": 2,
-            "total_issues": 3,
-            "critical": 0,
-            "high": 1,
-            "medium": 2,
-            "low": 0,
-        },
+        metrics=ReviewMetrics(
+            files_analyzed=2,
+            total_issues=3,
+            critical_issues=0,
+            high_issues=1,
+            medium_issues=2,
+            low_issues=0,
+        ),
         issues=[
             ReviewIssue(
                 category="Code Quality",
@@ -594,7 +594,7 @@ class TestBatchProcessing:
 
         report1 = CodeReviewReport(
             summary="Batch 1",
-            metrics={"files_analyzed": 1, "total_issues": 2},
+            metrics=ReviewMetrics(files_analyzed=1, total_issues=2),
             issues=[
                 ReviewIssue(
                     category="Code Quality",
@@ -613,7 +613,7 @@ class TestBatchProcessing:
 
         report2 = CodeReviewReport(
             summary="Batch 2",
-            metrics={"files_analyzed": 1, "total_issues": 1},
+            metrics=ReviewMetrics(files_analyzed=1, total_issues=1),
             issues=[
                 ReviewIssue(
                     category="Security",

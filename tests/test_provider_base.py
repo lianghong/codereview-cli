@@ -1,6 +1,6 @@
 import pytest
 
-from codereview.models import CodeReviewReport
+from codereview.models import CodeReviewReport, ReviewMetrics
 from codereview.providers.base import ModelProvider
 
 
@@ -24,7 +24,7 @@ class ConcreteProvider(ModelProvider):
         self._output_tokens += 50
         return CodeReviewReport(
             summary="Test summary",
-            metrics={"files_analyzed": len(files_content)},
+            metrics=ReviewMetrics(files_analyzed=len(files_content)),
             issues=[],
             system_design_insights="No design issues found",
             recommendations=[],
@@ -80,7 +80,7 @@ def test_analyze_batch():
 
     assert isinstance(result, CodeReviewReport)
     assert result.summary == "Test summary"
-    assert result.metrics["files_analyzed"] == 1
+    assert result.metrics.files_analyzed == 1
 
 
 def test_get_model_display_name():

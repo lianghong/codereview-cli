@@ -1,6 +1,6 @@
 import pytest
 
-from codereview.models import CodeReviewReport, ReviewIssue
+from codereview.models import CodeReviewReport, ReviewIssue, ReviewMetrics
 from codereview.renderer import MarkdownExporter
 
 
@@ -22,7 +22,7 @@ def sample_report():
 
     return CodeReviewReport(
         summary="Found 1 critical security issue",
-        metrics={"files": 1, "issues": 1, "critical": 1},
+        metrics=ReviewMetrics(files_analyzed=1, total_issues=1, critical_issues=1),
         issues=[issue],
         system_design_insights="Single file reviewed",
         recommendations=["Fix SQL injection immediately"],

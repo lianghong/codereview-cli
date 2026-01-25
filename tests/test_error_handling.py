@@ -7,7 +7,7 @@ from botocore.exceptions import ClientError
 
 from codereview.analyzer import CodeAnalyzer
 from codereview.batcher import FileBatch
-from codereview.models import CodeReviewReport
+from codereview.models import CodeReviewReport, ReviewMetrics
 
 
 @pytest.fixture
@@ -41,7 +41,7 @@ class TestErrorPropagation:
         """Test that successful analysis works correctly."""
         mock_report = CodeReviewReport(
             summary="Test summary",
-            metrics={},
+            metrics=ReviewMetrics(),
             issues=[],
             system_design_insights="",
             recommendations=[],
@@ -114,7 +114,7 @@ class TestErrorPropagation:
         """Test that max_retries parameter is passed to provider."""
         mock_report = CodeReviewReport(
             summary="Test",
-            metrics={},
+            metrics=ReviewMetrics(),
             issues=[],
             system_design_insights="",
             recommendations=[],

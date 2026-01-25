@@ -1,10 +1,10 @@
 """Configuration package for model and provider configuration management."""
 
-# Import new Pydantic models
-# Re-export everything from old config.py for backward compatibility
-# This allows existing code to continue importing from codereview.config
-from pathlib import Path
+from functools import lru_cache
 
+# Import Pydantic models
+# Import ConfigLoader
+from codereview.config.loader import ConfigLoader
 from codereview.config.models import (
     AzureOpenAIConfig,
     BedrockConfig,
@@ -13,28 +13,60 @@ from codereview.config.models import (
     ModelsConfigFile,
     PricingConfig,
     ProviderConfig,
+    ScanningConfig,
 )
 
-# Import from parent's config.py (the old module)
-parent_dir = Path(__file__).parent.parent
-config_py = parent_dir / "config.py"
+# Import system prompt
+from codereview.config.prompts import SYSTEM_PROMPT
 
-if config_py.exists():
-    # Use exec to load the old config.py and make its contents available
-    import importlib.util
 
-    spec = importlib.util.spec_from_file_location("_old_config", config_py)
-    if spec and spec.loader:
-        _old_config = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(_old_config)
+@lru_cache(maxsize=1)
+def get_config_loader() -> ConfigLoader:
+    """Get the default ConfigLoader instance (singleton).
 
-        # Re-export all public names from old config
-        for name in dir(_old_config):
-            if not name.startswith("_"):
-                globals()[name] = getattr(_old_config, name)
+    Uses lru_cache for thread-safe lazy initialization.
+    Call get_config_loader.cache_clear() to reset for testing.
+    """
+    return ConfigLoader()
+
+
+# Convenience accessors for scanning config
+def get_default_exclude_patterns() -> list[str]:
+    """Get default file exclusion patterns."""
+    return list(get_config_loader().scanning_config.exclude_patterns)
+
+
+def get_default_exclude_extensions() -> list[str]:
+    """Get default file extension exclusions."""
+    return list(get_config_loader().scanning_config.exclude_extensions)
+
+
+def get_max_file_size_kb() -> int:
+    """Get maximum file size in KB."""
+    return get_config_loader().scanning_config.max_file_size_kb
+
+
+def get_warn_file_size_kb() -> int:
+    """Get file size warning threshold in KB."""
+    return get_config_loader().scanning_config.warn_file_size_kb
+
+
+# Convenience accessor for model aliases (for CLI)
+def get_model_aliases() -> dict[str, str]:
+    """Get all model aliases mapped to their primary IDs."""
+    return get_config_loader().get_model_aliases()
+
+
+# Legacy compatibility exports
+# These are provided for backward compatibility during migration
+DEFAULT_EXCLUDE_PATTERNS = get_default_exclude_patterns()
+DEFAULT_EXCLUDE_EXTENSIONS = get_default_exclude_extensions()
+MAX_FILE_SIZE_KB = get_max_file_size_kb()
+WARN_FILE_SIZE_KB = get_warn_file_size_kb()
+MODEL_ALIASES = get_model_aliases()
 
 __all__ = [
-    # New Pydantic models
+    # Pydantic models
     "PricingConfig",
     "InferenceParams",
     "ModelConfig",
@@ -42,12 +74,22 @@ __all__ = [
     "BedrockConfig",
     "AzureOpenAIConfig",
     "ModelsConfigFile",
-    # Old config.py exports (will be added dynamically)
-    "ModelInfo",
+    "ScanningConfig",
+    # ConfigLoader
+    "ConfigLoader",
+    "get_config_loader",
+    # System prompt
+    "SYSTEM_PROMPT",
+    # Convenience accessors
+    "get_default_exclude_patterns",
+    "get_default_exclude_extensions",
+    "get_max_file_size_kb",
+    "get_warn_file_size_kb",
+    "get_model_aliases",
+    # Legacy compatibility
     "DEFAULT_EXCLUDE_PATTERNS",
     "DEFAULT_EXCLUDE_EXTENSIONS",
-    "MODEL_CONFIG",
-    "SUPPORTED_MODELS",
-    "SYSTEM_PROMPT",
     "MAX_FILE_SIZE_KB",
+    "WARN_FILE_SIZE_KB",
+    "MODEL_ALIASES",
 ]

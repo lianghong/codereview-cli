@@ -78,6 +78,7 @@ class TerminalRenderer:
             f"[bold]{report.summary}[/bold]",
             "",
             f"📊 Files analyzed: {metrics_dict.get('files_analyzed', 0)}",
+            f"📝 Total lines of code: {metrics_dict.get('total_lines', 0):,}",
             f"🐛 Total issues: {metrics_dict.get('total_issues', 0)}",
         ]
         return "\n".join(lines)

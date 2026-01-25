@@ -10,7 +10,7 @@ from codereview.config.models import (
     ModelConfig,
     PricingConfig,
 )
-from codereview.models import CodeReviewReport
+from codereview.models import CodeReviewReport, ReviewMetrics
 from codereview.providers.bedrock import BedrockProvider
 
 
@@ -46,7 +46,7 @@ def mock_report():
     """Create mock CodeReviewReport."""
     return CodeReviewReport(
         summary="Test analysis",
-        metrics={"files": 1},
+        metrics=ReviewMetrics(files_analyzed=1),
         issues=[],
         system_design_insights="No concerns",
         recommendations=[],
@@ -75,11 +75,15 @@ def test_analyze_batch(model_config, provider_config, mock_report):
         # Setup mock
         mock_instance = Mock()
         mock_structured = Mock()
-        mock_structured.invoke.return_value = mock_report
         mock_instance.with_structured_output.return_value = mock_structured
         mock_bedrock.return_value = mock_instance
 
         provider = BedrockProvider(model_config, provider_config)
+
+        # Mock the chain's invoke method (chain = prompt | model)
+        provider.chain = Mock()
+        provider.chain.invoke.return_value = mock_report
+
         result = provider.analyze_batch(
             batch_number=1,
             total_batches=1,
@@ -112,12 +116,14 @@ def test_token_tracking(model_config, provider_config, mock_report):
             setattr(mock_report_with_metadata, attr, getattr(mock_report, attr))
 
         mock_instance = Mock()
-        mock_structured = Mock()
-        mock_structured.invoke.return_value = mock_report_with_metadata
-        mock_instance.with_structured_output.return_value = mock_structured
+        mock_instance.with_structured_output.return_value = Mock()
         mock_bedrock.return_value = mock_instance
 
         provider = BedrockProvider(model_config, provider_config)
+
+        # Mock the chain's invoke method
+        provider.chain = Mock()
+        provider.chain.invoke.return_value = mock_report_with_metadata
 
         # Initial state
         assert provider.total_input_tokens == 0
@@ -138,12 +144,15 @@ def test_cost_estimation(model_config, provider_config, mock_report):
         }
 
         mock_instance = Mock()
-        mock_structured = Mock()
-        mock_structured.invoke.return_value = mock_report_with_metadata
-        mock_instance.with_structured_output.return_value = mock_structured
+        mock_instance.with_structured_output.return_value = Mock()
         mock_bedrock.return_value = mock_instance
 
         provider = BedrockProvider(model_config, provider_config)
+
+        # Mock the chain's invoke method
+        provider.chain = Mock()
+        provider.chain.invoke.return_value = mock_report_with_metadata
+
         provider.analyze_batch(1, 1, {"test.py": "code"})
 
         cost = provider.estimate_cost()
@@ -166,12 +175,15 @@ def test_reset_state(model_config, provider_config, mock_report):
         }
 
         mock_instance = Mock()
-        mock_structured = Mock()
-        mock_structured.invoke.return_value = mock_report_with_metadata
-        mock_instance.with_structured_output.return_value = mock_structured
+        mock_instance.with_structured_output.return_value = Mock()
         mock_bedrock.return_value = mock_instance
 
         provider = BedrockProvider(model_config, provider_config)
+
+        # Mock the chain's invoke method
+        provider.chain = Mock()
+        provider.chain.invoke.return_value = mock_report_with_metadata
+
         provider.analyze_batch(1, 1, {"test.py": "code"})
 
         assert provider.total_input_tokens > 0
@@ -194,7 +206,10 @@ def test_retry_logic_on_throttling(model_config, provider_config, mock_report):
         with patch("time.sleep") as mock_sleep:
             # Setup mock to fail twice with throttling, then succeed
             mock_instance = Mock()
-            mock_structured = Mock()
+            mock_instance.with_structured_output.return_value = Mock()
+            mock_bedrock.return_value = mock_instance
+
+            provider = BedrockProvider(model_config, provider_config)
 
             from botocore.exceptions import ClientError
 
@@ -203,15 +218,14 @@ def test_retry_logic_on_throttling(model_config, provider_config, mock_report):
                 "InvokeModel",
             )
 
-            mock_structured.invoke.side_effect = [
+            # Mock the chain's invoke method with side effects
+            provider.chain = Mock()
+            provider.chain.invoke.side_effect = [
                 throttle_error,
                 throttle_error,
                 mock_report,
             ]
-            mock_instance.with_structured_output.return_value = mock_structured
-            mock_bedrock.return_value = mock_instance
 
-            provider = BedrockProvider(model_config, provider_config)
             result = provider.analyze_batch(1, 1, {"test.py": "code"})
 
             # Should succeed after retries

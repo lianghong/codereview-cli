@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from codereview.batcher import FileBatch, FileBatcher
 
 
@@ -47,3 +49,12 @@ def test_batch_numbers_correct():
 
     for batch in batches:
         assert batch.total_batches == 3
+
+
+def test_batcher_rejects_invalid_max_files():
+    """Test batcher rejects invalid max_files_per_batch values."""
+    with pytest.raises(ValueError, match="max_files_per_batch must be at least 1"):
+        FileBatcher(max_files_per_batch=0)
+
+    with pytest.raises(ValueError, match="max_files_per_batch must be at least 1"):
+        FileBatcher(max_files_per_batch=-1)

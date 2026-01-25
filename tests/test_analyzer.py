@@ -4,7 +4,7 @@ import pytest
 
 from codereview.analyzer import CodeAnalyzer
 from codereview.batcher import FileBatch
-from codereview.models import CodeReviewReport
+from codereview.models import CodeReviewReport, ReviewMetrics
 
 
 @pytest.fixture
@@ -13,7 +13,7 @@ def mock_provider():
     provider = Mock()
     provider.analyze_batch.return_value = CodeReviewReport(
         summary="Test summary",
-        metrics={"files": 1, "issues": 0},
+        metrics=ReviewMetrics(files_analyzed=1, total_issues=0),
         issues=[],
         system_design_insights="Test insights",
         recommendations=[],
@@ -49,7 +49,9 @@ def test_analyzer_initialization_with_model_name(mock_provider):
         analyzer = CodeAnalyzer(model_name="opus")
 
         assert analyzer.model_name == "opus"
-        mock_factory.return_value.create_provider.assert_called_once_with("opus", None)
+        mock_factory.return_value.create_provider.assert_called_once_with(
+            "opus", None, callbacks=None
+        )
 
 
 def test_analyzer_initialization_with_temperature(mock_provider):
@@ -60,7 +62,9 @@ def test_analyzer_initialization_with_temperature(mock_provider):
         analyzer = CodeAnalyzer(model_name="sonnet", temperature=0.5)
 
         assert analyzer.temperature == 0.5
-        mock_factory.return_value.create_provider.assert_called_once_with("sonnet", 0.5)
+        mock_factory.return_value.create_provider.assert_called_once_with(
+            "sonnet", 0.5, callbacks=None
+        )
 
 
 def test_analyzer_legacy_parameters_deprecated():
@@ -87,7 +91,9 @@ def test_analyzer_legacy_model_id_mapping(mock_provider):
 
         # Should map to "opus"
         assert analyzer.model_name == "opus"
-        mock_factory.return_value.create_provider.assert_called_once_with("opus", None)
+        mock_factory.return_value.create_provider.assert_called_once_with(
+            "opus", None, callbacks=None
+        )
 
 
 def test_analyzer_delegates_to_provider(mock_provider, sample_batch):
@@ -177,4 +183,4 @@ def test_analyzer_with_custom_factory(mock_provider):
     analyzer = CodeAnalyzer(model_name="opus", provider_factory=custom_factory)
 
     assert analyzer.factory == custom_factory
-    custom_factory.create_provider.assert_called_once_with("opus", None)
+    custom_factory.create_provider.assert_called_once_with("opus", None, callbacks=None)

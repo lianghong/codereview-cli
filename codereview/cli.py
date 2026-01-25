@@ -232,6 +232,18 @@ def main(
 
         console.print(f"✓ Found {len(files)} files to review")
 
+        # Count total lines of code
+        total_lines = 0
+        for file_path in files:
+            try:
+                with file_path.open("r", encoding="utf-8", errors="replace") as f:
+                    total_lines += sum(1 for _ in f)
+            except OSError:
+                # Skip files that can't be read
+                pass
+
+        console.print(f"✓ Total lines of code: {total_lines:,}")
+
         # Report files skipped during scanning (e.g., too large)
         if scanner.skipped_files:
             console.print(
@@ -398,6 +410,7 @@ def main(
         # Build metrics object
         metrics = ReviewMetrics(
             files_analyzed=total_files,
+            total_lines=total_lines,
             total_issues=len(all_issues),
             critical=sum(1 for i in all_issues if i.severity == "Critical"),
             high=sum(1 for i in all_issues if i.severity == "High"),

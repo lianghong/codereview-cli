@@ -2,7 +2,7 @@
 import pytest
 from pydantic import ValidationError
 
-from codereview.models import CodeReviewReport, ReviewIssue
+from codereview.models import CodeReviewReport, ReviewIssue, ReviewMetrics
 
 
 def test_review_issue_creation():
@@ -57,7 +57,7 @@ def test_code_review_report():
 
     report = CodeReviewReport(
         summary="Found 1 security issue",
-        metrics={"files": 5, "lines": 100, "issues": 1},
+        metrics=ReviewMetrics(files_analyzed=5, total_lines=100, total_issues=1),
         issues=[issue],
         system_design_insights="Architecture looks good",
         recommendations=["Fix security issue"],
@@ -65,7 +65,7 @@ def test_code_review_report():
 
     assert report.summary == "Found 1 security issue"
     assert len(report.issues) == 1
-    assert report.metrics["files"] == 5
+    assert report.metrics.files_analyzed == 5
 
 
 def test_category_normalization():
@@ -106,18 +106,33 @@ def test_category_normalization():
     assert issue3.category == "System Design"
 
 
-def test_invalid_severity():
-    """Test that invalid severity raises ValidationError."""
-    with pytest.raises(ValidationError):
-        ReviewIssue(
-            category="Security",
-            severity="SuperCritical",
-            file_path="app.py",
-            line_start=1,
-            title="Test",
-            description="Test",
-            rationale="Test",
-        )
+def test_severity_normalization():
+    """Test that invalid/unknown severity is normalized to Medium."""
+    # Unknown severity should normalize to Medium
+    issue1 = ReviewIssue(
+        category="Security",
+        severity="SuperCritical",
+        file_path="app.py",
+        line_start=1,
+        title="Test",
+        description="Test",
+        rationale="Test",
+    )
+    assert issue1.severity == "Medium"
+
+    # Common variations should normalize correctly
+    issue2 = ReviewIssue(severity="major")
+    assert issue2.severity == "High"
+
+    issue3 = ReviewIssue(severity="warning")
+    assert issue3.severity == "Medium"
+
+    issue4 = ReviewIssue(severity="minor")
+    assert issue4.severity == "Low"
+
+    # Missing severity should default to Medium
+    issue5 = ReviewIssue()
+    assert issue5.severity == "Medium"
 
 
 def test_invalid_line_start():

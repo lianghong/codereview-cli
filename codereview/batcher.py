@@ -2,7 +2,6 @@
 
 import math
 from pathlib import Path
-from typing import List
 
 from pydantic import BaseModel, ConfigDict
 
@@ -12,7 +11,7 @@ class FileBatch(BaseModel):
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    files: List[Path]
+    files: list[Path]
     batch_number: int
     total_batches: int
 
@@ -25,11 +24,16 @@ class FileBatcher:
         Initialize batcher.
 
         Args:
-            max_files_per_batch: Maximum files per batch (default 10)
+            max_files_per_batch: Maximum files per batch (default 10, must be >= 1)
+
+        Raises:
+            ValueError: If max_files_per_batch is less than 1
         """
+        if max_files_per_batch < 1:
+            raise ValueError("max_files_per_batch must be at least 1")
         self.max_files_per_batch = max_files_per_batch
 
-    def create_batches(self, files: List[Path]) -> List[FileBatch]:
+    def create_batches(self, files: list[Path]) -> list[FileBatch]:
         """
         Create batches from file list.
 
@@ -42,7 +46,7 @@ class FileBatcher:
         if not files:
             return []
 
-        batches: List[FileBatch] = []
+        batches: list[FileBatch] = []
         total_batches = math.ceil(len(files) / self.max_files_per_batch)
 
         for i in range(0, len(files), self.max_files_per_batch):

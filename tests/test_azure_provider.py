@@ -9,7 +9,7 @@ from codereview.config.models import (
     ModelConfig,
     PricingConfig,
 )
-from codereview.models import CodeReviewReport
+from codereview.models import CodeReviewReport, ReviewMetrics
 from codereview.providers.azure_openai import AzureOpenAIProvider
 
 
@@ -48,7 +48,7 @@ def mock_report():
     """Create mock CodeReviewReport."""
     return CodeReviewReport(
         summary="Test analysis",
-        metrics={"files_analyzed": 1, "issues_found": 0, "critical_issues": 0},
+        metrics=ReviewMetrics(files_analyzed=1, total_issues=0, critical_issues=0),
         issues=[],
         system_design_insights="No major design issues",
         recommendations=["Keep up the good work"],
@@ -76,12 +76,15 @@ def test_analyze_batch(model_config, provider_config, mock_report):
     with patch("codereview.providers.azure_openai.AzureChatOpenAI") as mock_azure:
         # Setup mock
         mock_instance = Mock()
-        mock_structured = Mock()
-        mock_structured.invoke.return_value = mock_report
-        mock_instance.with_structured_output.return_value = mock_structured
+        mock_instance.with_structured_output.return_value = Mock()
         mock_azure.return_value = mock_instance
 
         provider = AzureOpenAIProvider(model_config, provider_config)
+
+        # Mock the chain's invoke method (chain = prompt | model)
+        provider.chain = Mock()
+        provider.chain.invoke.return_value = mock_report
+
         result = provider.analyze_batch(
             batch_number=1,
             total_batches=1,
@@ -114,12 +117,14 @@ def test_token_tracking(model_config, provider_config, mock_report):
             setattr(mock_report_with_metadata, attr, getattr(mock_report, attr))
 
         mock_instance = Mock()
-        mock_structured = Mock()
-        mock_structured.invoke.return_value = mock_report_with_metadata
-        mock_instance.with_structured_output.return_value = mock_structured
+        mock_instance.with_structured_output.return_value = Mock()
         mock_azure.return_value = mock_instance
 
         provider = AzureOpenAIProvider(model_config, provider_config)
+
+        # Mock the chain's invoke method
+        provider.chain = Mock()
+        provider.chain.invoke.return_value = mock_report_with_metadata
 
         # Initial state
         assert provider.total_input_tokens == 0
@@ -140,12 +145,15 @@ def test_cost_estimation(model_config, provider_config, mock_report):
         }
 
         mock_instance = Mock()
-        mock_structured = Mock()
-        mock_structured.invoke.return_value = mock_report_with_metadata
-        mock_instance.with_structured_output.return_value = mock_structured
+        mock_instance.with_structured_output.return_value = Mock()
         mock_azure.return_value = mock_instance
 
         provider = AzureOpenAIProvider(model_config, provider_config)
+
+        # Mock the chain's invoke method
+        provider.chain = Mock()
+        provider.chain.invoke.return_value = mock_report_with_metadata
+
         provider.analyze_batch(1, 1, {"test.py": "code"})
 
         cost = provider.estimate_cost()
@@ -168,12 +176,15 @@ def test_reset_state(model_config, provider_config, mock_report):
         }
 
         mock_instance = Mock()
-        mock_structured = Mock()
-        mock_structured.invoke.return_value = mock_report_with_metadata
-        mock_instance.with_structured_output.return_value = mock_structured
+        mock_instance.with_structured_output.return_value = Mock()
         mock_azure.return_value = mock_instance
 
         provider = AzureOpenAIProvider(model_config, provider_config)
+
+        # Mock the chain's invoke method
+        provider.chain = Mock()
+        provider.chain.invoke.return_value = mock_report_with_metadata
+
         provider.analyze_batch(1, 1, {"test.py": "code"})
 
         assert provider.total_input_tokens > 0
@@ -198,7 +209,10 @@ def test_retry_logic_on_rate_limit(model_config, provider_config, mock_report):
     ):
 
         mock_instance = Mock()
-        mock_structured = Mock()
+        mock_instance.with_structured_output.return_value = Mock()
+        mock_azure.return_value = mock_instance
+
+        provider = AzureOpenAIProvider(model_config, provider_config)
 
         # Create proper RateLimitError with required arguments
         mock_response = Mock()
@@ -209,17 +223,14 @@ def test_retry_logic_on_rate_limit(model_config, provider_config, mock_report):
             body={"error": {"message": "Rate limit exceeded"}},
         )
 
-        # First two calls raise RateLimitError, third succeeds
-        mock_structured.invoke.side_effect = [
+        # Mock the chain's invoke method with side effects
+        provider.chain = Mock()
+        provider.chain.invoke.side_effect = [
             rate_limit_error,
             rate_limit_error,
             mock_report,
         ]
 
-        mock_instance.with_structured_output.return_value = mock_structured
-        mock_azure.return_value = mock_instance
-
-        provider = AzureOpenAIProvider(model_config, provider_config)
         result = provider.analyze_batch(1, 1, {"test.py": "code"})
 
         # Should succeed after 2 retries
@@ -229,3 +240,65 @@ def test_retry_logic_on_rate_limit(model_config, provider_config, mock_report):
         assert mock_sleep.call_count == 2
         mock_sleep.assert_any_call(1)  # 2^0
         mock_sleep.assert_any_call(2)  # 2^1
+
+
+def test_responses_api_enabled(provider_config):
+    """Test that use_responses_api=True is passed to AzureChatOpenAI.
+
+    When use_responses_api is enabled, temperature and top_p should NOT be passed
+    as these parameters are not supported by the Responses API.
+    """
+    model_config_with_responses_api = ModelConfig(
+        id="gpt-5.2-codex",
+        name="GPT-5.2 Codex",
+        aliases=["gpt"],
+        deployment_name="gpt-5.2-codex",
+        pricing=PricingConfig(
+            input_per_million=1.75,
+            output_per_million=14.0,
+        ),
+        inference_params=InferenceParams(
+            default_temperature=0.0,
+            default_top_p=0.95,
+            max_output_tokens=16000,
+        ),
+        use_responses_api=True,  # Enable Responses API
+    )
+
+    with patch("codereview.providers.azure_openai.AzureChatOpenAI") as mock_azure:
+        mock_instance = Mock()
+        mock_instance.with_structured_output.return_value = Mock()
+        mock_azure.return_value = mock_instance
+
+        AzureOpenAIProvider(model_config_with_responses_api, provider_config)
+
+        # Verify use_responses_api=True was passed to AzureChatOpenAI
+        mock_azure.assert_called_once()
+        call_kwargs = mock_azure.call_args[1]
+        assert call_kwargs.get("use_responses_api") is True
+        # Verify temperature and top_p are NOT passed (not supported by Responses API)
+        assert "temperature" not in call_kwargs
+        assert "top_p" not in call_kwargs
+
+
+def test_responses_api_disabled_by_default(model_config, provider_config):
+    """Test that use_responses_api is not set when not specified in config.
+
+    When use_responses_api is not enabled, temperature should be passed normally.
+    """
+    # model_config fixture has use_responses_api=None (default)
+    assert model_config.use_responses_api is None
+
+    with patch("codereview.providers.azure_openai.AzureChatOpenAI") as mock_azure:
+        mock_instance = Mock()
+        mock_instance.with_structured_output.return_value = Mock()
+        mock_azure.return_value = mock_instance
+
+        AzureOpenAIProvider(model_config, provider_config)
+
+        # Verify use_responses_api was NOT passed to AzureChatOpenAI
+        mock_azure.assert_called_once()
+        call_kwargs = mock_azure.call_args[1]
+        assert "use_responses_api" not in call_kwargs
+        # Verify temperature IS passed when not using Responses API
+        assert "temperature" in call_kwargs

@@ -1,7 +1,7 @@
 # codereview/models.py
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 # Valid categories for issues
 VALID_CATEGORIES = (
@@ -106,6 +106,100 @@ CATEGORY_MAPPING = {
 }
 
 
+class ReviewMetrics(BaseModel):
+    """Metrics from code review analysis.
+
+    All fields are optional to allow flexibility in what metrics the LLM reports.
+    Uses model_config to set additionalProperties=false for Responses API compatibility.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    # Basic analysis metrics (populated by LLM)
+    files_analyzed: int | None = Field(
+        default=None, description="Number of files analyzed"
+    )
+    total_lines: int | None = Field(
+        default=None, description="Total lines of code reviewed"
+    )
+    total_issues: int | None = Field(
+        default=None, description="Total number of issues found"
+    )
+
+    # Issue counts by severity (populated by LLM or CLI aggregation)
+    critical_issues: int | None = Field(
+        default=None, description="Number of critical issues"
+    )
+    high_issues: int | None = Field(
+        default=None, description="Number of high severity issues"
+    )
+    medium_issues: int | None = Field(
+        default=None, description="Number of medium severity issues"
+    )
+    low_issues: int | None = Field(
+        default=None, description="Number of low severity issues"
+    )
+    info_issues: int | None = Field(
+        default=None, description="Number of info level issues"
+    )
+
+    # Legacy severity count fields (for backward compatibility with CLI aggregation)
+    critical: int | None = Field(default=None, description="Alias for critical_issues")
+    high: int | None = Field(default=None, description="Alias for high_issues")
+    medium: int | None = Field(default=None, description="Alias for medium_issues")
+    low: int | None = Field(default=None, description="Alias for low_issues")
+    info: int | None = Field(default=None, description="Alias for info_issues")
+
+    # Issue category counts
+    security_issues: int | None = Field(
+        default=None, description="Number of security issues"
+    )
+    performance_issues: int | None = Field(
+        default=None, description="Number of performance issues"
+    )
+
+    # Quality score
+    code_quality_score: int | None = Field(
+        default=None, ge=0, le=100, description="Overall code quality score (0-100)"
+    )
+
+    # Token usage metrics (populated by CLI after analysis)
+    input_tokens: int | None = Field(
+        default=None, description="Total input tokens used"
+    )
+    output_tokens: int | None = Field(
+        default=None, description="Total output tokens used"
+    )
+    total_tokens: int | None = Field(
+        default=None, description="Total tokens (input + output)"
+    )
+
+    # Cost and model info (populated by CLI)
+    model_name: str | None = Field(
+        default=None, description="Model name used for analysis"
+    )
+    input_price_per_million: float | None = Field(
+        default=None, description="Input token price per million"
+    )
+    output_price_per_million: float | None = Field(
+        default=None, description="Output token price per million"
+    )
+
+    # Static analysis flags (populated by CLI)
+    static_analysis_run: bool | None = Field(
+        default=None, description="Whether static analysis was run"
+    )
+    static_tools_passed: int | None = Field(
+        default=None, description="Number of static analysis tools that passed"
+    )
+    static_tools_failed: int | None = Field(
+        default=None, description="Number of static analysis tools that failed"
+    )
+    static_issues_found: int | None = Field(
+        default=None, description="Number of issues found by static analysis"
+    )
+
+
 class ReviewIssue(BaseModel):
     """Represents a single code review issue."""
 
@@ -124,7 +218,7 @@ class ReviewIssue(BaseModel):
     @classmethod
     def normalize_category(cls, v: Any) -> str:
         """Normalize category to valid value, handling LLM variations."""
-        del cls  # Required by Pydantic but not used in this validator
+        _ = cls  # Suppress unused parameter warning
         if v is None:
             return "Code Quality"
         if not isinstance(v, str):
@@ -147,7 +241,7 @@ class ReviewIssue(BaseModel):
     @classmethod
     def normalize_severity(cls, v: Any) -> str:
         """Normalize severity to valid value, handling LLM variations."""
-        del cls  # Required by Pydantic but not used in this validator
+        _ = cls  # Suppress unused parameter warning
         if v is None:
             return "Medium"  # Default for missing severity
         if not isinstance(v, str):
@@ -191,8 +285,8 @@ class CodeReviewReport(BaseModel):
         description="Balanced executive summary including: overall quality assessment, "
         "key strengths, main concerns, and priority focus areas",
     )
-    metrics: dict[str, Any] = Field(
-        default_factory=dict, description="Analysis metrics"
+    metrics: ReviewMetrics = Field(
+        default_factory=ReviewMetrics, description="Analysis metrics"
     )
     issues: list[ReviewIssue] = Field(
         default_factory=list, description="All identified issues"

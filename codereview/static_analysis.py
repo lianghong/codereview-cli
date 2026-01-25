@@ -11,6 +11,108 @@ from typing import TypedDict
 # Prevents "Argument list too long" errors on large repos
 MAX_FILES_PER_TOOL = 500
 
+# Issue detection indicators for counting problems in tool output
+# Base indicators common to all tools
+BASE_INDICATORS = [
+    "error",
+    "warning",
+    "would reformat",
+    "would be reformatted",
+    "unused",
+]
+
+# Language-specific indicators
+GO_INDICATORS = [
+    "typecheck",
+    "deadcode",
+    "ineffassign",
+    # gosec security indicators (G1xx-G6xx)
+    "g101",
+    "g102",
+    "g103",
+    "g104",
+    "g105",
+    "g106",
+    "g107",
+    "g108",
+    "g109",
+    "g110",
+    "g201",
+    "g202",
+    "g203",
+    "g204",
+    "g301",
+    "g302",
+    "g303",
+    "g304",
+    "g305",
+    "g306",
+    "g307",
+    "g401",
+    "g402",
+    "g403",
+    "g404",
+    "g501",
+    "g502",
+    "g503",
+    "g504",
+    "g505",
+    "g601",
+    "severity",
+    "confidence",
+]
+
+SHELL_INDICATORS = [
+    "sc",
+    "note",
+    "info",
+    "e0",
+    "e00",
+]  # ShellCheck SC codes, bashate E codes
+
+CPP_INDICATORS = ["style", "performance", "portability", "cppcheck"]
+
+JAVA_INDICATORS = ["audit", "violation", "checkstyle"]
+
+JS_TS_INDICATORS = [
+    "eslint",
+    "prettier",
+    "ts",
+    "problems found",
+    # npm audit indicators
+    "vulnerabilities",
+    "critical",
+    "high",
+    "moderate",
+    "low",
+]
+
+PYTHON_INDICATORS = [
+    # Bandit security indicators (B1xx-B7xx)
+    "severity",
+    "confidence",
+    "issue",
+    "b1",
+    "b2",
+    "b3",
+    "b4",
+    "b5",
+    "b6",
+    "b7",
+    "test_id",
+]
+
+# Map language to indicators
+LANGUAGE_INDICATORS: dict[str, list[str]] = {
+    "go": GO_INDICATORS,
+    "shell": SHELL_INDICATORS,
+    "cpp": CPP_INDICATORS,
+    "java": JAVA_INDICATORS,
+    "javascript": JS_TS_INDICATORS,
+    "typescript": JS_TS_INDICATORS,
+    "python": PYTHON_INDICATORS,
+}
+
 
 class StaticAnalysisSummary(TypedDict):
     """Summary of static analysis results."""
@@ -68,6 +170,12 @@ class StaticAnalyzer:
             "command": ["vulture", "--min-confidence", "80"],
             "language": "python",
         },
+        "bandit": {
+            "name": "Bandit",
+            "description": "Python security vulnerability scanner",
+            "command": ["bandit", "-r", "-f", "txt"],
+            "language": "python",
+        },
         # Go tools
         "golangci-lint": {
             "name": "golangci-lint",
@@ -89,11 +197,23 @@ class StaticAnalyzer:
             "language": "go",
             "version_command": ["go", "version"],
         },
+        "gosec": {
+            "name": "gosec",
+            "description": "Go security vulnerability scanner",
+            "command": ["gosec", "-fmt=text"],
+            "language": "go",
+        },
         # Shell Script tools
         "shellcheck": {
             "name": "ShellCheck",
             "description": "Shell script static analyzer",
             "command": ["shellcheck"],
+            "language": "shell",
+        },
+        "bashate": {
+            "name": "bashate",
+            "description": "Shell script style checker (PEP8-like for bash)",
+            "command": ["bashate"],
             "language": "shell",
         },
         # C++ tools
@@ -141,6 +261,13 @@ class StaticAnalyzer:
             "command": ["tsc", "--noEmit"],
             "language": "typescript",
             "version_command": ["tsc", "--version"],
+        },
+        "npm-audit": {
+            "name": "npm audit",
+            "description": "JavaScript/TypeScript dependency vulnerability scanner",
+            "command": ["npm", "audit", "--json"],
+            "language": "javascript",
+            "version_command": ["npm", "--version"],
         },
     }
 
@@ -228,8 +355,8 @@ class StaticAnalyzer:
                 # Only mark as available if the command succeeds
                 if result.returncode == 0:
                     available.append(tool_name)
-            except (FileNotFoundError, subprocess.TimeoutExpired, PermissionError):  # fmt: skip
-                pass
+            except (FileNotFoundError, subprocess.TimeoutExpired, PermissionError) as e:  # fmt: skip
+                logging.debug("Tool %s not available: %s", tool_name, e)
         return available
 
     def run_tool(self, tool_name: str) -> StaticAnalysisResult:
@@ -272,7 +399,7 @@ class StaticAnalyzer:
             )
 
         tool_config = self.TOOLS[tool_name]
-        language = tool_config.get("language", "python")
+        language = str(tool_config.get("language", "python"))
         dir_path = str(self.directory)  # Already resolved in __init__
 
         # Build command based on tool type
@@ -308,8 +435,21 @@ class StaticAnalyzer:
                 )
             command = base_command
             cwd = self.directory
-        elif tool_name == "shellcheck":
-            # shellcheck: Does NOT support directory scanning.
+        elif tool_name == "gosec":
+            # gosec: Go security scanner, scans recursively from directory
+            go_files = list(self.directory.rglob("*.go"))
+            if not go_files:
+                return StaticAnalysisResult(
+                    tool=tool_name,
+                    passed=True,
+                    issues_count=0,
+                    output="No Go files found",
+                    errors=[],
+                )
+            command = base_command + ["./..."]
+            cwd = self.directory
+        elif tool_name in ("shellcheck", "bashate"):
+            # shellcheck/bashate: Do NOT support directory scanning.
             # We must explicitly pass each shell script file as an argument.
             shell_files = list(self.directory.rglob("*.sh")) + list(
                 self.directory.rglob("*.bash")
@@ -326,7 +466,7 @@ class StaticAnalyzer:
                 )
             if len(shell_files) > MAX_FILES_PER_TOOL:
                 logging.warning(
-                    f"shellcheck: Limiting to {MAX_FILES_PER_TOOL} of "
+                    f"{tool_name}: Limiting to {MAX_FILES_PER_TOOL} of "
                     f"{len(shell_files)} files to avoid command line length limits"
                 )
                 shell_files = shell_files[:MAX_FILES_PER_TOOL]
@@ -471,6 +611,20 @@ class StaticAnalyzer:
                 # tsconfig.json exists, tsc will use it
                 command = base_command
             cwd = self.directory
+        elif tool_name == "npm-audit":
+            # npm audit: Requires package.json and node_modules in the directory
+            package_json = self.directory / "package.json"
+            if not package_json.exists():
+                return StaticAnalysisResult(
+                    tool=tool_name,
+                    passed=True,
+                    issues_count=0,
+                    output="No package.json found",
+                    errors=[],
+                )
+            # npm audit runs from the project directory
+            command = base_command
+            cwd = self.directory
         elif tool_name == "gofmt":
             # gofmt accepts a directory path but needs Go files to exist
             go_files = list(self.directory.rglob("*.go"))
@@ -480,6 +634,20 @@ class StaticAnalyzer:
                     passed=True,
                     issues_count=0,
                     output="No Go files found",
+                    errors=[],
+                )
+            command = base_command + [dir_path]
+            cwd = self.directory.parent
+        elif tool_name == "bandit":
+            # bandit: Python security scanner, accepts directory path
+            # Check for Python files first
+            py_files = list(self.directory.rglob("*.py"))
+            if not py_files:
+                return StaticAnalysisResult(
+                    tool=tool_name,
+                    passed=True,
+                    issues_count=0,
+                    output="No Python files found",
                     errors=[],
                 )
             command = base_command + [dir_path]
@@ -524,33 +692,9 @@ class StaticAnalyzer:
                         ]
                     )
                 else:
-                    # Count error/warning lines for all tools
-                    indicators = [
-                        "error",
-                        "warning",
-                        "would reformat",
-                        "would be reformatted",
-                        "unused",
-                    ]
-                    # Add language-specific indicators
-                    if language == "go":
-                        indicators.extend(["typecheck", "deadcode", "ineffassign"])
-                    elif language == "shell":
-                        # ShellCheck uses SC codes
-                        indicators.extend(["sc", "note", "info"])
-                    elif language == "cpp":
-                        # C++ tools indicators
-                        indicators.extend(
-                            ["style", "performance", "portability", "cppcheck"]
-                        )
-                    elif language == "java":
-                        # Checkstyle indicators
-                        indicators.extend(["audit", "violation", "checkstyle"])
-                    elif language in ("javascript", "typescript"):
-                        # ESLint/Prettier/TSC indicators
-                        indicators.extend(
-                            ["eslint", "prettier", "ts", "problems found"]
-                        )
+                    # Count error/warning lines using base + language-specific indicators
+                    indicators = list(BASE_INDICATORS)
+                    indicators.extend(LANGUAGE_INDICATORS.get(language, []))
 
                     for line in output.split("\n"):
                         if any(indicator in line.lower() for indicator in indicators):

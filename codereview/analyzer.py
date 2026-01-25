@@ -1,7 +1,8 @@
 """LLM-based code analyzer using provider abstraction."""
 
 import warnings
-from typing import List, Tuple
+
+from langchain_core.callbacks import BaseCallbackHandler
 
 from codereview.batcher import FileBatch
 from codereview.models import CodeReviewReport
@@ -16,6 +17,7 @@ class CodeAnalyzer:
         model_name: str = "opus",
         temperature: float | None = None,
         provider_factory: ProviderFactory | None = None,
+        callbacks: list[BaseCallbackHandler] | None = None,
         # Legacy parameters for backward compatibility
         region: str | None = None,
         model_id: str | None = None,
@@ -26,6 +28,7 @@ class CodeAnalyzer:
             model_name: Model name (ID or alias) - e.g., "opus", "gpt-5.2-codex"
             temperature: Temperature for inference (uses model-specific default if not provided)
             provider_factory: ProviderFactory instance (creates default if not provided)
+            callbacks: Optional list of callback handlers for streaming/progress
             region: DEPRECATED - Use model_name instead
             model_id: DEPRECATED - Use model_name instead
         """
@@ -44,13 +47,16 @@ class CodeAnalyzer:
 
         self.model_name = model_name
         self.temperature = temperature
+        self.callbacks = callbacks
         self.factory = provider_factory or ProviderFactory()
 
-        # Create provider
-        self.provider = self.factory.create_provider(model_name, temperature)
+        # Create provider with callbacks
+        self.provider = self.factory.create_provider(
+            model_name, temperature, callbacks=callbacks
+        )
 
         # Tracking state (analyzer-level, not delegated to provider)
-        self.skipped_files: List[Tuple[str, str]] = []
+        self.skipped_files: list[tuple[str, str]] = []
 
     @staticmethod
     def _map_legacy_model_id(model_id: str) -> str:
@@ -101,7 +107,14 @@ class CodeAnalyzer:
             try:
                 content = file_path.read_text(encoding="utf-8")
                 files_content[str(file_path)] = content
-            except (OSError, IOError, UnicodeDecodeError) as e:
+            except UnicodeDecodeError:
+                # Try reading with error replacement for files with encoding issues
+                try:
+                    content = file_path.read_text(encoding="utf-8", errors="replace")
+                    files_content[str(file_path)] = content
+                except OSError as e:
+                    self.skipped_files.append((str(file_path), f"Encoding error: {e}"))
+            except OSError as e:
                 # Track skipped file for reporting
                 self.skipped_files.append((str(file_path), str(e)))
 
