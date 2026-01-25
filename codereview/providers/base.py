@@ -153,9 +153,11 @@ class ModelProvider(ABC):
             lines.append(f"File: {file_path}")
             lines.append("-" * 80)
 
-            # Add line numbers
-            for i, line in enumerate(content.splitlines(), start=1):
-                lines.append(f"{i:4d} | {line}")
+            # Add line numbers (use extend with generator for efficiency)
+            lines.extend(
+                f"{i:4d} | {line}"
+                for i, line in enumerate(content.splitlines(), start=1)
+            )
 
             lines.append("")
             lines.append("=" * 80)
