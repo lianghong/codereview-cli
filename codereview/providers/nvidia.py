@@ -10,7 +10,7 @@ from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.rate_limiters import InMemoryRateLimiter
 from langchain_nvidia_ai_endpoints import ChatNVIDIA
-from pydantic import ValidationError
+from pydantic import SecretStr, ValidationError
 
 # Import system prompt from config
 from codereview.config import SYSTEM_PROMPT
@@ -105,7 +105,7 @@ class NVIDIAProvider(ModelProvider):
         # Build model parameters
         model_params: dict[str, Any] = {
             "model": self.model_config.full_id,
-            "api_key": self.provider_config.api_key,
+            "api_key": SecretStr(self.provider_config.api_key),  # type: ignore[arg-type]
             "temperature": self.temperature,
             "max_tokens": self.max_tokens,
             "callbacks": self.callbacks if self.callbacks else None,
