@@ -206,10 +206,10 @@ codereview /path/to/code --model sonnet    # Claude Sonnet 4.5 (balanced)
 codereview /path/to/code --model haiku     # Claude Haiku 4.5 (fastest)
 
 # AWS Bedrock (other providers)
-codereview /path/to/code --model minimax   # Minimax M2
-codereview /path/to/code --model mistral   # Mistral Large 3
-codereview /path/to/code --model kimi      # Kimi K2 Thinking
-codereview /path/to/code --model qwen      # Qwen3 Coder 480B
+codereview /path/to/code --model minimax-bedrock  # Minimax M2
+codereview /path/to/code --model mistral          # Mistral Large 3
+codereview /path/to/code --model kimi-bedrock     # Kimi K2 Thinking
+codereview /path/to/code --model qwen-bedrock     # Qwen3 Coder 480B
 
 # Azure OpenAI Models
 codereview /path/to/code --model gpt-5.2-codex  # GPT-5.2 Codex
@@ -239,8 +239,8 @@ codereview /path/to/code -m devstral
 | Qwen3 Coder (NIM) | NVIDIA NIM | Ultra-large coding model, free tier | Free* | Free* |
 | Minimax M2 | AWS Bedrock | Cost-effective, good for testing | $0.30 | $1.20 |
 | Mistral Large 3 | AWS Bedrock | Open-source focused, multilingual | $2.00 | $6.00 |
-| Kimi K2 | AWS Bedrock | Large context window (up to 256K) | $0.50 | $2.00 |
-| Qwen3 Coder 480B | AWS Bedrock | Ultra-large model, deep analysis | $0.22 | $1.40 |
+| Kimi K2 (Bedrock) | AWS Bedrock | Large context window (up to 256K) | $0.60 | $2.50 |
+| Qwen3 Coder (Bedrock) | AWS Bedrock | Ultra-large model, deep analysis | $0.22 | $1.40 |
 
 *NVIDIA NIM models are currently in free preview tier.
 

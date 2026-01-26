@@ -44,6 +44,31 @@ ALL_MODEL_NAMES = sorted(MODEL_ALIASES.keys())
 # Get only primary model IDs for display
 PRIMARY_MODEL_IDS = sorted(set(MODEL_ALIASES.values()))
 
+
+class ModelChoice(click.ParamType):
+    """Custom Click type that accepts model IDs and aliases but shows only primary IDs."""
+
+    name = "model"
+
+    def get_metavar(
+        self, param: click.Parameter, ctx: click.Context | None = None
+    ) -> str:
+        """Show only primary model IDs in help."""
+        return "[" + "|".join(PRIMARY_MODEL_IDS) + "]"
+
+    def convert(
+        self, value: str, param: click.Parameter | None, ctx: click.Context | None
+    ) -> str:
+        """Validate that value is a valid model ID or alias."""
+        if value.lower() in (name.lower() for name in ALL_MODEL_NAMES):
+            return value
+        self.fail(
+            f"'{value}' is not a valid model. "
+            f"Choose from: {', '.join(PRIMARY_MODEL_IDS)} (or use --list-models)",
+            param,
+            ctx,
+        )
+
 console = Console()
 
 
@@ -52,7 +77,7 @@ def display_available_models() -> None:
     factory = ProviderFactory()
     models_by_provider = factory.list_available_models()
 
-    # Create table
+    # Create models table
     table = Table(
         title="Available Models", show_header=True, header_style="bold magenta"
     )
@@ -72,6 +97,33 @@ def display_available_models() -> None:
             )
 
     console.print(table)
+    console.print()
+
+    # Create provider setup table
+    setup_table = Table(
+        title="Provider Setup", show_header=True, header_style="bold magenta"
+    )
+    setup_table.add_column("Provider", style="yellow", no_wrap=True)
+    setup_table.add_column("Required Environment Variables", style="cyan")
+    setup_table.add_column("Setup", style="dim")
+
+    setup_table.add_row(
+        "bedrock",
+        "AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY\nor AWS_PROFILE",
+        "aws configure",
+    )
+    setup_table.add_row(
+        "azure_openai",
+        "AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_KEY",
+        "Azure Portal → OpenAI resource",
+    )
+    setup_table.add_row(
+        "nvidia",
+        "NVIDIA_API_KEY",
+        "https://build.nvidia.com",
+    )
+
+    console.print(setup_table)
     console.print()
     console.print("[bold]Usage:[/bold] codereview <directory> --model <id>")
     console.print("[dim]Example: codereview ./src --model opus[/dim]")
@@ -115,9 +167,9 @@ def display_available_models() -> None:
     "--model",
     "-m",
     "model_name",
-    type=click.Choice(ALL_MODEL_NAMES, case_sensitive=False),
+    type=ModelChoice(),
     default="opus",
-    help=f"Model to use: {', '.join(PRIMARY_MODEL_IDS)} or aliases (default: opus)",
+    help="Model to use (default: opus). Use --list-models to see all options.",
 )
 @click.option(
     "--static-analysis",

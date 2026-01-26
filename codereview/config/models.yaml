@@ -125,10 +125,11 @@ providers:
       # Kimi K2 Thinking Model (Moonshot AI)
       # MoE: 1T total, 32B active parameters
       # Best for: Complex reasoning, multi-step code analysis
-      - id: kimi
+      - id: kimi-bedrock
         full_id: moonshot.kimi-k2-thinking
-        name: Kimi K2 Thinking
+        name: Kimi K2 Thinking (Bedrock)
         aliases:
+          - kimi
           - kimi-k2
         pricing:
           input_per_million: 0.60    # Verified: litellm/Bedrock pricing
@@ -149,10 +150,11 @@ providers:
       # Qwen3 Coder Model (Alibaba)
       # MoE: 480B total, 35B active parameters
       # Best for: Specialized code generation and review
-      - id: qwen
+      - id: qwen-bedrock
         full_id: qwen.qwen3-coder-480b-a35b-v1:0
-        name: Qwen3 Coder 480B
+        name: Qwen3 Coder 480B (Bedrock)
         aliases:
+          - qwen
           - qwen-coder
         pricing:
           input_per_million: 0.22    # Verified: AWS Bedrock pricing

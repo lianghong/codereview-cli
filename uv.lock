@@ -220,7 +220,6 @@ name = "codereview-cli"
 version = "0.2.0"
 source = { editable = "." }
 dependencies = [
-    { name = "bandit" },
     { name = "boto3" },
     { name = "click" },
     { name = "langchain" },
@@ -234,6 +233,7 @@ dependencies = [
 
 [package.optional-dependencies]
 static-analysis = [
+    { name = "bandit" },
     { name = "black" },
     { name = "isort" },
     { name = "mypy" },
@@ -249,7 +249,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "bandit", specifier = ">=1.9.3" },
+    { name = "bandit", marker = "extra == 'static-analysis'", specifier = ">=1.9.3" },
     { name = "black", marker = "extra == 'static-analysis'", specifier = ">=24.0.0" },
     { name = "boto3", specifier = ">=1.42.34" },
     { name = "click", specifier = ">=8.1.0" },

@@ -124,18 +124,22 @@ Use primary model IDs (case-insensitive). Run `codereview --list-models` to see 
 | `devstral` | Devstral 2 123B | nvidia | devstral-2 |
 | `minimax-bedrock` | Minimax M2 (Bedrock) | bedrock | mm2-bedrock |
 | `minimax-nvidia` | MiniMax M2 (NVIDIA) | nvidia | mm2-nvidia |
+| `qwen-bedrock` | Qwen3 Coder 480B (Bedrock) | bedrock | qwen, qwen-coder |
 | `qwen-nvidia` | Qwen3 Coder 480B (NVIDIA) | nvidia | qwen3-nvidia, qwen-coder-nvidia |
+| `kimi-bedrock` | Kimi K2 Thinking (Bedrock) | bedrock | kimi, kimi-k2 |
 | `kimi-nvidia` | Kimi K2 Instruct (NVIDIA) | nvidia | kimi-k2-nvidia |
 | `deepseek-nvidia` | DeepSeek V3.2 (NVIDIA) | nvidia | deepseek-v3-nvidia, ds-nvidia |
 | `mistral` | Mistral Large 3 | bedrock | mistral-large |
-| `kimi` | Kimi K2 Thinking | bedrock | kimi-k2 |
-| `qwen` | Qwen3 Coder 480B | bedrock | qwen-coder |
 
 **Note:** All models are displayed in `--list-models` regardless of provider credentials. Credentials are only required when actually using a model.
 
 ### Static Analysis Integration
 ```bash
-# Install Python static analysis tools (including security scanner)
+# Install Python static analysis tools
+# Option 1: Install with optional dependencies
+uv pip install -e ".[static-analysis]"
+
+# Option 2: Install manually
 pip install ruff mypy black isort vulture bandit
 
 # Install Go static analysis tools (requires Go installed)
@@ -383,8 +387,8 @@ Models defined in `codereview/config/models.yaml`:
 | Claude Haiku 4.5 | `global.anthropic.claude-haiku-4-5-20251001-v1:0` | $1.00 | $5.00 | temp=0.1 |
 | Minimax M2 (Bedrock) | `minimax.minimax-m2` | $0.30 | $1.20 | temp=0.3, top_p=0.9, top_k=40, max=8192 |
 | Mistral Large 3 | `mistral.mistral-large-3-675b-instruct` | $2.00 | $6.00 | temp=0.1, top_p=0.5, top_k=5 |
-| Kimi K2 Thinking | `moonshot.kimi-k2-thinking` | $0.50 | $2.00 | temp=1.0, max=16K-256K |
-| Qwen3 Coder 480B | `qwen.qwen3-coder-480b-a35b-v1:0` | $0.22 | $1.40 | temp=0.7, top_p=0.8, top_k=20, max=65536 |
+| Kimi K2 Thinking (Bedrock) | `moonshot.kimi-k2-thinking` | $0.60 | $2.50 | temp=0.6, max=16K-256K |
+| Qwen3 Coder 480B (Bedrock) | `qwen.qwen3-coder-480b-a35b-v1:0` | $0.22 | $1.40 | temp=0.3, top_p=0.8, top_k=20, max=65536 |
 
 **Azure OpenAI Models:**
 | Model | Deployment Name | Input $/M | Output $/M | Defaults |
