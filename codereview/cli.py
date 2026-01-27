@@ -6,7 +6,10 @@ import traceback
 from pathlib import Path
 
 import click
-from botocore.exceptions import ClientError, NoCredentialsError  # type: ignore[import-untyped]
+from botocore.exceptions import (  # type: ignore[import-untyped]
+    ClientError,
+    NoCredentialsError,
+)
 from rich.console import Console
 from rich.markup import escape
 from rich.progress import (
@@ -68,6 +71,7 @@ class ModelChoice(click.ParamType):
             param,
             ctx,
         )
+
 
 console = Console()
 
@@ -162,6 +166,12 @@ def display_available_models() -> None:
     default=MAX_FILE_SIZE_KB,
     help=f"Maximum file size in KB (default: {MAX_FILE_SIZE_KB}, max: 10240)",
 )
+@click.option(
+    "--batch-size",
+    type=click.IntRange(min=1, max=50),
+    default=10,
+    help="Files per batch (default: 10). Smaller batches may help with timeout issues.",
+)
 @click.option("--aws-profile", type=str, help="AWS CLI profile to use")
 @click.option(
     "--model",
@@ -207,6 +217,7 @@ def main(
     exclude: tuple[str, ...],
     max_files: int | None,
     max_file_size: int,
+    batch_size: int,
     aws_profile: str | None,
     model_name: str,
     static_analysis: bool,
@@ -334,7 +345,7 @@ def main(
                 StaticAnalysisRenderer(console).render(static_results)
 
         # Step 2: Create batches
-        batcher = FileBatcher()
+        batcher = FileBatcher(max_files_per_batch=batch_size)
         batches = batcher.create_batches(files)
 
         try:

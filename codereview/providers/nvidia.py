@@ -91,8 +91,15 @@ class NVIDIAProvider(ModelProvider):
         )
 
         # Create LangChain model and chain
-        self.model = self._create_model()
-        self.chain = self._create_chain()
+        # Suppress warnings about non-standard parameters (timeout is passed to _NVIDIAClient)
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore",
+                message=".*timeout is not default parameter.*",
+                category=UserWarning,
+            )
+            self.model = self._create_model()
+            self.chain = self._create_chain()
 
     def _create_model(self) -> Any:
         """Create LangChain NVIDIA model with structured output."""
@@ -103,14 +110,15 @@ class NVIDIAProvider(ModelProvider):
             )
 
         # Build model parameters
-        # Note: ChatNVIDIA doesn't support a direct timeout parameter like AzureChatOpenAI.
-        # Timeout configuration for NVIDIA is handled via httpx defaults internally.
+        # Note: ChatNVIDIA passes kwargs to _NVIDIAClient, including 'timeout' for 202 polling.
+        # The 'timeout' parameter controls how long to wait for async responses (HTTP 202).
         model_params: dict[str, Any] = {
             "model": self.model_config.full_id,
             "api_key": SecretStr(self.provider_config.api_key),  # type: ignore[arg-type]
             "temperature": self.temperature,
             "max_tokens": self.max_tokens,
             "callbacks": self.callbacks if self.callbacks else None,
+            "timeout": self.provider_config.polling_timeout,  # 202 polling timeout
         }
 
         # Add optional parameters
@@ -121,7 +129,21 @@ class NVIDIAProvider(ModelProvider):
         if self.provider_config.base_url:
             model_params["base_url"] = self.provider_config.base_url
 
-        # Suppress warnings about unknown model types from langchain-nvidia
+        # Add thinking mode parameters (for models like GLM-4.7 that support it)
+        if self.model_config.inference_params:
+            chat_template_kwargs: dict[str, Any] = {}
+            if self.model_config.inference_params.enable_thinking is not None:
+                chat_template_kwargs["enable_thinking"] = (
+                    self.model_config.inference_params.enable_thinking
+                )
+            if self.model_config.inference_params.clear_thinking is not None:
+                chat_template_kwargs["clear_thinking"] = (
+                    self.model_config.inference_params.clear_thinking
+                )
+            if chat_template_kwargs:
+                model_params["chat_template_kwargs"] = chat_template_kwargs
+
+        # Suppress warnings about unknown model types and parameters from langchain-nvidia
         # These models work but aren't in the library's known list yet
         with warnings.catch_warnings():
             warnings.filterwarnings(
@@ -132,6 +154,12 @@ class NVIDIAProvider(ModelProvider):
             warnings.filterwarnings(
                 "ignore",
                 message=".*not known to support structured output.*",
+                category=UserWarning,
+            )
+            # Suppress "timeout is not default parameter" warning - it's passed to _NVIDIAClient
+            warnings.filterwarnings(
+                "ignore",
+                message=".*timeout is not default parameter.*",
                 category=UserWarning,
             )
             base_model = ChatNVIDIA(**model_params)
@@ -148,7 +176,7 @@ class NVIDIAProvider(ModelProvider):
         batch_number: int,
         total_batches: int,
         files_content: dict[str, str],
-        max_retries: int = 3,
+        max_retries: int | None = None,
     ) -> CodeReviewReport:
         """Analyze a batch of files using NVIDIA NIM API.
 
@@ -156,14 +184,17 @@ class NVIDIAProvider(ModelProvider):
             batch_number: Current batch number
             total_batches: Total number of batches
             files_content: Dictionary mapping file paths to file contents
-            max_retries: Maximum number of retries for rate limiting
+            max_retries: Maximum number of retries for gateway errors (uses config default if None)
 
         Returns:
             CodeReviewReport with findings
 
         Raises:
-            httpx.HTTPStatusError: If NVIDIA API rate limit exceeded after all retries
+            httpx.HTTPStatusError: If NVIDIA API gateway errors persist after all retries
         """
+        # Use configured max_retries if not overridden
+        if max_retries is None:
+            max_retries = self.provider_config.max_retries
         batch_context = self._prepare_batch_context(
             batch_number, total_batches, files_content
         )
@@ -177,7 +208,7 @@ class NVIDIAProvider(ModelProvider):
         last_error: httpx.HTTPStatusError | ValidationError | None = None
         for attempt in range(max_retries + 1):
             try:
-                # Suppress warnings about unknown model types during invocation
+                # Suppress warnings about unknown model types and parameters during invocation
                 with warnings.catch_warnings():
                     warnings.filterwarnings(
                         "ignore",
@@ -187,6 +218,11 @@ class NVIDIAProvider(ModelProvider):
                     warnings.filterwarnings(
                         "ignore",
                         message=".*not known to support structured output.*",
+                        category=UserWarning,
+                    )
+                    warnings.filterwarnings(
+                        "ignore",
+                        message=".*timeout is not default parameter.*",
                         category=UserWarning,
                     )
                     result = self.chain.invoke(chain_input)
@@ -238,12 +274,17 @@ class NVIDIAProvider(ModelProvider):
 
             except httpx.HTTPStatusError as e:
                 last_error = e
+                status_code = e.response.status_code
 
-                # Check if it's a rate limit error (HTTP 429)
-                if e.response.status_code == 429:
+                # Retryable errors: 429 (rate limit), 502/503/504 (gateway errors)
+                # These are often transient and may succeed on retry
+                retryable_codes = {429, 502, 503, 504}
+                if status_code in retryable_codes:
                     if attempt < max_retries:
                         # Exponential backoff: 2^attempt seconds
-                        wait_time = 2**attempt
+                        # For gateway timeouts (504), use longer initial wait
+                        base_wait = 4 if status_code == 504 else 2
+                        wait_time = base_wait**attempt
                         time.sleep(wait_time)
                         continue
 

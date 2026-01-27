@@ -29,6 +29,8 @@ class InferenceParams(BaseModel):
         top_p: Nucleus sampling parameter (0.0-1.0). Considers tokens with cumulative probability.
         top_k: Top-k sampling parameter (>=0). Considers only the k most likely tokens.
         max_output_tokens: Maximum number of tokens to generate (>0).
+        enable_thinking: Enable thinking/reasoning mode (model-specific).
+        clear_thinking: Clear thinking content between turns (False preserves reasoning).
     """
 
     model_config = {"frozen": True}
@@ -42,6 +44,12 @@ class InferenceParams(BaseModel):
     top_k: int | None = Field(None, ge=0, description="Top-k sampling parameter (>=0)")
     max_output_tokens: int | None = Field(
         None, gt=0, description="Maximum number of tokens to generate"
+    )
+    enable_thinking: bool | None = Field(
+        None, description="Enable thinking/reasoning mode (model-specific)"
+    )
+    clear_thinking: bool | None = Field(
+        None, description="Clear thinking content between turns (False preserves reasoning)"
     )
 
 
@@ -160,6 +168,8 @@ class NVIDIAConfig(ProviderConfig):
     Attributes:
         api_key: NVIDIA API key (from build.nvidia.com).
         base_url: Optional base URL for self-hosted NIMs.
+        polling_timeout: Timeout in seconds for 202 polling (waiting for async results).
+        max_retries: Maximum retries for gateway errors (504/502/503).
         models: List of model configurations for NVIDIA.
     """
 
@@ -173,6 +183,16 @@ class NVIDIAConfig(ProviderConfig):
     base_url: str | None = Field(
         None,
         description="Optional base URL for self-hosted NIMs (leave empty for cloud)",
+    )
+    polling_timeout: int = Field(
+        default=900,
+        gt=0,
+        description="Timeout in seconds for 202 polling (default: 15 minutes)",
+    )
+    max_retries: int = Field(
+        default=5,
+        ge=0,
+        description="Maximum retries for gateway errors (504/502/503)",
     )
 
 

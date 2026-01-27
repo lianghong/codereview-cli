@@ -450,6 +450,88 @@ def test_non_rate_limit_error_not_retried(model_config, provider_config):
         mock_sleep.assert_not_called()
 
 
+def test_retry_logic_on_gateway_timeout(model_config, provider_config, mock_report):
+    """Test retry with longer backoff on HTTP 504 gateway timeout."""
+    with (
+        patch("codereview.providers.nvidia.ChatNVIDIA") as mock_nvidia,
+        patch("time.sleep") as mock_sleep,
+    ):
+
+        mock_instance = Mock()
+        mock_instance.with_structured_output.return_value = Mock()
+        mock_nvidia.return_value = mock_instance
+
+        provider = NVIDIAProvider(model_config, provider_config)
+
+        # Create HTTP 504 Gateway Timeout error
+        mock_request = Mock()
+        mock_response = Mock()
+        mock_response.status_code = 504
+        gateway_timeout_error = httpx.HTTPStatusError(
+            "Gateway Timeout",
+            request=mock_request,
+            response=mock_response,
+        )
+
+        # Mock the chain's invoke method with side effects
+        provider.chain = Mock()
+        provider.chain.invoke.side_effect = [
+            gateway_timeout_error,
+            gateway_timeout_error,
+            mock_report,
+        ]
+
+        result = provider.analyze_batch(1, 1, {"test.py": "code"})
+
+        # Should succeed after 2 retries
+        assert result == mock_report
+
+        # Verify longer exponential backoff for 504: 4^0=1s, 4^1=4s
+        assert mock_sleep.call_count == 2
+        mock_sleep.assert_any_call(1)  # 4^0
+        mock_sleep.assert_any_call(4)  # 4^1
+
+
+def test_retry_logic_on_service_unavailable(model_config, provider_config, mock_report):
+    """Test retry on HTTP 502/503 service unavailable errors."""
+    with (
+        patch("codereview.providers.nvidia.ChatNVIDIA") as mock_nvidia,
+        patch("time.sleep") as mock_sleep,
+    ):
+
+        mock_instance = Mock()
+        mock_instance.with_structured_output.return_value = Mock()
+        mock_nvidia.return_value = mock_instance
+
+        provider = NVIDIAProvider(model_config, provider_config)
+
+        # Create HTTP 503 Service Unavailable error
+        mock_request = Mock()
+        mock_response = Mock()
+        mock_response.status_code = 503
+        service_unavailable_error = httpx.HTTPStatusError(
+            "Service Unavailable",
+            request=mock_request,
+            response=mock_response,
+        )
+
+        # Mock success after one 503 error
+        provider.chain = Mock()
+        provider.chain.invoke.side_effect = [
+            service_unavailable_error,
+            mock_report,
+        ]
+
+        result = provider.analyze_batch(1, 1, {"test.py": "code"})
+
+        # Should succeed after 1 retry
+        assert result == mock_report
+
+        # Verify exponential backoff: 2^0=1s (using base 2 for non-504 errors)
+        assert mock_sleep.call_count == 1
+        mock_sleep.assert_called_with(1)
+
+
 def test_validate_credentials_valid(model_config, provider_config):
     """Test credential validation with valid config."""
     with (

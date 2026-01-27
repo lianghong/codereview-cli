@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-LangChain-based CLI tool for AI-powered code reviews via AWS Bedrock, Azure OpenAI, and NVIDIA NIM. Supports multiple models including Claude (Opus, Sonnet, Haiku), GPT-5.2 Codex, Devstral 2, Minimax M2, Mistral Large 3, Kimi K2 Thinking, and Qwen3 Coder. Reviews **Python, Go, Shell Script, C++, Java, JavaScript, and TypeScript** codebases with structured output (categories, severity levels, line numbers, suggested fixes).
+LangChain-based CLI tool for AI-powered code reviews via AWS Bedrock, Azure OpenAI, and NVIDIA NIM. Supports multiple models including Claude (Opus, Sonnet, Haiku), GPT-5.2 Codex, Devstral 2, Minimax M2, Mistral Large 3, Kimi K2, Qwen3 Coder, DeepSeek V3.2, and GLM 4.7. Reviews **Python, Go, Shell Script, C++, Java, JavaScript, and TypeScript** codebases with structured output (categories, severity levels, line numbers, suggested fixes).
 
 **Tech Stack:** Python 3.14, LangChain, AWS Bedrock, Azure OpenAI, NVIDIA NIM, Pydantic V2, Click, Rich
 
@@ -103,6 +103,7 @@ uv run python -m codereview.cli /path/to/code
 | `--output, -o` | Export report to Markdown file | None |
 | `--severity, -s` | Minimum severity to display (critical/high/medium/low/info) | info |
 | `--temperature` | Model temperature (0.0-2.0) | Model-specific |
+| `--batch-size` | Files per batch (1-50, helps with timeout issues) | 10 |
 | `--static-analysis` | Run static analysis tools (parallel) | False |
 | `--dry-run` | Preview files and cost without API calls | False |
 | `--verbose, -v` | Show detailed progress | False |
@@ -129,6 +130,7 @@ Use primary model IDs (case-insensitive). Run `codereview --list-models` to see 
 | `kimi-bedrock` | Kimi K2 Thinking (Bedrock) | bedrock | kimi, kimi-k2 |
 | `kimi-nvidia` | Kimi K2 Instruct (NVIDIA) | nvidia | kimi-k2-nvidia |
 | `deepseek-nvidia` | DeepSeek V3.2 (NVIDIA) | nvidia | deepseek-v3-nvidia, ds-nvidia |
+| `glm47` | GLM 4.7 (NVIDIA) | nvidia | glm4, glm-nvidia |
 | `mistral` | Mistral Large 3 | bedrock | mistral-large |
 
 **Note:** All models are displayed in `--list-models` regardless of provider credentials. Credentials are only required when actually using a model.
@@ -276,7 +278,7 @@ FileScanner → FileBatcher → CodeAnalyzer → ProviderFactory → BedrockProv
 5. **Providers** (`providers/`):
    - **BedrockProvider**: AWS Bedrock implementation (Claude, Mistral, Minimax, Kimi, Qwen)
    - **AzureOpenAIProvider**: Azure OpenAI implementation (GPT models)
-   - **NVIDIAProvider**: NVIDIA NIM API implementation (Devstral, MiniMax M2)
+   - **NVIDIAProvider**: NVIDIA NIM API implementation (Devstral, MiniMax M2, Qwen3, DeepSeek, GLM 4.7)
 6. **Aggregation** (`cli.py`): Merges results from all batches (issues, suggestions, design insights)
 7. **Renderers** (`renderer.py`): Outputs to Rich terminal UI or Markdown file
 
@@ -327,8 +329,9 @@ Non-Claude models may return non-standard category names. The `ReviewIssue` mode
 Provider-specific retry logic:
 - **BedrockProvider**: Handles `ThrottlingException` and `TooManyRequestsException`
 - **AzureOpenAIProvider**: Handles `RateLimitError`
-- Both use exponential backoff: 2^attempt seconds (1s, 2s, 4s)
-- Max 3 retries by default (configurable)
+- **NVIDIAProvider**: Handles gateway errors (502/503/504) and rate limits (429)
+- All use exponential backoff with configurable max retries
+- NVIDIA uses longer initial wait (4s) for 504 gateway timeouts
 
 **Parallel Static Analysis:**
 - `StaticAnalyzer.run_all(parallel=True)` runs tools concurrently
@@ -402,11 +405,12 @@ Models defined in `codereview/config/models.yaml`:
 |-------|----------|-----------|------------|----------|
 | Devstral 2 123B | `mistralai/devstral-2-123b-instruct-2512` | $0.00* | $0.00* | temp=0.15, top_p=0.95, max=8192 |
 | MiniMax M2 (NVIDIA) | `minimaxai/minimax-m2` | $0.00* | $0.00* | temp=0.3, top_p=0.9, max=8192 |
-| Qwen3 Coder 480B (NVIDIA) | `qwen/qwen3-coder-480b-a35b-instruct` | $0.00* | $0.00* | temp=0.3, top_p=0.8, max=16384 |
+| Qwen3 Coder 480B (NVIDIA) | `qwen/qwen3-coder-480b-a35b-instruct` | $0.00* | $0.00* | temp=0.3, top_p=0.8, max=16384, thinking=on |
 | Kimi K2 Instruct (NVIDIA) | `moonshotai/kimi-k2-instruct-0905` | $0.00* | $0.00* | temp=0.5, top_p=0.9, max=16384 |
-| DeepSeek V3.2 (NVIDIA) | `deepseek-ai/deepseek-v3.2` | $0.00* | $0.00* | temp=0.3, top_p=0.9, max=16384 |
+| DeepSeek V3.2 (NVIDIA) | `deepseek-ai/deepseek-v3.2` | $0.00* | $0.00* | temp=0.3, top_p=0.9, max=16384, thinking=on |
+| GLM 4.7 (NVIDIA) | `z-ai/glm4.7` | $0.00* | $0.00* | temp=0.5, top_p=0.95, max=16384, thinking=on |
 
-**Note:** *NVIDIA models are currently in free tier. Pricing will be updated when NVIDIA announces production pricing.
+**Note:** *NVIDIA models are currently in free tier. Pricing will be updated when NVIDIA announces production pricing. Models with `thinking=on` use interleaved thinking mode for deeper reasoning.
 
 **Default model:** Claude Opus 4.5
 

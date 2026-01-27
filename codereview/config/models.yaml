@@ -213,6 +213,8 @@ providers:
   nvidia:
     api_key: "${NVIDIA_API_KEY}"
     # base_url: "${NVIDIA_BASE_URL}"  # Optional: for self-hosted NIMs
+    polling_timeout: 900  # 15 minutes for 202 polling (large models may need time)
+    max_retries: 5        # Retry 504/502/503 gateway errors up to 5 times
     models:
       # Devstral 2 123B - Mistral's code-specialized model
       # Best for: Code review, debugging, code generation
@@ -275,12 +277,15 @@ providers:
           default_top_p: 0.8         # Qwen recommended
           default_top_k: 20          # Qwen recommended
           max_output_tokens: 16384   # Increased for detailed code review reports
+          enable_thinking: true      # Enable thinking mode for deeper code analysis
+          clear_thinking: false      # Preserve reasoning context
         context_window: 131072
         architecture: "MoE (480B total, 35B active)"
         capabilities:
           - code_generation
           - code_review
           - agentic_coding
+          - thinking
         notes: "87.9% MultiPL-E score, specialized for coding tasks via NVIDIA NIM"
 
       # Kimi K2 Instruct (via NVIDIA) - Reasoning model from Moonshot AI
@@ -324,6 +329,8 @@ providers:
           default_temperature: 0.3   # Lowered for code review (default is 1.0)
           default_top_p: 0.9
           max_output_tokens: 16384   # Increased for detailed reports
+          enable_thinking: true      # Enable deep reasoning for complex code analysis
+          clear_thinking: false      # Preserve thinking across the conversation
         context_window: 128000
         architecture: "MoE (671B total, 37B active)"
         capabilities:
@@ -332,6 +339,32 @@ providers:
           - code_generation
           - thinking
         notes: "Advanced reasoning with thinking capability, excellent for complex code analysis"
+
+      # GLM4.7 (via NVIDIA) - Zhipu AI's reasoning model
+      # 73.8% SWE-bench score, supports interleaved thinking
+      # Best for: Complex reasoning, code analysis with thinking
+      - id: glm47
+        full_id: z-ai/glm4.7
+        name: GLM 4.7 (NVIDIA)
+        aliases:
+          - glm4
+          - glm-nvidia
+        pricing:
+          input_per_million: 0.00    # Currently free tier
+          output_per_million: 0.00   # Update when NVIDIA announces pricing
+        inference_params:
+          default_temperature: 0.5   # Balance between creativity and determinism (default 1.0, SWE-bench uses 0.7)
+          default_top_p: 0.95        # Official recommendation
+          max_output_tokens: 16384   # SWE-bench setting, sufficient for detailed review
+          enable_thinking: true      # Enable interleaved thinking for complex reasoning
+          clear_thinking: false      # Preserve thinking across the conversation
+        context_window: 200000       # Supports up to 200K tokens
+        capabilities:
+          - reasoning
+          - code_review
+          - thinking
+          - tool_use
+        notes: "73.8% SWE-bench, interleaved thinking mode enabled for complex code analysis"
 
 # Default model configuration
 defaults:

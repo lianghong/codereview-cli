@@ -10,7 +10,7 @@ A LangChain-based CLI tool that provides comprehensive, intelligent code reviews
 
 ## Features
 
-- **Multi-Provider Support**: AWS Bedrock (Claude, Mistral, Minimax, Kimi, Qwen), Azure OpenAI (GPT), and NVIDIA NIM (Devstral, DeepSeek)
+- **Multi-Provider Support**: AWS Bedrock (Claude, Mistral, Minimax, Kimi, Qwen), Azure OpenAI (GPT), and NVIDIA NIM (Devstral, DeepSeek, GLM 4.7)
 - **AI-Powered Analysis**: Leverages Claude Opus 4.5, GPT-5.2 Codex, Devstral 2, and other leading models for deep code understanding
 - **Multi-Language Support**: Reviews Python, Go, Shell Script, C++, Java, JavaScript, and TypeScript codebases
 - **Smart Batching**: Automatically groups files for efficient token usage
@@ -173,17 +173,20 @@ export NVIDIA_API_KEY="nvapi-your-key-here"
 # Devstral 2 - Code-specialized model
 codereview /path/to/code --model devstral
 
-# DeepSeek V3.2 - Large reasoning model
+# DeepSeek V3.2 - Large reasoning model with thinking mode
 codereview /path/to/code --model deepseek-nvidia
 
-# Qwen3 Coder - Ultra-large coding model
+# Qwen3 Coder - Ultra-large coding model with thinking mode
 codereview /path/to/code --model qwen-nvidia
+
+# GLM 4.7 - Reasoning model with interleaved thinking (73.8% SWE-bench)
+codereview /path/to/code --model glm47
 
 # Kimi K2 - Large context model
 codereview /path/to/code --model kimi-nvidia
 ```
 
-**Note:** NVIDIA NIM models are currently in free tier. No charges apply during the preview period.
+**Note:** NVIDIA NIM models are currently in free tier. No charges apply during the preview period. Models with thinking mode enabled (DeepSeek, Qwen3, GLM 4.7) provide deeper reasoning for complex code analysis.
 
 ## Usage
 
@@ -217,8 +220,9 @@ codereview /path/to/code --model gpt4o          # GPT-4o
 
 # NVIDIA NIM Models (free tier)
 codereview /path/to/code --model devstral       # Devstral 2 123B
-codereview /path/to/code --model deepseek-nvidia # DeepSeek V3.2
-codereview /path/to/code --model qwen-nvidia    # Qwen3 Coder 480B
+codereview /path/to/code --model deepseek-nvidia # DeepSeek V3.2 (thinking mode)
+codereview /path/to/code --model qwen-nvidia    # Qwen3 Coder 480B (thinking mode)
+codereview /path/to/code --model glm47          # GLM 4.7 (thinking mode)
 
 # Short aliases work too
 codereview /path/to/code -m haiku
@@ -235,14 +239,15 @@ codereview /path/to/code -m devstral
 | GPT-5.2 Codex | Azure OpenAI | Code-specialized, Microsoft ecosystem | $1.75 | $14.00 |
 | GPT-4o | Azure OpenAI | Multimodal, general purpose | $2.50 | $10.00 |
 | Devstral 2 | NVIDIA NIM | Code-specialized, free tier | Free* | Free* |
-| DeepSeek V3.2 | NVIDIA NIM | Large reasoning model, free tier | Free* | Free* |
-| Qwen3 Coder (NIM) | NVIDIA NIM | Ultra-large coding model, free tier | Free* | Free* |
+| DeepSeek V3.2 | NVIDIA NIM | Large reasoning model, thinking mode | Free* | Free* |
+| Qwen3 Coder (NIM) | NVIDIA NIM | Ultra-large coding, thinking mode | Free* | Free* |
+| GLM 4.7 | NVIDIA NIM | 73.8% SWE-bench, thinking mode | Free* | Free* |
 | Minimax M2 | AWS Bedrock | Cost-effective, good for testing | $0.30 | $1.20 |
 | Mistral Large 3 | AWS Bedrock | Open-source focused, multilingual | $2.00 | $6.00 |
 | Kimi K2 (Bedrock) | AWS Bedrock | Large context window (up to 256K) | $0.60 | $2.50 |
 | Qwen3 Coder (Bedrock) | AWS Bedrock | Ultra-large model, deep analysis | $0.22 | $1.40 |
 
-*NVIDIA NIM models are currently in free preview tier.
+*NVIDIA NIM models are currently in free preview tier. Models with thinking mode use interleaved reasoning for deeper code analysis.
 
 ### Export to Markdown
 
@@ -417,7 +422,8 @@ Error: 429 Too Many Requests (Azure)
 ```
 
 **Solution**: The tool automatically retries with exponential backoff. If issues persist:
-- Reduce batch size by analyzing fewer files (`--max-files`)
+- Reduce batch size with `--batch-size 5` (fewer files per API call)
+- Reduce total files with `--max-files`
 - Use smaller file size limit (`--max-file-size`)
 - Wait a few minutes before retrying
 - Consider using a different model with higher rate limits
@@ -575,7 +581,14 @@ For issues, questions, or contributions:
 
 ## Version History
 
-### v0.2.0 (Current)
+### v0.2.1 (Current)
+- **GLM 4.7 Model**: Added Zhipu AI's GLM 4.7 via NVIDIA NIM (73.8% SWE-bench score)
+- **Thinking Mode Support**: Enabled interleaved thinking for DeepSeek V3.2, Qwen3 Coder, and GLM 4.7
+- **Batch Size Control**: Added `--batch-size` option to control files per batch (helps with timeout issues)
+- **Gateway Timeout Handling**: Improved retry logic for NVIDIA 504/502/503 errors with exponential backoff
+- **Configurable Polling Timeout**: NVIDIA provider now supports 15-minute polling timeout for large models
+
+### v0.2.0
 - **Multi-Provider Support**: Added Azure OpenAI and NVIDIA NIM alongside AWS Bedrock
 - **NVIDIA NIM Integration**: Free tier access to Devstral 2, DeepSeek V3.2, Qwen3 Coder, Kimi K2
 - **Provider Architecture**: Abstract provider system with factory pattern
