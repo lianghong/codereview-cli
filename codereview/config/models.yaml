@@ -125,12 +125,13 @@ providers:
       # Kimi K2 Thinking Model (Moonshot AI)
       # MoE: 1T total, 32B active parameters
       # Best for: Complex reasoning, multi-step code analysis
-      - id: kimi-bedrock
+      - id: kimi-k2-bedrock
         full_id: moonshot.kimi-k2-thinking
         name: Kimi K2 Thinking (Bedrock)
         aliases:
           - kimi
           - kimi-k2
+          - kimi-bedrock
         pricing:
           input_per_million: 0.60    # Verified: litellm/Bedrock pricing
           output_per_million: 2.50
@@ -173,6 +174,33 @@ providers:
           - agentic_coding
           - browser_automation
         notes: "87.9% MultiPL-E score, specialized for coding tasks"
+
+      # DeepSeek-R1 Model (DeepSeek AI)
+      # Reasoning model with chain-of-thought capabilities
+      # Best for: Complex reasoning, code analysis with thinking
+      # Note: Does not support tool use - uses prompt-based JSON parsing
+      - id: deepseek-r1-bedrock
+        full_id: us.deepseek.r1-v1:0
+        name: DeepSeek-R1 (Bedrock)
+        aliases:
+          - deepseek
+          - deepseek-r1
+          - ds-bedrock
+          - deepseek-bedrock
+        pricing:
+          input_per_million: 1.35    # AWS Bedrock pricing (TBD - update when available)
+          output_per_million: 5.40
+        inference_params:
+          default_temperature: 0.6   # DeepSeek recommended (0.5-0.7 range)
+          max_output_tokens: 32000   # Note: top_k/top_p may not be supported on Bedrock
+        context_window: 128000       # 128K token context window
+        supports_tool_use: false     # DeepSeek-R1 doesn't support tool calling
+        capabilities:
+          - reasoning
+          - code_review
+          - code_generation
+          - thinking
+        notes: "Reasoning model with chain-of-thought, excellent for complex code analysis"
 
   # Azure OpenAI Provider
   azure_openai:
@@ -291,11 +319,11 @@ providers:
       # Kimi K2 Instruct (via NVIDIA) - Reasoning model from Moonshot AI
       # MoE: 1T total, 32B active parameters
       # Best for: Complex reasoning, multi-step code analysis
-      - id: kimi-nvidia
+      - id: kimi-k2-nvidia
         full_id: moonshotai/kimi-k2-instruct-0905
         name: Kimi K2 Instruct (NVIDIA)
         aliases:
-          - kimi-k2-nvidia
+          - kimi-nvidia
         pricing:
           input_per_million: 0.00    # Currently free tier
           output_per_million: 0.00   # Update when NVIDIA announces pricing
@@ -316,12 +344,13 @@ providers:
       # DeepSeek V3.2 (via NVIDIA) - Advanced reasoning model
       # MoE: 671B total, 37B active parameters
       # Best for: Complex reasoning, code analysis with thinking
-      - id: deepseek-nvidia
+      - id: deepseek-v3.2-nvidia
         full_id: deepseek-ai/deepseek-v3.2
         name: DeepSeek V3.2 (NVIDIA)
         aliases:
           - deepseek-v3-nvidia
           - ds-nvidia
+          - deepseek-nvidia
         pricing:
           input_per_million: 0.00    # Currently free tier
           output_per_million: 0.00   # Update when NVIDIA announces pricing
@@ -339,6 +368,32 @@ providers:
           - code_generation
           - thinking
         notes: "Advanced reasoning with thinking capability, excellent for complex code analysis"
+
+      # Kimi K2.5 (via NVIDIA) - Multimodal MoE model from Moonshot AI
+      # MoE: 1T total, multimodal (text, image, video)
+      # Best for: Complex reasoning, multimodal code analysis
+      - id: kimi-k2.5-nvidia
+        full_id: moonshotai/kimi-k2.5
+        name: Kimi K2.5 (NVIDIA)
+        aliases:
+          - kimi-k2.5
+          - kimi25
+        pricing:
+          input_per_million: 0.00    # Currently free tier
+          output_per_million: 0.00   # Update when NVIDIA announces pricing
+        inference_params:
+          default_temperature: 0.6   # Moonshot recommended for Instant mode (instructed tasks)
+          default_top_p: 0.95        # Moonshot recommended
+          default_top_k: 40          # Moonshot recommended
+          max_output_tokens: 16384   # Supports up to 32K, using 16K for detailed reports
+        context_window: 256000       # 256K token context window
+        architecture: "MoE (1T total, multimodal)"
+        capabilities:
+          - reasoning
+          - multimodal
+          - code_review
+          - tool_use
+        notes: "1T multimodal MoE for high-capacity video and image understanding with efficient inference"
 
       # GLM4.7 (via NVIDIA) - Zhipu AI's reasoning model
       # 73.8% SWE-bench score, supports interleaved thinking

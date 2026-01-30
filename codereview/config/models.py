@@ -49,7 +49,8 @@ class InferenceParams(BaseModel):
         None, description="Enable thinking/reasoning mode (model-specific)"
     )
     clear_thinking: bool | None = Field(
-        None, description="Clear thinking content between turns (False preserves reasoning)"
+        None,
+        description="Clear thinking content between turns (False preserves reasoning)",
     )
 
 
@@ -65,6 +66,7 @@ class ModelConfig(BaseModel):
         full_id: Full model ID for API calls (provider-specific, optional).
         deployment_name: Deployment name for Azure (optional).
         use_responses_api: Use OpenAI Responses API instead of ChatCompletion (Azure, optional).
+        supports_tool_use: Whether the model supports tool/function calling (default: True).
     """
 
     model_config = {"frozen": True}
@@ -89,6 +91,10 @@ class ModelConfig(BaseModel):
     use_responses_api: bool | None = Field(
         None,
         description="Use OpenAI Responses API instead of ChatCompletion (required for some models like GPT-5.2 Codex)",
+    )
+    supports_tool_use: bool = Field(
+        True,
+        description="Whether the model supports tool/function calling for structured output",
     )
 
 

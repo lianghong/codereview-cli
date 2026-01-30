@@ -1,7 +1,7 @@
 """Rich terminal and Markdown output rendering."""
 
 from datetime import datetime
-from pathlib import Path
+from pathlib import Path, PurePath
 from typing import Any
 
 from rich.console import Console
@@ -298,13 +298,26 @@ class StaticAnalysisRenderer:
                     title_style = "yellow"
                     border_style = "yellow"
 
-                # Limit output to first 20 lines
-                output_lines = result.output.split("\n")[:20]
-                output_preview = "\n".join(output_lines)
+                # Show full output for failed/error tools, limited for passed tools
+                if result.passed:
+                    # Limit output to first 30 lines for passed tools
+                    max_lines = 30
+                    output_lines = result.output.split("\n")[:max_lines]
+                    output_preview = "\n".join(output_lines)
 
-                total_lines = len(result.output.split("\n"))
-                if total_lines > 20:
-                    output_preview += f"\n... ({total_lines - 20} more lines)"
+                    total_lines = len(result.output.split("\n"))
+                    if total_lines > max_lines:
+                        output_preview += (
+                            f"\n... ({total_lines - max_lines} more lines)"
+                        )
+                else:
+                    # Show full output for failed/warning tools
+                    output_preview = result.output
+
+                    # Prepend error information if available
+                    if result.errors:
+                        error_msg = f"[red bold]Errors:[/red bold]\n{result.errors}\n\n"
+                        output_preview = error_msg + output_preview
 
                 try:
                     self.console.print(
@@ -405,8 +418,6 @@ class MarkdownExporter:
 
     def _detect_language(self, file_path: str) -> str:
         """Detect programming language from file extension."""
-        from pathlib import PurePath
-
         suffix = PurePath(file_path).suffix
         return self.LANGUAGE_EXTENSIONS.get(suffix, "text")
 

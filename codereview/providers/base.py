@@ -65,7 +65,7 @@ class ModelProvider(ABC):
         Returns:
             CodeReviewReport with findings
         """
-        pass
+        ...
 
     @abstractmethod
     def get_model_display_name(self) -> str:
@@ -74,7 +74,7 @@ class ModelProvider(ABC):
         Returns:
             Display name like "Claude Opus 4.5" or "GPT-5.2 Codex"
         """
-        pass
+        ...
 
     @abstractmethod
     def get_pricing(self) -> dict[str, float]:
@@ -83,7 +83,7 @@ class ModelProvider(ABC):
         Returns:
             Dictionary with keys: input_price_per_million, output_price_per_million
         """
-        pass
+        ...
 
     def reset_state(self) -> None:
         """Reset token counters and state for fresh run.

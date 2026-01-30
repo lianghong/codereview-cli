@@ -4,7 +4,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-import yaml
+import yaml  # type: ignore[import-untyped]
 
 from codereview.config.models import (
     AzureOpenAIConfig,
@@ -236,6 +236,8 @@ class ConfigLoader:
                 top_p=params_data.get("default_top_p"),
                 top_k=params_data.get("default_top_k"),
                 max_output_tokens=params_data.get("max_output_tokens"),
+                enable_thinking=params_data.get("enable_thinking"),
+                clear_thinking=params_data.get("clear_thinking"),
             )
 
         # Create ModelConfig
@@ -248,6 +250,7 @@ class ConfigLoader:
             full_id=model_data.get("full_id"),
             deployment_name=model_data.get("deployment_name"),
             use_responses_api=model_data.get("use_responses_api"),
+            supports_tool_use=model_data.get("supports_tool_use", True),
         )
 
     def resolve_model(self, name: str) -> tuple[str, ModelConfig]:
@@ -263,7 +266,7 @@ class ConfigLoader:
             ValueError: If model name not found
         """
         if name not in self._models_by_id:
-            available = sorted(set(k for k in self._models_by_id.keys()))
+            available = sorted(self._models_by_id.keys())
             raise ValueError(
                 f"Unknown model: {name}. Available models: {', '.join(available)}"
             )

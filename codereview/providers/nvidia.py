@@ -1,5 +1,6 @@
 """NVIDIA NIM API provider implementation."""
 
+import os
 import time
 import warnings
 from typing import Any
@@ -114,7 +115,7 @@ class NVIDIAProvider(ModelProvider):
         # The 'timeout' parameter controls how long to wait for async responses (HTTP 202).
         model_params: dict[str, Any] = {
             "model": self.model_config.full_id,
-            "api_key": SecretStr(self.provider_config.api_key),  # type: ignore[arg-type]
+            "api_key": SecretStr(str(self.provider_config.api_key)),
             "temperature": self.temperature,
             "max_tokens": self.max_tokens,
             "callbacks": self.callbacks if self.callbacks else None,
@@ -359,8 +360,6 @@ class NVIDIAProvider(ModelProvider):
         Returns:
             ValidationResult with check details
         """
-        import os
-
         result = ValidationResult(valid=True, provider="NVIDIA NIM")
 
         # Check 1: API key configured

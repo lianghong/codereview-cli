@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-LangChain-based CLI tool for AI-powered code reviews via AWS Bedrock, Azure OpenAI, and NVIDIA NIM. Supports multiple models including Claude (Opus, Sonnet, Haiku), GPT-5.2 Codex, Devstral 2, Minimax M2, Mistral Large 3, Kimi K2, Qwen3 Coder, DeepSeek V3.2, and GLM 4.7. Reviews **Python, Go, Shell Script, C++, Java, JavaScript, and TypeScript** codebases with structured output (categories, severity levels, line numbers, suggested fixes).
+LangChain-based CLI tool for AI-powered code reviews via AWS Bedrock, Azure OpenAI, and NVIDIA NIM. Supports multiple models including Claude (Opus, Sonnet, Haiku), GPT-5.2 Codex, Devstral 2, Minimax M2, Mistral Large 3, Kimi K2, Kimi K2.5, Qwen3 Coder, DeepSeek-R1, DeepSeek V3.2, and GLM 4.7. Reviews **Python, Go, Shell Script, C++, Java, JavaScript, and TypeScript** codebases with structured output (categories, severity levels, line numbers, suggested fixes).
 
 **Tech Stack:** Python 3.14, LangChain, AWS Bedrock, Azure OpenAI, NVIDIA NIM, Pydantic V2, Click, Rich
 
@@ -126,10 +126,12 @@ Use primary model IDs (case-insensitive). Run `codereview --list-models` to see 
 | `minimax-bedrock` | Minimax M2 (Bedrock) | bedrock | mm2-bedrock |
 | `minimax-nvidia` | MiniMax M2 (NVIDIA) | nvidia | mm2-nvidia |
 | `qwen-bedrock` | Qwen3 Coder 480B (Bedrock) | bedrock | qwen, qwen-coder |
+| `deepseek-r1-bedrock` | DeepSeek-R1 (Bedrock) | bedrock | deepseek, deepseek-r1, ds-bedrock, deepseek-bedrock |
 | `qwen-nvidia` | Qwen3 Coder 480B (NVIDIA) | nvidia | qwen3-nvidia, qwen-coder-nvidia |
-| `kimi-bedrock` | Kimi K2 Thinking (Bedrock) | bedrock | kimi, kimi-k2 |
-| `kimi-nvidia` | Kimi K2 Instruct (NVIDIA) | nvidia | kimi-k2-nvidia |
-| `deepseek-nvidia` | DeepSeek V3.2 (NVIDIA) | nvidia | deepseek-v3-nvidia, ds-nvidia |
+| `kimi-k2-bedrock` | Kimi K2 Thinking (Bedrock) | bedrock | kimi, kimi-k2, kimi-bedrock |
+| `kimi-k2-nvidia` | Kimi K2 Instruct (NVIDIA) | nvidia | kimi-nvidia |
+| `kimi-k2.5-nvidia` | Kimi K2.5 (NVIDIA) | nvidia | kimi-k2.5, kimi25 |
+| `deepseek-v3.2-nvidia` | DeepSeek V3.2 (NVIDIA) | nvidia | deepseek-v3-nvidia, ds-nvidia, deepseek-nvidia |
 | `glm47` | GLM 4.7 (NVIDIA) | nvidia | glm4, glm-nvidia |
 | `mistral` | Mistral Large 3 | bedrock | mistral-large |
 
@@ -201,6 +203,7 @@ codereview/config/
 | File exclusion patterns | `models.yaml` | Add to `scanning.exclude_patterns` |
 | Excluded file extensions | `models.yaml` | Add to `scanning.exclude_extensions` |
 | Max file size | `models.yaml` | Change `scanning.max_file_size_kb` |
+| Tool use support | `models.yaml` | Set `supports_tool_use: false` for models without tool calling |
 | API credentials | Environment variables | `AZURE_OPENAI_API_KEY`, `NVIDIA_API_KEY` |
 | Code review rules | `prompts.py` | Modify `SYSTEM_PROMPT` |
 
@@ -392,6 +395,7 @@ Models defined in `codereview/config/models.yaml`:
 | Mistral Large 3 | `mistral.mistral-large-3-675b-instruct` | $2.00 | $6.00 | temp=0.1, top_p=0.5, top_k=5 |
 | Kimi K2 Thinking (Bedrock) | `moonshot.kimi-k2-thinking` | $0.60 | $2.50 | temp=0.6, max=16K-256K |
 | Qwen3 Coder 480B (Bedrock) | `qwen.qwen3-coder-480b-a35b-v1:0` | $0.22 | $1.40 | temp=0.3, top_p=0.8, top_k=20, max=65536 |
+| DeepSeek-R1 (Bedrock) | `us.deepseek.r1-v1:0` | $1.35 | $5.40 | temp=0.6, max=32000 |
 
 **Azure OpenAI Models:**
 | Model | Deployment Name | Input $/M | Output $/M | Defaults |
@@ -400,6 +404,8 @@ Models defined in `codereview/config/models.yaml`:
 
 **Note:** GPT-5.2 Codex uses OpenAI's Responses API (not ChatCompletion). This is configured automatically via `use_responses_api: true` in `models.yaml`.
 
+**Note:** DeepSeek-R1 doesn't support tool use, so it uses prompt-based JSON parsing instead of structured output. This is configured via `supports_tool_use: false` in `models.yaml`.
+
 **NVIDIA NIM Models:**
 | Model | Model ID | Input $/M | Output $/M | Defaults |
 |-------|----------|-----------|------------|----------|
@@ -407,6 +413,7 @@ Models defined in `codereview/config/models.yaml`:
 | MiniMax M2 (NVIDIA) | `minimaxai/minimax-m2` | $0.00* | $0.00* | temp=0.3, top_p=0.9, max=8192 |
 | Qwen3 Coder 480B (NVIDIA) | `qwen/qwen3-coder-480b-a35b-instruct` | $0.00* | $0.00* | temp=0.3, top_p=0.8, max=16384, thinking=on |
 | Kimi K2 Instruct (NVIDIA) | `moonshotai/kimi-k2-instruct-0905` | $0.00* | $0.00* | temp=0.5, top_p=0.9, max=16384 |
+| Kimi K2.5 (NVIDIA) | `moonshotai/kimi-k2.5` | $0.00* | $0.00* | temp=0.6, top_p=0.95, top_k=40, max=16384 |
 | DeepSeek V3.2 (NVIDIA) | `deepseek-ai/deepseek-v3.2` | $0.00* | $0.00* | temp=0.3, top_p=0.9, max=16384, thinking=on |
 | GLM 4.7 (NVIDIA) | `z-ai/glm4.7` | $0.00* | $0.00* | temp=0.5, top_p=0.95, max=16384, thinking=on |
 

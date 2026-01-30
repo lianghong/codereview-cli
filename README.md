@@ -183,7 +183,10 @@ codereview /path/to/code --model qwen-nvidia
 codereview /path/to/code --model glm47
 
 # Kimi K2 - Large context model
-codereview /path/to/code --model kimi-nvidia
+codereview /path/to/code --model kimi-k2-nvidia
+
+# Kimi K2.5 - Latest Kimi model with 256K context
+codereview /path/to/code --model kimi-k2.5
 ```
 
 **Note:** NVIDIA NIM models are currently in free tier. No charges apply during the preview period. Models with thinking mode enabled (DeepSeek, Qwen3, GLM 4.7) provide deeper reasoning for complex code analysis.
@@ -209,20 +212,22 @@ codereview /path/to/code --model sonnet    # Claude Sonnet 4.5 (balanced)
 codereview /path/to/code --model haiku     # Claude Haiku 4.5 (fastest)
 
 # AWS Bedrock (other providers)
-codereview /path/to/code --model minimax-bedrock  # Minimax M2
-codereview /path/to/code --model mistral          # Mistral Large 3
-codereview /path/to/code --model kimi-bedrock     # Kimi K2 Thinking
-codereview /path/to/code --model qwen-bedrock     # Qwen3 Coder 480B
+codereview /path/to/code --model minimax-bedrock    # Minimax M2
+codereview /path/to/code --model mistral            # Mistral Large 3
+codereview /path/to/code --model kimi-k2-bedrock    # Kimi K2 Thinking
+codereview /path/to/code --model qwen-bedrock       # Qwen3 Coder 480B
+codereview /path/to/code --model deepseek-r1-bedrock # DeepSeek-R1 (reasoning)
 
 # Azure OpenAI Models
 codereview /path/to/code --model gpt-5.2-codex  # GPT-5.2 Codex
 codereview /path/to/code --model gpt4o          # GPT-4o
 
 # NVIDIA NIM Models (free tier)
-codereview /path/to/code --model devstral       # Devstral 2 123B
-codereview /path/to/code --model deepseek-nvidia # DeepSeek V3.2 (thinking mode)
-codereview /path/to/code --model qwen-nvidia    # Qwen3 Coder 480B (thinking mode)
-codereview /path/to/code --model glm47          # GLM 4.7 (thinking mode)
+codereview /path/to/code --model devstral           # Devstral 2 123B
+codereview /path/to/code --model deepseek-v3.2-nvidia # DeepSeek V3.2 (thinking mode)
+codereview /path/to/code --model qwen-nvidia        # Qwen3 Coder 480B (thinking mode)
+codereview /path/to/code --model glm47              # GLM 4.7 (thinking mode)
+codereview /path/to/code --model kimi-k2.5          # Kimi K2.5 (256K context)
 
 # Short aliases work too
 codereview /path/to/code -m haiku
@@ -242,6 +247,8 @@ codereview /path/to/code -m devstral
 | DeepSeek V3.2 | NVIDIA NIM | Large reasoning model, thinking mode | Free* | Free* |
 | Qwen3 Coder (NIM) | NVIDIA NIM | Ultra-large coding, thinking mode | Free* | Free* |
 | GLM 4.7 | NVIDIA NIM | 73.8% SWE-bench, thinking mode | Free* | Free* |
+| Kimi K2.5 | NVIDIA NIM | 256K context, instant/thinking modes | Free* | Free* |
+| DeepSeek-R1 | AWS Bedrock | Reasoning model, 128K context | $1.35 | $5.40 |
 | Minimax M2 | AWS Bedrock | Cost-effective, good for testing | $0.30 | $1.20 |
 | Mistral Large 3 | AWS Bedrock | Open-source focused, multilingual | $2.00 | $6.00 |
 | Kimi K2 (Bedrock) | AWS Bedrock | Large context window (up to 256K) | $0.60 | $2.50 |
@@ -581,7 +588,15 @@ For issues, questions, or contributions:
 
 ## Version History
 
-### v0.2.1 (Current)
+### v0.2.2 (Current)
+- **Kimi K2.5 Model**: Added Moonshot AI's Kimi K2.5 via NVIDIA NIM (256K context window)
+- **DeepSeek-R1 Model**: Added DeepSeek-R1 reasoning model via AWS Bedrock (128K context)
+- **Model Version IDs**: Updated model IDs to include version numbers (kimi-k2-bedrock, kimi-k2-nvidia, deepseek-r1-bedrock, deepseek-v3.2-nvidia)
+- **Non-Tool-Use Support**: Added `supports_tool_use` config for models without function calling (uses prompt-based JSON parsing fallback)
+- **Static Analysis Output**: Full error output for failed tools, improved truncation for passed tools
+- **Code Quality**: Fixed type annotations, moved imports to module level, improved code organization
+
+### v0.2.1
 - **GLM 4.7 Model**: Added Zhipu AI's GLM 4.7 via NVIDIA NIM (73.8% SWE-bench score)
 - **Thinking Mode Support**: Enabled interleaved thinking for DeepSeek V3.2, Qwen3 Coder, and GLM 4.7
 - **Batch Size Control**: Added `--batch-size` option to control files per batch (helps with timeout issues)

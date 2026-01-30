@@ -40,11 +40,20 @@ Comprehensive guide for using the Code Review CLI tool effectively.
 
 ### Quick Start Checklist
 
+**For AWS Bedrock (default):**
 - [ ] AWS credentials configured
 - [ ] Bedrock access enabled in AWS Console
 - [ ] Claude Opus 4.5 model access approved
 - [ ] IAM permissions include `bedrock:InvokeModel`
 - [ ] Tool installed and `codereview` command available
+
+**For Azure OpenAI (optional):**
+- [ ] `AZURE_OPENAI_ENDPOINT` environment variable set
+- [ ] `AZURE_OPENAI_API_KEY` environment variable set
+- [ ] GPT model deployed in your Azure resource
+
+**For NVIDIA NIM (optional, free tier):**
+- [ ] `NVIDIA_API_KEY` environment variable set (get from build.nvidia.com)
 
 ## Typical Workflows
 
@@ -306,30 +315,57 @@ Provides:
 
 Match the model to your use case:
 
-**Opus 4.5** - Critical reviews:
+**Opus 4.5** - Critical reviews (AWS Bedrock):
 ```bash
-codereview ./src/auth --model-id global.anthropic.claude-opus-4-5-20251101-v1:0
+codereview ./src/auth --model opus
 ```
 
-**Sonnet 4.5** - Daily development:
+**Sonnet 4.5** - Daily development (AWS Bedrock):
 ```bash
-codereview ./src --model-id global.anthropic.claude-sonnet-4-5-20250929-v1:0
+codereview ./src --model sonnet
 ```
 
-**Haiku 4.5** - Large codebases:
+**Haiku 4.5** - Large codebases (AWS Bedrock):
 ```bash
-codereview ./src --model-id global.anthropic.claude-haiku-4-5-20251001-v1:0 --max-files 500
+codereview ./src --model haiku --max-files 500
+```
+
+**GPT-5.2 Codex** - Code-specialized (Azure OpenAI):
+```bash
+codereview ./src --model gpt
+```
+
+**Devstral 2** - Free tier, code-focused (NVIDIA NIM):
+```bash
+codereview ./src --model devstral
+```
+
+**DeepSeek-R1** - Reasoning model (AWS Bedrock):
+```bash
+codereview ./src --model deepseek-r1-bedrock
 ```
 
 ### 10. Monitor Token Usage and Costs
 
 Be aware of costs and choose models accordingly:
-- **Opus 4.5**: Highest quality but most expensive ($15/M input, $75/M output)
+
+**AWS Bedrock:**
+- **Opus 4.5**: Highest quality ($5/M input, $25/M output)
 - **Sonnet 4.5**: Balanced option for daily use ($3/M input, $15/M output)
-- **Haiku 4.5**: Most economical for large codebases ($0.25/M input, $1.25/M output)
+- **Haiku 4.5**: Economical for large codebases ($1/M input, $5/M output)
+- **DeepSeek-R1**: Reasoning model ($1.35/M input, $5.40/M output)
+
+**Azure OpenAI:**
+- **GPT-5.2 Codex**: Code-specialized ($1.75/M input, $14/M output)
+
+**NVIDIA NIM (Free Tier):**
+- **Devstral 2, DeepSeek V3.2, Qwen3 Coder, GLM 4.7, Kimi K2.5**: Currently free
+
+**Cost optimization tips:**
 - Use `--max-files` to limit scope
 - Focus on critical paths first
 - The tool displays estimated cost after each run
+- Use NVIDIA NIM free tier for development/testing
 
 ### 11. Act on Findings Systematically
 
@@ -396,38 +432,61 @@ codereview ./src --aws-profile production
 
 ### Model Selection
 
-Choose the right Claude model for your needs:
+Choose the right model for your needs. Use short model names (aliases supported):
 
 ```bash
-# Claude Opus 4.5 (default) - Highest quality
-codereview ./src --model-id global.anthropic.claude-opus-4-5-20251101-v1:0
+# List all available models
+codereview --list-models
 
-# Claude Sonnet 4.5 - Balanced performance and cost
-codereview ./src --model-id global.anthropic.claude-sonnet-4-5-20250929-v1:0
+# AWS Bedrock - Claude models
+codereview ./src --model opus     # Claude Opus 4.5 (default, highest quality)
+codereview ./src --model sonnet   # Claude Sonnet 4.5 (balanced)
+codereview ./src --model haiku    # Claude Haiku 4.5 (fastest)
 
-# Claude Haiku 4.5 - Fastest and most economical
-codereview ./src --model-id global.anthropic.claude-haiku-4-5-20251001-v1:0
+# AWS Bedrock - Other models
+codereview ./src --model deepseek-r1-bedrock  # DeepSeek-R1 (reasoning)
+codereview ./src --model qwen-bedrock         # Qwen3 Coder 480B
+codereview ./src --model kimi-k2-bedrock      # Kimi K2 Thinking
+
+# Azure OpenAI
+codereview ./src --model gpt      # GPT-5.2 Codex
+
+# NVIDIA NIM (free tier)
+codereview ./src --model devstral           # Devstral 2 123B
+codereview ./src --model deepseek-v3.2-nvidia # DeepSeek V3.2
+codereview ./src --model glm47              # GLM 4.7
+codereview ./src --model kimi-k2.5          # Kimi K2.5 (256K context)
 ```
 
 **When to use each model:**
 
-| Model | Use Case | Pricing |
-|-------|----------|---------|
-| **Opus 4.5** (default) | Critical code reviews, security audits, production releases | $15/M input, $75/M output |
-| **Sonnet 4.5** | Daily development, PR reviews, general code quality | $3/M input, $15/M output |
-| **Haiku 4.5** | Large codebases, quick checks, CI/CD integration | $0.25/M input, $1.25/M output |
+| Model | Provider | Use Case | Pricing |
+|-------|----------|----------|---------|
+| **Opus 4.5** (default) | AWS Bedrock | Critical code reviews, security audits | $5/M input, $25/M output |
+| **Sonnet 4.5** | AWS Bedrock | Daily development, PR reviews | $3/M input, $15/M output |
+| **Haiku 4.5** | AWS Bedrock | Large codebases, CI/CD integration | $1/M input, $5/M output |
+| **GPT-5.2 Codex** | Azure OpenAI | Code-specialized, Microsoft ecosystem | $1.75/M input, $14/M output |
+| **DeepSeek-R1** | AWS Bedrock | Reasoning-focused reviews | $1.35/M input, $5.40/M output |
+| **Devstral 2** | NVIDIA NIM | Free tier, code-focused | Free* |
+| **GLM 4.7** | NVIDIA NIM | Free tier, thinking mode | Free* |
+| **Kimi K2.5** | NVIDIA NIM | Free tier, 256K context | Free* |
+
+*NVIDIA NIM models are currently in free preview tier.
 
 **Model Selection Strategy:**
 
 ```bash
 # Production-critical code → Opus
-codereview ./src/auth --model-id global.anthropic.claude-opus-4-5-20251101-v1:0
+codereview ./src/auth --model opus
 
-# Daily development → Sonnet
-codereview ./src --model-id global.anthropic.claude-sonnet-4-5-20250929-v1:0
+# Daily development → Sonnet or GPT
+codereview ./src --model sonnet
 
-# Large codebase scanning → Haiku
-codereview ./monorepo --model-id global.anthropic.claude-haiku-4-5-20251001-v1:0 --max-files 500
+# Large codebase scanning → Haiku or free models
+codereview ./monorepo --model haiku --max-files 500
+
+# Development/testing → Free NVIDIA NIM models
+codereview ./src --model devstral
 ```
 
 ## Understanding Results
@@ -539,45 +598,43 @@ For projects with 1000+ files:
    codereview ./src --max-files 100 --output batch1.md
    ```
 
-### Managing AWS Costs
+### Managing Costs
 
 **Choose the right model for your budget:**
 
-| Scenario | Recommended Model | Estimated Cost* |
-|----------|-------------------|-----------------|
-| 100 files, critical review | Opus 4.5 | $0.50-$2.00 |
-| 100 files, daily review | Sonnet 4.5 | $0.10-$0.40 |
-| 1000 files, bulk scan | Haiku 4.5 | $0.10-$0.50 |
+| Scenario | Recommended Model | Provider | Estimated Cost* |
+|----------|-------------------|----------|-----------------|
+| 100 files, critical review | Opus 4.5 | AWS Bedrock | $0.30-$1.50 |
+| 100 files, daily review | Sonnet 4.5 | AWS Bedrock | $0.10-$0.40 |
+| 1000 files, bulk scan | Haiku 4.5 | AWS Bedrock | $0.10-$0.50 |
+| Development/testing | Devstral 2 | NVIDIA NIM | Free |
+| Large context needed | Kimi K2.5 | NVIDIA NIM | Free |
 
 *Actual costs depend on file size and complexity
 
 **Cost optimization strategies:**
 
-1. **Choose appropriate model**: Use Haiku for large scans, Sonnet for daily work, Opus for critical reviews
-2. **Estimate tokens**: ~100 tokens per 4 lines of code
-3. **Use max-files**: Limit scope for cost control
-4. **Review incrementally**: Analyze changes, not entire codebase
-5. **Filter by severity**: Reduce output size with severity filters
+1. **Use free tier for development**: NVIDIA NIM models are free during preview
+2. **Choose appropriate model**: Use Haiku for large scans, Sonnet for daily work, Opus for critical reviews
+3. **Estimate tokens**: ~100 tokens per 4 lines of code
+4. **Use max-files**: Limit scope for cost control
+5. **Review incrementally**: Analyze changes, not entire codebase
+6. **Filter by severity**: Reduce output size with severity filters
 
 Example cost-conscious workflows:
 
 ```bash
-# Daily development with Sonnet (balanced cost/quality)
-codereview ./src \
-  --model-id global.anthropic.claude-sonnet-4-5-20250929-v1:0 \
-  --severity high \
-  --max-files 50
+# Free development workflow with NVIDIA NIM
+codereview ./src --model devstral --severity high
 
-# Large codebase scan with Haiku (most economical)
-codereview ./src \
-  --model-id global.anthropic.claude-haiku-4-5-20251001-v1:0 \
-  --max-files 500 \
-  --max-file-size 10
+# Daily development with Sonnet (balanced cost/quality)
+codereview ./src --model sonnet --severity high --max-files 50
+
+# Large codebase scan with Haiku (economical)
+codereview ./src --model haiku --max-files 500 --max-file-size 10
 
 # Critical security audit with Opus (highest quality)
-codereview ./src/auth \
-  --model-id global.anthropic.claude-opus-4-5-20251101-v1:0 \
-  --severity medium
+codereview ./src/auth --model opus --severity medium
 ```
 
 ## Advanced Usage
@@ -702,16 +759,34 @@ If you encounter issues:
    codereview ./src --verbose
    ```
 
-2. **Verify AWS setup**:
+2. **List available models**:
    ```bash
-   aws bedrock list-foundation-models --region us-west-2
+   codereview --list-models
    ```
 
-3. **Test with small directory**:
+3. **Verify provider setup**:
+   ```bash
+   # AWS Bedrock
+   aws bedrock list-foundation-models --region us-west-2
+
+   # Azure OpenAI - check environment variables
+   echo $AZURE_OPENAI_ENDPOINT
+   echo $AZURE_OPENAI_API_KEY
+
+   # NVIDIA NIM - check API key
+   echo $NVIDIA_API_KEY
+   ```
+
+4. **Test with small directory**:
    ```bash
    codereview ./src/single-file-dir --verbose
    ```
 
-4. **Review troubleshooting guide** in README.md
+5. **Try a different provider** (NVIDIA NIM is free):
+   ```bash
+   codereview ./src --model devstral --verbose
+   ```
 
-5. **Check AWS Bedrock quotas** in AWS Console
+6. **Review troubleshooting guide** in README.md
+
+7. **Check provider quotas** in respective consoles (AWS, Azure, NVIDIA)

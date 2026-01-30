@@ -85,6 +85,9 @@ class BedrockProvider(ModelProvider):
         self._total_input_tokens = 0
         self._total_output_tokens = 0
 
+        # Flag for prompt-based parsing (set in _create_model if model doesn't support tool use)
+        self._use_prompt_parsing = False
+
         # Rate limiter for API calls
         self.rate_limiter = InMemoryRateLimiter(
             requests_per_second=requests_per_second,
@@ -131,11 +134,20 @@ class BedrockProvider(ModelProvider):
             ),
         )
 
-        # Configure for structured output
-        return base_model.with_structured_output(CodeReviewReport)
+        # Check if model supports tool use for structured output
+        if self.model_config.supports_tool_use:
+            # Configure for structured output using tool calling
+            return base_model.with_structured_output(CodeReviewReport)
+        else:
+            # Return base model for prompt-based JSON parsing
+            self._use_prompt_parsing = True
+            return base_model
 
     def _create_chain(self) -> Any:
         """Create LangChain chain with prompt template."""
+        if self._use_prompt_parsing:
+            # For models without tool use, add output parser to chain
+            return BATCH_PROMPT_TEMPLATE | self.model | self._output_parser
         return BATCH_PROMPT_TEMPLATE | self.model
 
     def analyze_batch(
@@ -163,9 +175,16 @@ class BedrockProvider(ModelProvider):
             batch_number, total_batches, files_content
         )
 
+        # Build system prompt (add format instructions for prompt-based parsing)
+        system_prompt = SYSTEM_PROMPT
+        if self._use_prompt_parsing:
+            # Add JSON format instructions for models without tool use
+            format_instructions = self._output_parser.get_format_instructions()
+            system_prompt = f"{SYSTEM_PROMPT}\n\n{format_instructions}"
+
         # Use chain with prompt template for cleaner invocation
         chain_input = {
-            "system_prompt": SYSTEM_PROMPT,
+            "system_prompt": system_prompt,
             "batch_context": batch_context,
         }
 

@@ -5,6 +5,9 @@ from uuid import UUID
 
 from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.outputs import LLMResult
+
+# Re-export BaseCallbackHandler for convenience
+__all__ = ["BaseCallbackHandler", "StreamingCallbackHandler", "ProgressCallbackHandler"]
 from rich.console import Console
 from rich.live import Live
 from rich.panel import Panel

@@ -24,7 +24,11 @@ from rich.table import Table
 
 from codereview.analyzer import CodeAnalyzer
 from codereview.batcher import FileBatch, FileBatcher
-from codereview.callbacks import ProgressCallbackHandler, StreamingCallbackHandler
+from codereview.callbacks import (
+    BaseCallbackHandler,
+    ProgressCallbackHandler,
+    StreamingCallbackHandler,
+)
 from codereview.config import (
     DEFAULT_EXCLUDE_PATTERNS,
     MAX_FILE_SIZE_KB,
@@ -363,7 +367,7 @@ def main(
 
         # Step 3: Analyze batches
         # Set up callbacks for streaming/progress if requested
-        callbacks: list | None = None
+        callbacks: list[BaseCallbackHandler] | None = None
         if stream:
             streaming_handler = StreamingCallbackHandler(console=console, verbose=True)
             callbacks = [streaming_handler]
@@ -494,8 +498,18 @@ def main(
         if static_results:
             static_summary = StaticAnalyzer.get_summary(static_results)
             # Create a new metrics object with static analysis fields
+            # Exclude static_analysis fields to avoid duplicate keyword arguments
+            base_metrics = metrics.model_dump(
+                exclude_none=True,
+                exclude={
+                    "static_analysis_run",
+                    "static_tools_passed",
+                    "static_tools_failed",
+                    "static_issues_found",
+                },
+            )
             metrics = ReviewMetrics(
-                **metrics.model_dump(exclude_none=True),
+                **base_metrics,
                 static_analysis_run=True,
                 static_tools_passed=static_summary["tools_passed"],
                 static_tools_failed=static_summary["tools_failed"],
@@ -540,8 +554,8 @@ def main(
             console.print(
                 f"[yellow]⚠️  Warning: {len(analyzer.skipped_files)} file(s) could not be read:[/yellow]"
             )
-            for file_path, error in analyzer.skipped_files[:5]:  # Show first 5
-                console.print(f"   • {file_path}: {error}")
+            for skipped_file, error in analyzer.skipped_files[:5]:  # Show first 5
+                console.print(f"   • {skipped_file}: {error}")
             if len(analyzer.skipped_files) > 5:
                 console.print(f"   ... and {len(analyzer.skipped_files) - 5} more")
             console.print()

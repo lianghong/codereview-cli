@@ -1,5 +1,6 @@
 """Azure OpenAI provider implementation."""
 
+import os
 import time
 from typing import Any
 
@@ -99,7 +100,7 @@ class AzureOpenAIProvider(ModelProvider):
         model_params: dict[str, Any] = {
             "azure_deployment": self.model_config.deployment_name,
             "azure_endpoint": str(self.provider_config.endpoint),
-            "api_key": SecretStr(self.provider_config.api_key),  # type: ignore[arg-type]
+            "api_key": SecretStr(str(self.provider_config.api_key)),
             "api_version": self.provider_config.api_version,
             "max_tokens": self.max_tokens,
             "rate_limiter": self.rate_limiter,
@@ -284,7 +285,6 @@ class AzureOpenAIProvider(ModelProvider):
         Returns:
             ValidationResult with check details
         """
-        import os
         from urllib.parse import urlparse
 
         result = ValidationResult(valid=True, provider="Azure OpenAI")
