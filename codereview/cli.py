@@ -72,8 +72,11 @@ class ModelChoice(click.ParamType):
         self, value: str, param: click.Parameter | None, ctx: click.Context | None
     ) -> str:
         """Validate that value is a valid model ID or alias."""
-        if value.lower() in (name.lower() for name in ALL_MODEL_NAMES):
-            return value
+        # Build case-insensitive lookup map
+        lower_map = {name.lower(): name for name in ALL_MODEL_NAMES}
+        normalized = lower_map.get(value.lower())
+        if normalized:
+            return normalized
         self.fail(
             f"'{value}' is not a valid model. "
             f"Choose from: {', '.join(PRIMARY_MODEL_IDS)} (or use --list-models)",
