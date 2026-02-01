@@ -291,7 +291,8 @@ class NVIDIAProvider(TokenTrackingMixin, ModelProvider):
 
         # If we exhausted all retries, last_error must be set
         # (loop only exits early on success via return)
-        assert last_error is not None, "Retry loop exited without error or success"
+        if last_error is None:
+            raise RuntimeError("Retry loop exited without error or success")
         raise last_error
 
     def get_model_display_name(self) -> str:

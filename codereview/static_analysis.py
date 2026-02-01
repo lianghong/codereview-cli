@@ -1,7 +1,7 @@
 """Static analysis integration for code quality tools across multiple languages."""
 
 import logging
-import subprocess
+import subprocess  # nosec B404 - required for running static analysis tools
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
@@ -349,7 +349,7 @@ class StaticAnalyzer:
             try:
                 # Use custom version command if specified, otherwise default to --version
                 version_cmd = config.get("version_command", [tool_name, "--version"])
-                result = subprocess.run(
+                result = subprocess.run(  # nosec B603 - commands from hardcoded config
                     version_cmd, capture_output=True, timeout=5, shell=False
                 )
                 # Only mark as available if the command succeeds
@@ -659,7 +659,7 @@ class StaticAnalyzer:
             cwd = self.directory.parent
 
         try:
-            result = subprocess.run(
+            result = subprocess.run(  # nosec B603 - commands from hardcoded config
                 command,
                 capture_output=True,
                 text=True,

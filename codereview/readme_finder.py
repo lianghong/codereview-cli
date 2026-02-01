@@ -80,7 +80,7 @@ def read_readme_content(
 
         return content, file_size
 
-    except (OSError, UnicodeDecodeError):
+    except OSError, UnicodeDecodeError:
         return None
 
 
