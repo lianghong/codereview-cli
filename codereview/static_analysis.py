@@ -239,7 +239,7 @@ class StaticAnalyzer:
         "checkstyle": {
             "name": "Checkstyle",
             "description": "Java style checker",
-            "command": ["checkstyle", "-c", "/google_checks.xml"],
+            "command": ["checkstyle", "-c", "google_checks.xml"],
             "language": "java",
         },
         # JavaScript/TypeScript tools
