@@ -100,3 +100,65 @@ class TestFindReadme:
         assert result is not None
         assert result == sub_readme
         assert "Core Package" in result.read_text()
+
+
+class TestReadReadmeContent:
+    """Tests for read_readme_content function."""
+
+    def test_reads_readme_content(self, tmp_path: Path) -> None:
+        """Test that read_readme_content reads content and returns (content, size)."""
+        from codereview.readme_finder import read_readme_content
+
+        # Create a README file
+        readme = tmp_path / "README.md"
+        content = "# My Project\n\nThis is a test README."
+        readme.write_text(content)
+
+        result = read_readme_content(readme)
+
+        assert result is not None
+        returned_content, file_size = result
+        assert returned_content == content
+        assert file_size == len(content.encode("utf-8"))
+
+    def test_truncates_large_readme(self, tmp_path: Path) -> None:
+        """Test that read_readme_content truncates when > max_size."""
+        from codereview.readme_finder import read_readme_content
+
+        # Create a large README file
+        readme = tmp_path / "README.md"
+        large_content = "# Large README\n" + "x" * 1000
+        readme.write_text(large_content)
+
+        # Use a small max_size to trigger truncation
+        result = read_readme_content(readme, max_size=100)
+
+        assert result is not None
+        returned_content, file_size = result
+        assert len(returned_content) < len(large_content)
+        assert "[TRUNCATED" in returned_content
+        assert file_size == len(large_content.encode("utf-8"))
+
+    def test_returns_none_for_missing_file(self, tmp_path: Path) -> None:
+        """Test that read_readme_content returns None for non-existent file."""
+        from codereview.readme_finder import read_readme_content
+
+        # Non-existent file
+        missing = tmp_path / "NONEXISTENT.md"
+
+        result = read_readme_content(missing)
+
+        assert result is None
+
+    def test_returns_none_for_binary_file(self, tmp_path: Path) -> None:
+        """Test that read_readme_content returns None for binary content (null bytes)."""
+        from codereview.readme_finder import read_readme_content
+
+        # Create a file with binary content (null bytes)
+        readme = tmp_path / "README.md"
+        binary_content = b"# README\x00\x00Binary data"
+        readme.write_bytes(binary_content)
+
+        result = read_readme_content(readme)
+
+        assert result is None
