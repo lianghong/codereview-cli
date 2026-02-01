@@ -403,6 +403,33 @@ codereview ./src --max-files 50
 # - Testing configuration
 ```
 
+### README Context
+
+The tool automatically discovers your project's README.md to provide context for better code reviews:
+
+```bash
+# Auto-discover README (prompts for confirmation, auto-confirms after 3s)
+codereview ./src
+
+# Specify README explicitly
+codereview ./src --readme ./docs/PROJECT.md
+
+# Skip README context
+codereview ./src --no-readme
+```
+
+**How it works:**
+- Searches target directory and parent directories for README.md
+- Stops at git repository root
+- Auto-confirms after 3 seconds (press Enter for immediate confirm, 'n' to skip)
+- README content is included in each batch sent to the LLM
+- Large files (>50KB) show a warning; files >100KB are truncated
+
+**Benefits:**
+- LLM understands project conventions and requirements
+- More relevant and context-aware code review suggestions
+- Better identification of project-specific patterns
+
 ### Region Selection
 
 ```bash

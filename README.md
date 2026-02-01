@@ -512,7 +512,7 @@ codereview-cli/
 │       ├── azure_openai.py   # Azure OpenAI provider implementation
 │       └── nvidia.py         # NVIDIA NIM provider implementation
 ├── tests/
-│   ├── test_*.py             # Unit tests (162 tests)
+│   ├── test_*.py             # Unit tests (261 tests)
 │   └── fixtures/             # Test fixtures
 ├── docs/
 │   ├── usage.md              # Detailed usage guide
@@ -534,7 +534,7 @@ The codebase follows strict quality standards:
 - Pydantic V2 for data validation
 - Rich for terminal UI
 - Click for CLI interface
-- Comprehensive test coverage (162 tests)
+- Comprehensive test coverage (261 tests)
 
 **Static Analysis Tools:**
 ```bash
@@ -556,7 +556,7 @@ uv run ruff check --fix codereview/ tests/
 
 **Quality Requirements:**
 - All code must pass: ruff (linting), mypy (type checking), black (formatting), isort (import sorting), vulture (dead code)
-- All tests must pass (162/162)
+- All tests must pass (261/261)
 - Type hints required for public APIs
 - No unused imports or variables
 - Provider implementations must include `get_pricing()` method
@@ -588,7 +588,16 @@ For issues, questions, or contributions:
 
 ## Version History
 
-### v0.2.2 (Current)
+### v0.2.3 (Current)
+- **Auto-confirm README Context**: README prompt auto-confirms after 3 seconds with "Y" default
+- **Improved UI**: Removed left/right borders from Improvement Suggestions panel for easier copy
+- **Exponential Backoff Cap**: Limited retry wait time to 60 seconds maximum
+- **ASCII-safe Fallback**: Terminal fallback uses ASCII characters for better compatibility
+- **Performance Optimization**: Cached repeated string operations in static analysis parsing
+- **Code Quality**: Improved exception handling, docstrings, and type hints throughout codebase
+- **Test Coverage**: Expanded test suite to 261 tests
+
+### v0.2.2
 - **Kimi K2.5 Model**: Added Moonshot AI's Kimi K2.5 via NVIDIA NIM (256K context window)
 - **DeepSeek-R1 Model**: Added DeepSeek-R1 reasoning model via AWS Bedrock (128K context)
 - **Model Version IDs**: Updated model IDs to include version numbers (kimi-k2-bedrock, kimi-k2-nvidia, deepseek-r1-bedrock, deepseek-v3.2-nvidia)

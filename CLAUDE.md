@@ -101,7 +101,7 @@ uv run python -m codereview.cli /path/to/code
 The tool automatically discovers your project's README.md to provide context for code reviews:
 
 ```bash
-# Auto-discover README (prompts for confirmation)
+# Auto-discover README (prompts for confirmation, auto-confirms after 3s)
 uv run codereview ./src
 
 # Specify README explicitly
@@ -111,7 +111,7 @@ uv run codereview ./src --readme ./docs/PROJECT.md
 uv run codereview ./src --no-readme
 ```
 
-The README content is included in each batch sent to the LLM, helping it understand project conventions and requirements. The tool searches the target directory and parent directories for README.md, stopping at the git repository root.
+The README content is included in each batch sent to the LLM, helping it understand project conventions and requirements. The tool searches the target directory and parent directories for README.md, stopping at the git repository root. The prompt auto-confirms "Y" after 3 seconds if no input is received.
 
 ### CLI Options
 | Option | Description | Default |

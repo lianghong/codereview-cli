@@ -82,13 +82,13 @@ Choose the right model for your use case:
 
 ```bash
 # High-quality review with Opus (critical code)
-codereview ./src/auth --model-id global.anthropic.claude-opus-4-5-20251101-v1:0
+codereview ./src/auth --model opus
 
 # Balanced review with Sonnet (daily development)
-codereview ./src --model-id global.anthropic.claude-sonnet-4-5-20250929-v1:0
+codereview ./src --model sonnet
 
 # Fast review with Haiku (large codebase)
-codereview ./monorepo --model-id global.anthropic.claude-haiku-4-5-20251001-v1:0 --max-files 1000
+codereview ./monorepo --model haiku --max-files 1000
 ```
 
 **Output with Model Information**:
@@ -163,7 +163,7 @@ Minimize AWS costs while maintaining quality by choosing the right model:
 ```bash
 # Option 1: Sonnet for balanced cost/quality
 codereview ./src/core ./src/security \
-  --model-id global.anthropic.claude-sonnet-4-5-20250929-v1:0 \
+  --model sonnet \
   --severity high \
   --max-files 100 \
   --max-file-size 10 \
@@ -171,7 +171,7 @@ codereview ./src/core ./src/security \
 
 # Option 2: Haiku for large scans
 codereview ./src \
-  --model-id global.anthropic.claude-haiku-4-5-20251001-v1:0 \
+  --model haiku \
   --max-files 500 \
   --severity high \
   --output large-scan.md
@@ -253,7 +253,7 @@ jobs:
       - name: Run code review
         run: |
           codereview ./src \
-            --model-id global.anthropic.claude-sonnet-4-5-20250929-v1:0 \
+            --model sonnet \
             --output review-report.md \
             --severity high \
             --max-files 100
@@ -305,7 +305,7 @@ code-review:
   script:
     - |
       codereview ./src \
-        --model-id global.anthropic.claude-haiku-4-5-20251001-v1:0 \
+        --model haiku \
         --output review-report.md \
         --severity high \
         --max-files 100
@@ -360,7 +360,7 @@ pipeline {
                 ]) {
                     sh '''
                         codereview ./src \
-                            --model-id global.anthropic.claude-haiku-4-5-20251001-v1:0 \
+                            --model haiku \
                             --output review-report.md \
                             --severity high \
                             --max-files 100 \
@@ -763,12 +763,12 @@ diff before.md after.md
 ```yaml
 # Use Haiku for pull requests (fast + cheap)
 - name: PR Review
-  run: codereview ./src --model-id global.anthropic.claude-haiku-4-5-20251001-v1:0
+  run: codereview ./src --model haiku
 
 # Use Opus for main branch only (quality)
 - name: Production Review
   if: github.ref == 'refs/heads/main'
-  run: codereview ./src --model-id global.anthropic.claude-opus-4-5-20251101-v1:0
+  run: codereview ./src --model opus
 ```
 
 ## Troubleshooting CI/CD
