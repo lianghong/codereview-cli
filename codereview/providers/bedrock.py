@@ -38,6 +38,7 @@ class BedrockProvider(ModelProvider):
         requests_per_second: float = 1.0,
         callbacks: list[BaseCallbackHandler] | None = None,
         enable_output_fixing: bool = True,
+        project_context: str | None = None,
     ):
         """Initialize Bedrock provider.
 
@@ -54,6 +55,7 @@ class BedrockProvider(ModelProvider):
         self._output_parser = PydanticOutputParser(pydantic_object=CodeReviewReport)
         self.model_config = model_config
         self.provider_config = provider_config
+        self.project_context = project_context
 
         # Determine temperature (override > model default > 0.1)
         if temperature is not None:
@@ -172,7 +174,7 @@ class BedrockProvider(ModelProvider):
             ClientError: If AWS API call fails after all retries
         """
         batch_context = self._prepare_batch_context(
-            batch_number, total_batches, files_content
+            batch_number, total_batches, files_content, self.project_context
         )
 
         # Build system prompt (add format instructions for prompt-based parsing)

@@ -39,6 +39,7 @@ class NVIDIAProvider(ModelProvider):
         requests_per_second: float = 1.0,
         callbacks: list[BaseCallbackHandler] | None = None,
         enable_output_fixing: bool = True,
+        project_context: str | None = None,
     ):
         """Initialize NVIDIA provider.
 
@@ -55,6 +56,7 @@ class NVIDIAProvider(ModelProvider):
         self._output_parser = PydanticOutputParser(pydantic_object=CodeReviewReport)
         self.model_config = model_config
         self.provider_config = provider_config
+        self.project_context = project_context
 
         # Determine temperature (override > model default > 0.15)
         if temperature is not None:
@@ -92,11 +94,16 @@ class NVIDIAProvider(ModelProvider):
         )
 
         # Create LangChain model and chain
-        # Suppress warnings about non-standard parameters (timeout is passed to _NVIDIAClient)
+        # Suppress warnings about non-standard parameters (passed to _NVIDIAClient/model_kwargs)
         with warnings.catch_warnings():
             warnings.filterwarnings(
                 "ignore",
                 message=".*timeout is not default parameter.*",
+                category=UserWarning,
+            )
+            warnings.filterwarnings(
+                "ignore",
+                message=".*chat_template_kwargs is not default parameter.*",
                 category=UserWarning,
             )
             self.model = self._create_model()
@@ -163,6 +170,12 @@ class NVIDIAProvider(ModelProvider):
                 message=".*timeout is not default parameter.*",
                 category=UserWarning,
             )
+            # Suppress "chat_template_kwargs is not default parameter" - it's for thinking mode
+            warnings.filterwarnings(
+                "ignore",
+                message=".*chat_template_kwargs is not default parameter.*",
+                category=UserWarning,
+            )
             base_model = ChatNVIDIA(**model_params)
 
             # Configure for structured output
@@ -197,7 +210,7 @@ class NVIDIAProvider(ModelProvider):
         if max_retries is None:
             max_retries = self.provider_config.max_retries
         batch_context = self._prepare_batch_context(
-            batch_number, total_batches, files_content
+            batch_number, total_batches, files_content, self.project_context
         )
 
         # Use chain with prompt template for cleaner invocation
@@ -224,6 +237,11 @@ class NVIDIAProvider(ModelProvider):
                     warnings.filterwarnings(
                         "ignore",
                         message=".*timeout is not default parameter.*",
+                        category=UserWarning,
+                    )
+                    warnings.filterwarnings(
+                        "ignore",
+                        message=".*chat_template_kwargs is not default parameter.*",
                         category=UserWarning,
                     )
                     result = self.chain.invoke(chain_input)
