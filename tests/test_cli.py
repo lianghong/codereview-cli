@@ -346,3 +346,53 @@ def test_cli_model_short_name(cli_runner, sample_code_dir):
         mock_analyzer_cls.assert_called_once()
         call_kwargs = mock_analyzer_cls.call_args[1]
         assert call_kwargs["model_name"] == "haiku"
+
+
+def test_validate_flag(cli_runner):
+    """Test --validate runs credential validation without directory."""
+    from codereview.providers.base import ValidationResult
+
+    with patch("codereview.cli.ProviderFactory") as mock_factory_cls:
+        # Setup factory mock
+        mock_factory = Mock()
+        mock_provider = Mock()
+        mock_provider.get_model_display_name.return_value = "Claude Opus 4.5"
+
+        # Mock validation result
+        mock_result = ValidationResult(valid=True, provider="AWS Bedrock")
+        mock_result.add_check("API Key", True, "Configured")
+        mock_provider.validate_credentials.return_value = mock_result
+
+        mock_factory.create_provider.return_value = mock_provider
+        mock_factory_cls.return_value = mock_factory
+
+        result = cli_runner.invoke(main, ["--validate", "-m", "opus"])
+
+        assert result.exit_code == 0, f"CLI failed with: {result.output}"
+        assert "Validating credentials" in result.output
+        assert "Claude Opus 4.5" in result.output
+        mock_provider.validate_credentials.assert_called_once()
+
+
+def test_validate_flag_failure(cli_runner):
+    """Test --validate exits with code 1 on validation failure."""
+    from codereview.providers.base import ValidationResult
+
+    with patch("codereview.cli.ProviderFactory") as mock_factory_cls:
+        # Setup factory mock
+        mock_factory = Mock()
+        mock_provider = Mock()
+        mock_provider.get_model_display_name.return_value = "Test Model"
+
+        # Mock failed validation result
+        mock_result = ValidationResult(valid=False, provider="Test Provider")
+        mock_result.add_check("API Key", False, "Not configured")
+        mock_provider.validate_credentials.return_value = mock_result
+
+        mock_factory.create_provider.return_value = mock_provider
+        mock_factory_cls.return_value = mock_factory
+
+        result = cli_runner.invoke(main, ["--validate", "-m", "opus"])
+
+        assert result.exit_code == 1
+        mock_provider.validate_credentials.assert_called_once()

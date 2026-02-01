@@ -145,6 +145,48 @@ def display_available_models() -> None:
     console.print("[dim]Example: codereview ./src --model opus[/dim]")
 
 
+def validate_provider_credentials(model_name: str, aws_profile: str | None) -> None:
+    """Validate provider credentials without running analysis.
+
+    Args:
+        model_name: Model ID or alias to validate
+        aws_profile: Optional AWS profile to use
+    """
+    # Set AWS profile if provided
+    if aws_profile:
+        os.environ["AWS_PROFILE"] = aws_profile
+
+    try:
+        factory = ProviderFactory()
+        provider = factory.create_provider(model_name)
+
+        console.print(
+            f"\n[bold]Validating credentials for:[/bold] {provider.get_model_display_name()}"
+        )
+        console.print()
+
+        # Run validation
+        result = provider.validate_credentials()
+
+        # Render results
+        renderer = ValidationRenderer(console)
+        renderer.render(result)
+
+        # Exit with appropriate code
+        if not result.valid:
+            raise SystemExit(1)
+
+    except ValueError as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise SystemExit(1)
+    except (NoCredentialsError, ClientError) as e:
+        console.print(f"[red]AWS Error:[/red] {e}")
+        raise SystemExit(1)
+    except Exception as e:
+        console.print(f"[red]Unexpected error:[/red] {e}")
+        raise SystemExit(1)
+
+
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
 @click.argument(
     "directory",
@@ -221,6 +263,11 @@ def display_available_models() -> None:
     help="List all available models and exit",
 )
 @click.option(
+    "--validate",
+    is_flag=True,
+    help="Validate provider credentials without running analysis",
+)
+@click.option(
     "--readme",
     type=click.Path(exists=True, dir_okay=False, path_type=Path),
     help="Specify README file for project context (skips auto-discovery)",
@@ -248,6 +295,7 @@ def main(
     verbose: bool,
     stream: bool,
     list_models: bool,
+    validate: bool,
     readme: Path | None,
     no_readme: bool,
 ) -> None:
@@ -260,6 +308,11 @@ def main(
     # Handle --list-models flag first
     if list_models:
         display_available_models()
+        return
+
+    # Handle --validate flag
+    if validate:
+        validate_provider_credentials(model_name, aws_profile)
         return
 
     # Show help if no directory provided
