@@ -212,6 +212,16 @@ def display_available_models() -> None:
     is_flag=True,
     help="List all available models and exit",
 )
+@click.option(
+    "--readme",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    help="Specify README file for project context (skips auto-discovery)",
+)
+@click.option(
+    "--no-readme",
+    is_flag=True,
+    help="Skip README context entirely (no prompt)",
+)
 @click.pass_context
 def main(
     ctx: click.Context,
@@ -230,6 +240,8 @@ def main(
     verbose: bool,
     stream: bool,
     list_models: bool,
+    readme: Path | None,
+    no_readme: bool,
 ) -> None:
     """
     Analyze code in DIRECTORY and generate a comprehensive review report.
