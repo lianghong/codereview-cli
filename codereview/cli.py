@@ -65,8 +65,8 @@ class ModelChoice(click.ParamType):
     def get_metavar(
         self, param: click.Parameter, ctx: click.Context | None = None
     ) -> str:
-        """Show only primary model IDs in help."""
-        return "[" + "|".join(PRIMARY_MODEL_IDS) + "]"
+        """Show MODEL placeholder in help - use --list-models for full list."""
+        return "MODEL"
 
     def convert(
         self, value: str, param: click.Parameter | None, ctx: click.Context | None
