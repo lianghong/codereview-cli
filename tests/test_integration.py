@@ -209,7 +209,7 @@ class TestFullWorkflow:
             mock_analyzer.skipped_files = []
             mock_analyzer_class.return_value = mock_analyzer
 
-            result = runner.invoke(main, [str(sample_project_dir)])
+            result = runner.invoke(main, [str(sample_project_dir), "--no-readme"])
 
             assert result.exit_code == 0, f"CLI failed with: {result.output}"
             assert "Code Review Tool" in result.output
@@ -249,7 +249,8 @@ class TestFullWorkflow:
             mock_analyzer_class.return_value = mock_analyzer
 
             result = runner.invoke(
-                main, [str(sample_project_dir), "--output", str(output_file)]
+                main,
+                [str(sample_project_dir), "--output", str(output_file), "--no-readme"],
             )
 
             assert result.exit_code == 0, f"CLI failed with: {result.output}"
@@ -288,7 +289,7 @@ class TestFullWorkflow:
             mock_analyzer_class.return_value = mock_analyzer
 
             result = runner.invoke(
-                main, [str(sample_project_dir), "--severity", "high"]
+                main, [str(sample_project_dir), "--severity", "high", "--no-readme"]
             )
 
             assert result.exit_code == 0, f"CLI failed with: {result.output}"
@@ -322,7 +323,9 @@ class TestFullWorkflow:
             mock_analyzer.skipped_files = []
             mock_analyzer_class.return_value = mock_analyzer
 
-            result = runner.invoke(main, [str(sample_project_dir), "--max-files", "1"])
+            result = runner.invoke(
+                main, [str(sample_project_dir), "--max-files", "1", "--no-readme"]
+            )
 
             assert result.exit_code == 0, f"CLI failed with: {result.output}"
 
@@ -355,7 +358,9 @@ class TestFullWorkflow:
             mock_analyzer.skipped_files = []
             mock_analyzer_class.return_value = mock_analyzer
 
-            result = runner.invoke(main, [str(sample_project_dir), "--verbose"])
+            result = runner.invoke(
+                main, [str(sample_project_dir), "--verbose", "--no-readme"]
+            )
 
             assert result.exit_code == 0, f"CLI failed with: {result.output}"
             assert "Batch" in result.output
@@ -416,7 +421,7 @@ class TestWorkflowWithFixtures:
             mock_analyzer.skipped_files = []
             mock_analyzer_class.return_value = mock_analyzer
 
-            result = runner.invoke(main, [str(fixtures_dir)])
+            result = runner.invoke(main, [str(fixtures_dir), "--no-readme"])
 
             assert result.exit_code == 0, f"CLI failed with: {result.output}"
 
@@ -439,7 +444,7 @@ class TestErrorHandlingIntegration:
             mock_factory_class.return_value = mock_factory
 
             Path("empty_dir").mkdir()
-            result = runner.invoke(main, ["empty_dir"])
+            result = runner.invoke(main, ["empty_dir", "--no-readme"])
 
             assert result.exit_code == 0, f"CLI failed with: {result.output}"
             assert "No files found" in result.output
@@ -448,7 +453,7 @@ class TestErrorHandlingIntegration:
         """Test handling of nonexistent directory."""
         runner = CliRunner()
 
-        result = runner.invoke(main, ["/nonexistent/path"])
+        result = runner.invoke(main, ["/nonexistent/path", "--no-readme"])
 
         assert result.exit_code != 0
 
@@ -471,7 +476,9 @@ class TestErrorHandlingIntegration:
             )
             mock_analyzer_class.return_value = mock_analyzer
 
-            result = runner.invoke(main, [str(sample_project_dir), "--verbose"])
+            result = runner.invoke(
+                main, [str(sample_project_dir), "--verbose", "--no-readme"]
+            )
 
             # Should handle error gracefully (not crash)
             assert "AWS" in result.output or "Error" in result.output
@@ -513,7 +520,8 @@ class TestOutputFormats:
             mock_analyzer_class.return_value = mock_analyzer
 
             result = runner.invoke(
-                main, [str(sample_project_dir), "--output", str(output_file)]
+                main,
+                [str(sample_project_dir), "--output", str(output_file), "--no-readme"],
             )
 
             # Both terminal output and file should be generated
@@ -582,7 +590,7 @@ class TestBatchProcessing:
             mock_analyzer.skipped_files = []
             mock_analyzer_class.return_value = mock_analyzer
 
-            result = runner.invoke(main, [str(sample_project_dir)])
+            result = runner.invoke(main, [str(sample_project_dir), "--no-readme"])
 
             assert result.exit_code == 0, f"CLI failed with: {result.output}"
             # Verify batches were processed
@@ -655,7 +663,7 @@ class TestBatchProcessing:
             mock_analyzer.skipped_files = []
             mock_analyzer_class.return_value = mock_analyzer
 
-            result = runner.invoke(main, [str(sample_project_dir)])
+            result = runner.invoke(main, [str(sample_project_dir), "--no-readme"])
 
             assert result.exit_code == 0, f"CLI failed with: {result.output}"
             # Both issues should be in final report

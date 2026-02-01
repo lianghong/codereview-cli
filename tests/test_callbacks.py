@@ -196,6 +196,6 @@ class TestCallbackIntegration:
 
             # Verify callbacks were passed to factory
             mock_factory.return_value.create_provider.assert_called_once_with(
-                "opus", None, callbacks=[callback]
+                "opus", None, callbacks=[callback], project_context=None
             )
             assert analyzer.callbacks == [callback]
