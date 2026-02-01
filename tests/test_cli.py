@@ -76,7 +76,7 @@ def test_cli_with_directory(cli_runner, sample_code_dir):
         mock_scanner.skipped_files = []
         mock_scanner_cls.return_value = mock_scanner
 
-        result = cli_runner.invoke(main, [str(sample_code_dir)])
+        result = cli_runner.invoke(main, [str(sample_code_dir), "--no-readme"])
 
         # Should succeed
         assert result.exit_code == 0, f"CLI failed with: {result.output}"
@@ -130,7 +130,7 @@ def test_cli_output_option(cli_runner, sample_code_dir, tmp_path):
 
         output_file = tmp_path / "report.md"
         result = cli_runner.invoke(
-            main, [str(sample_code_dir), "--output", str(output_file)]
+            main, [str(sample_code_dir), "--output", str(output_file), "--no-readme"]
         )
 
         # Command should succeed
@@ -230,7 +230,9 @@ def test_cli_with_model_option(cli_runner, sample_code_dir):
         mock_scanner.skipped_files = []
         mock_scanner_cls.return_value = mock_scanner
 
-        result = cli_runner.invoke(main, [str(sample_code_dir), "--model", "sonnet"])
+        result = cli_runner.invoke(
+            main, [str(sample_code_dir), "--model", "sonnet", "--no-readme"]
+        )
 
         # Should succeed
         assert result.exit_code == 0, f"CLI failed with: {result.output}"
@@ -286,7 +288,7 @@ def test_cli_default_model(cli_runner, sample_code_dir):
         mock_scanner.skipped_files = []
         mock_scanner_cls.return_value = mock_scanner
 
-        cli_runner.invoke(main, [str(sample_code_dir)])
+        cli_runner.invoke(main, [str(sample_code_dir), "--no-readme"])
 
         # Verify default model is "opus"
         mock_analyzer_cls.assert_called_once()
@@ -335,7 +337,9 @@ def test_cli_model_short_name(cli_runner, sample_code_dir):
         mock_scanner.skipped_files = []
         mock_scanner_cls.return_value = mock_scanner
 
-        result = cli_runner.invoke(main, [str(sample_code_dir), "-m", "haiku"])
+        result = cli_runner.invoke(
+            main, [str(sample_code_dir), "-m", "haiku", "--no-readme"]
+        )
 
         # Should succeed with short name
         assert result.exit_code == 0, f"CLI failed with: {result.output}"

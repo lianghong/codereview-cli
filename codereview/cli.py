@@ -37,6 +37,11 @@ from codereview.config import (
 from codereview.models import CodeReviewReport, ReviewIssue, ReviewMetrics
 from codereview.providers.base import ModelProvider
 from codereview.providers.factory import ProviderFactory
+from codereview.readme_finder import (
+    find_readme,
+    prompt_readme_confirmation,
+    read_readme_content,
+)
 from codereview.renderer import (
     MarkdownExporter,
     StaticAnalysisRenderer,
@@ -277,6 +282,30 @@ def main(
         console.print(f"📂 Scanning directory: {directory}")
         console.print(f"🤖 Model: {model_display_name}\n")
 
+        # Handle README context
+        readme_content: str | None = None
+        if not no_readme:
+            if readme:
+                # User specified a README file via --readme
+                result = read_readme_content(readme)
+                if result:
+                    content, size = result
+                    readme_content = content
+                    console.print(
+                        f"📄 Using README: [cyan]{readme}[/cyan] ({size/1024:.1f} KB)\n"
+                    )
+                else:
+                    console.print(f"[yellow]⚠️  Could not read {readme}[/yellow]\n")
+            else:
+                # Auto-discover README
+                found_readme = find_readme(directory)
+                confirmed_readme = prompt_readme_confirmation(found_readme, console)
+                if confirmed_readme:
+                    result = read_readme_content(confirmed_readme)
+                    if result:
+                        readme_content, _ = result
+                console.print()  # Blank line after README section
+
         # Start timing
         start_time = time.time()
 
@@ -391,6 +420,7 @@ def main(
             model_name=model_name,
             temperature=temperature,
             callbacks=callbacks,
+            project_context=readme_content,
         )
         all_issues = []
         all_suggestions = []
