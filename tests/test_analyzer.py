@@ -50,7 +50,7 @@ def test_analyzer_initialization_with_model_name(mock_provider):
 
         assert analyzer.model_name == "opus"
         mock_factory.return_value.create_provider.assert_called_once_with(
-            "opus", None, callbacks=None
+            "opus", None, callbacks=None, project_context=None
         )
 
 
@@ -63,7 +63,7 @@ def test_analyzer_initialization_with_temperature(mock_provider):
 
         assert analyzer.temperature == 0.5
         mock_factory.return_value.create_provider.assert_called_once_with(
-            "sonnet", 0.5, callbacks=None
+            "sonnet", 0.5, callbacks=None, project_context=None
         )
 
 
@@ -92,7 +92,7 @@ def test_analyzer_legacy_model_id_mapping(mock_provider):
         # Should map to "opus"
         assert analyzer.model_name == "opus"
         mock_factory.return_value.create_provider.assert_called_once_with(
-            "opus", None, callbacks=None
+            "opus", None, callbacks=None, project_context=None
         )
 
 
@@ -183,4 +183,23 @@ def test_analyzer_with_custom_factory(mock_provider):
     analyzer = CodeAnalyzer(model_name="opus", provider_factory=custom_factory)
 
     assert analyzer.factory == custom_factory
-    custom_factory.create_provider.assert_called_once_with("opus", None, callbacks=None)
+    custom_factory.create_provider.assert_called_once_with(
+        "opus", None, callbacks=None, project_context=None
+    )
+
+
+def test_passes_project_context_to_provider() -> None:
+    """Should pass project_context to provider factory."""
+    with patch("codereview.analyzer.ProviderFactory") as mock_factory_class:
+        mock_factory = Mock()
+        mock_provider = Mock()
+        mock_factory.create_provider.return_value = mock_provider
+        mock_factory_class.return_value = mock_factory
+
+        readme_content = "# Test Project"
+        analyzer = CodeAnalyzer(model_name="opus", project_context=readme_content)
+
+        mock_factory.create_provider.assert_called_once_with(
+            "opus", None, callbacks=None, project_context=readme_content
+        )
+        assert analyzer is not None  # Verify analyzer was created

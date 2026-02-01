@@ -18,6 +18,7 @@ class CodeAnalyzer:
         temperature: float | None = None,
         provider_factory: ProviderFactory | None = None,
         callbacks: list[BaseCallbackHandler] | None = None,
+        project_context: str | None = None,
         # Legacy parameters for backward compatibility
         region: str | None = None,
         model_id: str | None = None,
@@ -29,6 +30,7 @@ class CodeAnalyzer:
             temperature: Temperature for inference (uses model-specific default if not provided)
             provider_factory: ProviderFactory instance (creates default if not provided)
             callbacks: Optional list of callback handlers for streaming/progress
+            project_context: Optional project context from README.md to enhance analysis
             region: DEPRECATED - Use model_name instead
             model_id: DEPRECATED - Use model_name instead
         """
@@ -48,11 +50,15 @@ class CodeAnalyzer:
         self.model_name = model_name
         self.temperature = temperature
         self.callbacks = callbacks
+        self.project_context = project_context
         self.factory = provider_factory or ProviderFactory()
 
-        # Create provider with callbacks
+        # Create provider with callbacks and project context
         self.provider = self.factory.create_provider(
-            model_name, temperature, callbacks=callbacks
+            model_name,
+            temperature,
+            callbacks=callbacks,
+            project_context=project_context,
         )
 
         # Tracking state (analyzer-level, not delegated to provider)
