@@ -30,6 +30,7 @@ class ProviderFactory:
         model_name: str,
         temperature: float | None = None,
         callbacks: list[BaseCallbackHandler] | None = None,
+        project_context: str | None = None,
     ) -> ModelProvider:
         """Create provider based on model name.
 
@@ -37,6 +38,7 @@ class ProviderFactory:
             model_name: Model ID or alias (e.g., "opus", "gpt-5.2-codex")
             temperature: Optional temperature override
             callbacks: Optional list of callback handlers for streaming/progress
+            project_context: Optional project README/documentation content
 
         Returns:
             Instantiated provider (BedrockProvider or AzureOpenAIProvider)
@@ -58,7 +60,11 @@ class ProviderFactory:
                     f"got {type(provider_config).__name__}"
                 )
             return BedrockProvider(
-                model_config, provider_config, temperature, callbacks=callbacks
+                model_config,
+                provider_config,
+                temperature,
+                callbacks=callbacks,
+                project_context=project_context,
             )
 
         elif provider_name == "azure_openai":
@@ -68,7 +74,11 @@ class ProviderFactory:
                     f"got {type(provider_config).__name__}"
                 )
             return AzureOpenAIProvider(
-                model_config, provider_config, temperature, callbacks=callbacks
+                model_config,
+                provider_config,
+                temperature,
+                callbacks=callbacks,
+                project_context=project_context,
             )
 
         elif provider_name == "nvidia":
@@ -78,7 +88,11 @@ class ProviderFactory:
                     f"got {type(provider_config).__name__}"
                 )
             return NVIDIAProvider(
-                model_config, provider_config, temperature, callbacks=callbacks
+                model_config,
+                provider_config,
+                temperature,
+                callbacks=callbacks,
+                project_context=project_context,
             )
 
         else:

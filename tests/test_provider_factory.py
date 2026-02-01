@@ -164,3 +164,28 @@ def test_list_available_models(factory):
     gpt_model = models["azure_openai"][0]
     assert gpt_model["id"] == "test-gpt"
     assert gpt_model["name"] == "Test GPT"
+
+
+def test_passes_project_context_to_provider(factory):
+    """Should pass project_context to provider."""
+    readme_content = "# Test Project\n\nThis is a test project for code review."
+
+    provider = factory.create_provider("test-opus", project_context=readme_content)
+
+    assert provider.project_context == readme_content
+
+
+def test_passes_project_context_to_azure_provider(factory):
+    """Should pass project_context to Azure provider."""
+    readme_content = "# Azure Test Project"
+
+    provider = factory.create_provider("test-gpt", project_context=readme_content)
+
+    assert provider.project_context == readme_content
+
+
+def test_project_context_defaults_to_none(factory):
+    """Should default project_context to None when not provided."""
+    provider = factory.create_provider("test-opus")
+
+    assert provider.project_context is None
