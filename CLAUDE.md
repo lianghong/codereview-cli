@@ -96,6 +96,23 @@ uv run codereview ./src -m sonnet --output report.md --severity medium --verbose
 uv run python -m codereview.cli /path/to/code
 ```
 
+### README Context
+
+The tool automatically discovers your project's README.md to provide context for code reviews:
+
+```bash
+# Auto-discover README (prompts for confirmation)
+uv run codereview ./src
+
+# Specify README explicitly
+uv run codereview ./src --readme ./docs/PROJECT.md
+
+# Skip README context
+uv run codereview ./src --no-readme
+```
+
+The README content is included in each batch sent to the LLM, helping it understand project conventions and requirements. The tool searches the target directory and parent directories for README.md, stopping at the git repository root.
+
 ### CLI Options
 | Option | Description | Default |
 |--------|-------------|---------|
@@ -112,6 +129,8 @@ uv run python -m codereview.cli /path/to/code
 | `--max-file-size` | Maximum file size in KB | 500 |
 | `--aws-profile` | AWS CLI profile to use | None |
 | `--list-models` | List all available models and exit | - |
+| `--readme <path>` | Specify README file for project context | None |
+| `--no-readme` | Skip README context entirely | False |
 
 ### Model Names
 Use primary model IDs (case-insensitive). Run `codereview --list-models` to see all available models.
