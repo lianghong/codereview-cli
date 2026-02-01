@@ -119,7 +119,7 @@ class ProviderFactory:
                     {
                         "id": model_config.id,
                         "name": model_config.name,
-                        "aliases": ", ".join(model_config.aliases),
+                        "aliases": "\n".join(model_config.aliases),
                     }
                 )
 
