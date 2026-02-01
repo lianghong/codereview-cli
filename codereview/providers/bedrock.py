@@ -17,6 +17,7 @@ from codereview.config import SYSTEM_PROMPT
 from codereview.config.models import BedrockConfig, ModelConfig
 from codereview.models import CodeReviewReport
 from codereview.providers.base import ModelProvider, ValidationResult
+from codereview.providers.mixins import TokenTrackingMixin
 
 # Shared prompt template for consistent formatting
 BATCH_PROMPT_TEMPLATE = ChatPromptTemplate.from_messages(
@@ -27,7 +28,7 @@ BATCH_PROMPT_TEMPLATE = ChatPromptTemplate.from_messages(
 )
 
 
-class BedrockProvider(ModelProvider):
+class BedrockProvider(TokenTrackingMixin, ModelProvider):
     """AWS Bedrock implementation of ModelProvider."""
 
     def __init__(
@@ -83,9 +84,8 @@ class BedrockProvider(ModelProvider):
             if model_config.inference_params.max_output_tokens:
                 self.max_tokens = model_config.inference_params.max_output_tokens
 
-        # Token tracking
-        self._total_input_tokens = 0
-        self._total_output_tokens = 0
+        # Token tracking (from mixin)
+        self._init_token_tracking()
 
         # Flag for prompt-based parsing (set in _create_model if model doesn't support tool use)
         self._use_prompt_parsing = False
@@ -217,8 +217,7 @@ class BedrockProvider(ModelProvider):
                 if output_tokens == 0:
                     output_tokens = self._estimate_tokens(str(result.model_dump_json()))
 
-                self._total_input_tokens += input_tokens
-                self._total_output_tokens += output_tokens
+                self._track_tokens(input_tokens, output_tokens)
 
                 return result
 
@@ -263,38 +262,6 @@ class BedrockProvider(ModelProvider):
         return {
             "input_price_per_million": self.model_config.pricing.input_per_million,
             "output_price_per_million": self.model_config.pricing.output_per_million,
-        }
-
-    def reset_state(self) -> None:
-        """Reset token counters."""
-        self._total_input_tokens = 0
-        self._total_output_tokens = 0
-
-    @property
-    def total_input_tokens(self) -> int:
-        """Get total input tokens used."""
-        return self._total_input_tokens
-
-    @property
-    def total_output_tokens(self) -> int:
-        """Get total output tokens used."""
-        return self._total_output_tokens
-
-    def estimate_cost(self) -> dict[str, float]:
-        """Calculate cost from token usage."""
-        pricing = self.model_config.pricing
-
-        input_cost = (self._total_input_tokens / 1_000_000) * pricing.input_per_million
-        output_cost = (
-            self._total_output_tokens / 1_000_000
-        ) * pricing.output_per_million
-
-        return {
-            "input_tokens": self._total_input_tokens,
-            "output_tokens": self._total_output_tokens,
-            "input_cost": input_cost,
-            "output_cost": output_cost,
-            "total_cost": input_cost + output_cost,
         }
 
     def validate_credentials(self) -> ValidationResult:

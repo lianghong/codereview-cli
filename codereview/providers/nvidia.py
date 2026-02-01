@@ -20,6 +20,7 @@ from codereview.config import SYSTEM_PROMPT
 from codereview.config.models import ModelConfig, NVIDIAConfig
 from codereview.models import CodeReviewReport
 from codereview.providers.base import ModelProvider, ValidationResult
+from codereview.providers.mixins import TokenTrackingMixin
 
 # Shared prompt template for consistent formatting
 BATCH_PROMPT_TEMPLATE = ChatPromptTemplate.from_messages(
@@ -63,7 +64,7 @@ def suppress_nvidia_warnings() -> Generator[None, None, None]:
         yield
 
 
-class NVIDIAProvider(ModelProvider):
+class NVIDIAProvider(TokenTrackingMixin, ModelProvider):
     """NVIDIA NIM API implementation of ModelProvider."""
 
     def __init__(
@@ -117,9 +118,8 @@ class NVIDIAProvider(ModelProvider):
             if model_config.inference_params.max_output_tokens:
                 self.max_tokens = model_config.inference_params.max_output_tokens
 
-        # Token tracking
-        self._total_input_tokens = 0
-        self._total_output_tokens = 0
+        # Token tracking (from mixin)
+        self._init_token_tracking()
 
         # Rate limiter for API calls
         self.rate_limiter = InMemoryRateLimiter(
@@ -255,8 +255,7 @@ class NVIDIAProvider(ModelProvider):
                 if output_tokens == 0:
                     output_tokens = self._estimate_tokens(str(result.model_dump_json()))
 
-                self._total_input_tokens += input_tokens
-                self._total_output_tokens += output_tokens
+                self._track_tokens(input_tokens, output_tokens)
 
                 return result
 
@@ -304,47 +303,6 @@ class NVIDIAProvider(ModelProvider):
         return {
             "input_price_per_million": self.model_config.pricing.input_per_million,
             "output_price_per_million": self.model_config.pricing.output_per_million,
-        }
-
-    def reset_state(self) -> None:
-        """Reset token counters."""
-        self._total_input_tokens = 0
-        self._total_output_tokens = 0
-
-    @property
-    def total_input_tokens(self) -> int:
-        """Get total input tokens used."""
-        return self._total_input_tokens
-
-    @property
-    def total_output_tokens(self) -> int:
-        """Get total output tokens used."""
-        return self._total_output_tokens
-
-    def estimate_cost(self) -> dict[str, float]:
-        """Calculate cost from token usage.
-
-        Returns:
-            Dict with keys:
-                - input_tokens: Total input tokens used
-                - output_tokens: Total output tokens used
-                - input_cost: Cost for input tokens in USD
-                - output_cost: Cost for output tokens in USD
-                - total_cost: Combined cost in USD
-        """
-        pricing = self.model_config.pricing
-
-        input_cost = (self._total_input_tokens / 1_000_000) * pricing.input_per_million
-        output_cost = (
-            self._total_output_tokens / 1_000_000
-        ) * pricing.output_per_million
-
-        return {
-            "input_tokens": self._total_input_tokens,
-            "output_tokens": self._total_output_tokens,
-            "input_cost": input_cost,
-            "output_cost": output_cost,
-            "total_cost": input_cost + output_cost,
         }
 
     def validate_credentials(self) -> ValidationResult:
