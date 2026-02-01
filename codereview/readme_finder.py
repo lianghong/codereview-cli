@@ -80,7 +80,7 @@ def read_readme_content(
 
         return content, file_size
 
-    except OSError, UnicodeDecodeError:
+    except (OSError, UnicodeDecodeError):
         return None
 
 
@@ -160,5 +160,3 @@ def prompt_readme_confirmation(
         else:
             console.print(f"[red]File not found: {response}[/red]")
             return None
-
-    return None
