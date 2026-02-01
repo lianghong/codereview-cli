@@ -1,5 +1,7 @@
 """README finder for project context discovery."""
 
+import sys
+import threading
 from pathlib import Path
 
 import click
@@ -8,6 +10,47 @@ from rich.console import Console
 # Size limits for README files
 README_WARN_SIZE = 50 * 1024  # 50KB - warn user
 README_MAX_SIZE = 100 * 1024  # 100KB - truncate
+
+# Auto-confirm timeout for README prompt
+README_AUTO_CONFIRM_SECONDS = 3
+
+
+def _timed_input(prompt: str, default: str, timeout: int) -> str:
+    """Get user input with a timeout, returning default if no input received.
+
+    Args:
+        prompt: The prompt to display
+        default: Default value to return on timeout
+        timeout: Timeout in seconds
+
+    Returns:
+        User input or default value if timeout expires
+    """
+    result = [default]
+    input_received = threading.Event()
+
+    def get_input() -> None:
+        try:
+            user_input = input(prompt)
+            result[0] = user_input
+            input_received.set()
+        except (EOFError, KeyboardInterrupt):  # fmt: skip
+            # User cancelled or EOF reached - signal completion
+            input_received.set()
+        except Exception:
+            # Unexpected error - signal completion to avoid hanging
+            input_received.set()
+
+    input_thread = threading.Thread(target=get_input, daemon=True)
+    input_thread.start()
+
+    # Wait for input or timeout
+    if input_received.wait(timeout=timeout):
+        return result[0]
+
+    # Timeout - print newline to move past the prompt
+    print()  # Move to new line after timeout
+    return default
 
 
 def find_readme(target_dir: Path) -> Path | None:
@@ -120,11 +163,17 @@ def prompt_readme_confirmation(
                     "[yellow]   Warning: Large file - may use significant tokens[/yellow]"
                 )
 
-            response = click.prompt(
-                "   Use this file for project context? [Y/n/path]",
-                default="",
-                show_default=False,
-            )
+            # Use timed input with auto-confirm after timeout
+            if sys.stdin.isatty():
+                response = _timed_input(
+                    f"   Use this file for project context? [Y/n/path] "
+                    f"(auto-confirm in {README_AUTO_CONFIRM_SECONDS}s): ",
+                    default="Y",
+                    timeout=README_AUTO_CONFIRM_SECONDS,
+                )
+            else:
+                # Non-interactive mode - use default
+                response = "Y"
 
             response_stripped = response.strip()
             response_lower = response_stripped.lower()

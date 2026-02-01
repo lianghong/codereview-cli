@@ -343,7 +343,15 @@ class StaticAnalyzer:
         return [f for f in files if self._validate_file_path(f)]
 
     def _check_available_tools(self) -> list[str]:
-        """Check which tools are available."""
+        """Check which static analysis tools are installed and available.
+
+        Runs version check for each configured tool. Tools that pass version
+        check or timeout (may still work with longer timeout) are considered
+        available. Tools not found or lacking permissions are excluded.
+
+        Returns:
+            List of available tool names from TOOLS configuration.
+        """
         available = []
         for tool_name, config in self.TOOLS.items():
             try:
@@ -355,8 +363,16 @@ class StaticAnalyzer:
                 # Only mark as available if the command succeeds
                 if result.returncode == 0:
                     available.append(tool_name)
-            except (FileNotFoundError, subprocess.TimeoutExpired, PermissionError) as e:  # fmt: skip
-                logging.debug("Tool %s not available: %s", tool_name, e)
+            except FileNotFoundError:
+                logging.debug("Tool %s not installed", tool_name)
+            except subprocess.TimeoutExpired:
+                # Version check timed out, but tool may still work with longer timeout
+                logging.debug(
+                    "Tool %s version check timed out (assuming available)", tool_name
+                )
+                available.append(tool_name)
+            except PermissionError:
+                logging.debug("Tool %s not executable (permission denied)", tool_name)
         return available
 
     def run_tool(self, tool_name: str) -> StaticAnalysisResult:
@@ -637,7 +653,7 @@ class StaticAnalyzer:
                     errors=[],
                 )
             command = base_command + [dir_path]
-            cwd = self.directory.parent
+            cwd = self.directory
         elif tool_name == "bandit":
             # bandit: Python security scanner, accepts directory path
             # Check for Python files first
@@ -651,12 +667,12 @@ class StaticAnalyzer:
                     errors=[],
                 )
             command = base_command + [dir_path]
-            cwd = self.directory.parent
+            cwd = self.directory
         else:
             # Default (ruff, mypy, black, isort, vulture):
             # These tools accept a directory path as the final argument.
             command = base_command + [dir_path]
-            cwd = self.directory.parent
+            cwd = self.directory
 
         try:
             result = subprocess.run(  # nosec B603 - commands from hardcoded config
@@ -697,7 +713,8 @@ class StaticAnalyzer:
                     indicators.extend(LANGUAGE_INDICATORS.get(language, []))
 
                     for line in output.split("\n"):
-                        if any(indicator in line.lower() for indicator in indicators):
+                        line_lower = line.lower()
+                        if any(indicator in line_lower for indicator in indicators):
                             issues_count += 1
 
             return StaticAnalysisResult(
@@ -756,13 +773,14 @@ class StaticAnalyzer:
                 try:
                     results[tool_name] = future.result()
                 except Exception as e:
-                    # Handle unexpected errors from thread execution
+                    # Log full exception for debugging, store summary in result
+                    logging.exception("Unexpected error running tool %s", tool_name)
                     results[tool_name] = StaticAnalysisResult(
                         tool=tool_name,
                         passed=False,
                         issues_count=0,
                         output="",
-                        errors=[f"Execution error: {str(e)}"],
+                        errors=[f"Execution error: {type(e).__name__}: {e}"],
                     )
         return results
 

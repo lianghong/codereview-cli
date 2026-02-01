@@ -9,7 +9,6 @@ from typing import Any
 
 import httpx
 from langchain_core.callbacks import BaseCallbackHandler
-from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.rate_limiters import InMemoryRateLimiter
 from langchain_nvidia_ai_endpoints import ChatNVIDIA
@@ -89,7 +88,6 @@ class NVIDIAProvider(TokenTrackingMixin, ModelProvider):
         """
         self.callbacks = callbacks or []
         self.enable_output_fixing = enable_output_fixing
-        self._output_parser = PydanticOutputParser(pydantic_object=CodeReviewReport)
         self.model_config = model_config
         self.provider_config = provider_config
         self.project_context = project_context
@@ -279,10 +277,10 @@ class NVIDIAProvider(TokenTrackingMixin, ModelProvider):
                 retryable_codes = {429, 502, 503, 504}
                 if status_code in retryable_codes:
                     if attempt < max_retries:
-                        # Exponential backoff: 2^attempt seconds
+                        # Exponential backoff: base^attempt seconds, capped at 60s
                         # For gateway timeouts (504), use longer initial wait
                         base_wait = 4 if status_code == 504 else 2
-                        wait_time = base_wait**attempt
+                        wait_time = min(base_wait**attempt, 60)
                         time.sleep(wait_time)
                         continue
 

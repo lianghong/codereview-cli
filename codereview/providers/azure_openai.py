@@ -5,7 +5,6 @@ import time
 from typing import Any
 
 from langchain_core.callbacks import BaseCallbackHandler
-from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.rate_limiters import InMemoryRateLimiter
 from langchain_openai import AzureChatOpenAI
@@ -53,7 +52,6 @@ class AzureOpenAIProvider(TokenTrackingMixin, ModelProvider):
         """
         self.callbacks = callbacks or []
         self.enable_output_fixing = enable_output_fixing
-        self._output_parser = PydanticOutputParser(pydantic_object=CodeReviewReport)
         self.model_config = model_config
         self.provider_config = provider_config
         self.project_context = project_context

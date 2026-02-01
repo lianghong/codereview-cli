@@ -14,6 +14,34 @@ from codereview.config import (
 class FileScanner:
     """Scans directory for Python, Go, Shell, C++, Java, JavaScript, and TypeScript files to review."""
 
+    # Supported file extensions for code review
+    TARGET_EXTENSIONS: frozenset[str] = frozenset(
+        {
+            # Python
+            ".py",
+            # Go
+            ".go",
+            # Shell
+            ".sh",
+            ".bash",
+            # C++
+            ".cpp",
+            ".cc",
+            ".cxx",
+            ".h",
+            ".hpp",
+            # Java
+            ".java",
+            # JavaScript
+            ".js",
+            ".jsx",
+            ".mjs",
+            # TypeScript
+            ".ts",
+            ".tsx",
+        }
+    )
+
     def __init__(
         self,
         root_dir: Path | str,
@@ -39,30 +67,6 @@ class FileScanner:
 
     def scan(self) -> list[Path]:
         """Scan directory and return list of files to review."""
-        target_extensions = {
-            # Python
-            ".py",
-            # Go
-            ".go",
-            # Shell
-            ".sh",
-            ".bash",
-            # C++
-            ".cpp",
-            ".cc",
-            ".cxx",
-            ".h",
-            ".hpp",
-            # Java
-            ".java",
-            # JavaScript
-            ".js",
-            ".jsx",
-            ".mjs",
-            # TypeScript
-            ".ts",
-            ".tsx",
-        }
         files = []
         self.skipped_files = []  # Reset on each scan
 
@@ -95,7 +99,7 @@ class FileScanner:
                 continue
 
             # Skip if not target language
-            if file_path.suffix not in target_extensions:
+            if file_path.suffix not in self.TARGET_EXTENSIONS:
                 continue
 
             # Skip excluded patterns

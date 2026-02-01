@@ -1,4 +1,15 @@
-# codereview/models.py
+"""Pydantic models for code review data structures.
+
+This module defines the core data models used throughout the code review system:
+
+- ReviewMetrics: Metrics and statistics from code analysis
+- ReviewIssue: Individual code review findings with severity, category, and fixes
+- CodeReviewReport: Aggregated report containing all review results
+
+The models include validators to normalize LLM output variations (e.g., mapping
+"error" to "Critical" severity, "architecture" to "System Design" category).
+"""
+
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator

@@ -177,20 +177,22 @@ class TestPromptReadmeConfirmation:
         readme = tmp_path / "README.md"
         readme.write_text("# Test Project")
 
-        # Test with empty string (default yes)
-        with patch("codereview.readme_finder.click.prompt", return_value=""):
-            result = prompt_readme_confirmation(readme)
-            assert result == readme
+        # Mock isatty to return True so _timed_input is called
+        with patch("codereview.readme_finder.sys.stdin.isatty", return_value=True):
+            # Test with empty string (default yes)
+            with patch("codereview.readme_finder._timed_input", return_value=""):
+                result = prompt_readme_confirmation(readme)
+                assert result == readme
 
-        # Test with explicit "y"
-        with patch("codereview.readme_finder.click.prompt", return_value="y"):
-            result = prompt_readme_confirmation(readme)
-            assert result == readme
+            # Test with explicit "y"
+            with patch("codereview.readme_finder._timed_input", return_value="y"):
+                result = prompt_readme_confirmation(readme)
+                assert result == readme
 
-        # Test with "Y" (uppercase)
-        with patch("codereview.readme_finder.click.prompt", return_value="Y"):
-            result = prompt_readme_confirmation(readme)
-            assert result == readme
+            # Test with "Y" (uppercase)
+            with patch("codereview.readme_finder._timed_input", return_value="Y"):
+                result = prompt_readme_confirmation(readme)
+                assert result == readme
 
     def test_returns_none_on_no(self, tmp_path: Path) -> None:
         """Test that prompt_readme_confirmation returns None when user declines."""
@@ -202,15 +204,17 @@ class TestPromptReadmeConfirmation:
         readme = tmp_path / "README.md"
         readme.write_text("# Test Project")
 
-        # Test with "n"
-        with patch("codereview.readme_finder.click.prompt", return_value="n"):
-            result = prompt_readme_confirmation(readme)
-            assert result is None
+        # Mock isatty to return True so _timed_input is called
+        with patch("codereview.readme_finder.sys.stdin.isatty", return_value=True):
+            # Test with "n"
+            with patch("codereview.readme_finder._timed_input", return_value="n"):
+                result = prompt_readme_confirmation(readme)
+                assert result is None
 
-        # Test with "N" (uppercase)
-        with patch("codereview.readme_finder.click.prompt", return_value="N"):
-            result = prompt_readme_confirmation(readme)
-            assert result is None
+            # Test with "N" (uppercase)
+            with patch("codereview.readme_finder._timed_input", return_value="N"):
+                result = prompt_readme_confirmation(readme)
+                assert result is None
 
     def test_returns_custom_path(self, tmp_path: Path) -> None:
         """Test that prompt_readme_confirmation returns custom path when specified."""
@@ -226,10 +230,14 @@ class TestPromptReadmeConfirmation:
         custom = tmp_path / "CONTEXT.md"
         custom.write_text("# Custom Context")
 
-        # User specifies custom path
-        with patch("codereview.readme_finder.click.prompt", return_value=str(custom)):
-            result = prompt_readme_confirmation(readme)
-            assert result == custom
+        # Mock isatty to return True so _timed_input is called
+        with patch("codereview.readme_finder.sys.stdin.isatty", return_value=True):
+            # User specifies custom path
+            with patch(
+                "codereview.readme_finder._timed_input", return_value=str(custom)
+            ):
+                result = prompt_readme_confirmation(readme)
+                assert result == custom
 
     def test_returns_none_for_invalid_custom_path(self, tmp_path: Path) -> None:
         """Test that prompt_readme_confirmation returns None for invalid custom path."""
@@ -241,12 +249,15 @@ class TestPromptReadmeConfirmation:
         readme = tmp_path / "README.md"
         readme.write_text("# Original")
 
-        # User specifies non-existent path
-        with patch(
-            "codereview.readme_finder.click.prompt", return_value="/nonexistent/file.md"
-        ):
-            result = prompt_readme_confirmation(readme)
-            assert result is None
+        # Mock isatty to return True so _timed_input is called
+        with patch("codereview.readme_finder.sys.stdin.isatty", return_value=True):
+            # User specifies non-existent path
+            with patch(
+                "codereview.readme_finder._timed_input",
+                return_value="/nonexistent/file.md",
+            ):
+                result = prompt_readme_confirmation(readme)
+                assert result is None
 
     def test_prompts_for_path_when_none_found(self, tmp_path: Path) -> None:
         """Test that prompt_readme_confirmation asks for path when no README found."""
@@ -285,3 +296,18 @@ class TestPromptReadmeConfirmation:
         with patch("codereview.readme_finder.click.prompt", return_value="N"):
             result = prompt_readme_confirmation(None)
             assert result is None
+
+    def test_auto_confirms_in_non_interactive_mode(self, tmp_path: Path) -> None:
+        """Test that prompt_readme_confirmation auto-confirms when stdin is not a tty."""
+        from unittest.mock import patch
+
+        from codereview.readme_finder import prompt_readme_confirmation
+
+        # Create a README file
+        readme = tmp_path / "README.md"
+        readme.write_text("# Test Project")
+
+        # When stdin.isatty() returns False, should auto-confirm with "Y"
+        with patch("codereview.readme_finder.sys.stdin.isatty", return_value=False):
+            result = prompt_readme_confirmation(readme)
+            assert result == readme

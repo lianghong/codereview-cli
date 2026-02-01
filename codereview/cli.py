@@ -743,7 +743,14 @@ def main(
 
 
 def _generate_recommendations(issues: list[ReviewIssue]) -> list[str]:
-    """Generate top recommendations from issues."""
+    """Generate top recommendations based on issue severity distribution.
+
+    Args:
+        issues: List of ReviewIssue objects from analysis
+
+    Returns:
+        Up to 5 prioritized recommendations based on issue counts
+    """
     critical = [i for i in issues if i.severity == "Critical"]
     high = [i for i in issues if i.severity == "High"]
 

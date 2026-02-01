@@ -1,4 +1,16 @@
-"""Code review tool using LLM-based analysis."""
+"""LangChain-based CLI tool for AI-powered code reviews.
+
+This package provides automated code review capabilities using multiple LLM
+backends (AWS Bedrock, Azure OpenAI, NVIDIA NIM). It supports Python, Go,
+Shell, C++, Java, JavaScript, and TypeScript codebases with structured output
+including issue categories, severity levels, line numbers, and suggested fixes.
+
+Main classes:
+    CodeAnalyzer: Orchestrates code analysis using provider abstraction
+    CodeReviewReport: Aggregated report with issues, metrics, and recommendations
+    ReviewIssue: Individual code review finding
+    FileScanner: Discovers and filters code files for analysis
+"""
 
 import warnings
 

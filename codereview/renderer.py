@@ -4,6 +4,7 @@ from datetime import datetime
 from pathlib import Path, PurePath
 from typing import Any
 
+from rich import box
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
@@ -168,7 +169,7 @@ class TerminalRenderer:
         )
 
     def _render_improvement_suggestions(self, report: CodeReviewReport) -> None:
-        """Render improvement suggestions panel."""
+        """Render improvement suggestions panel without left/right borders for easier copy."""
         if not report.improvement_suggestions:
             return
 
@@ -181,6 +182,7 @@ class TerminalRenderer:
                 "\n".join(lines),
                 title="💡 Improvement Suggestions",
                 border_style="cyan",
+                box=box.HORIZONTALS,
             )
         )
 
@@ -259,16 +261,16 @@ class StaticAnalysisRenderer:
                     f"({summary['total_issues']} total)[/yellow]\n"
                 )
         except OSError:
-            # Handle terminal I/O errors - fall back to simple output
+            # Handle terminal I/O errors - fall back to ASCII-safe output
             print("\nStatic Analysis Results:")
             for tool_name, result in results.items():
-                status = "✓" if result.passed else "✗"
-                print(f"  {status} {tool_name}: {result.issues_count} issues")
+                status = "PASS" if result.passed else "FAIL"
+                print(f"  [{status}] {tool_name}: {result.issues_count} issues")
             if summary["passed"]:
-                print("\n✓ All static analysis checks passed!")
+                print("\nAll static analysis checks passed!")
             else:
                 print(
-                    f"\n⚠ {summary['tools_failed']} tool(s) found issues "
+                    f"\n{summary['tools_failed']} tool(s) found issues "
                     f"({summary['total_issues']} total)"
                 )
 

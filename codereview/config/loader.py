@@ -1,3 +1,15 @@
+"""Configuration loader for model and provider settings.
+
+This module provides the ConfigLoader class that:
+- Loads configuration from models.yaml
+- Expands environment variables (${VAR_NAME} syntax)
+- Parses provider configurations (Bedrock, Azure OpenAI, NVIDIA)
+- Resolves model names and aliases to their configurations
+- Manages scanning configuration for file discovery
+
+The loader is typically accessed via the get_config_loader() singleton in __init__.py.
+"""
+
 import logging
 import os
 import re
