@@ -162,3 +162,126 @@ class TestReadReadmeContent:
         result = read_readme_content(readme)
 
         assert result is None
+
+
+class TestPromptReadmeConfirmation:
+    """Tests for prompt_readme_confirmation function."""
+
+    def test_returns_path_on_yes(self, tmp_path: Path) -> None:
+        """Test that prompt_readme_confirmation returns path when user confirms."""
+        from unittest.mock import patch
+
+        from codereview.readme_finder import prompt_readme_confirmation
+
+        # Create a README file
+        readme = tmp_path / "README.md"
+        readme.write_text("# Test Project")
+
+        # Test with empty string (default yes)
+        with patch("codereview.readme_finder.click.prompt", return_value=""):
+            result = prompt_readme_confirmation(readme)
+            assert result == readme
+
+        # Test with explicit "y"
+        with patch("codereview.readme_finder.click.prompt", return_value="y"):
+            result = prompt_readme_confirmation(readme)
+            assert result == readme
+
+        # Test with "Y" (uppercase)
+        with patch("codereview.readme_finder.click.prompt", return_value="Y"):
+            result = prompt_readme_confirmation(readme)
+            assert result == readme
+
+    def test_returns_none_on_no(self, tmp_path: Path) -> None:
+        """Test that prompt_readme_confirmation returns None when user declines."""
+        from unittest.mock import patch
+
+        from codereview.readme_finder import prompt_readme_confirmation
+
+        # Create a README file
+        readme = tmp_path / "README.md"
+        readme.write_text("# Test Project")
+
+        # Test with "n"
+        with patch("codereview.readme_finder.click.prompt", return_value="n"):
+            result = prompt_readme_confirmation(readme)
+            assert result is None
+
+        # Test with "N" (uppercase)
+        with patch("codereview.readme_finder.click.prompt", return_value="N"):
+            result = prompt_readme_confirmation(readme)
+            assert result is None
+
+    def test_returns_custom_path(self, tmp_path: Path) -> None:
+        """Test that prompt_readme_confirmation returns custom path when specified."""
+        from unittest.mock import patch
+
+        from codereview.readme_finder import prompt_readme_confirmation
+
+        # Create original README
+        readme = tmp_path / "README.md"
+        readme.write_text("# Original")
+
+        # Create an alternative file
+        custom = tmp_path / "CONTEXT.md"
+        custom.write_text("# Custom Context")
+
+        # User specifies custom path
+        with patch("codereview.readme_finder.click.prompt", return_value=str(custom)):
+            result = prompt_readme_confirmation(readme)
+            assert result == custom
+
+    def test_returns_none_for_invalid_custom_path(self, tmp_path: Path) -> None:
+        """Test that prompt_readme_confirmation returns None for invalid custom path."""
+        from unittest.mock import patch
+
+        from codereview.readme_finder import prompt_readme_confirmation
+
+        # Create original README
+        readme = tmp_path / "README.md"
+        readme.write_text("# Original")
+
+        # User specifies non-existent path
+        with patch(
+            "codereview.readme_finder.click.prompt", return_value="/nonexistent/file.md"
+        ):
+            result = prompt_readme_confirmation(readme)
+            assert result is None
+
+    def test_prompts_for_path_when_none_found(self, tmp_path: Path) -> None:
+        """Test that prompt_readme_confirmation asks for path when no README found."""
+        from unittest.mock import patch
+
+        from codereview.readme_finder import prompt_readme_confirmation
+
+        # Create a context file that user can specify
+        context_file = tmp_path / "CONTEXT.md"
+        context_file.write_text("# Context")
+
+        # User specifies a file when prompted
+        with patch(
+            "codereview.readme_finder.click.prompt", return_value=str(context_file)
+        ):
+            result = prompt_readme_confirmation(None)
+            assert result == context_file
+
+    def test_returns_none_when_no_readme_and_user_skips(self) -> None:
+        """Test that prompt_readme_confirmation returns None when no README and user skips."""
+        from unittest.mock import patch
+
+        from codereview.readme_finder import prompt_readme_confirmation
+
+        # Test with empty string (default skip)
+        with patch("codereview.readme_finder.click.prompt", return_value=""):
+            result = prompt_readme_confirmation(None)
+            assert result is None
+
+        # Test with "n"
+        with patch("codereview.readme_finder.click.prompt", return_value="n"):
+            result = prompt_readme_confirmation(None)
+            assert result is None
+
+        # Test with "N" (uppercase)
+        with patch("codereview.readme_finder.click.prompt", return_value="N"):
+            result = prompt_readme_confirmation(None)
+            assert result is None
