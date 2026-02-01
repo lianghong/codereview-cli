@@ -130,6 +130,7 @@ class ModelProvider(ABC):
         batch_number: int,
         total_batches: int,
         files_content: dict[str, str],
+        project_context: str | None = None,
     ) -> str:
         """Prepare context string for LLM.
 
@@ -137,17 +138,37 @@ class ModelProvider(ABC):
             batch_number: Current batch number
             total_batches: Total number of batches
             files_content: Dictionary mapping file paths to file contents
+            project_context: Optional README content for project context
 
         Returns:
             Formatted context string with file contents and line numbers
         """
-        lines = [
-            f"Analyzing Batch {batch_number}/{total_batches}",
-            f"Files in this batch: {len(files_content)}",
-            "",
-            "=" * 80,
-            "",
-        ]
+        lines = []
+
+        # Add project context (README) if provided
+        if project_context:
+            lines.extend(
+                [
+                    "== PROJECT CONTEXT ==",
+                    "The following is the project README for background context:",
+                    "",
+                    "--- README.md ---",
+                    project_context,
+                    "--- END README ---",
+                    "",
+                    "== CODE REVIEW ==",
+                ]
+            )
+
+        lines.extend(
+            [
+                f"Analyzing Batch {batch_number}/{total_batches}",
+                f"Files in this batch: {len(files_content)}",
+                "",
+                "=" * 80,
+                "",
+            ]
+        )
 
         for file_path, content in files_content.items():
             lines.append(f"File: {file_path}")

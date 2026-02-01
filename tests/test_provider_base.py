@@ -127,3 +127,56 @@ def test_cannot_instantiate_abstract_class():
     """Test ModelProvider cannot be instantiated directly."""
     with pytest.raises(TypeError, match="Can't instantiate abstract class"):
         ModelProvider()
+
+
+class TestPrepareContextWithReadme:
+    """Tests for _prepare_batch_context with project_context parameter."""
+
+    def test_prepends_readme_to_batch_context(self):
+        """Verify README appears before file contents with proper delimiters."""
+        provider = ConcreteProvider()
+        readme_content = "# My Project\n\nThis is a test project."
+        files_content = {"test.py": "print('hello')"}
+
+        result = provider._prepare_batch_context(
+            batch_number=1,
+            total_batches=2,
+            files_content=files_content,
+            project_context=readme_content,
+        )
+
+        # Verify PROJECT CONTEXT section appears before CODE REVIEW section
+        assert "== PROJECT CONTEXT ==" in result
+        assert "--- README.md ---" in result
+        assert readme_content in result
+        assert "--- END README ---" in result
+        assert "== CODE REVIEW ==" in result
+
+        # Verify ordering: PROJECT CONTEXT comes before file analysis
+        project_context_pos = result.index("== PROJECT CONTEXT ==")
+        code_review_pos = result.index("== CODE REVIEW ==")
+        file_pos = result.index("File: test.py")
+
+        assert project_context_pos < code_review_pos < file_pos
+
+    def test_no_readme_section_when_none(self):
+        """Verify no PROJECT CONTEXT section when project_context is None."""
+        provider = ConcreteProvider()
+        files_content = {"test.py": "print('hello')"}
+
+        result = provider._prepare_batch_context(
+            batch_number=1,
+            total_batches=2,
+            files_content=files_content,
+            project_context=None,
+        )
+
+        # Verify no PROJECT CONTEXT section
+        assert "== PROJECT CONTEXT ==" not in result
+        assert "--- README.md ---" not in result
+        assert "--- END README ---" not in result
+        assert "== CODE REVIEW ==" not in result
+
+        # Verify normal batch context is still present
+        assert "Analyzing Batch 1/2" in result
+        assert "File: test.py" in result
