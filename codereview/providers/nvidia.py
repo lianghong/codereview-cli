@@ -1,8 +1,10 @@
 """NVIDIA NIM API provider implementation."""
 
+import contextlib
 import os
 import time
 import warnings
+from collections.abc import Generator
 from typing import Any
 
 import httpx
@@ -26,6 +28,39 @@ BATCH_PROMPT_TEMPLATE = ChatPromptTemplate.from_messages(
         ("human", "{batch_context}"),
     ]
 )
+
+
+@contextlib.contextmanager
+def suppress_nvidia_warnings() -> Generator[None, None, None]:
+    """Context manager to suppress known NVIDIA langchain warnings.
+
+    Suppresses warnings about:
+    - Non-standard parameters (timeout, chat_template_kwargs)
+    - Unknown model types
+    - Structured output support
+    """
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore",
+            message=".*timeout is not default parameter.*",
+            category=UserWarning,
+        )
+        warnings.filterwarnings(
+            "ignore",
+            message=".*chat_template_kwargs is not default parameter.*",
+            category=UserWarning,
+        )
+        warnings.filterwarnings(
+            "ignore",
+            message=".*available_models.*type is unknown.*",
+            category=UserWarning,
+        )
+        warnings.filterwarnings(
+            "ignore",
+            message=".*not known to support structured output.*",
+            category=UserWarning,
+        )
+        yield
 
 
 class NVIDIAProvider(ModelProvider):
@@ -94,18 +129,7 @@ class NVIDIAProvider(ModelProvider):
         )
 
         # Create LangChain model and chain
-        # Suppress warnings about non-standard parameters (passed to _NVIDIAClient/model_kwargs)
-        with warnings.catch_warnings():
-            warnings.filterwarnings(
-                "ignore",
-                message=".*timeout is not default parameter.*",
-                category=UserWarning,
-            )
-            warnings.filterwarnings(
-                "ignore",
-                message=".*chat_template_kwargs is not default parameter.*",
-                category=UserWarning,
-            )
+        with suppress_nvidia_warnings():
             self.model = self._create_model()
             self.chain = self._create_chain()
 
@@ -152,32 +176,8 @@ class NVIDIAProvider(ModelProvider):
                 model_params["chat_template_kwargs"] = chat_template_kwargs
 
         # Suppress warnings about unknown model types and parameters from langchain-nvidia
-        # These models work but aren't in the library's known list yet
-        with warnings.catch_warnings():
-            warnings.filterwarnings(
-                "ignore",
-                message=".*available_models.*type is unknown.*",
-                category=UserWarning,
-            )
-            warnings.filterwarnings(
-                "ignore",
-                message=".*not known to support structured output.*",
-                category=UserWarning,
-            )
-            # Suppress "timeout is not default parameter" warning - it's passed to _NVIDIAClient
-            warnings.filterwarnings(
-                "ignore",
-                message=".*timeout is not default parameter.*",
-                category=UserWarning,
-            )
-            # Suppress "chat_template_kwargs is not default parameter" - it's for thinking mode
-            warnings.filterwarnings(
-                "ignore",
-                message=".*chat_template_kwargs is not default parameter.*",
-                category=UserWarning,
-            )
+        with suppress_nvidia_warnings():
             base_model = ChatNVIDIA(**model_params)
-
             # Configure for structured output
             return base_model.with_structured_output(CodeReviewReport)
 
@@ -222,28 +222,8 @@ class NVIDIAProvider(ModelProvider):
         last_error: httpx.HTTPStatusError | ValidationError | None = None
         for attempt in range(max_retries + 1):
             try:
-                # Suppress warnings about unknown model types and parameters during invocation
-                with warnings.catch_warnings():
-                    warnings.filterwarnings(
-                        "ignore",
-                        message=".*available_models.*type is unknown.*",
-                        category=UserWarning,
-                    )
-                    warnings.filterwarnings(
-                        "ignore",
-                        message=".*not known to support structured output.*",
-                        category=UserWarning,
-                    )
-                    warnings.filterwarnings(
-                        "ignore",
-                        message=".*timeout is not default parameter.*",
-                        category=UserWarning,
-                    )
-                    warnings.filterwarnings(
-                        "ignore",
-                        message=".*chat_template_kwargs is not default parameter.*",
-                        category=UserWarning,
-                    )
+                # Suppress warnings during invocation
+                with suppress_nvidia_warnings():
                     result = self.chain.invoke(chain_input)
 
                 # Handle None result (structured output parsing failed)
