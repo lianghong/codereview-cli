@@ -197,7 +197,15 @@ def validate_provider_credentials(model_name: str, aws_profile: str | None) -> N
     "--output",
     "-o",
     type=click.Path(dir_okay=False, path_type=Path),
-    help="Output Markdown report to file (e.g., report.md)",
+    help="Output report to file (e.g., report.md or report.json)",
+)
+@click.option(
+    "--format",
+    "-f",
+    "output_format",
+    type=click.Choice(["markdown", "json"], case_sensitive=False),
+    default="markdown",
+    help="Output format when using --output (default: markdown)",
 )
 @click.option(
     "--severity",
@@ -282,6 +290,7 @@ def main(
     ctx: click.Context,
     directory: Path | None,
     output: Path | None,
+    output_format: str,
     severity: str,
     exclude: tuple[str, ...],
     max_files: int | None,
@@ -671,25 +680,31 @@ def main(
         else:
             console.print(f"[dim]⏱️  Completed in {elapsed_time:.1f}s[/dim]\n")
 
-        # Step 6: Export to Markdown if requested
+        # Step 6: Export report if requested
         if output:
-            # Collect all skipped files for the report
-            all_skipped_files: list[tuple[str, str]] = []
+            if output_format.lower() == "json":
+                # Export as JSON for programmatic consumption
+                output.write_text(final_report.model_dump_json(indent=2))
+                console.print(f"\n[green]✓ JSON report exported to: {output}[/green]\n")
+            else:
+                # Export as Markdown (default)
+                # Collect all skipped files for the report
+                all_skipped_files: list[tuple[str, str]] = []
 
-            # Add scanner skipped files (convert Path to str)
-            for skipped_path, reason in scanner.skipped_files:
-                all_skipped_files.append((str(skipped_path), reason))
+                # Add scanner skipped files (convert Path to str)
+                for skipped_path, reason in scanner.skipped_files:
+                    all_skipped_files.append((str(skipped_path), reason))
 
-            # Add analyzer skipped files (already strings)
-            all_skipped_files.extend(analyzer.skipped_files)
+                # Add analyzer skipped files (already strings)
+                all_skipped_files.extend(analyzer.skipped_files)
 
-            exporter = MarkdownExporter()
-            exporter.export(
-                final_report,
-                output,
-                skipped_files=all_skipped_files if all_skipped_files else None,
-            )
-            console.print(f"\n[green]✓ Report exported to: {output}[/green]\n")
+                exporter = MarkdownExporter()
+                exporter.export(
+                    final_report,
+                    output,
+                    skipped_files=all_skipped_files if all_skipped_files else None,
+                )
+                console.print(f"\n[green]✓ Report exported to: {output}[/green]\n")
 
     except NoCredentialsError:
         console.print("\n[red]✗ AWS credentials not found[/red]\n")

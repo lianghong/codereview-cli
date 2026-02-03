@@ -89,6 +89,9 @@ uv run codereview ./src --severity high
 # Dry run (preview files and estimated cost without API calls)
 uv run codereview ./src --dry-run
 
+# Export as JSON for CI/CD pipelines
+uv run codereview ./src --output report.json --format json
+
 # With all options
 uv run codereview ./src -m sonnet --output report.md --severity medium --verbose
 
@@ -117,7 +120,8 @@ The README content is included in each batch sent to the LLM, helping it underst
 | Option | Description | Default |
 |--------|-------------|---------|
 | `--model, -m` | Model to use (see Model Names below) | opus |
-| `--output, -o` | Export report to Markdown file | None |
+| `--output, -o` | Export report to file (Markdown or JSON) | None |
+| `--format, -f` | Output format: markdown, json | markdown |
 | `--severity, -s` | Minimum severity to display (critical/high/medium/low/info) | info |
 | `--temperature` | Model temperature (0.0-2.0) | Model-specific |
 | `--batch-size` | Files per batch (1-50, helps with timeout issues) | 10 |

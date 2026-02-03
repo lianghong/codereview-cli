@@ -122,6 +122,12 @@ class ReviewMetrics(BaseModel):
 
     All fields are optional to allow flexibility in what metrics the LLM reports.
     Uses model_config to set additionalProperties=false for Responses API compatibility.
+
+    Note: Severity counts have two field names for backward compatibility:
+    - ``critical_issues``, ``high_issues``, etc. - preferred for new code (LLM output)
+    - ``critical``, ``high``, etc. - legacy aliases used by CLI aggregation
+
+    Both refer to the same counts; prefer the ``*_issues`` variants in new code.
     """
 
     model_config = ConfigDict(extra="forbid")

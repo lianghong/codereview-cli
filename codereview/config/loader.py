@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml  # type: ignore[import-untyped]
+from pydantic import ValidationError
 
 from codereview.config.models import (
     AzureOpenAIConfig,
@@ -170,7 +171,7 @@ class ConfigLoader:
                         api_version=api_version,
                     )
                     self._providers["azure_openai"] = azure_config
-                except (KeyError, ValueError, TypeError) as e:
+                except (KeyError, ValueError, TypeError, ValidationError) as e:
                     logging.info(
                         f"Azure OpenAI provider not configured: {e}. "
                         "Set AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_KEY, and "
@@ -201,7 +202,7 @@ class ConfigLoader:
                         base_url=nvidia_data.get("base_url"),
                     )
                     self._providers["nvidia"] = nvidia_config
-                except (KeyError, ValueError, TypeError) as e:
+                except (KeyError, ValueError, TypeError, ValidationError) as e:
                     logging.info(
                         f"NVIDIA provider not configured: {e}. "
                         "Set NVIDIA_API_KEY environment variable to enable NVIDIA models."
