@@ -16,8 +16,11 @@ A LangChain-based CLI tool that provides comprehensive, intelligent code reviews
 - **Smart Batching**: Automatically groups files for efficient token usage
 - **Structured Output**: Get categorized issues with severity levels and actionable suggestions
 - **Static Analysis Integration**: Combine AI review with ruff, mypy, black, eslint, and other tools
+- **Architectural Review**: Detects boundary violations, coupling issues, and layering leaks
+- **Operational Readiness**: Checks for missing error handling, timeouts, and observability gaps
+- **Testing Quality**: Identifies test anti-patterns and coverage gaps
 - **Terminal UI**: Rich, colorful terminal output with progress indicators
-- **Markdown Export**: Generate shareable review reports in Markdown format
+- **Markdown/JSON Export**: Generate shareable reports in Markdown or JSON format for CI/CD
 - **Error Handling**: Robust retry logic with exponential backoff for API rate limits
 - **Flexible Configuration**: Customize file size limits, exclusion patterns, and provider settings
 
@@ -256,10 +259,14 @@ codereview /path/to/code -m devstral
 
 *NVIDIA NIM models are currently in free preview tier. Models with thinking mode use interleaved reasoning for deeper code analysis.
 
-### Export to Markdown
+### Export Reports
 
 ```bash
+# Export to Markdown (default)
 codereview /path/to/code --output review-report.md
+
+# Export to JSON for CI/CD pipelines
+codereview /path/to/code --output review-report.json --format json
 ```
 
 ### Filter by Severity
@@ -385,6 +392,19 @@ Generated reports include:
   - Reference links
 - System design insights
 - Top recommendations
+
+### JSON Export
+
+For CI/CD integration, use `--format json`:
+
+```bash
+codereview ./src --output report.json --format json
+```
+
+JSON output includes the full `CodeReviewReport` structure for programmatic consumption:
+- Parse issues by severity for quality gates
+- Integrate with dashboards and monitoring
+- Automate notifications based on findings
 
 ## Troubleshooting
 
@@ -588,7 +608,18 @@ For issues, questions, or contributions:
 
 ## Version History
 
-### v0.2.3 (Current)
+### v0.2.4 (Current)
+- **JSON Output Format**: New `--format json` option for CI/CD integration and programmatic consumption
+- **Enhanced Code Review Prompts**:
+  - Architecture fit analysis (boundary violations, coupling, layering leaks)
+  - Operational readiness checks (error handling, timeouts, observability)
+  - Testing quality guidelines (anti-patterns, coverage gaps)
+  - Project conventions detection (reduces false positives for consistent codebases)
+  - PII exposure detection in logs and responses
+- **Improved Configuration**: ValidationError handling for provider configs prevents crashes on invalid URLs
+- **Documentation**: Improved ReviewMetrics docstring explaining field aliasing pattern
+
+### v0.2.3
 - **Auto-confirm README Context**: README prompt auto-confirms after 3 seconds with "Y" default
 - **Improved UI**: Removed left/right borders from Improvement Suggestions panel for easier copy
 - **Exponential Backoff Cap**: Limited retry wait time to 60 seconds maximum

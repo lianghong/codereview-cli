@@ -40,15 +40,21 @@ Summary: Analyzed 8 files and found 12 issues
 Critical: 1 | High: 3 | Medium: 5 | Low: 2 | Info: 1
 ```
 
-### Example 2: Export to Markdown
+### Example 2: Export Reports
 
-Generate a shareable report:
+Generate shareable reports in Markdown or JSON:
 
 ```bash
+# Markdown for human-readable reports
 codereview ./src/api --output api-review.md
+
+# JSON for CI/CD and programmatic consumption
+codereview ./src/api --output api-review.json --format json
 ```
 
-**Creates**: `api-review.md` with full review details.
+**Creates**:
+- `api-review.md` - Human-readable report with full review details
+- `api-review.json` - Structured data for automation and dashboards
 
 ### Example 3: Filter by Severity
 
@@ -254,7 +260,8 @@ jobs:
         run: |
           codereview ./src \
             --model sonnet \
-            --output review-report.md \
+            --output review-report.json \
+            --format json \
             --severity high \
             --max-files 100
 
@@ -262,12 +269,16 @@ jobs:
         uses: actions/upload-artifact@v3
         with:
           name: code-review-report
-          path: review-report.md
+          path: review-report.json
 
       - name: Check for critical issues
         run: |
-          if grep -q "Critical" review-report.md; then
-            echo "::error::Critical issues found in code review"
+          CRITICAL=$(jq '.metrics.critical // 0' review-report.json)
+          HIGH=$(jq '.metrics.high // 0' review-report.json)
+          echo "Critical: $CRITICAL, High: $HIGH"
+          if [ "$CRITICAL" -gt 0 ]; then
+            echo "::error::$CRITICAL critical issues found in code review"
+            jq '.issues[] | select(.severity == "Critical")' review-report.json
             exit 1
           fi
 
@@ -277,12 +288,30 @@ jobs:
         with:
           script: |
             const fs = require('fs');
-            const report = fs.readFileSync('review-report.md', 'utf8');
+            const report = JSON.parse(fs.readFileSync('review-report.json', 'utf8'));
+            const metrics = report.metrics || {};
+            const summary = `
+            ## AI Code Review Results
+
+            **Summary:** ${report.summary || 'Analysis complete'}
+
+            | Severity | Count |
+            |----------|-------|
+            | Critical | ${metrics.critical || 0} |
+            | High | ${metrics.high || 0} |
+            | Medium | ${metrics.medium || 0} |
+            | Low | ${metrics.low || 0} |
+            | Info | ${metrics.info || 0} |
+
+            ${report.issues?.slice(0, 5).map(i =>
+              `### ${i.severity}: ${i.title}\n- **File:** ${i.file_path}:${i.line_start}\n- ${i.description}`
+            ).join('\n\n') || 'No issues found'}
+            `;
             github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: `## AI Code Review Results\n\n${report}`
+              body: summary
             });
 ```
 
@@ -306,18 +335,20 @@ code-review:
     - |
       codereview ./src \
         --model haiku \
-        --output review-report.md \
+        --output review-report.json \
+        --format json \
         --severity high \
         --max-files 100
     - |
-      if grep -q "Critical" review-report.md; then
+      CRITICAL=$(jq '.metrics.critical // 0' review-report.json)
+      if [ "$CRITICAL" -gt 0 ]; then
         echo "Critical issues found!"
-        cat review-report.md
+        jq '.issues[] | select(.severity == "Critical")' review-report.json
         exit 1
       fi
   artifacts:
     paths:
-      - review-report.md
+      - review-report.json
     expire_in: 1 week
   only:
     - merge_requests
@@ -361,7 +392,8 @@ pipeline {
                     sh '''
                         codereview ./src \
                             --model haiku \
-                            --output review-report.md \
+                            --output review-report.json \
+                            --format json \
                             --severity high \
                             --max-files 100 \
                             --aws-region us-west-2
@@ -373,9 +405,10 @@ pipeline {
         stage('Check Results') {
             steps {
                 script {
-                    def report = readFile('review-report.md')
-                    if (report.contains('Critical')) {
-                        error('Critical issues found in code review')
+                    def report = readJSON file: 'review-report.json'
+                    def critical = report.metrics?.critical ?: 0
+                    if (critical > 0) {
+                        error("${critical} critical issues found in code review")
                     }
                 }
             }
@@ -384,7 +417,7 @@ pipeline {
 
     post {
         always {
-            archiveArtifacts artifacts: 'review-report.md', fingerprint: true
+            archiveArtifacts artifacts: 'review-report.json', fingerprint: true
         }
         failure {
             emailext(

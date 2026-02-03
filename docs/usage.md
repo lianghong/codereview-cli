@@ -114,13 +114,26 @@ codereview ./their-feature --output onboarding-feedback.md --verbose
 Automate code reviews in your pipeline:
 
 ```bash
-# In your CI/CD script
+# Option 1: JSON output for programmatic parsing (recommended)
+codereview ./src \
+  --output review-report.json \
+  --format json \
+  --severity high \
+  --max-files 100
+
+# Parse JSON to check for critical issues
+CRITICAL_COUNT=$(jq '.metrics.critical // 0' review-report.json)
+if [ "$CRITICAL_COUNT" -gt 0 ]; then
+  echo "Found $CRITICAL_COUNT critical issues!"
+  exit 1
+fi
+
+# Option 2: Markdown output with grep
 codereview ./src \
   --output review-report.md \
   --severity high \
   --max-files 100
 
-# Fail pipeline if critical issues found
 if grep -q "Critical" review-report.md; then
   echo "Critical issues found!"
   exit 1
@@ -128,6 +141,12 @@ fi
 ```
 
 **When to use**: As part of automated quality gates in CI/CD.
+
+**JSON output benefits for CI/CD**:
+- Parse issue counts by severity for quality gates
+- Extract specific fields for notifications
+- Integrate with monitoring dashboards
+- Store structured data for trend analysis
 
 ## Use Cases
 
@@ -265,18 +284,23 @@ Typical limits:
 - Medium projects: 15KB
 - Large projects: 20KB
 
-### 5. Use Markdown Export for Sharing
+### 5. Export Reports for Sharing
 
 Always export important reviews:
 
 ```bash
+# Markdown for human-readable reports
 codereview ./src --output review-$(date +%Y%m%d).md
+
+# JSON for CI/CD and automation
+codereview ./src --output review-$(date +%Y%m%d).json --format json
 ```
 
 Benefits:
 - Version control for reviews
 - Easy sharing with team
 - Historical reference
+- JSON enables automation and dashboard integration
 
 ### 6. Run Regular Reviews
 
