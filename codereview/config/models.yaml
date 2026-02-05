@@ -12,13 +12,34 @@ providers:
     region: us-west-2
     models:
       # Claude Models (Anthropic)
-      # Context: 200K tokens, Max output: 64K tokens
       # Best for: Comprehensive code review, complex reasoning, security analysis
       - id: opus
+        full_id: global.anthropic.claude-opus-4-6-v1
+        name: Claude Opus 4.6
+        aliases:
+          - claude-opus
+          - opus4.6
+          - claude-opus-4.6
+        pricing:
+          input_per_million: 5.00    # Verified: Anthropic pricing
+          output_per_million: 25.00
+          cache_write_per_million: 6.25   # Prompt caching available
+          cache_read_per_million: 0.50
+        inference_params:
+          default_temperature: 0.1   # Low temp for deterministic code analysis
+          max_output_tokens: 128000  # Supports up to 128K output
+        context_window: 200000
+        capabilities:
+          - code_review
+          - security_analysis
+          - reasoning
+          - computer_use
+
+      - id: opus4.5
         full_id: global.anthropic.claude-opus-4-5-20251101-v1:0
         name: Claude Opus 4.5
         aliases:
-          - claude-opus
+          - claude-opus-4.5
         pricing:
           input_per_million: 5.00    # Verified: Anthropic pricing
           output_per_million: 25.00

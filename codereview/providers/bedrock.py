@@ -240,8 +240,8 @@ class BedrockProvider(TokenTrackingMixin, ModelProvider):
                 # but we still need manual retry for edge cases)
                 if error_code in ["ThrottlingException", "TooManyRequestsException"]:
                     if attempt < max_retries:
-                        # Exponential backoff: 2^attempt seconds
-                        wait_time = 2**attempt
+                        # Exponential backoff: 2^attempt seconds, capped at 60s
+                        wait_time = min(2**attempt, 60)
                         time.sleep(wait_time)
                         continue
 

@@ -72,7 +72,7 @@ class ModelProvider(ABC):
         """Get human-readable model name.
 
         Returns:
-            Display name like "Claude Opus 4.5" or "GPT-5.2 Codex"
+            Display name like "Claude Opus 4.6" or "GPT-5.2 Codex"
         """
         ...
 

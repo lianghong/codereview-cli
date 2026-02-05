@@ -143,9 +143,7 @@ class StreamingCallbackHandler(BaseCallbackHandler):
             kwargs,
         )  # Suppress unused parameter warning
 
-        if self._live:
-            self._live.stop()
-            self._live = None
+        self.cleanup()
 
         if self.verbose:
             self.console.print(
@@ -164,9 +162,7 @@ class StreamingCallbackHandler(BaseCallbackHandler):
         """Called when LLM encounters an error."""
         _ = (run_id, parent_run_id, kwargs)  # Suppress unused parameter warning
 
-        if self._live:
-            self._live.stop()
-            self._live = None
+        self.cleanup()
 
         if self.verbose:
             self.console.print(f"[red]✗[/red] Analysis error: {error}")

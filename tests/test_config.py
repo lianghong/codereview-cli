@@ -28,7 +28,7 @@ def test_config_loader_default_model():
     loader = ConfigLoader()
     provider, model_config = loader.resolve_model("opus")
     assert provider == "bedrock"
-    assert model_config.name == "Claude Opus 4.5"
+    assert model_config.name == "Claude Opus 4.6"
     assert model_config.pricing.input_per_million > 0
 
 
@@ -55,7 +55,7 @@ def test_resolve_model_id_with_alias():
     """Test resolving short model names to full IDs via ConfigLoader."""
     loader = ConfigLoader()
     provider, model_config = loader.resolve_model("opus")
-    assert model_config.full_id == "global.anthropic.claude-opus-4-5-20251101-v1:0"
+    assert model_config.full_id == "global.anthropic.claude-opus-4-6-v1"
 
     provider, model_config = loader.resolve_model("sonnet")
     assert model_config.full_id == "global.anthropic.claude-sonnet-4-5-20250929-v1:0"
@@ -76,7 +76,7 @@ def test_resolve_model_id_case_insensitive():
     # Aliases in YAML are lowercase, so we test that lowercase works
     provider1, model1 = loader.resolve_model("opus")
     provider2, model2 = loader.resolve_model("sonnet")
-    assert model1.name == "Claude Opus 4.5"
+    assert model1.name == "Claude Opus 4.6"
     assert model2.name == "Claude Sonnet 4.5"
 
 
@@ -125,4 +125,4 @@ def test_model_id_conflict_detection(caplog):
     # Original should still be registered (first wins)
     provider, config = loader.resolve_model("opus")
     assert provider == "bedrock"
-    assert config.name == "Claude Opus 4.5"
+    assert config.name == "Claude Opus 4.6"

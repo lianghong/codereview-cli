@@ -69,7 +69,7 @@ echo "✓ All static analysis checks passed"
 
 ### Running the Tool
 ```bash
-# Basic usage (uses Claude Opus 4.5 by default)
+# Basic usage (uses Claude Opus 4.6 by default)
 uv run codereview /path/to/code
 
 # With model selection (use short names!)
@@ -141,7 +141,8 @@ Use primary model IDs (case-insensitive). Run `codereview --list-models` to see 
 
 | Model ID | Name | Provider | Aliases |
 |----------|------|----------|---------|
-| `opus` | Claude Opus 4.5 | bedrock | claude-opus |
+| `opus` | Claude Opus 4.6 | bedrock | claude-opus, opus4.6, claude-opus-4.6 |
+| `opus4.5` | Claude Opus 4.5 | bedrock | claude-opus-4.5 |
 | `sonnet` | Claude Sonnet 4.5 | bedrock | claude-sonnet |
 | `haiku` | Claude Haiku 4.5 | bedrock | claude-haiku |
 | `gpt-5.2-codex` | GPT-5.2 Codex | azure_openai | gpt, gpt52, codex |
@@ -357,7 +358,7 @@ Provider-specific retry logic:
 - **BedrockProvider**: Handles `ThrottlingException` and `TooManyRequestsException`
 - **AzureOpenAIProvider**: Handles `RateLimitError`
 - **NVIDIAProvider**: Handles gateway errors (502/503/504) and rate limits (429)
-- All use exponential backoff with configurable max retries
+- All use exponential backoff capped at 60 seconds with configurable max retries
 - NVIDIA uses longer initial wait (4s) for 504 gateway timeouts
 
 **Parallel Static Analysis:**
@@ -412,6 +413,7 @@ Models defined in `codereview/config/models.yaml`:
 **AWS Bedrock Models:**
 | Model | Model ID | Input $/M | Output $/M | Defaults |
 |-------|----------|-----------|------------|----------|
+| Claude Opus 4.6 | `global.anthropic.claude-opus-4-6-v1` | $5.00 | $25.00 | temp=0.1, max=128000 |
 | Claude Opus 4.5 | `global.anthropic.claude-opus-4-5-20251101-v1:0` | $5.00 | $25.00 | temp=0.1 |
 | Claude Sonnet 4.5 | `global.anthropic.claude-sonnet-4-5-20250929-v1:0` | $3.00 | $15.00 | temp=0.1 |
 | Claude Haiku 4.5 | `global.anthropic.claude-haiku-4-5-20251001-v1:0` | $1.00 | $5.00 | temp=0.1 |
@@ -444,7 +446,7 @@ Models defined in `codereview/config/models.yaml`:
 
 **Note:** *NVIDIA models are currently in free tier. Pricing will be updated when NVIDIA announces production pricing. Models with `thinking=on` use interleaved thinking mode for deeper reasoning.
 
-**Default model:** Claude Opus 4.5
+**Default model:** Claude Opus 4.6
 
 ### Configuration Constants
 

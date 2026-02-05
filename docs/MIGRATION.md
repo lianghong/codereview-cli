@@ -118,15 +118,18 @@ See [README.md](../README.md#azure-openai-configuration) for detailed setup.
 
 ## Model Names Mapping
 
-| Old (v0.1.x) | New (v0.2.0) | Aliases |
-|--------------|--------------|---------|
-| `global.anthropic.claude-opus-4-5-20251101-v1:0` | `opus` | `claude-opus` |
+| Old (v0.1.x) | New (v0.2.0+) | Aliases |
+|--------------|---------------|---------|
+| `global.anthropic.claude-opus-4-6-v1` | `opus` | `claude-opus`, `opus4.6` |
+| `global.anthropic.claude-opus-4-5-20251101-v1:0` | `opus4.5` | `claude-opus-4.5` |
 | `global.anthropic.claude-sonnet-4-5-20250929-v1:0` | `sonnet` | `claude-sonnet` |
 | `global.anthropic.claude-haiku-4-5-20251001-v1:0` | `haiku` | `claude-haiku` |
 | `minimax.minimax-m2` | `minimax` | `minimax-m2` |
 | `mistral.mistral-large-3-675b-instruct` | `mistral` | `mistral-large` |
 | `moonshot.kimi-k2-thinking` | `kimi` | `kimi-k2` |
 | `qwen.qwen3-coder-480b-a35b-v1:0` | `qwen` | `qwen-coder` |
+
+> **Note:** As of v0.2.5, `opus` resolves to Claude Opus 4.6. Use `opus4.5` to explicitly select Claude Opus 4.5.
 
 ## Testing
 
@@ -180,7 +183,7 @@ Available Models
 ┌───────────────┬───────────────────┬──────────────┬──────────────────┐
 │ ID            │ Name              │ Provider     │ Aliases          │
 ├───────────────┼───────────────────┼──────────────┼──────────────────┤
-│ opus          │ Claude Opus 4.5   │ bedrock      │ opus, claude-opus│
+│ opus          │ Claude Opus 4.6   │ bedrock      │ claude-opus      │
 │ gpt-5.2-codex │ GPT-5.2 Codex     │ azure_openai │ gpt52, codex     │
 ...
 ```

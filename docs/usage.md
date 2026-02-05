@@ -43,7 +43,7 @@ Comprehensive guide for using the Code Review CLI tool effectively.
 **For AWS Bedrock (default):**
 - [ ] AWS credentials configured
 - [ ] Bedrock access enabled in AWS Console
-- [ ] Claude Opus 4.5 model access approved
+- [ ] Claude Opus 4.6 model access approved
 - [ ] IAM permissions include `bedrock:InvokeModel`
 - [ ] Tool installed and `codereview` command available
 
@@ -339,7 +339,7 @@ Provides:
 
 Match the model to your use case:
 
-**Opus 4.5** - Critical reviews (AWS Bedrock):
+**Opus 4.6** - Critical reviews (AWS Bedrock):
 ```bash
 codereview ./src/auth --model opus
 ```
@@ -374,7 +374,7 @@ codereview ./src --model deepseek-r1-bedrock
 Be aware of costs and choose models accordingly:
 
 **AWS Bedrock:**
-- **Opus 4.5**: Highest quality ($5/M input, $25/M output)
+- **Opus 4.6**: Highest quality ($5/M input, $25/M output)
 - **Sonnet 4.5**: Balanced option for daily use ($3/M input, $15/M output)
 - **Haiku 4.5**: Economical for large codebases ($1/M input, $5/M output)
 - **DeepSeek-R1**: Reasoning model ($1.35/M input, $5.40/M output)
@@ -490,7 +490,7 @@ Choose the right model for your needs. Use short model names (aliases supported)
 codereview --list-models
 
 # AWS Bedrock - Claude models
-codereview ./src --model opus     # Claude Opus 4.5 (default, highest quality)
+codereview ./src --model opus     # Claude Opus 4.6 (default, highest quality)
 codereview ./src --model sonnet   # Claude Sonnet 4.5 (balanced)
 codereview ./src --model haiku    # Claude Haiku 4.5 (fastest)
 
@@ -514,7 +514,7 @@ codereview ./src --model kimi-k2.5          # Kimi K2.5 (256K context)
 
 | Model | Provider | Use Case | Pricing |
 |-------|----------|----------|---------|
-| **Opus 4.5** (default) | AWS Bedrock | Critical code reviews, security audits | $5/M input, $25/M output |
+| **Opus 4.6** (default) | AWS Bedrock | Critical code reviews, security audits | $5/M input, $25/M output |
 | **Sonnet 4.5** | AWS Bedrock | Daily development, PR reviews | $3/M input, $15/M output |
 | **Haiku 4.5** | AWS Bedrock | Large codebases, CI/CD integration | $1/M input, $5/M output |
 | **GPT-5.2 Codex** | Azure OpenAI | Code-specialized, Microsoft ecosystem | $1.75/M input, $14/M output |
@@ -657,7 +657,7 @@ For projects with 1000+ files:
 
 | Scenario | Recommended Model | Provider | Estimated Cost* |
 |----------|-------------------|----------|-----------------|
-| 100 files, critical review | Opus 4.5 | AWS Bedrock | $0.30-$1.50 |
+| 100 files, critical review | Opus 4.6 | AWS Bedrock | $0.30-$1.50 |
 | 100 files, daily review | Sonnet 4.5 | AWS Bedrock | $0.10-$0.40 |
 | 1000 files, bulk scan | Haiku 4.5 | AWS Bedrock | $0.10-$0.50 |
 | Development/testing | Devstral 2 | NVIDIA NIM | Free |

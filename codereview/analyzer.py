@@ -76,7 +76,8 @@ class CodeAnalyzer:
         """
         # Map common legacy IDs to new names
         legacy_mappings = {
-            "global.anthropic.claude-opus-4-5-20251101-v1:0": "opus",
+            "global.anthropic.claude-opus-4-6-v1": "opus",
+            "global.anthropic.claude-opus-4-5-20251101-v1:0": "opus4.5",
             "global.anthropic.claude-sonnet-4-5-20250929-v1:0": "sonnet",
             "global.anthropic.claude-haiku-4-5-20251001-v1:0": "haiku",
             "minimax.minimax-m2": "minimax",

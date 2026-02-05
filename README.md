@@ -11,7 +11,7 @@ A LangChain-based CLI tool that provides comprehensive, intelligent code reviews
 ## Features
 
 - **Multi-Provider Support**: AWS Bedrock (Claude, Mistral, Minimax, Kimi, Qwen), Azure OpenAI (GPT), and NVIDIA NIM (Devstral, MiniMax M2.1, DeepSeek, GLM 4.7)
-- **AI-Powered Analysis**: Leverages Claude Opus 4.5, GPT-5.2 Codex, Devstral 2, and other leading models for deep code understanding
+- **AI-Powered Analysis**: Leverages Claude Opus 4.6, GPT-5.2 Codex, Devstral 2, and other leading models for deep code understanding
 - **Multi-Language Support**: Reviews Python, Go, Shell Script, C++, Java, JavaScript, and TypeScript codebases
 - **Smart Batching**: Automatically groups files for efficient token usage
 - **Structured Output**: Get categorized issues with severity levels and actionable suggestions
@@ -81,7 +81,7 @@ codereview /path/to/code --aws-profile your-profile
 
 1. Go to AWS Console > Bedrock
 2. Navigate to "Model access" in your region
-3. Request access to "Anthropic Claude Opus 4.5"
+3. Request access to "Anthropic Claude Opus 4.6"
 4. Wait for approval (usually instant for supported regions)
 
 ### 3. Verify IAM Permissions
@@ -98,7 +98,7 @@ Ensure your IAM user/role has the following permissions:
         "bedrock:InvokeModel",
         "bedrock:InvokeModelWithResponseStream"
       ],
-      "Resource": "arn:aws:bedrock:*::foundation-model/anthropic.claude-opus-4-5*"
+      "Resource": "arn:aws:bedrock:*::foundation-model/anthropic.claude-opus-*"
     }
   ]
 }
@@ -202,7 +202,7 @@ codereview /path/to/code --model kimi-k2.5
 ### Basic Usage
 
 ```bash
-# Uses Claude Opus 4.5 by default
+# Uses Claude Opus 4.6 by default
 codereview /path/to/your/codebase
 ```
 
@@ -213,7 +213,7 @@ codereview /path/to/your/codebase
 codereview --list-models
 
 # AWS Bedrock Models (Claude family)
-codereview /path/to/code --model opus      # Claude Opus 4.5 (highest quality)
+codereview /path/to/code --model opus      # Claude Opus 4.6 (highest quality)
 codereview /path/to/code --model sonnet    # Claude Sonnet 4.5 (balanced)
 codereview /path/to/code --model haiku     # Claude Haiku 4.5 (fastest)
 
@@ -245,7 +245,7 @@ codereview /path/to/code -m devstral
 
 | Model | Provider | Use Case | Input $/M | Output $/M |
 |-------|----------|----------|-----------|------------|
-| Opus 4.5 | AWS Bedrock | Highest quality, critical reviews | $5.00 | $25.00 |
+| Opus 4.6 | AWS Bedrock | Highest quality, critical reviews | $5.00 | $25.00 |
 | Sonnet 4.5 | AWS Bedrock | Balanced performance and cost | $3.00 | $15.00 |
 | Haiku 4.5 | AWS Bedrock | Fast, economical, large codebases | $1.00 | $5.00 |
 | GPT-5.2 Codex | Azure OpenAI | Code-specialized, Microsoft ecosystem | $1.75 | $14.00 |
@@ -614,8 +614,12 @@ For issues, questions, or contributions:
 ## Version History
 
 ### v0.2.5 (Current)
+- **Claude Opus 4.6**: Added Claude Opus 4.6 as new default model (128K max output). Previous Opus 4.5 available as `opus4.5`
 - **MiniMax M2.1 Model**: Added MiniMax M2.1 via NVIDIA NIM (200K context, 128K output, thinking mode)
 - **Export Error Handling**: Report export (JSON/Markdown) now handles file I/O errors gracefully instead of crashing with unhandled exceptions
+- **Callbacks Cleanup**: Fixed potential Rich `Live` display errors by using consistent `cleanup()` method
+- **Retry Backoff Cap**: Exponential backoff capped at 60 seconds across all providers (Bedrock, Azure OpenAI)
+- **Renderer Optimization**: Eliminated redundant string splitting in static analysis output rendering
 
 ### v0.2.4
 - **JSON Output Format**: New `--format json` option for CI/CD integration and programmatic consumption

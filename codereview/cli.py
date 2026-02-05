@@ -538,7 +538,7 @@ def main(
                             f"\n[red]✗ AWS Access Denied: {escape(error_msg)}[/red]"
                         )
                         console.print(
-                            "[yellow]Check that you have access to AWS Bedrock Claude Opus 4.5[/yellow]"
+                            "[yellow]Check that you have access to AWS Bedrock Claude Opus 4.6[/yellow]"
                         )
                     elif error_code in [
                         "ThrottlingException",
@@ -735,7 +735,7 @@ def main(
         if error_code == "AccessDeniedException":
             console.print("[yellow]Troubleshooting:[/yellow]")
             console.print("  1. Ensure you have access to AWS Bedrock in your region")
-            console.print("  2. Check that Claude Opus 4.5 model access is enabled")
+            console.print("  2. Check that Claude Opus 4.6 model access is enabled")
             console.print(
                 "  3. Verify your IAM permissions include 'bedrock:InvokeModel'\n"
             )

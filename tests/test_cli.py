@@ -45,7 +45,7 @@ def test_cli_with_directory(cli_runner, sample_code_dir):
 
         # Setup factory mock
         mock_factory = Mock()
-        mock_factory.get_model_display_name.return_value = "Claude Opus 4.5"
+        mock_factory.get_model_display_name.return_value = "Claude Opus 4.6"
         mock_factory_cls.return_value = mock_factory
 
         # Setup analyzer mock
@@ -93,7 +93,7 @@ def test_cli_output_option(cli_runner, sample_code_dir, tmp_path):
 
         # Setup factory mock
         mock_factory = Mock()
-        mock_factory.get_model_display_name.return_value = "Claude Opus 4.5"
+        mock_factory.get_model_display_name.return_value = "Claude Opus 4.6"
         mock_factory_cls.return_value = mock_factory
 
         # Setup analyzer mock
@@ -257,7 +257,7 @@ def test_cli_default_model(cli_runner, sample_code_dir):
 
         # Setup factory mock
         mock_factory = Mock()
-        mock_factory.get_model_display_name.return_value = "Claude Opus 4.5"
+        mock_factory.get_model_display_name.return_value = "Claude Opus 4.6"
         mock_factory_cls.return_value = mock_factory
 
         # Setup analyzer mock
@@ -356,7 +356,7 @@ def test_validate_flag(cli_runner):
         # Setup factory mock
         mock_factory = Mock()
         mock_provider = Mock()
-        mock_provider.get_model_display_name.return_value = "Claude Opus 4.5"
+        mock_provider.get_model_display_name.return_value = "Claude Opus 4.6"
 
         # Mock validation result
         mock_result = ValidationResult(valid=True, provider="AWS Bedrock")
@@ -370,7 +370,7 @@ def test_validate_flag(cli_runner):
 
         assert result.exit_code == 0, f"CLI failed with: {result.output}"
         assert "Validating credentials" in result.output
-        assert "Claude Opus 4.5" in result.output
+        assert "Claude Opus 4.6" in result.output
         mock_provider.validate_credentials.assert_called_once()
 
 

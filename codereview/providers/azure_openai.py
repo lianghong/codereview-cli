@@ -208,7 +208,7 @@ class AzureOpenAIProvider(TokenTrackingMixin, ModelProvider):
                 # for edge cases
                 if attempt < max_retries:
                     # Exponential backoff: 2^attempt seconds
-                    wait_time = 2**attempt
+                    wait_time = min(2**attempt, 60)
                     time.sleep(wait_time)
                     continue
 

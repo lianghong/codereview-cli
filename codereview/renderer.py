@@ -304,10 +304,10 @@ class StaticAnalysisRenderer:
                 if result.passed:
                     # Limit output to first 30 lines for passed tools
                     max_lines = 30
-                    output_lines = result.output.split("\n")[:max_lines]
-                    output_preview = "\n".join(output_lines)
+                    output_lines = result.output.split("\n")
+                    total_lines = len(output_lines)
+                    output_preview = "\n".join(output_lines[:max_lines])
 
-                    total_lines = len(result.output.split("\n"))
                     if total_lines > max_lines:
                         output_preview += (
                             f"\n... ({total_lines - max_lines} more lines)"
