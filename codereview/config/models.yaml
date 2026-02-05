@@ -288,6 +288,35 @@ providers:
           - agentic_tasks
         notes: "Fast MoE model, good for quick code analysis"
 
+      # MiniMax M2.1 (via NVIDIA) - Enhanced reasoning model
+      # 200K context window, 128K max output
+      # Best for: Code review, coding tasks, agentic workflows
+      - id: minimax-m2.1-nvidia
+        full_id: minimaxai/minimax-m2.1
+        name: MiniMax M2.1 (NVIDIA)
+        aliases:
+          - mm2.1-nvidia
+          - minimax-m2.1
+          - mm21
+        pricing:
+          input_per_million: 0.00    # Currently free tier
+          output_per_million: 0.00   # Update when NVIDIA announces pricing
+        inference_params:
+          default_temperature: 1.0   # MiniMax recommended for coding/agentic workflows
+          default_top_p: 0.95        # MiniMax recommended
+          default_top_k: 40          # MiniMax recommended
+          max_output_tokens: 128000  # Supports up to 128K output
+          enable_thinking: true      # Model produces <think> reasoning tags
+          clear_thinking: false      # Preserve reasoning context
+        context_window: 200000
+        capabilities:
+          - coding
+          - reasoning
+          - agentic_tasks
+          - code_review
+          - thinking
+        notes: "Enhanced MoE model with 200K context and 128K output, optimized for coding and agentic workflows"
+
       # Qwen3 Coder 480B (via NVIDIA) - Specialized coding model
       # MoE: 480B total, 35B active parameters
       # Best for: Code generation, code review, agentic coding

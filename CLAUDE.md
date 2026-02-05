@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-LangChain-based CLI tool for AI-powered code reviews via AWS Bedrock, Azure OpenAI, and NVIDIA NIM. Supports multiple models including Claude (Opus, Sonnet, Haiku), GPT-5.2 Codex, Devstral 2, Minimax M2, Mistral Large 3, Kimi K2, Kimi K2.5, Qwen3 Coder, DeepSeek-R1, DeepSeek V3.2, and GLM 4.7. Reviews **Python, Go, Shell Script, C++, Java, JavaScript, and TypeScript** codebases with structured output (categories, severity levels, line numbers, suggested fixes).
+LangChain-based CLI tool for AI-powered code reviews via AWS Bedrock, Azure OpenAI, and NVIDIA NIM. Supports multiple models including Claude (Opus, Sonnet, Haiku), GPT-5.2 Codex, Devstral 2, Minimax M2, MiniMax M2.1, Mistral Large 3, Kimi K2, Kimi K2.5, Qwen3 Coder, DeepSeek-R1, DeepSeek V3.2, and GLM 4.7. Reviews **Python, Go, Shell Script, C++, Java, JavaScript, and TypeScript** codebases with structured output (categories, severity levels, line numbers, suggested fixes).
 
 **Tech Stack:** Python 3.14, LangChain, AWS Bedrock, Azure OpenAI, NVIDIA NIM, Pydantic V2, Click, Rich
 
@@ -148,6 +148,7 @@ Use primary model IDs (case-insensitive). Run `codereview --list-models` to see 
 | `devstral` | Devstral 2 123B | nvidia | devstral-2 |
 | `minimax-bedrock` | Minimax M2 (Bedrock) | bedrock | mm2-bedrock |
 | `minimax-nvidia` | MiniMax M2 (NVIDIA) | nvidia | mm2-nvidia |
+| `minimax-m2.1-nvidia` | MiniMax M2.1 (NVIDIA) | nvidia | mm2.1-nvidia, minimax-m2.1, mm21 |
 | `qwen-bedrock` | Qwen3 Coder 480B (Bedrock) | bedrock | qwen, qwen-coder |
 | `deepseek-r1-bedrock` | DeepSeek-R1 (Bedrock) | bedrock | deepseek, deepseek-r1, ds-bedrock, deepseek-bedrock |
 | `qwen-nvidia` | Qwen3 Coder 480B (NVIDIA) | nvidia | qwen3-nvidia, qwen-coder-nvidia |
@@ -304,7 +305,7 @@ FileScanner → FileBatcher → CodeAnalyzer → ProviderFactory → BedrockProv
 5. **Providers** (`providers/`):
    - **BedrockProvider**: AWS Bedrock implementation (Claude, Mistral, Minimax, Kimi, Qwen)
    - **AzureOpenAIProvider**: Azure OpenAI implementation (GPT models)
-   - **NVIDIAProvider**: NVIDIA NIM API implementation (Devstral, MiniMax M2, Qwen3, DeepSeek, GLM 4.7)
+   - **NVIDIAProvider**: NVIDIA NIM API implementation (Devstral, MiniMax M2, MiniMax M2.1, Qwen3, DeepSeek, GLM 4.7)
 6. **Aggregation** (`cli.py`): Merges results from all batches (issues, suggestions, design insights)
 7. **Renderers** (`renderer.py`): Outputs to Rich terminal UI or Markdown file
 
@@ -434,6 +435,7 @@ Models defined in `codereview/config/models.yaml`:
 |-------|----------|-----------|------------|----------|
 | Devstral 2 123B | `mistralai/devstral-2-123b-instruct-2512` | $0.00* | $0.00* | temp=0.15, top_p=0.95, max=8192 |
 | MiniMax M2 (NVIDIA) | `minimaxai/minimax-m2` | $0.00* | $0.00* | temp=0.3, top_p=0.9, max=8192 |
+| MiniMax M2.1 (NVIDIA) | `minimaxai/minimax-m2.1` | $0.00* | $0.00* | temp=1.0, top_p=0.95, top_k=40, max=128000, thinking=on |
 | Qwen3 Coder 480B (NVIDIA) | `qwen/qwen3-coder-480b-a35b-instruct` | $0.00* | $0.00* | temp=0.3, top_p=0.8, max=16384, thinking=on |
 | Kimi K2 Instruct (NVIDIA) | `moonshotai/kimi-k2-instruct-0905` | $0.00* | $0.00* | temp=0.5, top_p=0.9, max=16384 |
 | Kimi K2.5 (NVIDIA) | `moonshotai/kimi-k2.5` | $0.00* | $0.00* | temp=0.6, top_p=0.95, top_k=40, max=16384 |

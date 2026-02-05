@@ -682,29 +682,37 @@ def main(
 
         # Step 6: Export report if requested
         if output:
-            if output_format.lower() == "json":
-                # Export as JSON for programmatic consumption
-                output.write_text(final_report.model_dump_json(indent=2))
-                console.print(f"\n[green]✓ JSON report exported to: {output}[/green]\n")
-            else:
-                # Export as Markdown (default)
-                # Collect all skipped files for the report
-                all_skipped_files: list[tuple[str, str]] = []
+            try:
+                if output_format.lower() == "json":
+                    # Export as JSON for programmatic consumption
+                    output.write_text(final_report.model_dump_json(indent=2))
+                    console.print(
+                        f"\n[green]✓ JSON report exported to: {output}[/green]\n"
+                    )
+                else:
+                    # Export as Markdown (default)
+                    # Collect all skipped files for the report
+                    all_skipped_files: list[tuple[str, str]] = []
 
-                # Add scanner skipped files (convert Path to str)
-                for skipped_path, reason in scanner.skipped_files:
-                    all_skipped_files.append((str(skipped_path), reason))
+                    # Add scanner skipped files (convert Path to str)
+                    for skipped_path, reason in scanner.skipped_files:
+                        all_skipped_files.append((str(skipped_path), reason))
 
-                # Add analyzer skipped files (already strings)
-                all_skipped_files.extend(analyzer.skipped_files)
+                    # Add analyzer skipped files (already strings)
+                    all_skipped_files.extend(analyzer.skipped_files)
 
-                exporter = MarkdownExporter()
-                exporter.export(
-                    final_report,
-                    output,
-                    skipped_files=all_skipped_files if all_skipped_files else None,
+                    exporter = MarkdownExporter()
+                    exporter.export(
+                        final_report,
+                        output,
+                        skipped_files=all_skipped_files if all_skipped_files else None,
+                    )
+                    console.print(f"\n[green]✓ Report exported to: {output}[/green]\n")
+            except OSError as e:
+                console.print(
+                    f"\n[red]✗ Failed to write report to {output}: {e}[/red]\n"
                 )
-                console.print(f"\n[green]✓ Report exported to: {output}[/green]\n")
+                raise click.Abort()
 
     except NoCredentialsError:
         console.print("\n[red]✗ AWS credentials not found[/red]\n")

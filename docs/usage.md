@@ -383,7 +383,7 @@ Be aware of costs and choose models accordingly:
 - **GPT-5.2 Codex**: Code-specialized ($1.75/M input, $14/M output)
 
 **NVIDIA NIM (Free Tier):**
-- **Devstral 2, DeepSeek V3.2, Qwen3 Coder, GLM 4.7, Kimi K2.5**: Currently free
+- **Devstral 2, MiniMax M2.1, DeepSeek V3.2, Qwen3 Coder, GLM 4.7, Kimi K2.5**: Currently free
 
 **Cost optimization tips:**
 - Use `--max-files` to limit scope
@@ -504,6 +504,7 @@ codereview ./src --model gpt      # GPT-5.2 Codex
 
 # NVIDIA NIM (free tier)
 codereview ./src --model devstral           # Devstral 2 123B
+codereview ./src --model minimax-m2.1       # MiniMax M2.1 (thinking mode)
 codereview ./src --model deepseek-v3.2-nvidia # DeepSeek V3.2
 codereview ./src --model glm47              # GLM 4.7
 codereview ./src --model kimi-k2.5          # Kimi K2.5 (256K context)
@@ -519,6 +520,7 @@ codereview ./src --model kimi-k2.5          # Kimi K2.5 (256K context)
 | **GPT-5.2 Codex** | Azure OpenAI | Code-specialized, Microsoft ecosystem | $1.75/M input, $14/M output |
 | **DeepSeek-R1** | AWS Bedrock | Reasoning-focused reviews | $1.35/M input, $5.40/M output |
 | **Devstral 2** | NVIDIA NIM | Free tier, code-focused | Free* |
+| **MiniMax M2.1** | NVIDIA NIM | Free tier, thinking mode, 200K context | Free* |
 | **GLM 4.7** | NVIDIA NIM | Free tier, thinking mode | Free* |
 | **Kimi K2.5** | NVIDIA NIM | Free tier, 256K context | Free* |
 

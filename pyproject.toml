@@ -1,7 +1,7 @@
 [project]
 name = "codereview-cli"
-version = "0.2.0"
-description = "Multi-provider code review CLI with AWS Bedrock and Azure OpenAI support"
+version = "0.2.5"
+description = "Multi-provider code review CLI with AWS Bedrock, Azure OpenAI, and NVIDIA NIM support"
 requires-python = ">=3.14"
 authors = [
     {name = "Lianghong Fei", email = "feilianghong@gmail.com"}

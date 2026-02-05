@@ -10,7 +10,7 @@ A LangChain-based CLI tool that provides comprehensive, intelligent code reviews
 
 ## Features
 
-- **Multi-Provider Support**: AWS Bedrock (Claude, Mistral, Minimax, Kimi, Qwen), Azure OpenAI (GPT), and NVIDIA NIM (Devstral, DeepSeek, GLM 4.7)
+- **Multi-Provider Support**: AWS Bedrock (Claude, Mistral, Minimax, Kimi, Qwen), Azure OpenAI (GPT), and NVIDIA NIM (Devstral, MiniMax M2.1, DeepSeek, GLM 4.7)
 - **AI-Powered Analysis**: Leverages Claude Opus 4.5, GPT-5.2 Codex, Devstral 2, and other leading models for deep code understanding
 - **Multi-Language Support**: Reviews Python, Go, Shell Script, C++, Java, JavaScript, and TypeScript codebases
 - **Smart Batching**: Automatically groups files for efficient token usage
@@ -32,7 +32,7 @@ A LangChain-based CLI tool that provides comprehensive, intelligent code reviews
 - **One of the following:**
   - AWS account with Bedrock access (for Claude, Mistral, Minimax, Kimi, Qwen models)
   - Azure OpenAI resource with GPT model deployment (for GPT models)
-  - NVIDIA API key from [build.nvidia.com](https://build.nvidia.com) (for Devstral, DeepSeek, free tier available)
+  - NVIDIA API key from [build.nvidia.com](https://build.nvidia.com) (for Devstral, MiniMax M2.1, DeepSeek, free tier available)
 
 ### Install with uv (recommended)
 
@@ -156,7 +156,7 @@ codereview --list-models  # Should show Azure models
 
 ## NVIDIA NIM Configuration (Alternative Provider)
 
-NVIDIA NIM provides access to models like Devstral 2, DeepSeek V3.2, Qwen3 Coder, and more with a free tier for development.
+NVIDIA NIM provides access to models like Devstral 2, MiniMax M2.1, DeepSeek V3.2, Qwen3 Coder, and more with a free tier for development.
 
 ### 1. Get API Key
 
@@ -185,6 +185,9 @@ codereview /path/to/code --model qwen-nvidia
 # GLM 4.7 - Reasoning model with interleaved thinking (73.8% SWE-bench)
 codereview /path/to/code --model glm47
 
+# MiniMax M2.1 - Enhanced reasoning model with thinking mode
+codereview /path/to/code --model minimax-m2.1
+
 # Kimi K2 - Large context model
 codereview /path/to/code --model kimi-k2-nvidia
 
@@ -192,7 +195,7 @@ codereview /path/to/code --model kimi-k2-nvidia
 codereview /path/to/code --model kimi-k2.5
 ```
 
-**Note:** NVIDIA NIM models are currently in free tier. No charges apply during the preview period. Models with thinking mode enabled (DeepSeek, Qwen3, GLM 4.7) provide deeper reasoning for complex code analysis.
+**Note:** NVIDIA NIM models are currently in free tier. No charges apply during the preview period. Models with thinking mode enabled (MiniMax M2.1, DeepSeek, Qwen3, GLM 4.7) provide deeper reasoning for complex code analysis.
 
 ## Usage
 
@@ -227,6 +230,7 @@ codereview /path/to/code --model gpt4o          # GPT-4o
 
 # NVIDIA NIM Models (free tier)
 codereview /path/to/code --model devstral           # Devstral 2 123B
+codereview /path/to/code --model minimax-m2.1         # MiniMax M2.1 (thinking mode)
 codereview /path/to/code --model deepseek-v3.2-nvidia # DeepSeek V3.2 (thinking mode)
 codereview /path/to/code --model qwen-nvidia        # Qwen3 Coder 480B (thinking mode)
 codereview /path/to/code --model glm47              # GLM 4.7 (thinking mode)
@@ -247,6 +251,7 @@ codereview /path/to/code -m devstral
 | GPT-5.2 Codex | Azure OpenAI | Code-specialized, Microsoft ecosystem | $1.75 | $14.00 |
 | GPT-4o | Azure OpenAI | Multimodal, general purpose | $2.50 | $10.00 |
 | Devstral 2 | NVIDIA NIM | Code-specialized, free tier | Free* | Free* |
+| MiniMax M2.1 | NVIDIA NIM | 200K context, 128K output, thinking mode | Free* | Free* |
 | DeepSeek V3.2 | NVIDIA NIM | Large reasoning model, thinking mode | Free* | Free* |
 | Qwen3 Coder (NIM) | NVIDIA NIM | Ultra-large coding, thinking mode | Free* | Free* |
 | GLM 4.7 | NVIDIA NIM | 73.8% SWE-bench, thinking mode | Free* | Free* |
@@ -608,7 +613,11 @@ For issues, questions, or contributions:
 
 ## Version History
 
-### v0.2.4 (Current)
+### v0.2.5 (Current)
+- **MiniMax M2.1 Model**: Added MiniMax M2.1 via NVIDIA NIM (200K context, 128K output, thinking mode)
+- **Export Error Handling**: Report export (JSON/Markdown) now handles file I/O errors gracefully instead of crashing with unhandled exceptions
+
+### v0.2.4
 - **JSON Output Format**: New `--format json` option for CI/CD integration and programmatic consumption
 - **Enhanced Code Review Prompts**:
   - Architecture fit analysis (boundary violations, coupling, layering leaks)
