@@ -235,7 +235,6 @@ class ReviewIssue(BaseModel):
     @classmethod
     def normalize_category(cls, v: Any) -> str:
         """Normalize category to valid value, handling LLM variations."""
-        _ = cls  # Suppress unused parameter warning
         if v is None:
             return "Code Quality"
         if not isinstance(v, str):
@@ -258,7 +257,6 @@ class ReviewIssue(BaseModel):
     @classmethod
     def normalize_severity(cls, v: Any) -> str:
         """Normalize severity to valid value, handling LLM variations."""
-        _ = cls  # Suppress unused parameter warning
         if v is None:
             return "Medium"  # Default for missing severity
         if not isinstance(v, str):

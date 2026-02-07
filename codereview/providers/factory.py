@@ -3,11 +3,13 @@
 from langchain_core.callbacks import BaseCallbackHandler
 
 from codereview.config.loader import ConfigLoader
-from codereview.config.models import AzureOpenAIConfig, BedrockConfig, NVIDIAConfig
-from codereview.providers.azure_openai import AzureOpenAIProvider
+from codereview.config.models import (
+    AzureOpenAIConfig,
+    BedrockConfig,
+    GoogleGenAIConfig,
+    NVIDIAConfig,
+)
 from codereview.providers.base import ModelProvider
-from codereview.providers.bedrock import BedrockProvider
-from codereview.providers.nvidia import NVIDIAProvider
 
 
 class ProviderFactory:
@@ -41,7 +43,7 @@ class ProviderFactory:
             project_context: Optional project README/documentation content
 
         Returns:
-            Instantiated provider (BedrockProvider, AzureOpenAIProvider, or NVIDIAProvider)
+            Instantiated provider (BedrockProvider, AzureOpenAIProvider, NVIDIAProvider, or GoogleGenAIProvider)
 
         Raises:
             ValueError: If model name not found or provider unknown
@@ -59,6 +61,8 @@ class ProviderFactory:
                     f"Expected BedrockConfig for bedrock provider, "
                     f"got {type(provider_config).__name__}"
                 )
+            from codereview.providers.bedrock import BedrockProvider
+
             return BedrockProvider(
                 model_config,
                 provider_config,
@@ -73,6 +77,8 @@ class ProviderFactory:
                     f"Expected AzureOpenAIConfig for azure_openai provider, "
                     f"got {type(provider_config).__name__}"
                 )
+            from codereview.providers.azure_openai import AzureOpenAIProvider
+
             return AzureOpenAIProvider(
                 model_config,
                 provider_config,
@@ -87,7 +93,25 @@ class ProviderFactory:
                     f"Expected NVIDIAConfig for nvidia provider, "
                     f"got {type(provider_config).__name__}"
                 )
+            from codereview.providers.nvidia import NVIDIAProvider
+
             return NVIDIAProvider(
+                model_config,
+                provider_config,
+                temperature,
+                callbacks=callbacks,
+                project_context=project_context,
+            )
+
+        elif provider_name == "google_genai":
+            if not isinstance(provider_config, GoogleGenAIConfig):
+                raise ValueError(
+                    f"Expected GoogleGenAIConfig for google_genai provider, "
+                    f"got {type(provider_config).__name__}"
+                )
+            from codereview.providers.google_genai import GoogleGenAIProvider
+
+            return GoogleGenAIProvider(
                 model_config,
                 provider_config,
                 temperature,
@@ -98,7 +122,7 @@ class ProviderFactory:
         else:
             raise ValueError(
                 f"Unknown provider: {provider_name}. "
-                f"Supported providers: bedrock, azure_openai, nvidia"
+                f"Supported providers: bedrock, azure_openai, nvidia, google_genai"
             )
 
     def list_available_models(self) -> dict[str, list[dict[str, str]]]:
@@ -119,7 +143,7 @@ class ProviderFactory:
                     {
                         "id": model_config.id,
                         "name": model_config.name,
-                        "aliases": "\n".join(model_config.aliases),
+                        "aliases": ", ".join(model_config.aliases),
                     }
                 )
 

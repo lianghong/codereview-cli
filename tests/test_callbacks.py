@@ -16,7 +16,7 @@ class TestStreamingCallbackHandler:
         handler = StreamingCallbackHandler()
 
         assert handler.verbose is True
-        assert handler._current_text == ""
+        assert handler._current_parts == []
         assert handler._token_count == 0
         assert handler._live is None
 
@@ -36,7 +36,7 @@ class TestStreamingCallbackHandler:
             handler.on_llm_start({}, ["test prompt"], run_id=uuid4())
 
             # After on_llm_start, live should be set (not None)
-            assert handler._current_text == ""
+            assert handler._current_parts == []
             assert handler._token_count == 0
 
     def test_on_llm_start_skipped_when_not_verbose(self):
@@ -53,14 +53,14 @@ class TestStreamingCallbackHandler:
         handler = StreamingCallbackHandler(verbose=True)
 
         # Simulate starting
-        handler._current_text = ""
+        handler._current_parts = []
         handler._token_count = 0
         handler._live = Mock()
 
         handler.on_llm_new_token("Hello")
         handler.on_llm_new_token(" world")
 
-        assert handler._current_text == "Hello world"
+        assert "".join(handler._current_parts) == "Hello world"
         assert handler._token_count == 2
 
     def test_on_llm_new_token_skipped_when_not_verbose(self):
@@ -69,7 +69,7 @@ class TestStreamingCallbackHandler:
 
         handler.on_llm_new_token("Hello")
 
-        assert handler._current_text == ""
+        assert handler._current_parts == []
         assert handler._token_count == 0
 
     def test_on_llm_end_stops_live_display(self):

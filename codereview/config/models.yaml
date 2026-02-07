@@ -471,6 +471,81 @@ providers:
           - tool_use
         notes: "73.8% SWE-bench, interleaved thinking mode enabled for complex code analysis"
 
+      # Step-3.5-Flash (via NVIDIA) - StepFun's cost-efficient reasoning model
+      # 256K context window, optimized for fast inference
+      # Best for: General code review, chat-style analysis, agentic tasks
+      - id: step-3.5-flash
+        full_id: stepfun-ai/step-3.5-flash
+        name: Step 3.5 Flash (NVIDIA)
+        aliases:
+          - step-flash
+          - step35
+          - step-nvidia
+        pricing:
+          input_per_million: 0.00    # Currently free tier
+          output_per_million: 0.00   # Update when NVIDIA announces pricing
+        inference_params:
+          default_temperature: 0.6   # Recommended for coherent code analysis (range 0.6-1.0)
+          default_top_p: 0.95        # NVIDIA NIM recommended
+          default_top_k: 40          # NVIDIA NIM recommended
+          max_output_tokens: 16384   # Sufficient for detailed code review reports
+        context_window: 256000       # 256K token context window
+        capabilities:
+          - code_review
+          - reasoning
+          - general_intelligence
+        notes: "Cost-efficient 256K context model, good coherence at temperature 0.6"
+
+  # Google Generative AI Provider
+  # Models available via Google AI Studio / Gemini API
+  google_genai:
+    api_key: "${GOOGLE_API_KEY}"
+    models:
+      # Gemini 3 Pro Preview - Google's flagship reasoning model
+      # 1M token context, strong reasoning and code analysis
+      - id: gemini-3-pro
+        full_id: gemini-3-pro-preview
+        name: Gemini 3 Pro Preview
+        aliases:
+          - gemini-pro
+          - gemini3-pro
+          - g3pro
+        pricing:
+          input_per_million: 2.00
+          output_per_million: 12.00
+        inference_params:
+          default_temperature: 0.1
+          default_top_p: 0.95
+          max_output_tokens: 65536
+        context_window: 1000000
+        capabilities:
+          - code_review
+          - reasoning
+          - multimodal
+          - tool_use
+
+      # Gemini 3 Flash Preview - Fast and cost-efficient
+      # 1M token context, Flash-tier pricing with Pro-level quality
+      - id: gemini-3-flash
+        full_id: gemini-3-flash-preview
+        name: Gemini 3 Flash Preview
+        aliases:
+          - gemini-flash
+          - gemini3-flash
+          - g3flash
+        pricing:
+          input_per_million: 0.50
+          output_per_million: 3.00
+        inference_params:
+          default_temperature: 0.1
+          default_top_p: 0.95
+          max_output_tokens: 65536
+        context_window: 1000000
+        capabilities:
+          - code_review
+          - reasoning
+          - multimodal
+
 # Default model configuration
 defaults:
   bedrock_default: opus

@@ -1,5 +1,6 @@
 """Rich terminal and Markdown output rendering."""
 
+from collections import defaultdict
 from datetime import datetime
 from pathlib import Path, PurePath
 from typing import Any
@@ -36,9 +37,13 @@ class TerminalRenderer:
         "Info": "white",
     }
 
-    def __init__(self):
-        """Initialize renderer."""
-        self.console = Console()
+    def __init__(self, console: Console | None = None):
+        """Initialize renderer.
+
+        Args:
+            console: Rich console for output (creates new one if None)
+        """
+        self.console = console or Console()
 
     def render(self, report: CodeReviewReport, min_severity: str = "info") -> None:
         """
@@ -67,14 +72,16 @@ class TerminalRenderer:
         summary = self._format_summary(report)
         self.console.print(Panel(summary, title="Summary", border_style="green"))
 
+    @staticmethod
+    def _metrics_to_dict(report: CodeReviewReport) -> dict[str, Any]:
+        """Convert report metrics to dictionary."""
+        if hasattr(report.metrics, "model_dump"):
+            return report.metrics.model_dump(exclude_none=True)
+        return report.metrics  # type: ignore[return-value]
+
     def _format_summary(self, report: CodeReviewReport) -> str:
         """Format summary text."""
-        # Convert ReviewMetrics to dict, or use directly if already a dict
-        metrics_dict: dict[str, Any] = (
-            report.metrics.model_dump(exclude_none=True)
-            if hasattr(report.metrics, "model_dump")
-            else report.metrics  # type: ignore[assignment]
-        )
+        metrics_dict = self._metrics_to_dict(report)
         lines = [
             f"[bold]{report.summary}[/bold]",
             "",
@@ -102,7 +109,8 @@ class TerminalRenderer:
         filtered_issues = [
             issue
             for issue in report.issues
-            if SEVERITY_ORDER.index(issue.severity) <= min_index
+            if issue.severity in SEVERITY_ORDER
+            and SEVERITY_ORDER.index(issue.severity) <= min_index
         ]
 
         if not filtered_issues:
@@ -190,10 +198,8 @@ class TerminalRenderer:
         self, issues: list[ReviewIssue]
     ) -> dict[str, list[ReviewIssue]]:
         """Group issues by severity level."""
-        grouped: dict[str, list[ReviewIssue]] = {}
+        grouped: dict[str, list[ReviewIssue]] = defaultdict(list)
         for issue in issues:
-            if issue.severity not in grouped:
-                grouped[issue.severity] = []
             grouped[issue.severity].append(issue)
         return grouped
 
@@ -423,6 +429,13 @@ class MarkdownExporter:
         suffix = PurePath(file_path).suffix
         return self.LANGUAGE_EXTENSIONS.get(suffix, "text")
 
+    @staticmethod
+    def _metrics_to_dict(report: CodeReviewReport) -> dict[str, Any]:
+        """Convert report metrics to dictionary."""
+        if hasattr(report.metrics, "model_dump"):
+            return report.metrics.model_dump(exclude_none=True)
+        return report.metrics  # type: ignore[return-value]
+
     def export(
         self,
         report: CodeReviewReport,
@@ -444,6 +457,7 @@ class MarkdownExporter:
         output_path = Path(output_path)
         content = self._generate_markdown(report, skipped_files)
         try:
+            output_path.parent.mkdir(parents=True, exist_ok=True)
             output_path.write_text(content, encoding="utf-8")
         except OSError as e:
             raise RuntimeError(f"Failed to write report to {output_path}: {e}") from e
@@ -460,12 +474,7 @@ class MarkdownExporter:
             self._metrics(report),
         ]
 
-        # Convert ReviewMetrics to dict, or use directly if already a dict
-        metrics_dict: dict[str, Any] = (
-            report.metrics.model_dump(exclude_none=True)
-            if hasattr(report.metrics, "model_dump")
-            else report.metrics  # type: ignore[assignment]
-        )
+        metrics_dict = self._metrics_to_dict(report)
 
         # Add static analysis section if it was run
         if metrics_dict.get("static_analysis_run"):
@@ -526,12 +535,7 @@ class MarkdownExporter:
         """Generate metrics section."""
         lines = ["## Metrics\n"]
 
-        # Convert ReviewMetrics to dict, or use directly if already a dict
-        metrics_dict: dict[str, Any] = (
-            report.metrics.model_dump(exclude_none=True)
-            if hasattr(report.metrics, "model_dump")
-            else report.metrics  # type: ignore[assignment]
-        )
+        metrics_dict = self._metrics_to_dict(report)
 
         # Separate token metrics from other metrics
         token_keys = {"input_tokens", "output_tokens", "total_tokens"}
@@ -585,12 +589,7 @@ class MarkdownExporter:
 
     def _static_analysis(self, report: CodeReviewReport) -> str:
         """Generate static analysis section."""
-        # Convert ReviewMetrics to dict, or use directly if already a dict
-        metrics_dict: dict[str, Any] = (
-            report.metrics.model_dump(exclude_none=True)
-            if hasattr(report.metrics, "model_dump")
-            else report.metrics  # type: ignore[assignment]
-        )
+        metrics_dict = self._metrics_to_dict(report)
 
         if not metrics_dict.get("static_analysis_run"):
             return ""
@@ -629,14 +628,12 @@ class MarkdownExporter:
         lines = ["## Issues by Severity\n"]
 
         # Group by severity
-        grouped: dict[str, list[ReviewIssue]] = {}
+        grouped: dict[str, list[ReviewIssue]] = defaultdict(list)
         for issue in report.issues:
-            if issue.severity not in grouped:
-                grouped[issue.severity] = []
             grouped[issue.severity].append(issue)
 
         # Render each severity group
-        for severity in ["Critical", "High", "Medium", "Low", "Info"]:
+        for severity in SEVERITY_ORDER:
             if severity not in grouped:
                 continue
 

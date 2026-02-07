@@ -1,9 +1,30 @@
 """Abstract base class for LLM providers."""
 
+import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from typing import Any
+
+from pydantic import ValidationError
 
 from codereview.models import CodeReviewReport
+
+
+@dataclass(frozen=True)
+class RetryConfig:
+    """Configuration for retry behavior in provider batch analysis.
+
+    Attributes:
+        max_retries: Maximum number of retry attempts
+        base_wait: Base wait time in seconds for exponential backoff
+        max_wait: Maximum wait time in seconds (backoff cap)
+        validation_retry_sleep: Sleep time in seconds between validation error retries
+    """
+
+    max_retries: int = 3
+    base_wait: float = 1.0
+    max_wait: float = 60.0
+    validation_retry_sleep: float = 1.0
 
 
 @dataclass
@@ -211,3 +232,151 @@ class ModelProvider(ABC):
         Optional to override. Default returns valid result.
         """
         return ValidationResult(valid=True, provider="Unknown")
+
+    # --- Retry framework ---
+    # Subclasses override these hooks for provider-specific behavior.
+
+    def _track_tokens(self, input_tokens: int, output_tokens: int) -> None:
+        """Track token usage from a provider response.
+
+        Override in subclasses (via TokenTrackingMixin) for actual tracking.
+        Default implementation is a no-op.
+
+        Args:
+            input_tokens: Number of input tokens used
+            output_tokens: Number of output tokens used
+        """
+        pass
+
+    def _is_retryable_error(self, error: Exception) -> bool:
+        """Check if an error is retryable (e.g., rate limit, gateway timeout).
+
+        Override in subclasses for provider-specific retryable error detection.
+
+        Args:
+            error: The exception to check
+
+        Returns:
+            True if the error should trigger a retry
+        """
+        return False
+
+    def _calculate_backoff(
+        self, error: Exception, attempt: int, config: RetryConfig
+    ) -> float:
+        """Calculate backoff wait time for a retry attempt.
+
+        Override in subclasses for custom backoff strategies.
+
+        Args:
+            error: The exception that triggered the retry
+            attempt: Current attempt number (0-based)
+            config: Retry configuration
+
+        Returns:
+            Wait time in seconds
+        """
+        return min(config.base_wait * (2**attempt), config.max_wait)
+
+    def _extract_token_usage(self, result: Any) -> tuple[int, int]:
+        """Extract (input_tokens, output_tokens) from provider response.
+
+        Override in subclasses for provider-specific metadata extraction.
+
+        Args:
+            result: The result from chain invocation
+
+        Returns:
+            Tuple of (input_tokens, output_tokens)
+        """
+        return (0, 0)
+
+    def _invoke_chain(self, chain_input: dict[str, str]) -> Any:
+        """Invoke the LLM chain. Override for provider-specific wrappers.
+
+        Args:
+            chain_input: Input dictionary for the chain
+
+        Returns:
+            Chain invocation result
+        """
+        return self.chain.invoke(chain_input)  # type: ignore[attr-defined]
+
+    def _execute_with_retry(
+        self,
+        chain_input: dict[str, str],
+        retry_config: RetryConfig,
+        batch_context: str,
+    ) -> CodeReviewReport:
+        """Execute chain invocation with retry logic, token tracking, and validation.
+
+        This is the shared retry loop used by all providers. Provider-specific
+        behavior is injected via hook methods:
+        - _invoke_chain(): wraps chain invocation (e.g., warning suppression)
+        - _is_retryable_error(): identifies retryable exceptions
+        - _calculate_backoff(): computes wait time per attempt
+        - _extract_token_usage(): extracts tokens from response metadata
+
+        Args:
+            chain_input: Input dictionary for the chain
+            retry_config: Retry configuration
+            batch_context: Raw batch context string for token estimation fallback
+
+        Returns:
+            CodeReviewReport with findings
+
+        Raises:
+            ValidationError: If structured output parsing fails after all retries
+            Exception: Provider-specific errors after all retries exhausted
+        """
+        last_error: Exception | None = None
+        for attempt in range(retry_config.max_retries + 1):
+            try:
+                result = self._invoke_chain(chain_input)
+
+                # Handle None result (structured output parsing failed)
+                if result is None:
+                    raise ValidationError.from_exception_data(
+                        "Model returned None - structured output parsing failed",
+                        [],
+                    )
+
+                # Extract token usage from response metadata
+                input_tokens, output_tokens = self._extract_token_usage(result)
+
+                # Fallback to estimation if actual counts unavailable
+                if input_tokens == 0:
+                    input_tokens = self._estimate_tokens(batch_context)
+                if output_tokens == 0:
+                    output_tokens = self._estimate_tokens(str(result.model_dump_json()))
+
+                self._track_tokens(input_tokens, output_tokens)
+
+                return result
+
+            except ValidationError as e:
+                # Output parsing/validation failed
+                last_error = e
+
+                enable_fixing = getattr(self, "enable_output_fixing", False)
+                if enable_fixing and attempt < retry_config.max_retries:
+                    time.sleep(retry_config.validation_retry_sleep)
+                    continue
+
+                raise
+
+            except Exception as e:
+                last_error = e
+
+                if self._is_retryable_error(e) and attempt < retry_config.max_retries:
+                    wait = self._calculate_backoff(e, attempt, retry_config)
+                    time.sleep(wait)
+                    continue
+
+                raise
+
+        # If we exhausted all retries, last_error must be set
+        # (loop only exits early on success via return)
+        if last_error is None:
+            raise RuntimeError("Retry loop exited without error or success")
+        raise last_error

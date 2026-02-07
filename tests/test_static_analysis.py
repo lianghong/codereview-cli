@@ -393,9 +393,9 @@ def test_tools_have_language_field():
     ]
     for tool_name, config in StaticAnalyzer.TOOLS.items():
         assert "language" in config, f"{tool_name} missing language field"
-        assert (
-            config["language"] in valid_languages
-        ), f"{tool_name} has invalid language"
+        assert config["language"] in valid_languages, (
+            f"{tool_name} has invalid language"
+        )
 
 
 # Shell script static analysis tests

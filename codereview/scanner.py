@@ -1,7 +1,7 @@
-# codereview/scanner.py
 """File scanner for discovering code files to review."""
 
 import logging
+import os
 from pathlib import Path, PurePath
 
 from codereview.config import (
@@ -61,70 +61,101 @@ class FileScanner:
             DEFAULT_EXCLUDE_PATTERNS if exclude_patterns is None else exclude_patterns
         )
         self.max_file_size_kb = max_file_size_kb
-        self.skipped_files: list[tuple[Path, str]] = (
-            []
-        )  # Track skipped files with reasons
+        self.skipped_files: list[
+            tuple[Path, str]
+        ] = []  # Track skipped files with reasons
 
     def scan(self) -> list[Path]:
-        """Scan directory and return list of files to review."""
+        """Scan directory and return list of files to review.
+
+        Uses os.walk with in-place directory pruning to avoid traversing
+        into excluded directories (e.g., node_modules, .venv, __pycache__).
+        """
         files = []
         self.skipped_files = []  # Reset on each scan
 
         # Resolve root directory once for path traversal protection
         resolved_root = self.root_dir.resolve()
 
-        for file_path in self.root_dir.rglob("*"):
-            # Skip if not a file
-            if not file_path.is_file():
-                continue
+        # Precompute directory-level exclusion names from glob patterns
+        # Patterns like "**/node_modules/**" or "**/.venv/**" indicate
+        # entire directories to skip
+        excluded_dir_names = self._get_excluded_dir_names()
 
-            # Path traversal protection: ensure file is within root directory
-            # This prevents symlink attacks that could escape the scan directory
-            try:
-                resolved_path = file_path.resolve()
-                if not resolved_path.is_relative_to(resolved_root):
-                    logging.debug("Skipping file outside root: %s", file_path)
-                    continue  # Skip files outside root directory
-            except OSError as e:
-                # Symlink resolution failed (broken symlink, permission denied, etc.)
-                logging.debug("Skipping file due to OSError: %s - %s", file_path, e)
-                continue
-            except ValueError as e:
-                # Path is not relative to root (shouldn't happen after resolve)
-                logging.debug("Skipping file due to ValueError: %s - %s", file_path, e)
-                continue
+        for dirpath, dirnames, filenames in os.walk(self.root_dir):
+            # Prune excluded directories in-place to prevent traversal
+            dirnames[:] = [
+                d
+                for d in dirnames
+                if d not in excluded_dir_names and not d.startswith(".")
+            ]
 
-            # Skip excluded extensions
-            if file_path.suffix in DEFAULT_EXCLUDE_EXTENSIONS:
-                continue
+            for filename in filenames:
+                file_path = Path(dirpath) / filename
 
-            # Skip if not target language
-            if file_path.suffix not in self.TARGET_EXTENSIONS:
-                continue
-
-            # Skip excluded patterns
-            relative_path = file_path.relative_to(self.root_dir)
-            if self._is_excluded(str(relative_path)):
-                continue
-
-            # Skip if file too large (but track it)
-            try:
-                file_size_kb = file_path.stat().st_size / 1024
-            except OSError:
-                # Skip files with stat errors (permission denied, broken symlinks, etc.)
-                continue
-            if file_size_kb > self.max_file_size_kb:
-                self.skipped_files.append(
-                    (
-                        file_path,
-                        f"File too large: {file_size_kb:.1f}KB > {self.max_file_size_kb}KB",
+                # Path traversal protection: ensure file is within root directory
+                try:
+                    resolved_path = file_path.resolve()
+                    if not resolved_path.is_relative_to(resolved_root):
+                        logging.debug("Skipping file outside root: %s", file_path)
+                        continue
+                except OSError as e:
+                    logging.debug("Skipping file due to OSError: %s - %s", file_path, e)
+                    continue
+                except ValueError as e:
+                    logging.debug(
+                        "Skipping file due to ValueError: %s - %s", file_path, e
                     )
-                )
-                continue
+                    continue
 
-            files.append(file_path)
+                # Skip excluded extensions
+                if file_path.suffix in DEFAULT_EXCLUDE_EXTENSIONS:
+                    continue
+
+                # Skip if not target language
+                if file_path.suffix not in self.TARGET_EXTENSIONS:
+                    continue
+
+                # Skip excluded patterns (for fine-grained glob matching)
+                relative_path = file_path.relative_to(self.root_dir)
+                if self._is_excluded(str(relative_path)):
+                    continue
+
+                # Skip if file too large (but track it)
+                try:
+                    file_size_kb = file_path.stat().st_size / 1024
+                except OSError:
+                    continue
+                if file_size_kb > self.max_file_size_kb:
+                    self.skipped_files.append(
+                        (
+                            file_path,
+                            f"File too large: {file_size_kb:.1f}KB > {self.max_file_size_kb}KB",
+                        )
+                    )
+                    continue
+
+                files.append(file_path)
 
         return sorted(files)
+
+    def _get_excluded_dir_names(self) -> set[str]:
+        """Extract directory names that should be pruned from exclusion patterns.
+
+        Parses glob patterns like '**/node_modules/**' to extract 'node_modules'
+        as a directory name to skip during os.walk traversal.
+
+        Returns:
+            Set of directory base names to prune
+        """
+        dir_names: set[str] = set()
+        for pattern in self.exclude_patterns:
+            # Match patterns like "**/dirname/**" or "**/dirname/*"
+            parts = PurePath(pattern).parts
+            for part in parts:
+                if part != "**" and part != "*" and "*" not in part:
+                    dir_names.add(part)
+        return dir_names
 
     def _is_excluded(self, path: str) -> bool:
         """Check if path matches any exclusion pattern.

@@ -207,7 +207,6 @@ def test_retry_logic_on_rate_limit(model_config, provider_config, mock_report):
         patch("codereview.providers.azure_openai.AzureChatOpenAI") as mock_azure,
         patch("time.sleep") as mock_sleep,
     ):
-
         mock_instance = Mock()
         mock_instance.with_structured_output.return_value = Mock()
         mock_azure.return_value = mock_instance

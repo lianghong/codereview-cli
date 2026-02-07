@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-LangChain-based CLI tool for AI-powered code reviews via AWS Bedrock, Azure OpenAI, and NVIDIA NIM. Supports multiple models including Claude (Opus, Sonnet, Haiku), GPT-5.2 Codex, Devstral 2, Minimax M2, MiniMax M2.1, Mistral Large 3, Kimi K2, Kimi K2.5, Qwen3 Coder, DeepSeek-R1, DeepSeek V3.2, and GLM 4.7. Reviews **Python, Go, Shell Script, C++, Java, JavaScript, and TypeScript** codebases with structured output (categories, severity levels, line numbers, suggested fixes).
+LangChain-based CLI tool for AI-powered code reviews via AWS Bedrock, Azure OpenAI, NVIDIA NIM, and Google Generative AI. Supports multiple models including Claude (Opus, Sonnet, Haiku), GPT-5.2 Codex, Gemini 3 (Pro, Flash), Devstral 2, Minimax M2, MiniMax M2.1, Mistral Large 3, Kimi K2, Kimi K2.5, Qwen3 Coder, DeepSeek-R1, DeepSeek V3.2, and GLM 4.7. Reviews **Python, Go, Shell Script, C++, Java, JavaScript, and TypeScript** codebases with structured output (categories, severity levels, line numbers, suggested fixes).
 
-**Tech Stack:** Python 3.14, LangChain, AWS Bedrock, Azure OpenAI, NVIDIA NIM, Pydantic V2, Click, Rich
+**Tech Stack:** Python 3.14, LangChain, AWS Bedrock, Azure OpenAI, NVIDIA NIM, Google Generative AI, Pydantic V2, Click, Rich
 
 ## Development Commands
 
@@ -37,23 +37,23 @@ uv run pytest tests/ --cov=codereview --cov-report=html
 ### Code Quality & Static Analysis
 ```bash
 # Install development dependencies (if not already installed)
-uv pip install ruff mypy black isort vulture types-PyYAML
+uv pip install ruff mypy isort vulture types-PyYAML
 
 # Run all static analysis tools
 uv run ruff check codereview/ tests/        # Linting
+uv run ruff format --check codereview/ tests/  # Code formatting (PEP 758 aware)
 uv run mypy codereview/ --ignore-missing-imports  # Type checking
-uv run black codereview/ tests/             # Code formatting
-uv run isort codereview/ tests/             # Import sorting
+uv run isort --check-only codereview/ tests/   # Import sorting
 uv run vulture codereview/ --min-confidence 80  # Dead code detection
 
 # Auto-fix issues where possible
 uv run ruff check --fix codereview/ tests/
-uv run black codereview/ tests/
+uv run ruff format codereview/ tests/
 uv run isort codereview/ tests/
 
 # Verify all tools pass (run before committing)
 uv run ruff check codereview/ tests/ && \
-uv run black --check codereview/ tests/ && \
+uv run ruff format --check codereview/ tests/ && \
 uv run isort --check-only codereview/ tests/ && \
 uv run mypy codereview/ --ignore-missing-imports && \
 uv run vulture codereview/ --min-confidence 80 && \
@@ -61,7 +61,7 @@ echo "✓ All static analysis checks passed"
 ```
 
 **Quality Standards:**
-- All code must pass ruff, black, isort, mypy, and vulture checks
+- All code must pass ruff (check + format), isort, mypy, and vulture checks
 - Type hints required for all public APIs
 - Minimum 80% confidence for vulture (dead code detection)
 - Unused imports/variables must be removed
@@ -79,6 +79,8 @@ uv run codereview /path/to/code -m gpt  # Azure OpenAI
 uv run codereview /path/to/code -m devstral  # NVIDIA NIM
 uv run codereview /path/to/code -m qwen
 uv run codereview /path/to/code -m mistral
+uv run codereview /path/to/code -m gemini-3-pro   # Google GenAI
+uv run codereview /path/to/code -m gemini-3-flash  # Google GenAI (fast)
 
 # With static analysis (runs tools in parallel for speed)
 uv run codereview /path/to/code --static-analysis
@@ -159,6 +161,8 @@ Use primary model IDs (case-insensitive). Run `codereview --list-models` to see 
 | `deepseek-v3.2-nvidia` | DeepSeek V3.2 (NVIDIA) | nvidia | deepseek-v3-nvidia, ds-nvidia, deepseek-nvidia |
 | `glm47` | GLM 4.7 (NVIDIA) | nvidia | glm4, glm-nvidia |
 | `mistral` | Mistral Large 3 | bedrock | mistral-large |
+| `gemini-3-pro` | Gemini 3 Pro Preview | google_genai | gemini-pro, gemini3-pro, g3pro |
+| `gemini-3-flash` | Gemini 3 Flash Preview | google_genai | gemini-flash, gemini3-flash, g3flash |
 
 **Note:** All models are displayed in `--list-models` regardless of provider credentials. Credentials are only required when actually using a model.
 
@@ -229,7 +233,7 @@ codereview/config/
 | Excluded file extensions | `models.yaml` | Add to `scanning.exclude_extensions` |
 | Max file size | `models.yaml` | Change `scanning.max_file_size_kb` |
 | Tool use support | `models.yaml` | Set `supports_tool_use: false` for models without tool calling |
-| API credentials | Environment variables | `AZURE_OPENAI_API_KEY`, `NVIDIA_API_KEY` |
+| API credentials | Environment variables | `AZURE_OPENAI_API_KEY`, `NVIDIA_API_KEY`, `GOOGLE_API_KEY` |
 | Code review rules | `prompts.py` | Modify `SYSTEM_PROMPT` |
 
 ### Environment Variable Expansion
@@ -245,6 +249,9 @@ azure_openai:
 
 nvidia:
   api_key: "${NVIDIA_API_KEY}"
+
+google_genai:
+  api_key: "${GOOGLE_API_KEY}"
 ```
 
 ### Adding a New Model (No Code Changes)
@@ -296,7 +303,7 @@ Edit `SYSTEM_PROMPT` in `config/prompts.py` to:
 
 ### Pipeline Flow
 ```
-FileScanner → FileBatcher → CodeAnalyzer → ProviderFactory → BedrockProvider/AzureOpenAIProvider/NVIDIAProvider → Aggregation → TerminalRenderer/MarkdownExporter
+FileScanner → FileBatcher → CodeAnalyzer → ProviderFactory → BedrockProvider/AzureOpenAIProvider/NVIDIAProvider/GoogleGenAIProvider → Aggregation → TerminalRenderer/MarkdownExporter
 ```
 
 1. **FileScanner** (`scanner.py`): Discovers code files (.py, .go, .sh, .bash, .cpp, .cc, .cxx, .h, .hpp, .java, .js, .jsx, .mjs, .ts, .tsx), applies exclusion patterns, validates paths
@@ -307,6 +314,7 @@ FileScanner → FileBatcher → CodeAnalyzer → ProviderFactory → BedrockProv
    - **BedrockProvider**: AWS Bedrock implementation (Claude, Mistral, Minimax, Kimi, Qwen)
    - **AzureOpenAIProvider**: Azure OpenAI implementation (GPT models)
    - **NVIDIAProvider**: NVIDIA NIM API implementation (Devstral, MiniMax M2, MiniMax M2.1, Qwen3, DeepSeek, GLM 4.7)
+   - **GoogleGenAIProvider**: Google Generative AI implementation (Gemini 3 Pro, Gemini 3 Flash)
 6. **Aggregation** (`cli.py`): Merges results from all batches (issues, suggestions, design insights)
 7. **Renderers** (`renderer.py`): Outputs to Rich terminal UI or Markdown file
 
@@ -317,7 +325,7 @@ FileScanner → FileBatcher → CodeAnalyzer → ProviderFactory → BedrockProv
 - Required methods: `analyze_batch()`, `get_model_display_name()`, `get_pricing()`
 - Optional methods: `reset_state()`, `estimate_cost()`, token tracking properties
 - **ProviderFactory** auto-detects provider based on model name (ID or alias)
-- Creates appropriate provider instance (Bedrock, Azure, or NVIDIA)
+- Creates appropriate provider instance (Bedrock, Azure, NVIDIA, or Google GenAI)
 - Uses ConfigLoader to resolve model configuration
 
 **Benefits:**
@@ -329,8 +337,8 @@ FileScanner → FileBatcher → CodeAnalyzer → ProviderFactory → BedrockProv
 **Configuration System:**
 - **models.yaml** (`config/models.yaml`): Central configuration for all models and providers
 - Defines model IDs, names, aliases, pricing, inference parameters
-- Provider-specific settings (AWS region, Azure endpoint/key)
-- Environment variable expansion for secrets (`${AZURE_OPENAI_API_KEY}`)
+- Provider-specific settings (AWS region, Azure endpoint/key, NVIDIA/Google API keys)
+- Environment variable expansion for secrets (`${AZURE_OPENAI_API_KEY}`, `${GOOGLE_API_KEY}`)
 - **ConfigLoader** (`config/loader.py`): Parses YAML with Pydantic validation
 - Resolves model names (IDs and aliases) to provider and ModelConfig
 - Provides access to provider-specific configuration
@@ -358,6 +366,7 @@ Provider-specific retry logic:
 - **BedrockProvider**: Handles `ThrottlingException` and `TooManyRequestsException`
 - **AzureOpenAIProvider**: Handles `RateLimitError`
 - **NVIDIAProvider**: Handles gateway errors (502/503/504) and rate limits (429)
+- **GoogleGenAIProvider**: Handles `ResourceExhausted` (429) and `ServiceUnavailable` (503)
 - All use exponential backoff capped at 60 seconds with configurable max retries
 - NVIDIA uses longer initial wait (4s) for 504 gateway timeouts
 
@@ -445,6 +454,14 @@ Models defined in `codereview/config/models.yaml`:
 | GLM 4.7 (NVIDIA) | `z-ai/glm4.7` | $0.00* | $0.00* | temp=0.5, top_p=0.95, max=16384, thinking=on |
 
 **Note:** *NVIDIA models are currently in free tier. Pricing will be updated when NVIDIA announces production pricing. Models with `thinking=on` use interleaved thinking mode for deeper reasoning.
+
+**Google Generative AI Models:**
+| Model | Model ID | Input $/M | Output $/M | Defaults |
+|-------|----------|-----------|------------|----------|
+| Gemini 3 Pro Preview | `gemini-3-pro-preview` | $2.00 | $12.00 | temp=0.1, top_p=0.95, max=65536 |
+| Gemini 3 Flash Preview | `gemini-3-flash-preview` | $0.50 | $3.00 | temp=0.1, top_p=0.95, max=65536 |
+
+**Note:** Google GenAI models have 1M token context windows. Uses `method="json_schema"` for structured output.
 
 **Default model:** Claude Opus 4.6
 
@@ -551,6 +568,30 @@ uv run codereview ./src --model devstral
 - All provider calls are mocked in tests (no real credentials needed)
 - Mock at provider level using `ProviderFactory.create`
 
+### Google Generative AI
+**Runtime Prerequisites:**
+1. Google API key from https://aistudio.google.com/apikey
+2. Gemini model access (available immediately with API key)
+
+**Configuration:**
+- Set `GOOGLE_API_KEY` environment variable
+- Models use structured output with `method="json_schema"`
+
+**Getting Started:**
+```bash
+# Get API key from Google AI Studio
+# 1. Visit https://aistudio.google.com/apikey
+# 2. Create an API key
+# 3. Export the key
+export GOOGLE_API_KEY="your-api-key-here"
+
+# Run code review with Gemini 3 Pro
+uv run codereview ./src --model gemini-3-pro
+
+# Run with Gemini 3 Flash (faster, cheaper)
+uv run codereview ./src --model gemini-3-flash
+```
+
 ## Code Modifications
 
 ### Adding New Models
@@ -608,6 +649,24 @@ nvidia:
         default_temperature: 0.15
         default_top_p: 0.95
         max_output_tokens: 8192
+```
+
+**Example (Google GenAI model):**
+```yaml
+google_genai:
+  api_key: "${GOOGLE_API_KEY}"
+  models:
+    - id: "gemini-new"
+      full_id: "gemini-new-model-id"
+      name: "Gemini New Model"
+      aliases: ["gnew"]
+      pricing:
+        input_per_million: 1.00
+        output_per_million: 5.00
+      inference_params:
+        default_temperature: 0.1
+        default_top_p: 0.95
+        max_output_tokens: 65536
 ```
 
 ### Adding New Providers
@@ -703,7 +762,7 @@ Edit `SYSTEM_PROMPT` in `config/prompts.py`. Key sections:
 
 **Provider Errors in Tests:**
 - Mock at provider level using `ProviderFactory.create` for cleaner tests
-- For provider-specific tests, mock the provider implementation (e.g., `ChatBedrockConverse`, `AzureChatOpenAI`)
+- For provider-specific tests, mock the provider implementation (e.g., `ChatBedrockConverse`, `AzureChatOpenAI`, `ChatGoogleGenerativeAI`)
 - Ensure mocks are set up BEFORE importing modules that use them
 
 **Configuration Issues:**

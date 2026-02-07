@@ -1,7 +1,7 @@
 """README finder for project context discovery."""
 
+import select
 import sys
-import threading
 from pathlib import Path
 
 import click
@@ -18,6 +18,8 @@ README_AUTO_CONFIRM_SECONDS = 3
 def _timed_input(prompt: str, default: str, timeout: int) -> str:
     """Get user input with a timeout, returning default if no input received.
 
+    Uses select() on Unix to avoid spawning daemon threads that block on stdin.
+
     Args:
         prompt: The prompt to display
         default: Default value to return on timeout
@@ -26,31 +28,29 @@ def _timed_input(prompt: str, default: str, timeout: int) -> str:
     Returns:
         User input or default value if timeout expires
     """
-    result = [default]
-    input_received = threading.Event()
+    sys.stdout.write(prompt)
+    sys.stdout.flush()
 
-    def get_input() -> None:
+    try:
+        ready, _, _ = select.select([sys.stdin], [], [], timeout)
+    except (OSError, ValueError):  # fmt: skip
+        # select not supported or stdin closed - return default
+        print()
+        return default
+
+    if ready:
         try:
-            user_input = input(prompt)
-            result[0] = user_input
-            input_received.set()
+            line = sys.stdin.readline()
+            if line:
+                return line.rstrip("\n")
+            # EOF
+            return default
         except (EOFError, KeyboardInterrupt):  # fmt: skip
-            # User cancelled or EOF reached - signal completion
-            input_received.set()
-        except Exception:
-            # Unexpected error - signal completion to avoid hanging
-            input_received.set()
-
-    input_thread = threading.Thread(target=get_input, daemon=True)
-    input_thread.start()
-
-    # Wait for input or timeout
-    if input_received.wait(timeout=timeout):
-        return result[0]
-
-    # Timeout - print newline to move past the prompt
-    print()  # Move to new line after timeout
-    return default
+            return default
+    else:
+        # Timeout - move past the prompt
+        print()
+        return default
 
 
 def find_readme(target_dir: Path) -> Path | None:
@@ -177,7 +177,7 @@ def prompt_readme_confirmation(
 
             response_stripped = response.strip()
             response_lower = response_stripped.lower()
-            if response_lower == "" or response_lower == "y":
+            if response_lower in ("", "y"):
                 return readme_path
             elif response_lower == "n":
                 return None

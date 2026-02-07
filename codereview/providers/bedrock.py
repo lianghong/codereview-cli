@@ -1,6 +1,5 @@
 """AWS Bedrock provider implementation."""
 
-import time
 from typing import Any
 
 from botocore.config import Config as BotocoreConfig  # type: ignore[import-untyped]
@@ -10,13 +9,12 @@ from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.rate_limiters import InMemoryRateLimiter
-from pydantic import ValidationError
 
 # Import system prompt from config
 from codereview.config import SYSTEM_PROMPT
 from codereview.config.models import BedrockConfig, ModelConfig
 from codereview.models import CodeReviewReport
-from codereview.providers.base import ModelProvider, ValidationResult
+from codereview.providers.base import ModelProvider, RetryConfig, ValidationResult
 from codereview.providers.mixins import TokenTrackingMixin
 
 # Shared prompt template for consistent formatting
@@ -152,6 +150,23 @@ class BedrockProvider(TokenTrackingMixin, ModelProvider):
             return BATCH_PROMPT_TEMPLATE | self.model | self._output_parser
         return BATCH_PROMPT_TEMPLATE | self.model
 
+    def _is_retryable_error(self, error: Exception) -> bool:
+        """Check if error is a retryable AWS throttling error."""
+        if isinstance(error, ClientError):
+            error_code = error.response.get("Error", {}).get("Code", "")
+            return error_code in ["ThrottlingException", "TooManyRequestsException"]
+        return False
+
+    def _extract_token_usage(self, result: Any) -> tuple[int, int]:
+        """Extract token usage from AWS Bedrock response metadata."""
+        if hasattr(result, "response_metadata"):
+            usage = result.response_metadata.get("usage", {})
+            return (
+                usage.get("input_tokens", 0),
+                usage.get("output_tokens", 0),
+            )
+        return (0, 0)
+
     def analyze_batch(
         self,
         batch_number: int,
@@ -184,75 +199,13 @@ class BedrockProvider(TokenTrackingMixin, ModelProvider):
             format_instructions = self._output_parser.get_format_instructions()
             system_prompt = f"{SYSTEM_PROMPT}\n\n{format_instructions}"
 
-        # Use chain with prompt template for cleaner invocation
         chain_input = {
             "system_prompt": system_prompt,
             "batch_context": batch_context,
         }
 
-        last_error: ClientError | ValidationError | None = None
-        for attempt in range(max_retries + 1):
-            try:
-                result = self.chain.invoke(chain_input)
-
-                # Handle None result (structured output parsing failed)
-                if result is None:
-                    raise ValidationError.from_exception_data(
-                        "Model returned None - structured output parsing failed",
-                        [],
-                    )
-
-                # Track token usage from AWS Bedrock response metadata
-                input_tokens = 0
-                output_tokens = 0
-
-                if hasattr(result, "response_metadata"):
-                    usage = result.response_metadata.get("usage", {})
-                    input_tokens = usage.get("input_tokens", 0)
-                    output_tokens = usage.get("output_tokens", 0)
-
-                # Fallback to estimation if actual counts unavailable
-                if input_tokens == 0:
-                    input_tokens = self._estimate_tokens(batch_context)
-                if output_tokens == 0:
-                    output_tokens = self._estimate_tokens(str(result.model_dump_json()))
-
-                self._track_tokens(input_tokens, output_tokens)
-
-                return result
-
-            except ValidationError as e:
-                # Output parsing/validation failed
-                last_error = e
-
-                if self.enable_output_fixing and attempt < max_retries:
-                    # Try again - LangChain structured output will retry
-                    time.sleep(1)
-                    continue
-
-                raise
-
-            except ClientError as e:
-                error_code = e.response.get("Error", {}).get("Code", "")
-                last_error = e
-
-                # Check if it's a throttling error (rate limiter handles most cases,
-                # but we still need manual retry for edge cases)
-                if error_code in ["ThrottlingException", "TooManyRequestsException"]:
-                    if attempt < max_retries:
-                        # Exponential backoff: 2^attempt seconds, capped at 60s
-                        wait_time = min(2**attempt, 60)
-                        time.sleep(wait_time)
-                        continue
-
-                # For other errors, raise immediately
-                raise
-
-        # If we exhausted all retries, last_error must be set
-        # (loop only exits early on success via return)
-        if last_error is None:
-            raise RuntimeError("Retry loop exited without error or success")
-        raise last_error
+        retry_config = RetryConfig(max_retries=max_retries, base_wait=1.0)
+        return self._execute_with_retry(chain_input, retry_config, batch_context)
 
     def get_model_display_name(self) -> str:
         """Get human-readable model name."""

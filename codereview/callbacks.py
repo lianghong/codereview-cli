@@ -5,13 +5,13 @@ from uuid import UUID
 
 from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.outputs import LLMResult
-
-# Re-export BaseCallbackHandler for convenience
-__all__ = ["BaseCallbackHandler", "StreamingCallbackHandler", "ProgressCallbackHandler"]
 from rich.console import Console
 from rich.live import Live
 from rich.panel import Panel
 from rich.text import Text
+
+# Re-export BaseCallbackHandler for convenience
+__all__ = ["BaseCallbackHandler", "StreamingCallbackHandler", "ProgressCallbackHandler"]
 
 
 class StreamingCallbackHandler(BaseCallbackHandler):
@@ -37,7 +37,7 @@ class StreamingCallbackHandler(BaseCallbackHandler):
         """
         self.console = console or Console()
         self.verbose = verbose
-        self._current_text = ""
+        self._current_parts: list[str] = []
         self._live: Live | None = None
         self._token_count = 0
 
@@ -85,7 +85,7 @@ class StreamingCallbackHandler(BaseCallbackHandler):
         if not self.verbose:
             return None
 
-        self._current_text = ""
+        self._current_parts = []
         self._token_count = 0
         try:
             self._live = Live(
@@ -111,11 +111,11 @@ class StreamingCallbackHandler(BaseCallbackHandler):
         if not self.verbose or not self._live:
             return
 
-        self._current_text += token
+        self._current_parts.append(token)
         self._token_count += 1
 
         # Update display with current text (truncated for readability)
-        display_text = self._current_text
+        display_text = "".join(self._current_parts)
         if len(display_text) > 500:
             display_text = "..." + display_text[-500:]
 

@@ -95,6 +95,12 @@ codereview ./src --model sonnet
 
 # Fast review with Haiku (large codebase)
 codereview ./monorepo --model haiku --max-files 1000
+
+# Gemini 3 Pro - Large context, strong reasoning (Google GenAI)
+codereview ./src --model gemini-3-pro
+
+# Gemini 3 Flash - Fast and cost-efficient (Google GenAI)
+codereview ./src --model gemini-3-flash
 ```
 
 **Output with Model Information**:
@@ -185,7 +191,9 @@ codereview ./src \
 
 **Cost Comparison**:
 - Opus (100 files): ~$1.50
+- Gemini 3 Pro (100 files): ~$0.50
 - Sonnet (100 files): ~$0.30
+- Gemini 3 Flash (100 files): ~$0.10
 - Haiku (500 files): ~$0.20
 
 ### Example 10: Region-Specific Configuration
@@ -771,6 +779,7 @@ diff before.md after.md
 
 1. **Choose Cost-Effective Models**:
    - **Haiku** for CI/CD quality gates (fastest, cheapest)
+   - **Gemini 3 Flash** for large-context reviews (1M context, low cost)
    - **Sonnet** for PR reviews (balanced)
    - **Opus** for production releases only (highest quality)
 

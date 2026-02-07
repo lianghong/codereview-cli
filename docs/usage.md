@@ -55,6 +55,9 @@ Comprehensive guide for using the Code Review CLI tool effectively.
 **For NVIDIA NIM (optional, free tier):**
 - [ ] `NVIDIA_API_KEY` environment variable set (get from build.nvidia.com)
 
+**For Google Generative AI (optional):**
+- [ ] `GOOGLE_API_KEY` environment variable set (get from aistudio.google.com/apikey)
+
 ## Typical Workflows
 
 ### Workflow 1: Pre-Commit Review
@@ -364,6 +367,16 @@ codereview ./src --model gpt
 codereview ./src --model devstral
 ```
 
+**Gemini 3 Pro** - Large context, strong reasoning (Google GenAI):
+```bash
+codereview ./src --model gemini-3-pro
+```
+
+**Gemini 3 Flash** - Fast and cost-efficient (Google GenAI):
+```bash
+codereview ./src --model gemini-3-flash
+```
+
 **DeepSeek-R1** - Reasoning model (AWS Bedrock):
 ```bash
 codereview ./src --model deepseek-r1-bedrock
@@ -381,6 +394,10 @@ Be aware of costs and choose models accordingly:
 
 **Azure OpenAI:**
 - **GPT-5.2 Codex**: Code-specialized ($1.75/M input, $14/M output)
+
+**Google Generative AI:**
+- **Gemini 3 Pro**: Flagship model ($2/M input, $12/M output)
+- **Gemini 3 Flash**: Cost-efficient ($0.50/M input, $3/M output)
 
 **NVIDIA NIM (Free Tier):**
 - **Devstral 2, MiniMax M2.1, DeepSeek V3.2, Qwen3 Coder, GLM 4.7, Kimi K2.5**: Currently free
@@ -508,6 +525,10 @@ codereview ./src --model minimax-m2.1       # MiniMax M2.1 (thinking mode)
 codereview ./src --model deepseek-v3.2-nvidia # DeepSeek V3.2
 codereview ./src --model glm47              # GLM 4.7
 codereview ./src --model kimi-k2.5          # Kimi K2.5 (256K context)
+
+# Google Generative AI
+codereview ./src --model gemini-3-pro       # Gemini 3 Pro (1M context)
+codereview ./src --model gemini-3-flash     # Gemini 3 Flash (fast, cheap)
 ```
 
 **When to use each model:**
@@ -523,6 +544,8 @@ codereview ./src --model kimi-k2.5          # Kimi K2.5 (256K context)
 | **MiniMax M2.1** | NVIDIA NIM | Free tier, thinking mode, 200K context | Free* |
 | **GLM 4.7** | NVIDIA NIM | Free tier, thinking mode | Free* |
 | **Kimi K2.5** | NVIDIA NIM | Free tier, 256K context | Free* |
+| **Gemini 3 Pro** | Google GenAI | Flagship reasoning, 1M context | $2/M input, $12/M output |
+| **Gemini 3 Flash** | Google GenAI | Fast and cheap, 1M context | $0.50/M input, $3/M output |
 
 *NVIDIA NIM models are currently in free preview tier.
 
@@ -661,6 +684,7 @@ For projects with 1000+ files:
 | 100 files, daily review | Sonnet 4.5 | AWS Bedrock | $0.10-$0.40 |
 | 1000 files, bulk scan | Haiku 4.5 | AWS Bedrock | $0.10-$0.50 |
 | Development/testing | Devstral 2 | NVIDIA NIM | Free |
+| Large context (1M) | Gemini 3 Flash | Google GenAI | $0.50-$3.00/M |
 | Large context needed | Kimi K2.5 | NVIDIA NIM | Free |
 
 *Actual costs depend on file size and complexity
@@ -828,6 +852,9 @@ If you encounter issues:
 
    # NVIDIA NIM - check API key
    echo $NVIDIA_API_KEY
+
+   # Google GenAI - check API key
+   echo $GOOGLE_API_KEY
    ```
 
 4. **Test with small directory**:

@@ -188,7 +188,6 @@ class TestFullWorkflow:
             patch("codereview.cli.CodeAnalyzer") as mock_analyzer_class,
             patch("codereview.cli.ProviderFactory") as mock_factory_class,
         ):
-
             # Setup factory mock
             mock_factory = Mock()
             mock_factory.get_model_display_name.return_value = "Claude Opus 4.5"
@@ -227,7 +226,6 @@ class TestFullWorkflow:
             patch("codereview.cli.CodeAnalyzer") as mock_analyzer_class,
             patch("codereview.cli.ProviderFactory") as mock_factory_class,
         ):
-
             # Setup factory mock
             mock_factory = Mock()
             mock_factory.get_model_display_name.return_value = "Claude Opus 4.5"
@@ -267,7 +265,6 @@ class TestFullWorkflow:
             patch("codereview.cli.CodeAnalyzer") as mock_analyzer_class,
             patch("codereview.cli.ProviderFactory") as mock_factory_class,
         ):
-
             # Setup factory mock
             mock_factory = Mock()
             mock_factory.get_model_display_name.return_value = "Claude Opus 4.5"
@@ -302,7 +299,6 @@ class TestFullWorkflow:
             patch("codereview.cli.CodeAnalyzer") as mock_analyzer_class,
             patch("codereview.cli.ProviderFactory") as mock_factory_class,
         ):
-
             # Setup factory mock
             mock_factory = Mock()
             mock_factory.get_model_display_name.return_value = "Claude Opus 4.5"
@@ -337,7 +333,6 @@ class TestFullWorkflow:
             patch("codereview.cli.CodeAnalyzer") as mock_analyzer_class,
             patch("codereview.cli.ProviderFactory") as mock_factory_class,
         ):
-
             # Setup factory mock
             mock_factory = Mock()
             mock_factory.get_model_display_name.return_value = "Claude Opus 4.5"
@@ -400,7 +395,6 @@ class TestWorkflowWithFixtures:
             patch("codereview.cli.CodeAnalyzer") as mock_analyzer_class,
             patch("codereview.cli.ProviderFactory") as mock_factory_class,
         ):
-
             # Setup factory mock
             mock_factory = Mock()
             mock_factory.get_model_display_name.return_value = "Claude Opus 4.5"
@@ -437,7 +431,6 @@ class TestErrorHandlingIntegration:
             runner.isolated_filesystem(),
             patch("codereview.cli.ProviderFactory") as mock_factory_class,
         ):
-
             # Setup factory mock
             mock_factory = Mock()
             mock_factory.get_model_display_name.return_value = "Claude Opus 4.5"
@@ -498,7 +491,6 @@ class TestOutputFormats:
             patch("codereview.cli.CodeAnalyzer") as mock_analyzer_class,
             patch("codereview.cli.ProviderFactory") as mock_factory_class,
         ):
-
             # Setup factory mock
             mock_factory = Mock()
             mock_factory.get_model_display_name.return_value = "Claude Opus 4.5"
@@ -569,7 +561,6 @@ class TestBatchProcessing:
             patch("codereview.cli.CodeAnalyzer") as mock_analyzer_class,
             patch("codereview.cli.ProviderFactory") as mock_factory_class,
         ):
-
             # Setup factory mock
             mock_factory = Mock()
             mock_factory.get_model_display_name.return_value = "Claude Opus 4.5"
@@ -642,7 +633,6 @@ class TestBatchProcessing:
             patch("codereview.cli.CodeAnalyzer") as mock_analyzer_class,
             patch("codereview.cli.ProviderFactory") as mock_factory_class,
         ):
-
             # Setup factory mock
             mock_factory = Mock()
             mock_factory.get_model_display_name.return_value = "Claude Opus 4.5"

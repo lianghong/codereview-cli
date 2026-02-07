@@ -2,16 +2,16 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.14+](https://img.shields.io/badge/python-3.14+-blue.svg)](https://www.python.org/downloads/)
-[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+[![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 
-> AI-powered code review tool with multiple LLM providers (AWS Bedrock, Azure OpenAI, NVIDIA NIM)
+> AI-powered code review tool with multiple LLM providers (AWS Bedrock, Azure OpenAI, NVIDIA NIM, Google Generative AI)
 
-A LangChain-based CLI tool that provides comprehensive, intelligent code reviews for Python, Go, Shell Script, C++, Java, JavaScript, and TypeScript projects using Claude, GPT, Devstral, and other leading models through AWS Bedrock, Azure OpenAI, and NVIDIA NIM.
+A LangChain-based CLI tool that provides comprehensive, intelligent code reviews for Python, Go, Shell Script, C++, Java, JavaScript, and TypeScript projects using Claude, GPT, Gemini, Devstral, and other leading models through AWS Bedrock, Azure OpenAI, NVIDIA NIM, and Google Generative AI.
 
 ## Features
 
-- **Multi-Provider Support**: AWS Bedrock (Claude, Mistral, Minimax, Kimi, Qwen), Azure OpenAI (GPT), and NVIDIA NIM (Devstral, MiniMax M2.1, DeepSeek, GLM 4.7)
-- **AI-Powered Analysis**: Leverages Claude Opus 4.6, GPT-5.2 Codex, Devstral 2, and other leading models for deep code understanding
+- **Multi-Provider Support**: AWS Bedrock (Claude, Mistral, Minimax, Kimi, Qwen), Azure OpenAI (GPT), NVIDIA NIM (Devstral, MiniMax M2.1, DeepSeek, GLM 4.7), and Google GenAI (Gemini 3 Pro, Gemini 3 Flash)
+- **AI-Powered Analysis**: Leverages Claude Opus 4.6, GPT-5.2 Codex, Gemini 3 Pro, Devstral 2, and other leading models for deep code understanding
 - **Multi-Language Support**: Reviews Python, Go, Shell Script, C++, Java, JavaScript, and TypeScript codebases
 - **Smart Batching**: Automatically groups files for efficient token usage
 - **Structured Output**: Get categorized issues with severity levels and actionable suggestions
@@ -33,6 +33,7 @@ A LangChain-based CLI tool that provides comprehensive, intelligent code reviews
   - AWS account with Bedrock access (for Claude, Mistral, Minimax, Kimi, Qwen models)
   - Azure OpenAI resource with GPT model deployment (for GPT models)
   - NVIDIA API key from [build.nvidia.com](https://build.nvidia.com) (for Devstral, MiniMax M2.1, DeepSeek, free tier available)
+  - Google API key from [AI Studio](https://aistudio.google.com/apikey) (for Gemini 3 Pro, Gemini 3 Flash)
 
 ### Install with uv (recommended)
 
@@ -197,6 +198,32 @@ codereview /path/to/code --model kimi-k2.5
 
 **Note:** NVIDIA NIM models are currently in free tier. No charges apply during the preview period. Models with thinking mode enabled (MiniMax M2.1, DeepSeek, Qwen3, GLM 4.7) provide deeper reasoning for complex code analysis.
 
+## Google Generative AI Configuration (Alternative Provider)
+
+Google Generative AI provides access to Gemini 3 models with 1M token context windows.
+
+### 1. Get API Key
+
+1. Visit [Google AI Studio](https://aistudio.google.com/apikey)
+2. Sign in with your Google account
+3. Create an API key
+
+### 2. Set Environment Variable
+
+```bash
+export GOOGLE_API_KEY="your-api-key-here"
+```
+
+### 3. Use Gemini Models
+
+```bash
+# Gemini 3 Pro - Flagship reasoning model (1M context)
+codereview /path/to/code --model gemini-3-pro
+
+# Gemini 3 Flash - Fast and cost-efficient (1M context)
+codereview /path/to/code --model gemini-3-flash
+```
+
 ## Usage
 
 ### Basic Usage
@@ -236,6 +263,10 @@ codereview /path/to/code --model qwen-nvidia        # Qwen3 Coder 480B (thinking
 codereview /path/to/code --model glm47              # GLM 4.7 (thinking mode)
 codereview /path/to/code --model kimi-k2.5          # Kimi K2.5 (256K context)
 
+# Google Generative AI Models
+codereview /path/to/code --model gemini-3-pro       # Gemini 3 Pro (1M context)
+codereview /path/to/code --model gemini-3-flash     # Gemini 3 Flash (fast, cheap)
+
 # Short aliases work too
 codereview /path/to/code -m haiku
 codereview /path/to/code -m devstral
@@ -256,6 +287,8 @@ codereview /path/to/code -m devstral
 | Qwen3 Coder (NIM) | NVIDIA NIM | Ultra-large coding, thinking mode | Free* | Free* |
 | GLM 4.7 | NVIDIA NIM | 73.8% SWE-bench, thinking mode | Free* | Free* |
 | Kimi K2.5 | NVIDIA NIM | 256K context, instant/thinking modes | Free* | Free* |
+| Gemini 3 Pro | Google GenAI | Flagship reasoning, 1M context | $2.00 | $12.00 |
+| Gemini 3 Flash | Google GenAI | Fast and cheap, 1M context | $0.50 | $3.00 |
 | DeepSeek-R1 | AWS Bedrock | Reasoning model, 128K context | $1.35 | $5.40 |
 | Minimax M2 | AWS Bedrock | Cost-effective, good for testing | $0.30 | $1.20 |
 | Mistral Large 3 | AWS Bedrock | Open-source focused, multilingual | $2.00 | $6.00 |
@@ -418,11 +451,13 @@ JSON output includes the full `CodeReviewReport` structure for programmatic cons
 ```
 Error: AWS credentials not found
 Error: Azure OpenAI credentials not found
+Error: Google API key not configured
 ```
 
 **Solutions**:
 - **AWS**: Configure credentials using `aws configure` or set `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` environment variables
 - **Azure**: Set `AZURE_OPENAI_ENDPOINT` and `AZURE_OPENAI_API_KEY` environment variables
+- **Google**: Set `GOOGLE_API_KEY` environment variable (get from https://aistudio.google.com/apikey)
 
 ### Access Denied
 
@@ -535,13 +570,15 @@ codereview-cli/
 │       ├── factory.py        # Provider factory with auto-detection
 │       ├── bedrock.py        # AWS Bedrock provider implementation
 │       ├── azure_openai.py   # Azure OpenAI provider implementation
-│       └── nvidia.py         # NVIDIA NIM provider implementation
+│       ├── nvidia.py         # NVIDIA NIM provider implementation
+│       └── google_genai.py   # Google GenAI provider implementation
 ├── tests/
-│   ├── test_*.py             # Unit tests (261 tests)
+│   ├── test_*.py             # Unit tests (281 tests)
 │   └── fixtures/             # Test fixtures
 ├── docs/
 │   ├── usage.md              # Detailed usage guide
 │   ├── examples.md           # Example commands and workflows
+│   ├── static-analysis.md    # Static analysis tool reference
 │   └── MIGRATION.md          # Migration guide
 ├── pyproject.toml            # Project configuration
 ├── LICENSE                   # MIT License
@@ -559,29 +596,29 @@ The codebase follows strict quality standards:
 - Pydantic V2 for data validation
 - Rich for terminal UI
 - Click for CLI interface
-- Comprehensive test coverage (261 tests)
+- Comprehensive test coverage (281 tests)
 
 **Static Analysis Tools:**
 ```bash
 # Install development tools
-uv pip install ruff mypy black isort vulture types-PyYAML
+uv pip install ruff mypy isort vulture types-PyYAML
 
 # Run all checks
 uv run ruff check codereview/ tests/
+uv run ruff format --check codereview/ tests/
 uv run mypy codereview/ --ignore-missing-imports
-uv run black --check codereview/ tests/
 uv run isort --check-only codereview/ tests/
 uv run vulture codereview/ --min-confidence 80
 
 # Auto-fix formatting
-uv run black codereview/ tests/
+uv run ruff format codereview/ tests/
 uv run isort codereview/ tests/
 uv run ruff check --fix codereview/ tests/
 ```
 
 **Quality Requirements:**
-- All code must pass: ruff (linting), mypy (type checking), black (formatting), isort (import sorting), vulture (dead code)
-- All tests must pass (261/261)
+- All code must pass: ruff (linting + formatting), mypy (type checking), isort (import sorting), vulture (dead code)
+- All tests must pass (281/281)
 - Type hints required for public APIs
 - No unused imports or variables
 - Provider implementations must include `get_pricing()` method
@@ -594,7 +631,7 @@ Contributions are welcome! Please:
 3. Add tests for new functionality
 4. **Ensure code quality checks pass:**
    - Run `uv run pytest tests/ -v` (all tests must pass)
-   - Run static analysis tools (ruff, mypy, black, isort, vulture)
+   - Run static analysis tools (ruff, mypy, isort, vulture)
    - See "Code Quality" section above for commands
 5. Follow existing code style and architecture patterns
 6. Update documentation if adding new features
@@ -613,7 +650,12 @@ For issues, questions, or contributions:
 
 ## Version History
 
-### v0.2.5 (Current)
+### v0.2.6 (Current)
+- **Google Generative AI Provider**: Added Google GenAI as 4th provider with Gemini 3 Pro Preview and Gemini 3 Flash Preview models (1M token context)
+- **Code Quality Fixes**: Fixed redundant retry logic, added severity guard in renderer, optimized ESLint file detection, removed dead code, improved logging format
+- **Test Suite**: Expanded to 281 tests with Google GenAI provider tests
+
+### v0.2.5
 - **Claude Opus 4.6**: Added Claude Opus 4.6 as new default model (128K max output). Previous Opus 4.5 available as `opus4.5`
 - **MiniMax M2.1 Model**: Added MiniMax M2.1 via NVIDIA NIM (200K context, 128K output, thinking mode)
 - **Export Error Handling**: Report export (JSON/Markdown) now handles file I/O errors gracefully instead of crashing with unhandled exceptions
@@ -679,7 +721,7 @@ For issues, questions, or contributions:
 ## Acknowledgments
 
 - Built with [LangChain](https://github.com/langchain-ai/langchain)
-- Powered by [Anthropic Claude](https://www.anthropic.com/), [OpenAI GPT](https://openai.com/), and [Mistral AI](https://mistral.ai/)
-- [AWS Bedrock](https://aws.amazon.com/bedrock/), [Azure OpenAI](https://azure.microsoft.com/en-us/products/ai-services/openai-service), and [NVIDIA NIM](https://build.nvidia.com/) for model hosting
+- Powered by [Anthropic Claude](https://www.anthropic.com/), [OpenAI GPT](https://openai.com/), [Google Gemini](https://ai.google.dev/), and [Mistral AI](https://mistral.ai/)
+- [AWS Bedrock](https://aws.amazon.com/bedrock/), [Azure OpenAI](https://azure.microsoft.com/en-us/products/ai-services/openai-service), [NVIDIA NIM](https://build.nvidia.com/), and [Google AI Studio](https://aistudio.google.com/) for model hosting
 - Rich library for beautiful terminal output
 - Static analysis tools: ruff, mypy, eslint, golangci-lint, shellcheck, bandit, gosec, and more

@@ -3,6 +3,7 @@
 import os
 import time
 import traceback
+from collections import Counter
 from pathlib import Path
 
 import click
@@ -34,6 +35,7 @@ from codereview.config import (
     MAX_FILE_SIZE_KB,
     MODEL_ALIASES,
 )
+from codereview.config.loader import ConfigLoader
 from codereview.models import CodeReviewReport, ReviewIssue, ReviewMetrics
 from codereview.providers.base import ModelProvider
 from codereview.providers.factory import ProviderFactory
@@ -88,6 +90,20 @@ class ModelChoice(click.ParamType):
 console = Console()
 
 
+def _create_console(quiet: bool = False) -> Console:
+    """Create a Rich console, optionally in quiet mode.
+
+    Args:
+        quiet: If True, suppress all Rich output via Console(quiet=True)
+
+    Returns:
+        Console instance
+    """
+    if quiet:
+        return Console(quiet=True)
+    return Console()
+
+
 def display_available_models() -> None:
     """Display all available models in a formatted table."""
     factory = ProviderFactory()
@@ -102,9 +118,9 @@ def display_available_models() -> None:
     table.add_column("Provider", style="yellow")
     table.add_column("Aliases", style="blue")
 
-    # Add rows grouped by provider
+    # Add rows grouped by provider, sorted by model ID within each provider
     for provider_name, models in sorted(models_by_provider.items()):
-        for model in models:
+        for model in sorted(models, key=lambda m: m["id"]):
             table.add_row(
                 model["id"],
                 model["name"],
@@ -132,6 +148,11 @@ def display_available_models() -> None:
         "azure_openai",
         "AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_KEY",
         "Azure Portal → OpenAI resource",
+    )
+    setup_table.add_row(
+        "google_genai",
+        "GOOGLE_API_KEY",
+        "https://aistudio.google.com/apikey",
     )
     setup_table.add_row(
         "nvidia",
@@ -261,6 +282,12 @@ def validate_provider_credentials(model_name: str, aws_profile: str | None) -> N
 )
 @click.option("--verbose", "-v", is_flag=True, help="Show detailed progress")
 @click.option(
+    "--quiet",
+    "-q",
+    is_flag=True,
+    help="Suppress all terminal output (for CI/CD). Only exit code and --output file.",
+)
+@click.option(
     "--stream",
     is_flag=True,
     help="Enable streaming output with real-time token display",
@@ -302,6 +329,7 @@ def main(
     temperature: float | None,
     dry_run: bool,
     verbose: bool,
+    quiet: bool,
     stream: bool,
     list_models: bool,
     validate: bool,
@@ -329,6 +357,14 @@ def main(
         click.echo(ctx.get_help())
         ctx.exit(0)
 
+    # Create console (quiet mode suppresses all Rich output)
+    con = _create_console(quiet=quiet)
+
+    # Quiet mode overrides verbose and stream
+    if quiet:
+        verbose = False
+        stream = False
+
     # Initialize callback handlers for cleanup in finally block
     streaming_handler: StreamingCallbackHandler | None = None
     progress_handler: ProgressCallbackHandler | None = None
@@ -338,14 +374,14 @@ def main(
         if aws_profile:
             os.environ["AWS_PROFILE"] = aws_profile
 
-        # Get model display name from provider
-        factory = ProviderFactory()
-        provider = factory.create_provider(model_name, temperature)
-        model_display_name = str(provider.get_model_display_name())
+        # Get model display name from config (avoids creating provider just for the name)
+        config_loader = ConfigLoader()
+        _, model_config = config_loader.resolve_model(model_name)
+        model_display_name = model_config.name
 
-        console.print("\n[bold cyan]🔍 Code Review Tool[/bold cyan]\n")
-        console.print(f"📂 Scanning directory: {directory}")
-        console.print(f"🤖 Model: {model_display_name}\n")
+        con.print("\n[bold cyan]🔍 Code Review Tool[/bold cyan]\n")
+        con.print(f"📂 Scanning directory: {directory}")
+        con.print(f"🤖 Model: {model_display_name}\n")
 
         # Handle README context
         readme_content: str | None = None
@@ -356,20 +392,20 @@ def main(
                 if result:
                     content, size = result
                     readme_content = content
-                    console.print(
-                        f"📄 Using README: [cyan]{readme}[/cyan] ({size/1024:.1f} KB)\n"
+                    con.print(
+                        f"📄 Using README: [cyan]{readme}[/cyan] ({size / 1024:.1f} KB)\n"
                     )
                 else:
-                    console.print(f"[yellow]⚠️  Could not read {readme}[/yellow]\n")
+                    con.print(f"[yellow]⚠️  Could not read {readme}[/yellow]\n")
             else:
                 # Auto-discover README
                 found_readme = find_readme(directory)
-                confirmed_readme = prompt_readme_confirmation(found_readme, console)
+                confirmed_readme = prompt_readme_confirmation(found_readme, con)
                 if confirmed_readme:
                     result = read_readme_content(confirmed_readme)
                     if result:
                         readme_content, _ = result
-                console.print()  # Blank line after README section
+                con.print()  # Blank line after README section
 
         # Start timing
         start_time = time.time()
@@ -378,7 +414,7 @@ def main(
         with Progress(
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
-            console=console,
+            console=con,
         ) as progress:
             task = progress.add_task("Scanning files...", total=None)
 
@@ -392,7 +428,7 @@ def main(
             files = scanner.scan()
 
             if max_files and len(files) > max_files:
-                console.print(
+                con.print(
                     f"[yellow]⚠️  Limiting analysis to {max_files} of {len(files)} files[/yellow]"
                 )
                 files = files[:max_files]
@@ -400,10 +436,10 @@ def main(
             progress.update(task, completed=True)
 
         if not files:
-            console.print("[yellow]⚠️  No files found to review[/yellow]")
+            con.print("[yellow]⚠️  No files found to review[/yellow]")
             return
 
-        console.print(f"✓ Found {len(files)} files to review")
+        con.print(f"✓ Found {len(files)} files to review")
 
         # Count total lines of code
         total_lines = 0
@@ -415,70 +451,70 @@ def main(
                 # Skip files that can't be read
                 pass
 
-        console.print(f"✓ Total lines of code: {total_lines:,}")
+        con.print(f"✓ Total lines of code: {total_lines:,}")
 
         # Report files skipped during scanning (e.g., too large)
         if scanner.skipped_files:
-            console.print(
+            con.print(
                 f"[yellow]⚠️  {len(scanner.skipped_files)} file(s) skipped during scan:[/yellow]"
             )
             for skipped_path, reason in scanner.skipped_files[:5]:
-                console.print(f"   • {skipped_path.name}: {reason}")
+                con.print(f"   • {skipped_path.name}: {reason}")
             if len(scanner.skipped_files) > 5:
-                console.print(f"   ... and {len(scanner.skipped_files) - 5} more")
-        console.print()
+                con.print(f"   ... and {len(scanner.skipped_files) - 5} more")
+        con.print()
 
         # Step 1.5: Run static analysis if requested
         static_results = None
         if static_analysis:
-            console.print("[cyan]Running static analysis tools...[/cyan]\n")
+            con.print("[cyan]Running static analysis tools...[/cyan]\n")
             analyzer_static = StaticAnalyzer(directory)
 
             if not analyzer_static.available_tools:
-                console.print(
+                con.print(
                     "[yellow]⚠️  No static analysis tools found. Install: pip install ruff mypy black isort[/yellow]\n"
                 )
             else:
-                console.print(
+                con.print(
                     f"[cyan]Available tools: {', '.join(analyzer_static.available_tools)}[/cyan]\n"
                 )
 
                 with Progress(
                     SpinnerColumn(),
                     TextColumn("[progress.description]{task.description}"),
-                    console=console,
+                    console=con,
                 ) as progress:
                     task = progress.add_task("Running static analysis...", total=None)
                     static_results = analyzer_static.run_all()
                     progress.update(task, completed=True)
 
-                StaticAnalysisRenderer(console).render(static_results)
+                StaticAnalysisRenderer(con).render(static_results)
 
         # Step 2: Create batches
         batcher = FileBatcher(max_files_per_batch=batch_size)
         batches = batcher.create_batches(files)
 
         try:
-            console.print(f"📦 Created {len(batches)} batches\n")
+            con.print(f"📦 Created {len(batches)} batches\n")
         except OSError:
             # Handle terminal I/O errors
             print(f"Created {len(batches)} batches")
 
         # Handle dry-run mode
         if dry_run:
-            _render_dry_run(
-                files, batches, model_name, model_display_name, provider, console
-            )
+            factory = ProviderFactory(config_loader=config_loader)
+            dry_run_provider = factory.create_provider(model_name, temperature)
+            _render_dry_run(files, batches, model_display_name, dry_run_provider, con)
             return
 
         # Step 3: Analyze batches
         # Set up callbacks for streaming/progress if requested
         callbacks: list[BaseCallbackHandler] | None = None
         if stream:
-            streaming_handler = StreamingCallbackHandler(console=console, verbose=True)
+            streaming_handler = StreamingCallbackHandler(console=con, verbose=True)
             callbacks = [streaming_handler]
         elif verbose:
-            progress_handler = ProgressCallbackHandler(console=console)
+            progress_handler = ProgressCallbackHandler(console=con)
             callbacks = [progress_handler]
 
         analyzer = CodeAnalyzer(
@@ -498,7 +534,7 @@ def main(
             BarColumn(),
             MofNCompleteColumn(),
             TimeElapsedColumn(),
-            console=console,
+            console=con,
             transient=False,
         ) as progress:
             task = progress.add_task("Analyzing...", total=len(batches))
@@ -520,7 +556,7 @@ def main(
                 )
 
                 if verbose:
-                    console.print(f"  Files: {', '.join(file_names)}")
+                    con.print(f"  Files: {', '.join(file_names)}")
 
                 try:
                     report = analyzer.analyze_batch(batch)
@@ -534,46 +570,44 @@ def main(
                     error_msg = e.response.get("Error", {}).get("Message", "")
 
                     if error_code == "AccessDeniedException":
-                        console.print(
+                        con.print(
                             f"\n[red]✗ AWS Access Denied: {escape(error_msg)}[/red]"
                         )
-                        console.print(
+                        con.print(
                             "[yellow]Check that you have access to AWS Bedrock Claude Opus 4.6[/yellow]"
                         )
                     elif error_code in [
                         "ThrottlingException",
                         "TooManyRequestsException",
                     ]:
-                        console.print(
-                            f"\n[red]✗ Rate limit exceeded on batch {i}[/red]"
-                        )
-                        console.print(
+                        con.print(f"\n[red]✗ Rate limit exceeded on batch {i}[/red]")
+                        con.print(
                             "[yellow]Consider reducing batch size or waiting before retrying[/yellow]"
                         )
                     else:
-                        console.print(
+                        con.print(
                             f"\n[red]✗ AWS Error on batch {i} ({escape(error_code)}): {escape(error_msg)}[/red]"
                         )
 
                     if verbose:
-                        console.print(traceback.format_exc())
+                        con.print(traceback.format_exc())
 
                 except (ValueError, KeyError) as e:
                     # Parse/validation errors from structured output
-                    console.print(
+                    con.print(
                         f"\n[red]✗ Parse error in batch {i}: {type(e).__name__}: {escape(str(e))}[/red]"
                     )
                     if verbose:
-                        console.print(traceback.format_exc())
+                        con.print(traceback.format_exc())
 
                 except (RuntimeError, OSError) as e:
                     # Recoverable errors - log and continue with other batches
-                    console.print(
+                    con.print(
                         f"\n[red]✗ Error analyzing batch {i}: "
                         f"{type(e).__name__}: {escape(str(e))}[/red]"
                     )
                     if verbose:
-                        console.print(traceback.format_exc())
+                        con.print(traceback.format_exc())
 
                 progress.update(task, advance=1)
 
@@ -582,15 +616,16 @@ def main(
         pricing = analyzer.provider.get_pricing()
 
         # Build metrics object
+        severity_counts = Counter(i.severity for i in all_issues)
         metrics = ReviewMetrics(
             files_analyzed=total_files,
             total_lines=total_lines,
             total_issues=len(all_issues),
-            critical=sum(1 for i in all_issues if i.severity == "Critical"),
-            high=sum(1 for i in all_issues if i.severity == "High"),
-            medium=sum(1 for i in all_issues if i.severity == "Medium"),
-            low=sum(1 for i in all_issues if i.severity == "Low"),
-            info=sum(1 for i in all_issues if i.severity == "Info"),
+            critical=severity_counts.get("Critical", 0),
+            high=severity_counts.get("High", 0),
+            medium=severity_counts.get("Medium", 0),
+            low=severity_counts.get("Low", 0),
+            info=severity_counts.get("Info", 0),
             input_tokens=analyzer.provider.total_input_tokens,
             output_tokens=analyzer.provider.total_output_tokens,
             total_tokens=analyzer.provider.total_input_tokens
@@ -640,10 +675,10 @@ def main(
         )
 
         # Display token usage and cost
-        console.print("\n[cyan]💰 Token Usage & Cost Estimate:[/cyan]")
-        console.print(f"   Input tokens:  {analyzer.provider.total_input_tokens:,}")
-        console.print(f"   Output tokens: {analyzer.provider.total_output_tokens:,}")
-        console.print(
+        con.print("\n[cyan]💰 Token Usage & Cost Estimate:[/cyan]")
+        con.print(f"   Input tokens:  {analyzer.provider.total_input_tokens:,}")
+        con.print(f"   Output tokens: {analyzer.provider.total_output_tokens:,}")
+        con.print(
             f"   Total tokens:  {analyzer.provider.total_input_tokens + analyzer.provider.total_output_tokens:,}"
         )
 
@@ -653,32 +688,33 @@ def main(
         input_cost = (analyzer.provider.total_input_tokens / 1_000_000) * input_price
         output_cost = (analyzer.provider.total_output_tokens / 1_000_000) * output_price
         total_cost = input_cost + output_cost
-        console.print(f"   [bold]Estimated cost: ${total_cost:.4f}[/bold]")
-        console.print()
+        con.print(f"   [bold]Estimated cost: ${total_cost:.4f}[/bold]")
+        con.print()
 
         # Warn if any files were skipped
         if analyzer.skipped_files:
-            console.print(
+            con.print(
                 f"[yellow]⚠️  Warning: {len(analyzer.skipped_files)} file(s) could not be read:[/yellow]"
             )
             for skipped_file, error in analyzer.skipped_files[:5]:  # Show first 5
-                console.print(f"   • {skipped_file}: {error}")
+                con.print(f"   • {skipped_file}: {error}")
             if len(analyzer.skipped_files) > 5:
-                console.print(f"   ... and {len(analyzer.skipped_files) - 5} more")
-            console.print()
+                con.print(f"   ... and {len(analyzer.skipped_files) - 5} more")
+            con.print()
 
         # Step 5: Render results (with severity filtering)
-        renderer = TerminalRenderer()
-        renderer.render(final_report, min_severity=severity)
+        if not quiet:
+            renderer = TerminalRenderer(console=con)
+            renderer.render(final_report, min_severity=severity)
 
         # Display total elapsed time
         elapsed_time = time.time() - start_time
         if elapsed_time >= 60:
             minutes = int(elapsed_time // 60)
             seconds = int(elapsed_time % 60)
-            console.print(f"[dim]⏱️  Completed in {minutes}m {seconds}s[/dim]\n")
+            con.print(f"[dim]⏱️  Completed in {minutes}m {seconds}s[/dim]\n")
         else:
-            console.print(f"[dim]⏱️  Completed in {elapsed_time:.1f}s[/dim]\n")
+            con.print(f"[dim]⏱️  Completed in {elapsed_time:.1f}s[/dim]\n")
 
         # Step 6: Export report if requested
         if output:
@@ -686,9 +722,7 @@ def main(
                 if output_format.lower() == "json":
                     # Export as JSON for programmatic consumption
                     output.write_text(final_report.model_dump_json(indent=2))
-                    console.print(
-                        f"\n[green]✓ JSON report exported to: {output}[/green]\n"
-                    )
+                    con.print(f"\n[green]✓ JSON report exported to: {output}[/green]\n")
                 else:
                     # Export as Markdown (default)
                     # Collect all skipped files for the report
@@ -707,54 +741,50 @@ def main(
                         output,
                         skipped_files=all_skipped_files if all_skipped_files else None,
                     )
-                    console.print(f"\n[green]✓ Report exported to: {output}[/green]\n")
+                    con.print(f"\n[green]✓ Report exported to: {output}[/green]\n")
             except OSError as e:
-                console.print(
-                    f"\n[red]✗ Failed to write report to {output}: {e}[/red]\n"
-                )
+                con.print(f"\n[red]✗ Failed to write report to {output}: {e}[/red]\n")
                 raise click.Abort()
 
     except NoCredentialsError:
-        console.print("\n[red]✗ AWS credentials not found[/red]\n")
-        console.print("[yellow]Please configure AWS credentials:[/yellow]")
-        console.print("  1. Run: aws configure")
-        console.print(
+        con.print("\n[red]✗ AWS credentials not found[/red]\n")
+        con.print("[yellow]Please configure AWS credentials:[/yellow]")
+        con.print("  1. Run: aws configure")
+        con.print(
             "  2. Or set environment variables: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY"
         )
-        console.print("  3. Or use --aws-profile flag\n")
+        con.print("  3. Or use --aws-profile flag\n")
         raise click.Abort()
 
     except ClientError as e:
         error_code = e.response.get("Error", {}).get("Code", "")
         error_msg = e.response.get("Error", {}).get("Message", "")
 
-        console.print(
+        con.print(
             f"\n[red]✗ AWS Error ({escape(error_code)}): {escape(error_msg)}[/red]\n"
         )
 
         if error_code == "AccessDeniedException":
-            console.print("[yellow]Troubleshooting:[/yellow]")
-            console.print("  1. Ensure you have access to AWS Bedrock in your region")
-            console.print("  2. Check that Claude Opus 4.6 model access is enabled")
-            console.print(
+            con.print("[yellow]Troubleshooting:[/yellow]")
+            con.print("  1. Ensure you have access to AWS Bedrock in your region")
+            con.print("  2. Check that Claude Opus 4.6 model access is enabled")
+            con.print(
                 "  3. Verify your IAM permissions include 'bedrock:InvokeModel'\n"
             )
         elif error_code == "ResourceNotFoundException":
-            console.print(
+            con.print(
                 "[yellow]The requested model may not be available in your AWS region.[/yellow]"
             )
-            console.print(
-                "Check that the model is enabled in your AWS Bedrock settings.\n"
-            )
+            con.print("Check that the model is enabled in your AWS Bedrock settings.\n")
 
         if verbose:
-            console.print(traceback.format_exc())
+            con.print(traceback.format_exc())
         raise click.Abort()
 
     except Exception as e:
-        console.print(f"\n[red]✗ Error: {escape(str(e))}[/red]\n")
+        con.print(f"\n[red]✗ Error: {escape(str(e))}[/red]\n")
         if verbose:
-            console.print(traceback.format_exc())
+            con.print(traceback.format_exc())
         raise click.Abort()
 
     finally:
@@ -796,7 +826,6 @@ def _generate_recommendations(issues: list[ReviewIssue]) -> list[str]:
 def _render_dry_run(
     files: list[Path],
     batches: list[FileBatch],
-    _model_name: str,
     model_display_name: str,
     provider: ModelProvider,
     console: Console,
@@ -806,7 +835,6 @@ def _render_dry_run(
     Args:
         files: List of file paths to analyze
         batches: List of FileBatch objects
-        _model_name: Model name (unused, kept for call-site compatibility)
         model_display_name: Human-readable model name for display
         provider: Model provider instance
         console: Rich console for output

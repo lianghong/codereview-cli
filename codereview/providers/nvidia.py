@@ -2,7 +2,6 @@
 
 import contextlib
 import os
-import time
 import warnings
 from collections.abc import Generator
 from typing import Any
@@ -12,13 +11,13 @@ from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.rate_limiters import InMemoryRateLimiter
 from langchain_nvidia_ai_endpoints import ChatNVIDIA
-from pydantic import SecretStr, ValidationError
+from pydantic import SecretStr
 
 # Import system prompt from config
 from codereview.config import SYSTEM_PROMPT
 from codereview.config.models import ModelConfig, NVIDIAConfig
 from codereview.models import CodeReviewReport
-from codereview.providers.base import ModelProvider, ValidationResult
+from codereview.providers.base import ModelProvider, RetryConfig, ValidationResult
 from codereview.providers.mixins import TokenTrackingMixin
 
 # Shared prompt template for consistent formatting
@@ -183,6 +182,42 @@ class NVIDIAProvider(TokenTrackingMixin, ModelProvider):
         """Create LangChain chain with prompt template."""
         return BATCH_PROMPT_TEMPLATE | self.model
 
+    def _is_retryable_error(self, error: Exception) -> bool:
+        """Check if error is a retryable NVIDIA gateway/rate limit error."""
+        if isinstance(error, httpx.HTTPStatusError):
+            return error.response.status_code in {429, 502, 503, 504}
+        return False
+
+    def _calculate_backoff(
+        self, error: Exception, attempt: int, config: RetryConfig
+    ) -> float:
+        """Calculate adaptive backoff: longer for 504 gateway timeouts."""
+        if isinstance(error, httpx.HTTPStatusError):
+            # For gateway timeouts (504), use longer initial wait (4, 8, 16, 32...)
+            # For rate limits (429) and other gateway errors, use (2, 4, 8, 16...)
+            base = 4.0 if error.response.status_code == 504 else 2.0
+            return min(base * (2**attempt), config.max_wait)
+        return min(config.base_wait * (2**attempt), config.max_wait)
+
+    def _extract_token_usage(self, result: Any) -> tuple[int, int]:
+        """Extract token usage from NVIDIA response metadata (dual format fallback)."""
+        if hasattr(result, "response_metadata"):
+            # NVIDIA may use different metadata formats
+            usage = result.response_metadata.get(
+                "usage", {}
+            ) or result.response_metadata.get("token_usage", {})
+            input_tokens = usage.get("prompt_tokens", 0) or usage.get("input_tokens", 0)
+            output_tokens = usage.get("completion_tokens", 0) or usage.get(
+                "output_tokens", 0
+            )
+            return (input_tokens, output_tokens)
+        return (0, 0)
+
+    def _invoke_chain(self, chain_input: dict[str, str]) -> Any:
+        """Invoke chain with NVIDIA warning suppression."""
+        with suppress_nvidia_warnings():
+            return self.chain.invoke(chain_input)
+
     def analyze_batch(
         self,
         batch_number: int,
@@ -207,91 +242,18 @@ class NVIDIAProvider(TokenTrackingMixin, ModelProvider):
         # Use configured max_retries if not overridden
         if max_retries is None:
             max_retries = self.provider_config.max_retries
+
         batch_context = self._prepare_batch_context(
             batch_number, total_batches, files_content, self.project_context
         )
 
-        # Use chain with prompt template for cleaner invocation
         chain_input = {
             "system_prompt": SYSTEM_PROMPT,
             "batch_context": batch_context,
         }
 
-        last_error: httpx.HTTPStatusError | ValidationError | None = None
-        for attempt in range(max_retries + 1):
-            try:
-                # Suppress warnings during invocation
-                with suppress_nvidia_warnings():
-                    result = self.chain.invoke(chain_input)
-
-                # Handle None result (structured output parsing failed)
-                if result is None:
-                    raise ValidationError.from_exception_data(
-                        "Model returned None - structured output parsing failed",
-                        [],
-                    )
-
-                # Track token usage from NVIDIA response metadata
-                input_tokens = 0
-                output_tokens = 0
-
-                if hasattr(result, "response_metadata"):
-                    # NVIDIA may use different metadata formats
-                    usage = result.response_metadata.get(
-                        "usage", {}
-                    ) or result.response_metadata.get("token_usage", {})
-                    input_tokens = usage.get("prompt_tokens", 0) or usage.get(
-                        "input_tokens", 0
-                    )
-                    output_tokens = usage.get("completion_tokens", 0) or usage.get(
-                        "output_tokens", 0
-                    )
-
-                # Fallback to estimation if actual counts unavailable
-                if input_tokens == 0:
-                    input_tokens = self._estimate_tokens(batch_context)
-                if output_tokens == 0:
-                    output_tokens = self._estimate_tokens(str(result.model_dump_json()))
-
-                self._track_tokens(input_tokens, output_tokens)
-
-                return result
-
-            except ValidationError as e:
-                # Output parsing/validation failed
-                last_error = e
-
-                if self.enable_output_fixing and attempt < max_retries:
-                    # Try again - LangChain structured output will retry
-                    time.sleep(1)
-                    continue
-
-                raise
-
-            except httpx.HTTPStatusError as e:
-                last_error = e
-                status_code = e.response.status_code
-
-                # Retryable errors: 429 (rate limit), 502/503/504 (gateway errors)
-                # These are often transient and may succeed on retry
-                retryable_codes = {429, 502, 503, 504}
-                if status_code in retryable_codes:
-                    if attempt < max_retries:
-                        # Exponential backoff: base^attempt seconds, capped at 60s
-                        # For gateway timeouts (504), use longer initial wait
-                        base_wait = 4 if status_code == 504 else 2
-                        wait_time = min(base_wait**attempt, 60)
-                        time.sleep(wait_time)
-                        continue
-
-                # For other errors or all retries exhausted, raise
-                raise
-
-        # If we exhausted all retries, last_error must be set
-        # (loop only exits early on success via return)
-        if last_error is None:
-            raise RuntimeError("Retry loop exited without error or success")
-        raise last_error
+        retry_config = RetryConfig(max_retries=max_retries, base_wait=2.0)
+        return self._execute_with_retry(chain_input, retry_config, batch_context)
 
     def get_model_display_name(self) -> str:
         """Get human-readable model name."""

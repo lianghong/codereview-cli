@@ -1,5 +1,6 @@
 """Static analysis integration for code quality tools across multiple languages."""
 
+import json
 import logging
 import subprocess  # nosec B404 - required for running static analysis tools
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -63,42 +64,47 @@ GO_INDICATORS = [
 ]
 
 SHELL_INDICATORS = [
-    "sc",
+    # ShellCheck SC codes (SC1000-SC9999)
+    "sc1",
+    "sc2",
+    "sc3",
+    "sc4",
+    # bashate E codes (E001-E099) - listed as literal prefixes since
+    # indicator matching uses substring containment, not regex
+    "e001",
+    "e002",
+    "e003",
+    "e004",
+    "e005",
+    "e006",
+    "e010",
+    "e011",
+    "e012",
+    "e040",
+    "e041",
+    "e042",
+    "e043",
+    "e044",
     "note",
-    "info",
-    "e0",
-    "e00",
-]  # ShellCheck SC codes, bashate E codes
+]
 
-CPP_INDICATORS = ["style", "performance", "portability", "cppcheck"]
+CPP_INDICATORS = ["[performance]", "[portability]", "[style]", "cppcheck"]
 
 JAVA_INDICATORS = ["audit", "violation", "checkstyle"]
 
 JS_TS_INDICATORS = [
     "eslint",
     "prettier",
-    "ts",
     "problems found",
     # npm audit indicators
     "vulnerabilities",
-    "critical",
-    "high",
-    "moderate",
-    "low",
 ]
 
 PYTHON_INDICATORS = [
     # Bandit security indicators (B1xx-B7xx)
-    "severity",
-    "confidence",
-    "issue",
-    "b1",
-    "b2",
-    "b3",
-    "b4",
-    "b5",
-    "b6",
-    "b7",
+    ">> issue:",
+    "severity:",
+    "confidence:",
     "test_id",
 ]
 
@@ -145,6 +151,13 @@ class StaticAnalyzer:
             "description": "Fast Python linter",
             "command": ["ruff", "check"],
             "language": "python",
+        },
+        "ruff-format": {
+            "name": "Ruff Format",
+            "description": "Fast Python code formatter",
+            "command": ["ruff", "format", "--check", "--diff"],
+            "language": "python",
+            "version_command": ["ruff", "version"],
         },
         "mypy": {
             "name": "Mypy",
@@ -316,17 +329,17 @@ class StaticAnalyzer:
             True if file is safe to use, False otherwise
         """
         try:
-            # Resolve both paths to handle symlinks
+            # Resolve file path to handle symlinks
             resolved_file = file_path.resolve()
-            resolved_dir = self.directory.resolve()
 
             # Check if file is within directory (prevents path traversal)
-            resolved_file.relative_to(resolved_dir)
+            # self.directory is already resolved in __init__
+            resolved_file.relative_to(self.directory)
             return True
         except ValueError:
             # relative_to raises ValueError if path is not relative to directory
             logging.warning(
-                f"File path {file_path} is outside analysis directory, skipping"
+                "File path %s is outside analysis directory, skipping", file_path
             )
             return False
 
@@ -341,6 +354,24 @@ class StaticAnalyzer:
             Filtered list containing only safe paths
         """
         return [f for f in files if self._validate_file_path(f)]
+
+    def _safe_rglob(self, pattern: str) -> list[Path]:
+        """Recursively glob for files, handling permission errors gracefully.
+
+        Wraps Path.rglob() to catch OSError (including PermissionError) that
+        can occur when encountering directories with restricted permissions.
+
+        Args:
+            pattern: Glob pattern (e.g., "*.go", "*.py")
+
+        Returns:
+            List of matching paths, or empty list if scanning fails
+        """
+        try:
+            return list(self.directory.rglob(pattern))
+        except OSError as e:
+            logging.warning("Error scanning for %s files: %s", pattern, e)
+            return []
 
     def _check_available_tools(self) -> list[str]:
         """Check which static analysis tools are installed and available.
@@ -425,7 +456,7 @@ class StaticAnalyzer:
             # go vet: Uses Go's "./..." pattern to recursively check all packages
             # in the current module. Must run from within the Go module directory.
             # Check if there are any Go files first
-            go_files = list(self.directory.rglob("*.go"))
+            go_files = self._safe_rglob("*.go")
             if not go_files:
                 return StaticAnalysisResult(
                     tool=tool_name,
@@ -440,7 +471,7 @@ class StaticAnalyzer:
             # golangci-lint: Automatically finds Go files when run in a Go module.
             # No path argument needed; it uses the current working directory.
             # Check if there are any Go files first
-            go_files = list(self.directory.rglob("*.go"))
+            go_files = self._safe_rglob("*.go")
             if not go_files:
                 return StaticAnalysisResult(
                     tool=tool_name,
@@ -453,7 +484,7 @@ class StaticAnalyzer:
             cwd = self.directory
         elif tool_name == "gosec":
             # gosec: Go security scanner, scans recursively from directory
-            go_files = list(self.directory.rglob("*.go"))
+            go_files = self._safe_rglob("*.go")
             if not go_files:
                 return StaticAnalysisResult(
                     tool=tool_name,
@@ -467,9 +498,7 @@ class StaticAnalyzer:
         elif tool_name in ("shellcheck", "bashate"):
             # shellcheck/bashate: Do NOT support directory scanning.
             # We must explicitly pass each shell script file as an argument.
-            shell_files = list(self.directory.rglob("*.sh")) + list(
-                self.directory.rglob("*.bash")
-            )
+            shell_files = self._safe_rglob("*.sh") + self._safe_rglob("*.bash")
             # Validate files are within analysis directory (security measure)
             shell_files = self._filter_safe_files(shell_files)
             if not shell_files:
@@ -491,11 +520,11 @@ class StaticAnalyzer:
         elif tool_name in ("clang-tidy", "clang-format"):
             # C++ tools that need explicit file list
             cpp_files = (
-                list(self.directory.rglob("*.cpp"))
-                + list(self.directory.rglob("*.cc"))
-                + list(self.directory.rglob("*.cxx"))
-                + list(self.directory.rglob("*.h"))
-                + list(self.directory.rglob("*.hpp"))
+                self._safe_rglob("*.cpp")
+                + self._safe_rglob("*.cc")
+                + self._safe_rglob("*.cxx")
+                + self._safe_rglob("*.h")
+                + self._safe_rglob("*.hpp")
             )
             # Validate files are within analysis directory (security measure)
             cpp_files = self._filter_safe_files(cpp_files)
@@ -521,7 +550,7 @@ class StaticAnalyzer:
             cwd = self.directory
         elif tool_name == "checkstyle":
             # Checkstyle needs explicit Java file list
-            java_files = list(self.directory.rglob("*.java"))
+            java_files = self._safe_rglob("*.java")
             # Validate files are within analysis directory (security measure)
             java_files = self._filter_safe_files(java_files)
             if not java_files:
@@ -542,14 +571,16 @@ class StaticAnalyzer:
             cwd = self.directory
         elif tool_name == "eslint":
             # ESLint accepts directory, looks for JS/TS files
-            # We collect files to check if any exist, but ESLint uses directory path
-            js_files = (
-                list(self.directory.rglob("*.js"))
-                + list(self.directory.rglob("*.jsx"))
-                + list(self.directory.rglob("*.ts"))
-                + list(self.directory.rglob("*.tsx"))
-            )
-            if not js_files:
+            # Use next() on generator to stop at first match instead of collecting all files
+            has_js_files = False
+            for ext in ("*.js", "*.jsx", "*.ts", "*.tsx"):
+                try:
+                    next(self.directory.rglob(ext))
+                    has_js_files = True
+                    break
+                except StopIteration, OSError:
+                    continue
+            if not has_js_files:
                 return StaticAnalysisResult(
                     tool=tool_name,
                     passed=True,
@@ -557,24 +588,19 @@ class StaticAnalyzer:
                     output="No JavaScript/TypeScript files found",
                     errors=[],
                 )
-            if len(js_files) > MAX_FILES_PER_TOOL:
-                logging.warning(
-                    f"eslint: Found {len(js_files)} JS/TS files, "
-                    "ESLint may take longer on large codebases"
-                )
             command = base_command + [dir_path]
             cwd = self.directory
         elif tool_name == "prettier":
             # Prettier needs files to format - check for JS/TS/CSS/HTML files
             prettier_files = (
-                list(self.directory.rglob("*.js"))
-                + list(self.directory.rglob("*.jsx"))
-                + list(self.directory.rglob("*.ts"))
-                + list(self.directory.rglob("*.tsx"))
-                + list(self.directory.rglob("*.css"))
-                + list(self.directory.rglob("*.html"))
-                + list(self.directory.rglob("*.json"))
-                + list(self.directory.rglob("*.md"))
+                self._safe_rglob("*.js")
+                + self._safe_rglob("*.jsx")
+                + self._safe_rglob("*.ts")
+                + self._safe_rglob("*.tsx")
+                + self._safe_rglob("*.css")
+                + self._safe_rglob("*.html")
+                + self._safe_rglob("*.json")
+                + self._safe_rglob("*.md")
             )
             # Validate files are within analysis directory (security measure)
             prettier_files = self._filter_safe_files(prettier_files)
@@ -600,9 +626,7 @@ class StaticAnalyzer:
             tsconfig_path = self.directory / "tsconfig.json"
             if not tsconfig_path.exists():
                 # No tsconfig.json - check for TypeScript files
-                ts_files = list(self.directory.rglob("*.ts")) + list(
-                    self.directory.rglob("*.tsx")
-                )
+                ts_files = self._safe_rglob("*.ts") + self._safe_rglob("*.tsx")
                 # Filter out .d.ts declaration files
                 ts_files = [f for f in ts_files if not str(f).endswith(".d.ts")]
                 # Validate files are within analysis directory (security measure)
@@ -643,7 +667,7 @@ class StaticAnalyzer:
             cwd = self.directory
         elif tool_name == "gofmt":
             # gofmt accepts a directory path but needs Go files to exist
-            go_files = list(self.directory.rglob("*.go"))
+            go_files = self._safe_rglob("*.go")
             if not go_files:
                 return StaticAnalysisResult(
                     tool=tool_name,
@@ -657,7 +681,7 @@ class StaticAnalyzer:
         elif tool_name == "bandit":
             # bandit: Python security scanner, accepts directory path
             # Check for Python files first
-            py_files = list(self.directory.rglob("*.py"))
+            py_files = self._safe_rglob("*.py")
             if not py_files:
                 return StaticAnalysisResult(
                     tool=tool_name,
@@ -707,6 +731,10 @@ class StaticAnalyzer:
                             if line.strip()
                         ]
                     )
+                elif tool_name == "npm-audit":
+                    # npm audit --json outputs structured JSON; parse it
+                    # to get accurate vulnerability counts
+                    issues_count = self._count_npm_audit_issues(output)
                 else:
                     # Count error/warning lines using base + language-specific indicators
                     indicators = list(BASE_INDICATORS)
@@ -741,6 +769,33 @@ class StaticAnalyzer:
                 output="",
                 errors=[f"Error running tool: {str(e)}"],
             )
+
+    @staticmethod
+    def _count_npm_audit_issues(output: str) -> int:
+        """Parse npm audit JSON output and return the total vulnerability count.
+
+        Args:
+            output: Raw stdout+stderr from `npm audit --json`
+
+        Returns:
+            Total number of vulnerabilities found
+        """
+        try:
+            data = json.loads(output)
+            # npm audit v2+ format: {"vulnerabilities": {...}} with per-package entries
+            if "vulnerabilities" in data and isinstance(data["vulnerabilities"], dict):
+                return len(data["vulnerabilities"])
+            # npm audit v1 format: {"metadata": {"vulnerabilities": {"low": N, ...}}}
+            metadata = data.get("metadata", {})
+            vuln_counts = metadata.get("vulnerabilities", {})
+            if isinstance(vuln_counts, dict):
+                return sum(
+                    v for v in vuln_counts.values() if isinstance(v, int) and v > 0
+                )
+        except json.JSONDecodeError, TypeError, AttributeError:
+            # Fallback: count non-empty lines as a rough estimate
+            return len([line for line in output.split("\n") if line.strip()])
+        return 0
 
     def run_all(self, parallel: bool = True) -> dict[str, StaticAnalysisResult]:
         """

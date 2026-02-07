@@ -22,6 +22,7 @@ from pydantic import ValidationError
 from codereview.config.models import (
     AzureOpenAIConfig,
     BedrockConfig,
+    GoogleGenAIConfig,
     InferenceParams,
     ModelConfig,
     NVIDIAConfig,
@@ -45,9 +46,9 @@ class ConfigLoader:
 
         self.config_path = config_path
         self._raw_config: dict[str, Any] = {}
-        self._models_by_id: dict[str, tuple[str, ModelConfig]] = (
-            {}
-        )  # {id: (provider, config)}
+        self._models_by_id: dict[
+            str, tuple[str, ModelConfig]
+        ] = {}  # {id: (provider, config)}
         self._providers: dict[str, ProviderConfig] = {}
         self._scanning_config: ScanningConfig = ScanningConfig()
 
@@ -59,11 +60,11 @@ class ConfigLoader:
             with open(self.config_path, encoding="utf-8") as f:
                 raw_yaml = f.read()
 
-            # Expand environment variables
-            expanded_yaml = self._expand_env_vars(raw_yaml)
-
-            # Parse YAML (handle empty files by defaulting to empty dict)
-            self._raw_config = yaml.safe_load(expanded_yaml) or {}
+            # Parse YAML first, then expand env vars in parsed values.
+            # This prevents API keys containing YAML-special characters
+            # (like : # { }) from corrupting the YAML structure.
+            self._raw_config = yaml.safe_load(raw_yaml) or {}
+            self._expand_env_vars_in_dict(self._raw_config)
 
             # Parse providers and models
             self._parse_providers()
@@ -79,26 +80,48 @@ class ConfigLoader:
                 f"Permission denied reading configuration: {self.config_path}"
             )
 
-    def _expand_env_vars(self, text: str) -> str:
-        """Expand ${VAR_NAME} to environment variable values.
+    def _expand_env_var_string(self, text: str) -> str:
+        """Expand ${VAR_NAME} placeholders in a single string value.
 
         Args:
-            text: YAML text with ${VAR} placeholders
+            text: String that may contain ${VAR} placeholders
 
         Returns:
-            Text with variables expanded
+            String with variables expanded
         """
 
         def replacer(match: re.Match) -> str:
             var_name = match.group(1)
             value = os.environ.get(var_name, "")
             if not value:
-                # Log missing vars for debugging - validation catches required ones later
-                logging.debug(f"Environment variable not set: {var_name}")
+                logging.debug("Environment variable not set: %s", var_name)
                 return ""
             return value
 
         return re.sub(r"\$\{([A-Z_]+)\}", replacer, text)
+
+    def _expand_env_vars_in_dict(self, data: Any) -> None:
+        """Recursively expand ${VAR_NAME} in parsed YAML dict values in-place.
+
+        This operates on the already-parsed YAML structure, so env var values
+        containing YAML-special characters (: # { }) are handled safely.
+
+        Args:
+            data: Parsed YAML data (dict, list, or scalar)
+        """
+        if isinstance(data, dict):
+            for key in data:
+                value = data[key]
+                if isinstance(value, str) and "${" in value:
+                    data[key] = self._expand_env_var_string(value)
+                elif isinstance(value, (dict, list)):
+                    self._expand_env_vars_in_dict(value)
+        elif isinstance(data, list):
+            for i, item in enumerate(data):
+                if isinstance(item, str) and "${" in item:
+                    data[i] = self._expand_env_var_string(item)
+                elif isinstance(item, (dict, list)):
+                    self._expand_env_vars_in_dict(item)
 
     def _register_model(
         self, provider: str, model_config: "ModelConfig", name: str
@@ -206,6 +229,36 @@ class ConfigLoader:
                     logging.info(
                         f"NVIDIA provider not configured: {e}. "
                         "Set NVIDIA_API_KEY environment variable to enable NVIDIA models."
+                    )
+
+        # Parse Google Generative AI provider
+        if "google_genai" in providers_section:
+            google_data = providers_section["google_genai"]
+
+            # Always register Google GenAI models for display (--list-models)
+            for model_data in google_data.get("models", []):
+                model_config = self._parse_model_config(model_data)
+                self._register_model("google_genai", model_config, model_config.id)
+
+                # Register aliases
+                for alias in model_config.aliases:
+                    self._register_model("google_genai", model_config, alias)
+
+            # Only register provider config if API key is present
+            # (required for actual API calls, not for listing models)
+            api_key = google_data.get("api_key", "")
+
+            if api_key:
+                try:
+                    google_config = GoogleGenAIConfig(
+                        api_key=api_key,
+                        request_timeout=google_data.get("request_timeout", 300),
+                    )
+                    self._providers["google_genai"] = google_config
+                except (KeyError, ValueError, TypeError, ValidationError) as e:
+                    logging.info(
+                        f"Google GenAI provider not configured: {e}. "
+                        "Set GOOGLE_API_KEY environment variable to enable Google models."
                     )
 
     def _parse_scanning_config(self) -> None:

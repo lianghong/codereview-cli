@@ -350,7 +350,6 @@ def test_retry_logic_on_rate_limit(model_config, provider_config, mock_report):
         patch("codereview.providers.nvidia.ChatNVIDIA") as mock_nvidia,
         patch("time.sleep") as mock_sleep,
     ):
-
         mock_instance = Mock()
         mock_instance.with_structured_output.return_value = Mock()
         mock_nvidia.return_value = mock_instance
@@ -380,10 +379,10 @@ def test_retry_logic_on_rate_limit(model_config, provider_config, mock_report):
         # Should succeed after 2 retries
         assert result == mock_report
 
-        # Verify exponential backoff: 1s, 2s
+        # Verify exponential backoff: base_wait * 2^attempt → 2*1=2s, 2*2=4s
         assert mock_sleep.call_count == 2
-        mock_sleep.assert_any_call(1)  # 2^0
-        mock_sleep.assert_any_call(2)  # 2^1
+        mock_sleep.assert_any_call(2)  # 2 * 2^0
+        mock_sleep.assert_any_call(4)  # 2 * 2^1
 
 
 def test_retry_exhausted_raises_error(model_config, provider_config):
@@ -392,7 +391,6 @@ def test_retry_exhausted_raises_error(model_config, provider_config):
         patch("codereview.providers.nvidia.ChatNVIDIA") as mock_nvidia,
         patch("time.sleep"),
     ):
-
         mock_instance = Mock()
         mock_instance.with_structured_output.return_value = Mock()
         mock_nvidia.return_value = mock_instance
@@ -423,7 +421,6 @@ def test_non_rate_limit_error_not_retried(model_config, provider_config):
         patch("codereview.providers.nvidia.ChatNVIDIA") as mock_nvidia,
         patch("time.sleep") as mock_sleep,
     ):
-
         mock_instance = Mock()
         mock_instance.with_structured_output.return_value = Mock()
         mock_nvidia.return_value = mock_instance
@@ -456,7 +453,6 @@ def test_retry_logic_on_gateway_timeout(model_config, provider_config, mock_repo
         patch("codereview.providers.nvidia.ChatNVIDIA") as mock_nvidia,
         patch("time.sleep") as mock_sleep,
     ):
-
         mock_instance = Mock()
         mock_instance.with_structured_output.return_value = Mock()
         mock_nvidia.return_value = mock_instance
@@ -486,10 +482,10 @@ def test_retry_logic_on_gateway_timeout(model_config, provider_config, mock_repo
         # Should succeed after 2 retries
         assert result == mock_report
 
-        # Verify longer exponential backoff for 504: 4^0=1s, 4^1=4s
+        # Verify longer exponential backoff for 504: 4*2^0=4s, 4*2^1=8s
         assert mock_sleep.call_count == 2
-        mock_sleep.assert_any_call(1)  # 4^0
-        mock_sleep.assert_any_call(4)  # 4^1
+        mock_sleep.assert_any_call(4)  # 4 * 2^0
+        mock_sleep.assert_any_call(8)  # 4 * 2^1
 
 
 def test_retry_logic_on_service_unavailable(model_config, provider_config, mock_report):
@@ -498,7 +494,6 @@ def test_retry_logic_on_service_unavailable(model_config, provider_config, mock_
         patch("codereview.providers.nvidia.ChatNVIDIA") as mock_nvidia,
         patch("time.sleep") as mock_sleep,
     ):
-
         mock_instance = Mock()
         mock_instance.with_structured_output.return_value = Mock()
         mock_nvidia.return_value = mock_instance
@@ -527,9 +522,9 @@ def test_retry_logic_on_service_unavailable(model_config, provider_config, mock_
         # Should succeed after 1 retry
         assert result == mock_report
 
-        # Verify exponential backoff: 2^0=1s (using base 2 for non-504 errors)
+        # Verify exponential backoff: base_wait * 2^attempt → 2*1=2s
         assert mock_sleep.call_count == 1
-        mock_sleep.assert_called_with(1)
+        mock_sleep.assert_called_with(2)  # 2 * 2^0
 
 
 def test_validate_credentials_valid(model_config, provider_config):

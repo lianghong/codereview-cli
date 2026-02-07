@@ -1,14 +1,14 @@
 [project]
 name = "codereview-cli"
 version = "0.2.5"
-description = "Multi-provider code review CLI with AWS Bedrock, Azure OpenAI, and NVIDIA NIM support"
+description = "Multi-provider code review CLI with AWS Bedrock, Azure OpenAI, NVIDIA NIM, and Google GenAI support"
 requires-python = ">=3.14"
 authors = [
     {name = "Lianghong Fei", email = "feilianghong@gmail.com"}
 ]
 license = {text = "MIT"}
 readme = "README.md"
-keywords = ["code-review", "langchain", "aws-bedrock", "azure-openai", "nvidia-nim", "claude", "gpt", "devstral", "cli", "static-analysis"]
+keywords = ["code-review", "langchain", "aws-bedrock", "azure-openai", "nvidia-nim", "google-genai", "gemini", "claude", "gpt", "devstral", "cli", "static-analysis"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
@@ -19,13 +19,15 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 dependencies = [
-    "langchain>=1.2.7",
-    "langchain-aws>=0.2.0",
+    "langchain>=1.2.9",
+    "langchain-aws>=1.2.2",
     "langchain-openai>=0.2.14",
-    "langchain-nvidia-ai-endpoints>=0.3.0",
-    "boto3>=1.42.34",
+    "langchain-nvidia-ai-endpoints>=1.0.3",
+    "langchain-google-genai>=2.1.0",
+    "google-api-core>=2.0.0",
+    "boto3>=1.42.44",
     "click>=8.1.0",
-    "rich>=13.7.0",
+    "rich>=14.3.2",
     "pydantic>=2.9.0",
     "pyyaml>=6.0",
 ]
@@ -51,7 +53,7 @@ static-analysis = [
     "black>=24.0.0",
     "isort>=5.13.0",
     "mypy>=1.11.0",
-    "ruff>=0.6.0",
+    "ruff>=0.15.0",
     "types-PyYAML>=6.0",
     "vulture>=2.11",
 ]

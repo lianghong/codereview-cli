@@ -42,7 +42,6 @@ def test_cli_with_directory(cli_runner, sample_code_dir):
         patch("codereview.cli.FileScanner") as mock_scanner_cls,
         patch("codereview.cli.ProviderFactory") as mock_factory_cls,
     ):
-
         # Setup factory mock
         mock_factory = Mock()
         mock_factory.get_model_display_name.return_value = "Claude Opus 4.6"
@@ -90,7 +89,6 @@ def test_cli_output_option(cli_runner, sample_code_dir, tmp_path):
         patch("codereview.cli.ProviderFactory") as mock_factory_cls,
         patch("codereview.cli.MarkdownExporter") as mock_exporter_cls,
     ):
-
         # Setup factory mock
         mock_factory = Mock()
         mock_factory.get_model_display_name.return_value = "Claude Opus 4.6"
@@ -196,7 +194,6 @@ def test_cli_with_model_option(cli_runner, sample_code_dir):
         patch("codereview.cli.FileScanner") as mock_scanner_cls,
         patch("codereview.cli.ProviderFactory") as mock_factory_cls,
     ):
-
         # Setup factory mock
         mock_factory = Mock()
         mock_factory.get_model_display_name.return_value = "Claude Sonnet 4.5"
@@ -254,7 +251,6 @@ def test_cli_default_model(cli_runner, sample_code_dir):
         patch("codereview.cli.FileScanner") as mock_scanner_cls,
         patch("codereview.cli.ProviderFactory") as mock_factory_cls,
     ):
-
         # Setup factory mock
         mock_factory = Mock()
         mock_factory.get_model_display_name.return_value = "Claude Opus 4.6"
@@ -303,7 +299,6 @@ def test_cli_model_short_name(cli_runner, sample_code_dir):
         patch("codereview.cli.FileScanner") as mock_scanner_cls,
         patch("codereview.cli.ProviderFactory") as mock_factory_cls,
     ):
-
         # Setup factory mock
         mock_factory = Mock()
         mock_factory.get_model_display_name.return_value = "Claude Haiku 4.5"

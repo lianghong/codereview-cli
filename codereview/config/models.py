@@ -202,6 +202,29 @@ class NVIDIAConfig(ProviderConfig):
     )
 
 
+class GoogleGenAIConfig(ProviderConfig):
+    """Configuration for Google Generative AI provider.
+
+    Attributes:
+        api_key: Google AI API key (from Google AI Studio).
+        request_timeout: Request timeout in seconds for API calls.
+        models: List of model configurations for Google GenAI.
+    """
+
+    model_config = {"frozen": True}
+
+    api_key: str = Field(
+        ...,
+        min_length=1,
+        description="Google AI API key from Google AI Studio",
+    )
+    request_timeout: int = Field(
+        default=300,
+        gt=0,
+        description="Request timeout in seconds for API calls (default: 5 minutes)",
+    )
+
+
 class ScanningConfig(BaseModel):
     """Configuration for file scanning.
 
@@ -238,5 +261,10 @@ class ModelsConfigFile(BaseModel):
     model_config = {"frozen": True}
 
     providers: dict[
-        str, ProviderConfig | BedrockConfig | AzureOpenAIConfig | NVIDIAConfig
+        str,
+        ProviderConfig
+        | BedrockConfig
+        | AzureOpenAIConfig
+        | NVIDIAConfig
+        | GoogleGenAIConfig,
     ] = Field(default_factory=dict, description="Provider configurations")
