@@ -370,12 +370,10 @@ def test_retry_logic_on_resource_exhausted(model_config, provider_config, mock_r
 
         provider = GoogleGenAIProvider(model_config, provider_config)
 
-        # Create a mock ResourceExhausted error
-        resource_exhausted = type(
-            "ResourceExhausted",
-            (Exception,),
-            {"__module__": "google.api_core.exceptions"},
-        )("429 Resource exhausted")
+        # Use actual ResourceExhausted exception for isinstance() matching
+        from google.api_core.exceptions import ResourceExhausted
+
+        resource_exhausted = ResourceExhausted("429 Resource exhausted")
 
         provider.chain = Mock()
         provider.chain.invoke.side_effect = [
@@ -406,12 +404,10 @@ def test_retry_logic_on_service_unavailable(model_config, provider_config, mock_
 
         provider = GoogleGenAIProvider(model_config, provider_config)
 
-        # Create a mock ServiceUnavailable error
-        service_unavailable = type(
-            "ServiceUnavailable",
-            (Exception,),
-            {"__module__": "google.api_core.exceptions"},
-        )("503 Service unavailable")
+        # Use actual ServiceUnavailable exception for isinstance() matching
+        from google.api_core.exceptions import ServiceUnavailable
+
+        service_unavailable = ServiceUnavailable("503 Service unavailable")
 
         provider.chain = Mock()
         provider.chain.invoke.side_effect = [
@@ -440,12 +436,10 @@ def test_retry_exhausted_raises_error(model_config, provider_config):
 
         provider = GoogleGenAIProvider(model_config, provider_config)
 
-        # Create a mock ResourceExhausted error
-        resource_exhausted = type(
-            "ResourceExhausted",
-            (Exception,),
-            {"__module__": "google.api_core.exceptions"},
-        )("429 Resource exhausted")
+        # Use actual ResourceExhausted exception for isinstance() matching
+        from google.api_core.exceptions import ResourceExhausted
+
+        resource_exhausted = ResourceExhausted("429 Resource exhausted")
 
         provider.chain = Mock()
         provider.chain.invoke.side_effect = resource_exhausted

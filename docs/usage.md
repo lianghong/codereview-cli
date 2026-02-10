@@ -362,6 +362,11 @@ codereview ./src --model haiku --max-files 500
 codereview ./src --model gpt
 ```
 
+**Grok 4 Fast** - Cost-efficient reasoning, 2M context (Azure OpenAI):
+```bash
+codereview ./src --model grok
+```
+
 **Devstral 2** - Free tier, code-focused (NVIDIA NIM):
 ```bash
 codereview ./src --model devstral
@@ -394,6 +399,8 @@ Be aware of costs and choose models accordingly:
 
 **Azure OpenAI:**
 - **GPT-5.2 Codex**: Code-specialized ($1.75/M input, $14/M output)
+- **Kimi K2.5 (Azure)**: Multimodal MoE, 256K context ($0.60/M input, $3/M output)
+- **Grok 4 Fast (Azure)**: 2M context, cost-efficient ($0.20/M input, $0.50/M output)
 
 **Google Generative AI:**
 - **Gemini 3 Pro**: Flagship model ($2/M input, $12/M output)
@@ -518,6 +525,8 @@ codereview ./src --model kimi-k2-bedrock      # Kimi K2 Thinking
 
 # Azure OpenAI
 codereview ./src --model gpt      # GPT-5.2 Codex
+codereview ./src --model kimi-azure  # Kimi K2.5 (256K context)
+codereview ./src --model grok     # Grok 4 Fast Reasoning (2M context)
 
 # NVIDIA NIM (free tier)
 codereview ./src --model devstral           # Devstral 2 123B
@@ -539,6 +548,8 @@ codereview ./src --model gemini-3-flash     # Gemini 3 Flash (fast, cheap)
 | **Sonnet 4.5** | AWS Bedrock | Daily development, PR reviews | $3/M input, $15/M output |
 | **Haiku 4.5** | AWS Bedrock | Large codebases, CI/CD integration | $1/M input, $5/M output |
 | **GPT-5.2 Codex** | Azure OpenAI | Code-specialized, Microsoft ecosystem | $1.75/M input, $14/M output |
+| **Kimi K2.5 (Azure)** | Azure OpenAI | Multimodal MoE, 256K context | $0.60/M input, $3/M output |
+| **Grok 4 Fast (Azure)** | Azure OpenAI | 2M context, cost-efficient reasoning | $0.20/M input, $0.50/M output |
 | **DeepSeek-R1** | AWS Bedrock | Reasoning-focused reviews | $1.35/M input, $5.40/M output |
 | **Devstral 2** | NVIDIA NIM | Free tier, code-focused | Free* |
 | **MiniMax M2.1** | NVIDIA NIM | Free tier, thinking mode, 200K context | Free* |
@@ -555,8 +566,11 @@ codereview ./src --model gemini-3-flash     # Gemini 3 Flash (fast, cheap)
 # Production-critical code → Opus
 codereview ./src/auth --model opus
 
-# Daily development → Sonnet or GPT
+# Daily development → Sonnet, GPT, or Grok
 codereview ./src --model sonnet
+
+# Cost-efficient reasoning → Grok 4 Fast ($0.20/$0.50 per M)
+codereview ./src --model grok
 
 # Large codebase scanning → Haiku or free models
 codereview ./monorepo --model haiku --max-files 500

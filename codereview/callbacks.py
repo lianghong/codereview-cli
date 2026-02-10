@@ -50,7 +50,7 @@ class StreamingCallbackHandler(BaseCallbackHandler):
         if self._live:
             try:
                 self._live.stop()
-            except (OSError, RuntimeError):  # fmt: skip
+            except OSError, RuntimeError:
                 # OSError: terminal I/O errors (e.g., broken pipe, write blocking)
                 # RuntimeError: threading issues during shutdown
                 pass  # Best effort cleanup - expected failure modes
@@ -243,7 +243,7 @@ class ProgressCallbackHandler(BaseCallbackHandler):
         if self._status:
             try:
                 self._status.stop()
-            except (OSError, RuntimeError):  # fmt: skip
+            except OSError, RuntimeError:
                 pass
             self._status = None
 

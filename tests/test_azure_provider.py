@@ -202,7 +202,7 @@ def test_get_model_display_name(model_config, provider_config):
 
 
 def test_retry_logic_on_rate_limit(model_config, provider_config, mock_report):
-    """Test exponential backoff retry on rate limit."""
+    """Test retry on rate limit respects Azure Retry-After header."""
     with (
         patch("codereview.providers.azure_openai.AzureChatOpenAI") as mock_azure,
         patch("time.sleep") as mock_sleep,
@@ -213,9 +213,10 @@ def test_retry_logic_on_rate_limit(model_config, provider_config, mock_report):
 
         provider = AzureOpenAIProvider(model_config, provider_config)
 
-        # Create proper RateLimitError with required arguments
+        # Create RateLimitError with Retry-After header (as Azure sends)
         mock_response = Mock()
         mock_response.status_code = 429
+        mock_response.headers = {"retry-after": "15"}
         rate_limit_error = RateLimitError(
             "Rate limit exceeded",
             response=mock_response,
@@ -235,10 +236,45 @@ def test_retry_logic_on_rate_limit(model_config, provider_config, mock_report):
         # Should succeed after 2 retries
         assert result == mock_report
 
-        # Verify exponential backoff: 1s, 2s
+        # Verify backoff uses Retry-After value (15s) for both retries
         assert mock_sleep.call_count == 2
-        mock_sleep.assert_any_call(1)  # 2^0
-        mock_sleep.assert_any_call(2)  # 2^1
+        mock_sleep.assert_any_call(15.0)
+
+
+def test_retry_logic_fallback_backoff(model_config, provider_config, mock_report):
+    """Test retry fallback backoff when no Retry-After header is present."""
+    with (
+        patch("codereview.providers.azure_openai.AzureChatOpenAI") as mock_azure,
+        patch("time.sleep") as mock_sleep,
+    ):
+        mock_instance = Mock()
+        mock_instance.with_structured_output.return_value = Mock()
+        mock_azure.return_value = mock_instance
+
+        provider = AzureOpenAIProvider(model_config, provider_config)
+
+        # Create RateLimitError without Retry-After header
+        mock_response = Mock()
+        mock_response.status_code = 429
+        mock_response.headers = {}
+        rate_limit_error = RateLimitError(
+            "Rate limit exceeded",
+            response=mock_response,
+            body={"error": {"message": "Rate limit exceeded"}},
+        )
+
+        provider.chain = Mock()
+        provider.chain.invoke.side_effect = [
+            rate_limit_error,
+            mock_report,
+        ]
+
+        result = provider.analyze_batch(1, 1, {"test.py": "code"})
+
+        assert result == mock_report
+        # Fallback: 10.0 * 2^0 = 10s for first retry
+        assert mock_sleep.call_count == 1
+        mock_sleep.assert_called_with(10.0)
 
 
 def test_responses_api_enabled(provider_config):

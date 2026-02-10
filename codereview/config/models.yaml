@@ -257,6 +257,56 @@ providers:
           - function_calling
         notes: "56.4% SWE-Bench Pro, security-aware by design"
 
+      # Kimi K2.5 (via Azure AI Foundry) - Moonshot AI's multimodal MoE model
+      # MoE: 1T total, 32B active parameters
+      # Best for: Complex reasoning, multimodal code analysis, agentic workflows
+      - id: kimi-k2.5-azure
+        deployment_name: Kimi-K2.5
+        name: Kimi K2.5 (Azure)
+        aliases:
+          - kimi25-azure
+          - kimi-azure
+        pricing:
+          input_per_million: 0.60    # Microsoft Foundry pricing (Feb 2026)
+          output_per_million: 3.00
+        inference_params:
+          default_temperature: 0.6   # Moonshot recommended for thinking mode
+          default_top_p: 0.95
+          max_output_tokens: 65536
+        context_window: 262144       # 256K token context window
+        capabilities:
+          - reasoning
+          - multimodal
+          - code_review
+          - tool_use
+          - agentic_tasks
+        notes: "1T MoE multimodal model, 96.1% AIME 2025, Agent Swarm support"
+
+      # Grok 4 Fast Reasoning (via Azure AI Foundry) - xAI's cost-efficient reasoning model
+      # Best for: Fast reasoning, cost-efficient code analysis, long-context review
+      - id: grok-4-fast
+        deployment_name: grok-4-fast-reasoning
+        name: Grok 4 Fast Reasoning (Azure)
+        aliases:
+          - grok
+          - grok4
+          - grok-fast
+          - g4fast
+        pricing:
+          input_per_million: 0.20    # xAI/Azure pricing
+          output_per_million: 0.50
+        inference_params:
+          default_temperature: 0.1   # Low temp for deterministic code analysis
+          default_top_p: 0.95
+          max_output_tokens: 32000
+        context_window: 2000000      # 2M token context window
+        capabilities:
+          - reasoning
+          - code_review
+          - structured_output
+          - function_calling
+        notes: "2M context, SOTA cost-efficiency, 212 tokens/sec"
+
   # NVIDIA NIM API Provider
   # Models available via build.nvidia.com
   nvidia:

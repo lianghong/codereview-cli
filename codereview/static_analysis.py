@@ -233,7 +233,7 @@ class StaticAnalyzer:
         "clang-tidy": {
             "name": "clang-tidy",
             "description": "C++ static analyzer and linter",
-            "command": ["clang-tidy"],
+            "command": ["clang-tidy", "-checks=*,-llvmlibc-*"],
             "language": "cpp",
         },
         "cppcheck": {
@@ -792,7 +792,7 @@ class StaticAnalyzer:
                 return sum(
                     v for v in vuln_counts.values() if isinstance(v, int) and v > 0
                 )
-        except json.JSONDecodeError, TypeError, AttributeError:
+        except (json.JSONDecodeError, TypeError, AttributeError):
             # Fallback: count non-empty lines as a rough estimate
             return len([line for line in output.split("\n") if line.strip()])
         return 0

@@ -10,8 +10,8 @@ A LangChain-based CLI tool that provides comprehensive, intelligent code reviews
 
 ## Features
 
-- **Multi-Provider Support**: AWS Bedrock (Claude, Mistral, Minimax, Kimi, Qwen), Azure OpenAI (GPT), NVIDIA NIM (Devstral, MiniMax M2.1, DeepSeek, GLM 4.7), and Google GenAI (Gemini 3 Pro, Gemini 3 Flash)
-- **AI-Powered Analysis**: Leverages Claude Opus 4.6, GPT-5.2 Codex, Gemini 3 Pro, Devstral 2, and other leading models for deep code understanding
+- **Multi-Provider Support**: AWS Bedrock (Claude, Mistral, Minimax, Kimi, Qwen), Azure OpenAI (GPT, Kimi K2.5, Grok 4), NVIDIA NIM (Devstral, MiniMax M2.1, DeepSeek, GLM 4.7), and Google GenAI (Gemini 3 Pro, Gemini 3 Flash)
+- **AI-Powered Analysis**: Leverages Claude Opus 4.6, GPT-5.2 Codex, Grok 4 Fast Reasoning, Gemini 3 Pro, Devstral 2, and other leading models for deep code understanding
 - **Multi-Language Support**: Reviews Python, Go, Shell Script, C++, Java, JavaScript, and TypeScript codebases
 - **Smart Batching**: Automatically groups files for efficient token usage
 - **Structured Output**: Get categorized issues with severity levels and actionable suggestions
@@ -31,7 +31,7 @@ A LangChain-based CLI tool that provides comprehensive, intelligent code reviews
 - Python 3.14+
 - **One of the following:**
   - AWS account with Bedrock access (for Claude, Mistral, Minimax, Kimi, Qwen models)
-  - Azure OpenAI resource with GPT model deployment (for GPT models)
+  - Azure OpenAI resource with model deployment (for GPT, Kimi K2.5, Grok 4 models)
   - NVIDIA API key from [build.nvidia.com](https://build.nvidia.com) (for Devstral, MiniMax M2.1, DeepSeek, free tier available)
   - Google API key from [AI Studio](https://aistudio.google.com/apikey) (for Gemini 3 Pro, Gemini 3 Flash)
 
@@ -107,6 +107,8 @@ Ensure your IAM user/role has the following permissions:
 
 ## Azure OpenAI Configuration (Alternative to AWS)
 
+Azure OpenAI provides access to GPT-5.2 Codex, Kimi K2.5, and Grok 4 Fast Reasoning via Microsoft Azure AI Foundry.
+
 ### 1. Set Environment Variables
 
 ```bash
@@ -114,37 +116,26 @@ export AZURE_OPENAI_ENDPOINT="https://your-resource.openai.azure.com"
 export AZURE_OPENAI_API_KEY="your-api-key"
 ```
 
-### 2. Create Azure OpenAI Deployment
+### 2. Deploy Models in Azure AI Foundry
 
 1. Create an Azure OpenAI resource in Azure Portal
-2. Deploy a GPT model (e.g., GPT-4, GPT-3.5-Turbo, or GPT-5.2 Codex if available)
+2. Deploy models from Azure AI Foundry catalog:
+   - **GPT-5.2 Codex** (deployment name: `gpt-5.2-codex`)
+   - **Kimi K2.5** (deployment name: `Kimi-K2.5`) - Moonshot AI's multimodal MoE model
+   - **Grok 4 Fast Reasoning** (deployment name: `grok-4-fast-reasoning`) - xAI's cost-efficient reasoning model
 3. Note your deployment name, endpoint, and API key
 
-### 3. Update Configuration
+### 3. Use Azure Models
 
-Edit `codereview/config/models.yaml` to add your deployment:
+```bash
+# GPT-5.2 Codex - Code-specialized
+codereview /path/to/code --model gpt
 
-```yaml
-providers:
-  azure_openai:
-    endpoint: "${AZURE_OPENAI_ENDPOINT}"
-    api_key: "${AZURE_OPENAI_API_KEY}"
-    api_version: "2024-12-01-preview"
-    models:
-      - id: gpt-5.2-codex
-        deployment_name: gpt-5.2-codex  # Your Azure deployment name
-        name: GPT-5.2 Codex
-        aliases: [gpt52, codex]
-        pricing:
-          input_per_million: 1.75
-          output_per_million: 14.00
-      - id: gpt-4o
-        deployment_name: gpt-4o  # Your Azure deployment name
-        name: GPT-4o
-        aliases: [gpt4o]
-        pricing:
-          input_per_million: 2.50
-          output_per_million: 10.00
+# Kimi K2.5 - Multimodal MoE, 256K context
+codereview /path/to/code --model kimi-azure
+
+# Grok 4 Fast Reasoning - 2M context, cost-efficient
+codereview /path/to/code --model grok
 ```
 
 ### 4. Test Connection
@@ -153,7 +144,7 @@ providers:
 codereview --list-models  # Should show Azure models
 ```
 
-**Note:** Azure OpenAI models require you to deploy them in your Azure resource first. The deployment names in your configuration must match your actual Azure deployments.
+**Note:** Azure OpenAI models require you to deploy them in your Azure resource first. The deployment names in your configuration must match your actual Azure deployments. Kimi K2.5 and Grok 4 Fast Reasoning are available as "Direct from Azure" models in the Azure AI Foundry catalog.
 
 ## NVIDIA NIM Configuration (Alternative Provider)
 
@@ -253,7 +244,8 @@ codereview /path/to/code --model deepseek-r1-bedrock # DeepSeek-R1 (reasoning)
 
 # Azure OpenAI Models
 codereview /path/to/code --model gpt-5.2-codex  # GPT-5.2 Codex
-codereview /path/to/code --model gpt4o          # GPT-4o
+codereview /path/to/code --model kimi-azure      # Kimi K2.5 (256K context)
+codereview /path/to/code --model grok            # Grok 4 Fast Reasoning (2M context)
 
 # NVIDIA NIM Models (free tier)
 codereview /path/to/code --model devstral           # Devstral 2 123B
@@ -280,7 +272,8 @@ codereview /path/to/code -m devstral
 | Sonnet 4.5 | AWS Bedrock | Balanced performance and cost | $3.00 | $15.00 |
 | Haiku 4.5 | AWS Bedrock | Fast, economical, large codebases | $1.00 | $5.00 |
 | GPT-5.2 Codex | Azure OpenAI | Code-specialized, Microsoft ecosystem | $1.75 | $14.00 |
-| GPT-4o | Azure OpenAI | Multimodal, general purpose | $2.50 | $10.00 |
+| Kimi K2.5 (Azure) | Azure OpenAI | Multimodal MoE, 256K context | $0.60 | $3.00 |
+| Grok 4 Fast (Azure) | Azure OpenAI | 2M context, cost-efficient reasoning | $0.20 | $0.50 |
 | Devstral 2 | NVIDIA NIM | Code-specialized, free tier | Free* | Free* |
 | MiniMax M2.1 | NVIDIA NIM | 200K context, 128K output, thinking mode | Free* | Free* |
 | DeepSeek V3.2 | NVIDIA NIM | Large reasoning model, thinking mode | Free* | Free* |
@@ -721,7 +714,7 @@ For issues, questions, or contributions:
 ## Acknowledgments
 
 - Built with [LangChain](https://github.com/langchain-ai/langchain)
-- Powered by [Anthropic Claude](https://www.anthropic.com/), [OpenAI GPT](https://openai.com/), [Google Gemini](https://ai.google.dev/), and [Mistral AI](https://mistral.ai/)
+- Powered by [Anthropic Claude](https://www.anthropic.com/), [OpenAI GPT](https://openai.com/), [Google Gemini](https://ai.google.dev/), [xAI Grok](https://x.ai/), and [Mistral AI](https://mistral.ai/)
 - [AWS Bedrock](https://aws.amazon.com/bedrock/), [Azure OpenAI](https://azure.microsoft.com/en-us/products/ai-services/openai-service), [NVIDIA NIM](https://build.nvidia.com/), and [Google AI Studio](https://aistudio.google.com/) for model hosting
 - Rich library for beautiful terminal output
 - Static analysis tools: ruff, mypy, eslint, golangci-lint, shellcheck, bandit, gosec, and more

@@ -1,5 +1,6 @@
 """Azure OpenAI provider implementation."""
 
+import logging
 import os
 from typing import Any
 
@@ -48,6 +49,7 @@ class AzureOpenAIProvider(TokenTrackingMixin, ModelProvider):
             requests_per_second: Rate limit for API calls (default: 1.0)
             callbacks: Optional list of callback handlers for streaming/progress
             enable_output_fixing: Enable automatic retry on malformed output (default: True)
+            project_context: Optional project README/documentation content for context
         """
         self.callbacks = callbacks or []
         self.enable_output_fixing = enable_output_fixing
@@ -130,6 +132,31 @@ class AzureOpenAIProvider(TokenTrackingMixin, ModelProvider):
     def _is_retryable_error(self, error: Exception) -> bool:
         """Check if error is a retryable Azure rate limit error."""
         return isinstance(error, RateLimitError)
+
+    def _calculate_backoff(
+        self, error: Exception, attempt: int, config: RetryConfig
+    ) -> float:
+        """Calculate backoff respecting Azure's Retry-After header.
+
+        Azure 429 responses include a Retry-After header indicating the
+        seconds to wait before the rate limit window resets. Using this
+        value instead of short exponential backoff prevents wasting all
+        retries within the same rate limit window.
+        """
+        if isinstance(error, RateLimitError) and hasattr(error, "response"):
+            retry_after = error.response.headers.get("retry-after")
+            if retry_after:
+                try:
+                    wait = min(float(retry_after), config.max_wait)
+                    logging.info(
+                        "Azure rate limit: waiting %ds (Retry-After header)", wait
+                    )
+                    return wait
+                except ValueError, TypeError:
+                    pass
+
+        # Fallback: longer base wait for Azure (rate limit windows are ~60s)
+        return min(10.0 * (2**attempt), config.max_wait)
 
     def _extract_token_usage(self, result: Any) -> tuple[int, int]:
         """Extract token usage from Azure OpenAI response metadata."""

@@ -94,7 +94,7 @@ class ConfigLoader:
             var_name = match.group(1)
             value = os.environ.get(var_name, "")
             if not value:
-                logging.debug("Environment variable not set: %s", var_name)
+                logging.warning("Environment variable not set: %s", var_name)
                 return ""
             return value
 

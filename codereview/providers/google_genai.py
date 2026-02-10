@@ -125,14 +125,9 @@ class GoogleGenAIProvider(TokenTrackingMixin, ModelProvider):
 
     def _is_retryable_error(self, error: Exception) -> bool:
         """Check if error is a retryable Google API error."""
-        error_type = type(error).__name__
-        return error_type in ("ResourceExhausted", "ServiceUnavailable")
+        from google.api_core.exceptions import ResourceExhausted, ServiceUnavailable
 
-    def _calculate_backoff(
-        self, error: Exception, attempt: int, config: RetryConfig
-    ) -> float:
-        """Calculate exponential backoff for retry attempts."""
-        return min(config.base_wait * (2**attempt), config.max_wait)
+        return isinstance(error, (ResourceExhausted, ServiceUnavailable))
 
     def _extract_token_usage(self, result: Any) -> tuple[int, int]:
         """Extract token usage from Google GenAI response metadata."""

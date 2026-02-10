@@ -2,7 +2,7 @@
 
 from langchain_core.callbacks import BaseCallbackHandler
 
-from codereview.config.loader import ConfigLoader
+from codereview.config import ConfigLoader, get_config_loader
 from codereview.config.models import (
     AzureOpenAIConfig,
     BedrockConfig,
@@ -25,7 +25,7 @@ class ProviderFactory:
         Args:
             config_loader: ConfigLoader instance (creates default if None)
         """
-        self.config_loader = config_loader or ConfigLoader()
+        self.config_loader = config_loader or get_config_loader()
 
     def create_provider(
         self,

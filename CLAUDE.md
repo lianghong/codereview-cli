@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-LangChain-based CLI tool for AI-powered code reviews via AWS Bedrock, Azure OpenAI, NVIDIA NIM, and Google Generative AI. Supports multiple models including Claude (Opus, Sonnet, Haiku), GPT-5.2 Codex, Gemini 3 (Pro, Flash), Devstral 2, Minimax M2, MiniMax M2.1, Mistral Large 3, Kimi K2, Kimi K2.5, Qwen3 Coder, DeepSeek-R1, DeepSeek V3.2, and GLM 4.7. Reviews **Python, Go, Shell Script, C++, Java, JavaScript, and TypeScript** codebases with structured output (categories, severity levels, line numbers, suggested fixes).
+LangChain-based CLI tool for AI-powered code reviews via AWS Bedrock, Azure OpenAI, NVIDIA NIM, and Google Generative AI. Supports multiple models including Claude (Opus, Sonnet, Haiku), GPT-5.2 Codex, Grok 4 Fast Reasoning, Gemini 3 (Pro, Flash), Devstral 2, Minimax M2, MiniMax M2.1, Mistral Large 3, Kimi K2, Kimi K2.5, Qwen3 Coder, DeepSeek-R1, DeepSeek V3.2, and GLM 4.7. Reviews **Python, Go, Shell Script, C++, Java, JavaScript, and TypeScript** codebases with structured output (categories, severity levels, line numbers, suggested fixes).
 
 **Tech Stack:** Python 3.14, LangChain, AWS Bedrock, Azure OpenAI, NVIDIA NIM, Google Generative AI, Pydantic V2, Click, Rich
 
@@ -148,6 +148,8 @@ Use primary model IDs (case-insensitive). Run `codereview --list-models` to see 
 | `sonnet` | Claude Sonnet 4.5 | bedrock | claude-sonnet |
 | `haiku` | Claude Haiku 4.5 | bedrock | claude-haiku |
 | `gpt-5.2-codex` | GPT-5.2 Codex | azure_openai | gpt, gpt52, codex |
+| `kimi-k2.5-azure` | Kimi K2.5 (Azure) | azure_openai | kimi25-azure, kimi-azure |
+| `grok-4-fast` | Grok 4 Fast Reasoning (Azure) | azure_openai | grok, grok4, grok-fast, g4fast |
 | `devstral` | Devstral 2 123B | nvidia | devstral-2 |
 | `minimax-bedrock` | Minimax M2 (Bedrock) | bedrock | mm2-bedrock |
 | `minimax-nvidia` | MiniMax M2 (NVIDIA) | nvidia | mm2-nvidia |
@@ -312,7 +314,7 @@ FileScanner → FileBatcher → CodeAnalyzer → ProviderFactory → BedrockProv
 4. **ProviderFactory** (`providers/factory.py`): Auto-detects provider based on model name
 5. **Providers** (`providers/`):
    - **BedrockProvider**: AWS Bedrock implementation (Claude, Mistral, Minimax, Kimi, Qwen)
-   - **AzureOpenAIProvider**: Azure OpenAI implementation (GPT models)
+   - **AzureOpenAIProvider**: Azure OpenAI implementation (GPT, Kimi K2.5, Grok models)
    - **NVIDIAProvider**: NVIDIA NIM API implementation (Devstral, MiniMax M2, MiniMax M2.1, Qwen3, DeepSeek, GLM 4.7)
    - **GoogleGenAIProvider**: Google Generative AI implementation (Gemini 3 Pro, Gemini 3 Flash)
 6. **Aggregation** (`cli.py`): Merges results from all batches (issues, suggestions, design insights)
@@ -435,9 +437,11 @@ Models defined in `codereview/config/models.yaml`:
 **Azure OpenAI Models:**
 | Model | Deployment Name | Input $/M | Output $/M | Defaults |
 |-------|-----------------|-----------|------------|----------|
-| GPT-5.2 Codex | `gpt-5.2-codex` | $1.75 | $14.00 | temp=0.0, top_p=0.95, max=16000 |
+| GPT-5.2 Codex | `gpt-5.2-codex` | $1.75 | $14.00 | temp=0.0, top_p=0.95, max=128000 |
+| Kimi K2.5 (Azure) | `Kimi-K2.5` | $0.60 | $3.00 | temp=0.6, top_p=0.95, max=65536 |
+| Grok 4 Fast Reasoning (Azure) | `grok-4-fast-reasoning` | $0.20 | $0.50 | temp=0.1, top_p=0.95, max=32000 |
 
-**Note:** GPT-5.2 Codex uses OpenAI's Responses API (not ChatCompletion). This is configured automatically via `use_responses_api: true` in `models.yaml`.
+**Note:** GPT-5.2 Codex uses OpenAI's Responses API (not ChatCompletion). This is configured automatically via `use_responses_api: true` in `models.yaml`. Kimi K2.5 and Grok 4 Fast Reasoning use the standard ChatCompletion API.
 
 **Note:** DeepSeek-R1 doesn't support tool use, so it uses prompt-based JSON parsing instead of structured output. This is configured via `supports_tool_use: false` in `models.yaml`.
 

@@ -33,7 +33,7 @@ def _timed_input(prompt: str, default: str, timeout: int) -> str:
 
     try:
         ready, _, _ = select.select([sys.stdin], [], [], timeout)
-    except (OSError, ValueError):  # fmt: skip
+    except OSError, ValueError:
         # select not supported or stdin closed - return default
         print()
         return default
@@ -45,7 +45,7 @@ def _timed_input(prompt: str, default: str, timeout: int) -> str:
                 return line.rstrip("\n")
             # EOF
             return default
-        except (EOFError, KeyboardInterrupt):  # fmt: skip
+        except EOFError, KeyboardInterrupt:
             return default
     else:
         # Timeout - move past the prompt
@@ -123,7 +123,7 @@ def read_readme_content(
 
         return content, file_size
 
-    except (OSError, UnicodeDecodeError):  # fmt: skip
+    except OSError, UnicodeDecodeError:
         return None
 
 

@@ -34,8 +34,8 @@ from codereview.config import (
     DEFAULT_EXCLUDE_PATTERNS,
     MAX_FILE_SIZE_KB,
     MODEL_ALIASES,
+    get_config_loader,
 )
-from codereview.config.loader import ConfigLoader
 from codereview.models import CodeReviewReport, ReviewIssue, ReviewMetrics
 from codereview.providers.base import ModelProvider
 from codereview.providers.factory import ProviderFactory
@@ -375,7 +375,7 @@ def main(
             os.environ["AWS_PROFILE"] = aws_profile
 
         # Get model display name from config (avoids creating provider just for the name)
-        config_loader = ConfigLoader()
+        config_loader = get_config_loader()
         _, model_config = config_loader.resolve_model(model_name)
         model_display_name = model_config.name
 
@@ -609,6 +609,29 @@ def main(
                     if verbose:
                         con.print(traceback.format_exc())
 
+                except Exception as e:
+                    # Catch-all for provider-specific errors after retries exhausted
+                    # (e.g., openai.RateLimitError, httpx.HTTPStatusError,
+                    #  google.api_core.exceptions.ResourceExhausted)
+                    error_str = str(e)
+                    is_rate_limit = "429" in error_str or "rate" in error_str.lower()
+                    if is_rate_limit:
+                        con.print(
+                            f"\n[red]✗ Rate limit exceeded on batch {i} "
+                            f"after retries[/red]"
+                        )
+                        con.print(
+                            "[yellow]Consider reducing batch size with "
+                            "--batch-size or waiting before retrying[/yellow]"
+                        )
+                    else:
+                        con.print(
+                            f"\n[red]✗ Error on batch {i}: "
+                            f"{type(e).__name__}: {escape(error_str)}[/red]"
+                        )
+                    if verbose:
+                        con.print(traceback.format_exc())
+
                 progress.update(task, advance=1)
 
         # Step 4: Create final report
@@ -658,10 +681,17 @@ def main(
                 static_issues_found=static_summary["total_issues"],
             )
 
-        # Aggregate system design insights from all batches
+        # Aggregate system design insights from all batches,
+        # filtering out the default "no concerns" message to avoid repetition
+        default_insight = "No architectural concerns identified"
+        meaningful_insights = [
+            insight
+            for insight in all_design_insights
+            if insight != default_insight
+        ]
         aggregated_insights = (
-            "\n\n".join(all_design_insights)
-            if all_design_insights
+            "\n\n".join(meaningful_insights)
+            if meaningful_insights
             else "No architectural concerns identified."
         )
 

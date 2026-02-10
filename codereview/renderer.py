@@ -69,7 +69,7 @@ class TerminalRenderer:
 
     def _render_summary(self, report: CodeReviewReport) -> None:
         """Render summary section panel."""
-        summary = self._format_summary(report)
+        summary = self._strip_variation_selectors(self._format_summary(report))
         self.console.print(Panel(summary, title="Summary", border_style="green"))
 
     @staticmethod
@@ -163,6 +163,16 @@ class TerminalRenderer:
         self.console.print(table)
         self.console.print()
 
+    @staticmethod
+    def _strip_variation_selectors(text: str) -> str:
+        """Strip Unicode variation selectors that cause Rich panel alignment issues.
+
+        Emoji variation selector U+FE0F causes a mismatch between Rich's cell
+        width calculation and actual terminal rendering, resulting in misaligned
+        right borders in panels.
+        """
+        return text.replace("\ufe0f", "").replace("\ufe0e", "")
+
     def _render_recommendations(self, report: CodeReviewReport) -> None:
         """Render top recommendations panel."""
         if not report.recommendations:
@@ -172,8 +182,9 @@ class TerminalRenderer:
         for i, rec in enumerate(report.recommendations, 1):
             lines.append(f"{i}. {rec}")
 
+        content = self._strip_variation_selectors("\n".join(lines))
         self.console.print(
-            Panel("\n".join(lines), title="Top Recommendations", border_style="yellow")
+            Panel(content, title="Top Recommendations", border_style="yellow")
         )
 
     def _render_improvement_suggestions(self, report: CodeReviewReport) -> None:
@@ -185,9 +196,10 @@ class TerminalRenderer:
         for i, suggestion in enumerate(report.improvement_suggestions, 1):
             lines.append(f"{i}. {suggestion}")
 
+        content = self._strip_variation_selectors("\n".join(lines))
         self.console.print(
             Panel(
-                "\n".join(lines),
+                content,
                 title="💡 Improvement Suggestions",
                 border_style="cyan",
                 box=box.HORIZONTALS,

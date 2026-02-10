@@ -96,6 +96,12 @@ codereview ./src --model sonnet
 # Fast review with Haiku (large codebase)
 codereview ./monorepo --model haiku --max-files 1000
 
+# Grok 4 Fast - Cost-efficient reasoning, 2M context (Azure)
+codereview ./src --model grok
+
+# Kimi K2.5 - Multimodal MoE, 256K context (Azure)
+codereview ./src --model kimi-azure
+
 # Gemini 3 Pro - Large context, strong reasoning (Google GenAI)
 codereview ./src --model gemini-3-pro
 
@@ -193,7 +199,9 @@ codereview ./src \
 - Opus (100 files): ~$1.50
 - Gemini 3 Pro (100 files): ~$0.50
 - Sonnet (100 files): ~$0.30
+- Kimi K2.5 Azure (100 files): ~$0.12
 - Gemini 3 Flash (100 files): ~$0.10
+- Grok 4 Fast (100 files): ~$0.03
 - Haiku (500 files): ~$0.20
 
 ### Example 10: Region-Specific Configuration
@@ -778,7 +786,8 @@ diff before.md after.md
 ## Tips for CI/CD Integration
 
 1. **Choose Cost-Effective Models**:
-   - **Haiku** for CI/CD quality gates (fastest, cheapest)
+   - **Grok 4 Fast** for CI/CD quality gates ($0.20/$0.50 per M, 2M context)
+   - **Haiku** for CI/CD quality gates (fastest, cheapest Bedrock option)
    - **Gemini 3 Flash** for large-context reviews (1M context, low cost)
    - **Sonnet** for PR reviews (balanced)
    - **Opus** for production releases only (highest quality)

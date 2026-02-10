@@ -10,7 +10,7 @@ __all__ = [
 ]
 
 
-def __getattr__(name: str):
+def __getattr__(name: str) -> type:
     """Lazy-load provider classes to avoid importing heavy dependencies at module level."""
     if name == "BedrockProvider":
         from codereview.providers.bedrock import BedrockProvider

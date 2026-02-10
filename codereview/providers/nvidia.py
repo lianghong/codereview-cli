@@ -84,6 +84,7 @@ class NVIDIAProvider(TokenTrackingMixin, ModelProvider):
             requests_per_second: Rate limit for API calls (default: 1.0)
             callbacks: Optional list of callback handlers for streaming/progress
             enable_output_fixing: Enable automatic retry on malformed output (default: True)
+            project_context: Optional project README/documentation content for context
         """
         self.callbacks = callbacks or []
         self.enable_output_fixing = enable_output_fixing
