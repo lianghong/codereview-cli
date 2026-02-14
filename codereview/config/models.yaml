@@ -521,6 +521,30 @@ providers:
           - tool_use
         notes: "73.8% SWE-bench, interleaved thinking mode enabled for complex code analysis"
 
+      # GLM-5 (via NVIDIA) - Zhipu AI's next-generation reasoning model
+      # 200K context window, 128K max output
+      # Best for: Complex reasoning, code analysis, general intelligence
+      - id: glm5
+        full_id: z-ai/glm5
+        name: GLM-5 (NVIDIA)
+        aliases:
+          - glm-5
+          - glm5-nvidia
+        pricing:
+          input_per_million: 0.00    # Currently free tier
+          output_per_million: 0.00   # Update when NVIDIA announces pricing
+        inference_params:
+          default_temperature: 1.0   # Z.ai recommended default
+          default_top_p: 0.95        # Z.ai recommended default
+          max_output_tokens: 128000  # Supports up to 128K output
+        context_window: 200000       # 200K token context window
+        capabilities:
+          - reasoning
+          - code_review
+          - code_generation
+          - general_intelligence
+        notes: "Next-gen GLM model, 200K context with 128K output. Lower temp (0.5-0.7) recommended for complex non-creative prompts."
+
       # Step-3.5-Flash (via NVIDIA) - StepFun's cost-efficient reasoning model
       # 256K context window, optimized for fast inference
       # Best for: General code review, chat-style analysis, agentic tasks

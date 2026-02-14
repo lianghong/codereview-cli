@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-LangChain-based CLI tool for AI-powered code reviews via AWS Bedrock, Azure OpenAI, NVIDIA NIM, and Google Generative AI. Supports multiple models including Claude (Opus, Sonnet, Haiku), GPT-5.2 Codex, Grok 4 Fast Reasoning, Gemini 3 (Pro, Flash), Devstral 2, Minimax M2, MiniMax M2.1, Mistral Large 3, Kimi K2, Kimi K2.5, Qwen3 Coder, DeepSeek-R1, DeepSeek V3.2, and GLM 4.7. Reviews **Python, Go, Shell Script, C++, Java, JavaScript, and TypeScript** codebases with structured output (categories, severity levels, line numbers, suggested fixes).
+LangChain-based CLI tool for AI-powered code reviews via AWS Bedrock, Azure OpenAI, NVIDIA NIM, and Google Generative AI. Supports multiple models including Claude (Opus, Sonnet, Haiku), GPT-5.2 Codex, Grok 4 Fast Reasoning, Gemini 3 (Pro, Flash), Devstral 2, Minimax M2, MiniMax M2.1, Mistral Large 3, Kimi K2, Kimi K2.5, Qwen3 Coder, DeepSeek-R1, DeepSeek V3.2, GLM 4.7, and GLM-5. Reviews **Python, Go, Shell Script, C++, Java, JavaScript, and TypeScript** codebases with structured output (categories, severity levels, line numbers, suggested fixes).
 
 **Tech Stack:** Python 3.14, LangChain, AWS Bedrock, Azure OpenAI, NVIDIA NIM, Google Generative AI, Pydantic V2, Click, Rich
 
@@ -162,6 +162,7 @@ Use primary model IDs (case-insensitive). Run `codereview --list-models` to see 
 | `kimi-k2.5-nvidia` | Kimi K2.5 (NVIDIA) | nvidia | kimi-k2.5, kimi25 |
 | `deepseek-v3.2-nvidia` | DeepSeek V3.2 (NVIDIA) | nvidia | deepseek-v3-nvidia, ds-nvidia, deepseek-nvidia |
 | `glm47` | GLM 4.7 (NVIDIA) | nvidia | glm4, glm-nvidia |
+| `glm5` | GLM-5 (NVIDIA) | nvidia | glm-5, glm5-nvidia |
 | `mistral` | Mistral Large 3 | bedrock | mistral-large |
 | `gemini-3-pro` | Gemini 3 Pro Preview | google_genai | gemini-pro, gemini3-pro, g3pro |
 | `gemini-3-flash` | Gemini 3 Flash Preview | google_genai | gemini-flash, gemini3-flash, g3flash |
@@ -315,7 +316,7 @@ FileScanner → FileBatcher → CodeAnalyzer → ProviderFactory → BedrockProv
 5. **Providers** (`providers/`):
    - **BedrockProvider**: AWS Bedrock implementation (Claude, Mistral, Minimax, Kimi, Qwen)
    - **AzureOpenAIProvider**: Azure OpenAI implementation (GPT, Kimi K2.5, Grok models)
-   - **NVIDIAProvider**: NVIDIA NIM API implementation (Devstral, MiniMax M2, MiniMax M2.1, Qwen3, DeepSeek, GLM 4.7)
+   - **NVIDIAProvider**: NVIDIA NIM API implementation (Devstral, MiniMax M2, MiniMax M2.1, Qwen3, DeepSeek, GLM 4.7, GLM-5)
    - **GoogleGenAIProvider**: Google Generative AI implementation (Gemini 3 Pro, Gemini 3 Flash)
 6. **Aggregation** (`cli.py`): Merges results from all batches (issues, suggestions, design insights)
 7. **Renderers** (`renderer.py`): Outputs to Rich terminal UI or Markdown file
@@ -456,6 +457,7 @@ Models defined in `codereview/config/models.yaml`:
 | Kimi K2.5 (NVIDIA) | `moonshotai/kimi-k2.5` | $0.00* | $0.00* | temp=0.6, top_p=0.95, top_k=40, max=16384 |
 | DeepSeek V3.2 (NVIDIA) | `deepseek-ai/deepseek-v3.2` | $0.00* | $0.00* | temp=0.3, top_p=0.9, max=16384, thinking=on |
 | GLM 4.7 (NVIDIA) | `z-ai/glm4.7` | $0.00* | $0.00* | temp=0.5, top_p=0.95, max=16384, thinking=on |
+| GLM-5 (NVIDIA) | `z-ai/glm5` | $0.00* | $0.00* | temp=1.0, top_p=0.95, max=128000 |
 
 **Note:** *NVIDIA models are currently in free tier. Pricing will be updated when NVIDIA announces production pricing. Models with `thinking=on` use interleaved thinking mode for deeper reasoning.
 
