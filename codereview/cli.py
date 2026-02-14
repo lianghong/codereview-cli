@@ -685,9 +685,7 @@ def main(
         # filtering out the default "no concerns" message to avoid repetition
         default_insight = "No architectural concerns identified"
         meaningful_insights = [
-            insight
-            for insight in all_design_insights
-            if insight != default_insight
+            insight for insight in all_design_insights if insight != default_insight
         ]
         aggregated_insights = (
             "\n\n".join(meaningful_insights)
