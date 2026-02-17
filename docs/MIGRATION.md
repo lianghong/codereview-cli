@@ -124,9 +124,6 @@ See [README.md](../README.md#azure-openai-configuration) for detailed setup.
 | `global.anthropic.claude-opus-4-5-20251101-v1:0` | `opus4.5` | `claude-opus-4.5` |
 | `global.anthropic.claude-sonnet-4-5-20250929-v1:0` | `sonnet` | `claude-sonnet` |
 | `global.anthropic.claude-haiku-4-5-20251001-v1:0` | `haiku` | `claude-haiku` |
-| `minimax.minimax-m2` | `minimax` | `minimax-m2` |
-| `mistral.mistral-large-3-675b-instruct` | `mistral` | `mistral-large` |
-| `moonshot.kimi-k2-thinking` | `kimi` | `kimi-k2` |
 | `qwen.qwen3-coder-480b-a35b-v1:0` | `qwen` | `qwen-coder` |
 
 > **Note:** As of v0.2.5, `opus` resolves to Claude Opus 4.6. Use `opus4.5` to explicitly select Claude Opus 4.5.

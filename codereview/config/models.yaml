@@ -1,9 +1,12 @@
 # Model Configuration for Code Review Tool
-# This file defines all available AI models for code review analysis
+# This file defines all available AI models
+# for code review analysis
 #
-# Pricing and parameters researched: January 2026
-# Sources: AWS Bedrock, Azure OpenAI, Anthropic, Mistral, Moonshot, Alibaba docs
+# Pricing/parameters researched: January 2026
+# Sources: AWS Bedrock, Azure OpenAI,
+#   Anthropic, Mistral, Moonshot, Alibaba
 
+---
 version: "1.1"
 
 providers:
@@ -12,7 +15,7 @@ providers:
     region: us-west-2
     models:
       # Claude Models (Anthropic)
-      # Best for: Comprehensive code review, complex reasoning, security analysis
+      # Best for: Code review, reasoning, security
       - id: opus
         full_id: global.anthropic.claude-opus-4-6-v1
         name: Claude Opus 4.6
@@ -21,13 +24,14 @@ providers:
           - opus4.6
           - claude-opus-4.6
         pricing:
-          input_per_million: 5.00    # Verified: Anthropic pricing
+          input_per_million: 5.00
           output_per_million: 25.00
-          cache_write_per_million: 6.25   # Prompt caching available
+          cache_write_per_million: 6.25
           cache_read_per_million: 0.50
         inference_params:
-          default_temperature: 0.1   # Low temp for deterministic code analysis
-          max_output_tokens: 128000  # Supports up to 128K output
+          # Low temp for deterministic code analysis
+          default_temperature: 0.1
+          max_output_tokens: 128000
         context_window: 200000
         capabilities:
           - code_review
@@ -36,18 +40,20 @@ providers:
           - computer_use
 
       - id: opus4.5
-        full_id: global.anthropic.claude-opus-4-5-20251101-v1:0
+        full_id: >-
+          global.anthropic.claude-opus-4-5-20251101-v1:0
         name: Claude Opus 4.5
         aliases:
           - claude-opus-4.5
         pricing:
-          input_per_million: 5.00    # Verified: Anthropic pricing
+          input_per_million: 5.00
           output_per_million: 25.00
-          cache_write_per_million: 6.25   # Prompt caching available
+          cache_write_per_million: 6.25
           cache_read_per_million: 0.50
         inference_params:
-          default_temperature: 0.1   # Low temp for deterministic code analysis
-          max_output_tokens: 64000   # Supports up to 64K output
+          # Low temp for deterministic code analysis
+          default_temperature: 0.1
+          max_output_tokens: 64000
         context_window: 200000
         capabilities:
           - code_review
@@ -56,17 +62,18 @@ providers:
           - computer_use
 
       - id: sonnet
-        full_id: global.anthropic.claude-sonnet-4-5-20250929-v1:0
+        full_id: >-
+          global.anthropic.claude-sonnet-4-5-20250929-v1:0
         name: Claude Sonnet 4.5
         aliases:
           - claude-sonnet
         pricing:
-          input_per_million: 3.00    # Verified: Anthropic pricing
+          input_per_million: 3.00
           output_per_million: 15.00
           cache_write_per_million: 3.75
           cache_read_per_million: 0.30
         inference_params:
-          default_temperature: 0.1   # Low temp for accurate code review
+          default_temperature: 0.1
           max_output_tokens: 64000
         context_window: 200000
         capabilities:
@@ -74,104 +81,36 @@ providers:
           - coding
           - agents
           - computer_use
-        notes: "77.2% SWE-bench Verified, best balance of cost/performance"
+        notes: >-
+          77.2% SWE-bench Verified, best balance
+          of cost/performance
 
       - id: haiku
-        full_id: global.anthropic.claude-haiku-4-5-20251001-v1:0
+        full_id: >-
+          global.anthropic.claude-haiku-4-5-20251001-v1:0
         name: Claude Haiku 4.5
         aliases:
           - claude-haiku
         pricing:
-          input_per_million: 1.00    # Verified: Anthropic pricing
+          input_per_million: 1.00
           output_per_million: 5.00
           cache_write_per_million: 1.25
           cache_read_per_million: 0.10
         inference_params:
-          default_temperature: 0.1   # Low temp for consistent output
+          default_temperature: 0.1
           max_output_tokens: 64000
         context_window: 200000
         capabilities:
           - code_review
           - real_time_assistants
           - parallel_agents
-        notes: "73.3% SWE-bench Verified, fast and cost-effective"
-
-      # Minimax M2 Model (Bedrock)
-      # MoE: 230B total, 10B active parameters
-      # Best for: Fast code analysis, agentic tasks
-      - id: minimax-bedrock
-        full_id: minimax.minimax-m2
-        name: Minimax M2 (Bedrock)
-        aliases:
-          - mm2-bedrock
-        pricing:
-          input_per_million: 0.30    # Verified: AWS Bedrock pricing
-          output_per_million: 1.20
-        inference_params:
-          default_temperature: 0.3   # Lower for code review (default is 1.0)
-          default_top_p: 0.9
-          default_top_k: 40
-          max_output_tokens: 8192
-        context_window: 256000
-        architecture: "MoE (230B total, 10B active)"
-        capabilities:
-          - coding
-          - agentic_tasks
-          - general_intelligence
-        notes: "Compact, fast MoE model optimized for coding tasks"
-
-      # Mistral Large 3 Model
-      # MoE: 675B total, 41B active parameters
-      # Best for: Cost-effective code review, multi-language support
-      - id: mistral
-        full_id: mistral.mistral-large-3-675b-instruct
-        name: Mistral Large 3
-        aliases:
-          - mistral-large
-        pricing:
-          input_per_million: 2.00    # Verified: ~80% cheaper than competitors
-          output_per_million: 6.00
-        inference_params:
-          default_temperature: 0.1   # Low temp for precise code analysis
-          default_top_p: 0.9
-          max_output_tokens: 32000
-        context_window: 128000
-        architecture: "MoE (675B total, 41B active)"
-        capabilities:
-          - code_review
-          - multi_language
-          - reasoning
-        notes: "Open source, cost-effective for large-scale analysis"
-
-      # Kimi K2 Thinking Model (Moonshot AI)
-      # MoE: 1T total, 32B active parameters
-      # Best for: Complex reasoning, multi-step code analysis
-      - id: kimi-k2-bedrock
-        full_id: moonshot.kimi-k2-thinking
-        name: Kimi K2 Thinking (Bedrock)
-        aliases:
-          - kimi
-          - kimi-k2
-          - kimi-bedrock
-        pricing:
-          input_per_million: 0.60    # Verified: litellm/Bedrock pricing
-          output_per_million: 2.50
-        inference_params:
-          default_temperature: 0.6   # Moonshot recommended setting
-          default_min_p: 0.01        # Suppress unlikely tokens
-          max_output_tokens: 32000   # Can go up to 256K
-        context_window: 256000
-        architecture: "MoE (1T total, 32B active)"
-        capabilities:
-          - reasoning
-          - autonomous_agents
-          - tool_use
-          - multi_step_tasks
-        notes: "Exceptional for autonomous AI agents, maintains coherence over hundreds of tool calls"
+        notes: >-
+          73.3% SWE-bench Verified, fast and
+          cost-effective
 
       # Qwen3 Coder Model (Alibaba)
       # MoE: 480B total, 35B active parameters
-      # Best for: Specialized code generation and review
+      # Best for: Specialized code generation
       - id: qwen-bedrock
         full_id: qwen.qwen3-coder-480b-a35b-v1:0
         name: Qwen3 Coder 480B (Bedrock)
@@ -179,13 +118,14 @@ providers:
           - qwen
           - qwen-coder
         pricing:
-          input_per_million: 0.22    # Verified: AWS Bedrock pricing
+          input_per_million: 0.22
           output_per_million: 1.40
         inference_params:
-          default_temperature: 0.3   # Lower than default 0.7 for code review
-          default_top_p: 0.8         # Qwen recommended
-          default_top_k: 20          # Qwen recommended
-          repetition_penalty: 1.05   # Qwen recommended
+          # Lower than default 0.7 for code review
+          default_temperature: 0.3
+          default_top_p: 0.8
+          default_top_k: 20
+          repetition_penalty: 1.05
           max_output_tokens: 65536
         context_window: 131072
         architecture: "MoE (480B total, 35B active)"
@@ -194,12 +134,14 @@ providers:
           - code_review
           - agentic_coding
           - browser_automation
-        notes: "87.9% MultiPL-E score, specialized for coding tasks"
+        notes: >-
+          87.9% MultiPL-E score, specialized
+          for coding tasks
 
       # DeepSeek-R1 Model (DeepSeek AI)
-      # Reasoning model with chain-of-thought capabilities
-      # Best for: Complex reasoning, code analysis with thinking
-      # Note: Does not support tool use - uses prompt-based JSON parsing
+      # Reasoning model with chain-of-thought
+      # Best for: Complex reasoning, code analysis
+      # Note: No tool use - prompt-based JSON
       - id: deepseek-r1-bedrock
         full_id: us.deepseek.r1-v1:0
         name: DeepSeek-R1 (Bedrock)
@@ -209,19 +151,208 @@ providers:
           - ds-bedrock
           - deepseek-bedrock
         pricing:
-          input_per_million: 1.35    # AWS Bedrock pricing (TBD - update when available)
+          # TBD - update when available
+          input_per_million: 1.35
           output_per_million: 5.40
         inference_params:
-          default_temperature: 0.6   # DeepSeek recommended (0.5-0.7 range)
-          max_output_tokens: 32000   # Note: top_k/top_p may not be supported on Bedrock
-        context_window: 128000       # 128K token context window
-        supports_tool_use: false     # DeepSeek-R1 doesn't support tool calling
+          # DeepSeek recommended (0.5-0.7)
+          default_temperature: 0.6
+          # top_k/top_p unsupported on Bedrock
+          max_output_tokens: 32000
+        context_window: 128000
+        supports_tool_use: false
         capabilities:
           - reasoning
           - code_review
           - code_generation
           - thinking
-        notes: "Reasoning model with chain-of-thought, excellent for complex code analysis"
+        notes: >-
+          Reasoning with chain-of-thought,
+          excellent for complex code analysis
+
+      # DeepSeek V3.2 Model (via Bedrock)
+      # MoE: 671B total, 37B active parameters
+      # Best for: Agentic workflows, tool calling
+      - id: deepseek-v3.2-bedrock
+        full_id: deepseek.v3.2
+        name: DeepSeek V3.2 (Bedrock)
+        aliases:
+          - deepseek-v3-bedrock
+          - ds-v3-bedrock
+        pricing:
+          # Verified: AWS Bedrock (Feb 2026)
+          input_per_million: 0.62
+          output_per_million: 1.85
+        inference_params:
+          # Lowered for code review (default 1.0)
+          default_temperature: 0.3
+          default_top_p: 0.9
+          max_output_tokens: 16384
+        context_window: 164000
+        architecture: "MoE (671B total, 37B active)"
+        capabilities:
+          - reasoning
+          - code_review
+          - code_generation
+          - agentic_tasks
+          - tool_use
+        notes: >-
+          Sparse MoE, excels at agentic workflows
+          and multi-step tool calling
+
+      # MiniMax M2.1 Model (Bedrock)
+      # Best for: Multilingual, autonomous coding
+      - id: minimax-m2.1-bedrock
+        full_id: minimax.minimax-m2.1
+        name: MiniMax M2.1 (Bedrock)
+        aliases:
+          - mm2.1-bedrock
+        pricing:
+          # Verified: AWS Bedrock (Feb 2026)
+          input_per_million: 0.30
+          output_per_million: 1.20
+        inference_params:
+          # MiniMax recommended
+          default_temperature: 1.0
+          default_top_p: 0.95
+          default_top_k: 40
+          max_output_tokens: 128000
+          # Produces <think> reasoning tags
+          enable_thinking: true
+          clear_thinking: false
+        context_window: 196000
+        capabilities:
+          - coding
+          - reasoning
+          - agentic_tasks
+          - code_review
+          - thinking
+        notes: >-
+          Enhanced MoE with 196K context and
+          128K output, multilingual coding
+
+      # GLM 4.7 Model (Zhipu AI via Bedrock)
+      # 73.8% SWE-bench, interleaved thinking
+      # Best for: Complex reasoning with thinking
+      - id: glm47-bedrock
+        full_id: zai.glm-4.7
+        name: GLM 4.7 (Bedrock)
+        aliases:
+          - glm4-bedrock
+        pricing:
+          # TBD - update when AWS publishes
+          input_per_million: 0.00
+          output_per_million: 0.00
+        inference_params:
+          # Balanced for code review
+          default_temperature: 0.5
+          default_top_p: 0.95
+          max_output_tokens: 16384
+          # Interleaved thinking mode
+          enable_thinking: true
+          clear_thinking: false
+        context_window: 200000
+        capabilities:
+          - reasoning
+          - code_review
+          - thinking
+          - tool_use
+        notes: >-
+          73.8% SWE-bench, interleaved thinking,
+          Bedrock
+
+      # GLM 4.7 Flash Model (Zhipu AI, Bedrock)
+      # MoE: 30B total, 3B active parameters
+      # Best for: Fast code review, cost-efficient
+      - id: glm47-flash-bedrock
+        full_id: zai.glm-4.7-flash
+        name: GLM 4.7 Flash (Bedrock)
+        aliases:
+          - glm4-flash
+          - glm47f
+          - glm47-flash
+        pricing:
+          # TBD - update when AWS publishes
+          input_per_million: 0.00
+          output_per_million: 0.00
+        inference_params:
+          default_temperature: 0.5
+          default_top_p: 0.95
+          max_output_tokens: 8192
+        context_window: 200000
+        architecture: "MoE (30B total, 3B active)"
+        capabilities:
+          - code_review
+          - code_generation
+          - reasoning
+        notes: >-
+          Lightweight MoE, cost-efficient
+          for production deployment
+
+      # Kimi K2.5 Model (Moonshot AI, Bedrock)
+      # MoE: 1T total, 32B active parameters
+      # Best for: Reasoning, multimodal analysis
+      - id: kimi-k2.5-bedrock
+        full_id: moonshotai.kimi-k2.5
+        name: Kimi K2.5 (Bedrock)
+        aliases:
+          - kimi
+          - kimi-bedrock
+          - kimi25-bedrock
+        pricing:
+          # Verified: AWS Bedrock (Feb 2026)
+          input_per_million: 0.60
+          output_per_million: 3.00
+        inference_params:
+          # Moonshot recommended for thinking
+          default_temperature: 0.6
+          default_top_p: 0.95
+          default_top_k: 40
+          max_output_tokens: 65536
+        context_window: 262000
+        architecture: "MoE (1T total, 32B active)"
+        capabilities:
+          - reasoning
+          - multimodal
+          - code_review
+          - tool_use
+          - agentic_tasks
+        notes: >-
+          1T MoE multimodal, native image
+          understanding, Bedrock Converse API
+
+      # Qwen3 Coder Next (Alibaba, Bedrock)
+      # MoE: 80B total, 3B active parameters
+      # Best for: Efficient agentic coding
+      # Note: Does NOT support thinking mode
+      - id: qwen-next-bedrock
+        full_id: qwen.qwen3-coder-next
+        name: Qwen3 Coder Next (Bedrock)
+        aliases:
+          - qwen-next
+          - qwen3-next
+          - qwen-coder-next
+        pricing:
+          # Verified: AWS Bedrock (Feb 2026)
+          input_per_million: 0.50
+          output_per_million: 1.20
+        inference_params:
+          # Qwen instruct mode recommendation
+          default_temperature: 0.7
+          default_top_p: 0.95
+          default_top_k: 40
+          max_output_tokens: 16384
+        context_window: 262000
+        architecture: "MoE (80B total, 3B active)"
+        capabilities:
+          - code_generation
+          - code_review
+          - agentic_coding
+          - tool_use
+        notes: >-
+          Ultra-sparse MoE (3B active),
+          70%+ SWE-Bench Verified,
+          purpose-built for coding agents
 
   # Azure OpenAI Provider
   azure_openai:
@@ -230,8 +361,8 @@ providers:
     api_version: "2025-04-01-preview"
     models:
       # GPT-5.2 Codex Model
-      # Best for: Enterprise code review, security-aware analysis
-      # Note: Requires Responses API (doesn't support ChatCompletion API)
+      # Best for: Enterprise code review
+      # Note: Requires Responses API
       - id: gpt-5.2-codex
         deployment_name: gpt-5.2-codex
         name: GPT-5.2 Codex
@@ -240,26 +371,31 @@ providers:
           - gpt52
           - codex
         pricing:
-          input_per_million: 1.75    # Verified: Microsoft Foundry pricing
+          input_per_million: 1.75
           output_per_million: 14.00
-          cached_input_per_million: 0.175  # 90% discount on cached
+          # 90% discount on cached
+          cached_input_per_million: 0.175
         inference_params:
-          default_temperature: 0.0   # Zero temp for deterministic code analysis
+          # Zero temp for deterministic analysis
+          default_temperature: 0.0
           default_top_p: 0.95
           max_output_tokens: 128000
-        use_responses_api: true      # Required: GPT-5.2 Codex uses Responses API, not ChatCompletion
-        context_window: 400000       # 272K input, 128K output
+        # GPT-5.2 Codex uses Responses API
+        use_responses_api: true
+        context_window: 400000
         capabilities:
           - reasoning
           - code_review
           - security_analysis
           - structured_output
           - function_calling
-        notes: "56.4% SWE-Bench Pro, security-aware by design"
+        notes: >-
+          56.4% SWE-Bench Pro,
+          security-aware by design
 
-      # Kimi K2.5 (via Azure AI Foundry) - Moonshot AI's multimodal MoE model
+      # Kimi K2.5 (Azure AI Foundry)
       # MoE: 1T total, 32B active parameters
-      # Best for: Complex reasoning, multimodal code analysis, agentic workflows
+      # Best for: Reasoning, multimodal analysis
       - id: kimi-k2.5-azure
         deployment_name: Kimi-K2.5
         name: Kimi K2.5 (Azure)
@@ -267,23 +403,28 @@ providers:
           - kimi25-azure
           - kimi-azure
         pricing:
-          input_per_million: 0.60    # Microsoft Foundry pricing (Feb 2026)
+          # Microsoft Foundry (Feb 2026)
+          input_per_million: 0.60
           output_per_million: 3.00
         inference_params:
-          default_temperature: 0.6   # Moonshot recommended for thinking mode
+          # Moonshot recommended for thinking
+          default_temperature: 0.6
           default_top_p: 0.95
           max_output_tokens: 65536
-        context_window: 262144       # 256K token context window
+        context_window: 262144
         capabilities:
           - reasoning
           - multimodal
           - code_review
           - tool_use
           - agentic_tasks
-        notes: "1T MoE multimodal model, 96.1% AIME 2025, Agent Swarm support"
+        notes: >-
+          1T MoE multimodal, 96.1% AIME 2025,
+          Agent Swarm support
 
-      # Grok 4 Fast Reasoning (via Azure AI Foundry) - xAI's cost-efficient reasoning model
-      # Best for: Fast reasoning, cost-efficient code analysis, long-context review
+      # Grok 4 Fast Reasoning (Azure Foundry)
+      # xAI's cost-efficient reasoning model
+      # Best for: Fast reasoning, cost-efficient
       - id: grok-4-fast
         deployment_name: grok-4-fast-reasoning
         name: Grok 4 Fast Reasoning (Azure)
@@ -293,41 +434,46 @@ providers:
           - grok-fast
           - g4fast
         pricing:
-          input_per_million: 0.20    # xAI/Azure pricing
+          input_per_million: 0.20
           output_per_million: 0.50
         inference_params:
-          default_temperature: 0.1   # Low temp for deterministic code analysis
+          default_temperature: 0.1
           default_top_p: 0.95
           max_output_tokens: 32000
-        context_window: 2000000      # 2M token context window
+        context_window: 2000000
         capabilities:
           - reasoning
           - code_review
           - structured_output
           - function_calling
-        notes: "2M context, SOTA cost-efficiency, 212 tokens/sec"
+        notes: >-
+          2M context, SOTA cost-efficiency,
+          212 tokens/sec
 
   # NVIDIA NIM API Provider
   # Models available via build.nvidia.com
   nvidia:
     api_key: "${NVIDIA_API_KEY}"
-    # base_url: "${NVIDIA_BASE_URL}"  # Optional: for self-hosted NIMs
-    polling_timeout: 900  # 15 minutes for 202 polling (large models may need time)
-    max_retries: 5        # Retry 504/502/503 gateway errors up to 5 times
+    # base_url: "${NVIDIA_BASE_URL}"
+    # 15 min for 202 polling
+    polling_timeout: 900
+    # Retry 504/502/503 up to 5 times
+    max_retries: 5
     models:
-      # Devstral 2 123B - Mistral's code-specialized model
-      # Best for: Code review, debugging, code generation
+      # Devstral 2 123B - Mistral code model
+      # Best for: Code review, debugging
       # 72.2% SWE-Bench Verified score
       - id: devstral
-        full_id: mistralai/devstral-2-123b-instruct-2512
+        full_id: >-
+          mistralai/devstral-2-123b-instruct-2512
         name: Devstral 2 123B
         aliases:
           - devstral-2
         pricing:
-          input_per_million: 0.00    # Currently free tier
-          output_per_million: 0.00   # Update when NVIDIA announces pricing
+          input_per_million: 0.00
+          output_per_million: 0.00
         inference_params:
-          default_temperature: 0.15  # Low for deterministic code analysis
+          default_temperature: 0.15
           default_top_p: 0.95
           max_output_tokens: 8192
         context_window: 128000
@@ -336,20 +482,23 @@ providers:
           - code_generation
           - debugging
           - agentic_coding
-        notes: "72.2% SWE-Bench Verified, excellent for code review tasks"
+        notes: >-
+          72.2% SWE-Bench Verified,
+          excellent for code review tasks
 
-      # MiniMax M2 (via NVIDIA) - Fast reasoning model
-      # Best for: Quick code analysis, general reasoning
+      # MiniMax M2 (via NVIDIA)
+      # Best for: Quick code analysis
       - id: minimax-nvidia
         full_id: minimaxai/minimax-m2
         name: MiniMax M2 (NVIDIA)
         aliases:
           - mm2-nvidia
         pricing:
-          input_per_million: 0.00    # Currently free tier
-          output_per_million: 0.00   # Update when NVIDIA announces pricing
+          input_per_million: 0.00
+          output_per_million: 0.00
         inference_params:
-          default_temperature: 0.3   # Lowered for code review (MiniMax default is 1.0)
+          # Lower for code review
+          default_temperature: 0.3
           default_top_p: 0.9
           max_output_tokens: 8192
         context_window: 256000
@@ -357,11 +506,13 @@ providers:
           - coding
           - reasoning
           - agentic_tasks
-        notes: "Fast MoE model, good for quick code analysis"
+        notes: >-
+          Fast MoE model, good for
+          quick code analysis
 
-      # MiniMax M2.1 (via NVIDIA) - Enhanced reasoning model
+      # MiniMax M2.1 (via NVIDIA)
       # 200K context window, 128K max output
-      # Best for: Code review, coding tasks, agentic workflows
+      # Best for: Code review, agentic workflows
       - id: minimax-m2.1-nvidia
         full_id: minimaxai/minimax-m2.1
         name: MiniMax M2.1 (NVIDIA)
@@ -370,15 +521,17 @@ providers:
           - minimax-m2.1
           - mm21
         pricing:
-          input_per_million: 0.00    # Currently free tier
-          output_per_million: 0.00   # Update when NVIDIA announces pricing
+          input_per_million: 0.00
+          output_per_million: 0.00
         inference_params:
-          default_temperature: 1.0   # MiniMax recommended for coding/agentic workflows
-          default_top_p: 0.95        # MiniMax recommended
-          default_top_k: 40          # MiniMax recommended
-          max_output_tokens: 128000  # Supports up to 128K output
-          enable_thinking: true      # Model produces <think> reasoning tags
-          clear_thinking: false      # Preserve reasoning context
+          # MiniMax recommended
+          default_temperature: 1.0
+          default_top_p: 0.95
+          default_top_k: 40
+          max_output_tokens: 128000
+          # Produces <think> reasoning tags
+          enable_thinking: true
+          clear_thinking: false
         context_window: 200000
         capabilities:
           - coding
@@ -386,27 +539,33 @@ providers:
           - agentic_tasks
           - code_review
           - thinking
-        notes: "Enhanced MoE model with 200K context and 128K output, optimized for coding and agentic workflows"
+        notes: >-
+          Enhanced MoE with 200K context and
+          128K output, coding/agentic optimized
 
-      # Qwen3 Coder 480B (via NVIDIA) - Specialized coding model
+      # Qwen3 Coder 480B (via NVIDIA)
       # MoE: 480B total, 35B active parameters
-      # Best for: Code generation, code review, agentic coding
+      # Best for: Code generation, code review
       - id: qwen-nvidia
-        full_id: qwen/qwen3-coder-480b-a35b-instruct
+        full_id: >-
+          qwen/qwen3-coder-480b-a35b-instruct
         name: Qwen3 Coder 480B (NVIDIA)
         aliases:
           - qwen3-nvidia
           - qwen-coder-nvidia
         pricing:
-          input_per_million: 0.00    # Currently free tier
-          output_per_million: 0.00   # Update when NVIDIA announces pricing
+          input_per_million: 0.00
+          output_per_million: 0.00
         inference_params:
-          default_temperature: 0.3   # Lowered for code review (matches Bedrock Qwen)
-          default_top_p: 0.8         # Qwen recommended
-          default_top_k: 20          # Qwen recommended
-          max_output_tokens: 16384   # Increased for detailed code review reports
-          enable_thinking: true      # Enable thinking mode for deeper code analysis
-          clear_thinking: false      # Preserve reasoning context
+          # Matches Bedrock Qwen config
+          default_temperature: 0.3
+          default_top_p: 0.8
+          default_top_k: 20
+          # For detailed reports
+          max_output_tokens: 16384
+          # Deeper code analysis
+          enable_thinking: true
+          clear_thinking: false
         context_window: 131072
         architecture: "MoE (480B total, 35B active)"
         capabilities:
@@ -414,36 +573,47 @@ providers:
           - code_review
           - agentic_coding
           - thinking
-        notes: "87.9% MultiPL-E score, specialized for coding tasks via NVIDIA NIM"
+        notes: >-
+          87.9% MultiPL-E, specialized
+          for coding tasks via NVIDIA NIM
 
-      # Kimi K2 Instruct (via NVIDIA) - Reasoning model from Moonshot AI
-      # MoE: 1T total, 32B active parameters
-      # Best for: Complex reasoning, multi-step code analysis
-      - id: kimi-k2-nvidia
-        full_id: moonshotai/kimi-k2-instruct-0905
-        name: Kimi K2 Instruct (NVIDIA)
+      # Qwen3.5 397B A17B (via NVIDIA)
+      # MoE: 397B total, 17B active parameters
+      # Best for: Code review, complex reasoning
+      - id: qwen3.5-nvidia
+        full_id: qwen/qwen3.5-397b-a17b
+        name: Qwen3.5 397B A17B (NVIDIA)
         aliases:
-          - kimi-nvidia
+          - qwen3.5
+          - qwen35
+          - qwen35-nvidia
         pricing:
-          input_per_million: 0.00    # Currently free tier
-          output_per_million: 0.00   # Update when NVIDIA announces pricing
+          input_per_million: 0.00
+          output_per_million: 0.00
         inference_params:
-          default_temperature: 0.5   # Lowered for code review (default is 1.0)
-          default_top_p: 0.9
-          default_min_p: 0.01        # Suppress unlikely tokens (Moonshot recommended)
-          max_output_tokens: 16384   # Increased for detailed reports
-        context_window: 256000
-        architecture: "MoE (1T total, 32B active)"
+          # Qwen recommended for thinking
+          default_temperature: 0.6
+          default_top_p: 0.95
+          default_top_k: 20
+          # For detailed reports
+          max_output_tokens: 16384
+          # Enable thinking for reasoning
+          enable_thinking: true
+          clear_thinking: false
+        context_window: 262144
+        architecture: "MoE (397B total, 17B active)"
         capabilities:
+          - code_generation
+          - code_review
           - reasoning
-          - autonomous_agents
-          - tool_use
-          - multi_step_tasks
-        notes: "Exceptional for autonomous AI agents, maintains coherence over hundreds of tool calls"
+          - thinking
+        notes: >-
+          Next-gen Qwen MoE with 262K context,
+          thinking mode for complex analysis
 
-      # DeepSeek V3.2 (via NVIDIA) - Advanced reasoning model
+      # DeepSeek V3.2 (via NVIDIA)
       # MoE: 671B total, 37B active parameters
-      # Best for: Complex reasoning, code analysis with thinking
+      # Best for: Complex reasoning with thinking
       - id: deepseek-v3.2-nvidia
         full_id: deepseek-ai/deepseek-v3.2
         name: DeepSeek V3.2 (NVIDIA)
@@ -452,14 +622,16 @@ providers:
           - ds-nvidia
           - deepseek-nvidia
         pricing:
-          input_per_million: 0.00    # Currently free tier
-          output_per_million: 0.00   # Update when NVIDIA announces pricing
+          input_per_million: 0.00
+          output_per_million: 0.00
         inference_params:
-          default_temperature: 0.3   # Lowered for code review (default is 1.0)
+          # Lowered for code review
+          default_temperature: 0.3
           default_top_p: 0.9
-          max_output_tokens: 16384   # Increased for detailed reports
-          enable_thinking: true      # Enable deep reasoning for complex code analysis
-          clear_thinking: false      # Preserve thinking across the conversation
+          max_output_tokens: 16384
+          # Deep reasoning mode
+          enable_thinking: true
+          clear_thinking: false
         context_window: 128000
         architecture: "MoE (671B total, 37B active)"
         capabilities:
@@ -467,11 +639,13 @@ providers:
           - code_review
           - code_generation
           - thinking
-        notes: "Advanced reasoning with thinking capability, excellent for complex code analysis"
+        notes: >-
+          Advanced reasoning with thinking,
+          excellent for complex code analysis
 
-      # Kimi K2.5 (via NVIDIA) - Multimodal MoE model from Moonshot AI
-      # MoE: 1T total, multimodal (text, image, video)
-      # Best for: Complex reasoning, multimodal code analysis
+      # Kimi K2.5 (via NVIDIA)
+      # MoE: 1T total, multimodal
+      # Best for: Reasoning, multimodal analysis
       - id: kimi-k2.5-nvidia
         full_id: moonshotai/kimi-k2.5
         name: Kimi K2.5 (NVIDIA)
@@ -479,25 +653,29 @@ providers:
           - kimi-k2.5
           - kimi25
         pricing:
-          input_per_million: 0.00    # Currently free tier
-          output_per_million: 0.00   # Update when NVIDIA announces pricing
+          input_per_million: 0.00
+          output_per_million: 0.00
         inference_params:
-          default_temperature: 0.6   # Moonshot recommended for Instant mode (instructed tasks)
-          default_top_p: 0.95        # Moonshot recommended
-          default_top_k: 40          # Moonshot recommended
-          max_output_tokens: 16384   # Supports up to 32K, using 16K for detailed reports
-        context_window: 256000       # 256K token context window
+          # Moonshot Instant mode
+          default_temperature: 0.6
+          default_top_p: 0.95
+          default_top_k: 40
+          # Up to 32K supported
+          max_output_tokens: 16384
+        context_window: 256000
         architecture: "MoE (1T total, multimodal)"
         capabilities:
           - reasoning
           - multimodal
           - code_review
           - tool_use
-        notes: "1T multimodal MoE for high-capacity video and image understanding with efficient inference"
+        notes: >-
+          1T multimodal MoE for video and
+          image understanding, efficient
 
-      # GLM4.7 (via NVIDIA) - Zhipu AI's reasoning model
-      # 73.8% SWE-bench score, supports interleaved thinking
-      # Best for: Complex reasoning, code analysis with thinking
+      # GLM4.7 (via NVIDIA) - Zhipu AI
+      # 73.8% SWE-bench, interleaved thinking
+      # Best for: Complex reasoning with thinking
       - id: glm47
         full_id: z-ai/glm4.7
         name: GLM 4.7 (NVIDIA)
@@ -505,25 +683,30 @@ providers:
           - glm4
           - glm-nvidia
         pricing:
-          input_per_million: 0.00    # Currently free tier
-          output_per_million: 0.00   # Update when NVIDIA announces pricing
+          input_per_million: 0.00
+          output_per_million: 0.00
         inference_params:
-          default_temperature: 0.5   # Balance between creativity and determinism (default 1.0, SWE-bench uses 0.7)
-          default_top_p: 0.95        # Official recommendation
-          max_output_tokens: 16384   # SWE-bench setting, sufficient for detailed review
-          enable_thinking: true      # Enable interleaved thinking for complex reasoning
-          clear_thinking: false      # Preserve thinking across the conversation
-        context_window: 200000       # Supports up to 200K tokens
+          # Default 1.0, SWE-bench uses 0.7
+          default_temperature: 0.5
+          default_top_p: 0.95
+          # SWE-bench setting
+          max_output_tokens: 16384
+          # Interleaved thinking
+          enable_thinking: true
+          clear_thinking: false
+        context_window: 200000
         capabilities:
           - reasoning
           - code_review
           - thinking
           - tool_use
-        notes: "73.8% SWE-bench, interleaved thinking mode enabled for complex code analysis"
+        notes: >-
+          73.8% SWE-bench, interleaved thinking
+          for complex code analysis
 
-      # GLM-5 (via NVIDIA) - Zhipu AI's next-generation reasoning model
+      # GLM-5 (via NVIDIA) - Zhipu AI next-gen
       # 200K context window, 128K max output
-      # Best for: Complex reasoning, code analysis, general intelligence
+      # Best for: Complex reasoning, general AI
       - id: glm5
         full_id: z-ai/glm5
         name: GLM-5 (NVIDIA)
@@ -531,23 +714,26 @@ providers:
           - glm-5
           - glm5-nvidia
         pricing:
-          input_per_million: 0.00    # Currently free tier
-          output_per_million: 0.00   # Update when NVIDIA announces pricing
+          input_per_million: 0.00
+          output_per_million: 0.00
         inference_params:
-          default_temperature: 1.0   # Z.ai recommended default
-          default_top_p: 0.95        # Z.ai recommended default
-          max_output_tokens: 128000  # Supports up to 128K output
-        context_window: 200000       # 200K token context window
+          default_temperature: 1.0
+          default_top_p: 0.95
+          max_output_tokens: 128000
+        context_window: 200000
         capabilities:
           - reasoning
           - code_review
           - code_generation
           - general_intelligence
-        notes: "Next-gen GLM model, 200K context with 128K output. Lower temp (0.5-0.7) recommended for complex non-creative prompts."
+        notes: >-
+          Next-gen GLM, 200K context, 128K
+          output. Use temp 0.5-0.7 for
+          complex non-creative prompts.
 
-      # Step-3.5-Flash (via NVIDIA) - StepFun's cost-efficient reasoning model
-      # 256K context window, optimized for fast inference
-      # Best for: General code review, chat-style analysis, agentic tasks
+      # Step-3.5-Flash (via NVIDIA) - StepFun
+      # 256K context, optimized for fast inference
+      # Best for: General code review, agentic
       - id: step-3.5-flash
         full_id: stepfun-ai/step-3.5-flash
         name: Step 3.5 Flash (NVIDIA)
@@ -556,27 +742,31 @@ providers:
           - step35
           - step-nvidia
         pricing:
-          input_per_million: 0.00    # Currently free tier
-          output_per_million: 0.00   # Update when NVIDIA announces pricing
+          input_per_million: 0.00
+          output_per_million: 0.00
         inference_params:
-          default_temperature: 0.6   # Recommended for coherent code analysis (range 0.6-1.0)
-          default_top_p: 0.95        # NVIDIA NIM recommended
-          default_top_k: 40          # NVIDIA NIM recommended
-          max_output_tokens: 16384   # Sufficient for detailed code review reports
-        context_window: 256000       # 256K token context window
+          # Coherent analysis (range 0.6-1.0)
+          default_temperature: 0.6
+          default_top_p: 0.95
+          default_top_k: 40
+          # For detailed reports
+          max_output_tokens: 16384
+        context_window: 256000
         capabilities:
           - code_review
           - reasoning
           - general_intelligence
-        notes: "Cost-efficient 256K context model, good coherence at temperature 0.6"
+        notes: >-
+          Cost-efficient 256K context model,
+          good coherence at temperature 0.6
 
   # Google Generative AI Provider
-  # Models available via Google AI Studio / Gemini API
+  # Models via Google AI Studio / Gemini API
   google_genai:
     api_key: "${GOOGLE_API_KEY}"
     models:
-      # Gemini 3 Pro Preview - Google's flagship reasoning model
-      # 1M token context, strong reasoning and code analysis
+      # Gemini 3 Pro Preview - Google flagship
+      # 1M token context, strong reasoning
       - id: gemini-3-pro
         full_id: gemini-3-pro-preview
         name: Gemini 3 Pro Preview
@@ -598,8 +788,8 @@ providers:
           - multimodal
           - tool_use
 
-      # Gemini 3 Flash Preview - Fast and cost-efficient
-      # 1M token context, Flash-tier pricing with Pro-level quality
+      # Gemini 3 Flash Preview - Fast, efficient
+      # 1M token context, Flash-tier pricing
       - id: gemini-3-flash
         full_id: gemini-3-flash-preview
         name: Gemini 3 Flash Preview
@@ -680,15 +870,15 @@ scanning:
     - ".pyc"
     - ".pyo"
 
-# Code Review Specific Recommendations
+# Code Review Recommendations
 #
 # For accurate, deterministic code review:
-# - Use temperature 0.0-0.3 (lower = more consistent)
+# - Use temperature 0.0-0.3 (lower = consistent)
 # - Use top_p 0.8-0.95 for controlled output
 # - Prefer models with strong SWE-bench scores
 #
 # Model selection by use case:
-# - Quick reviews: Haiku ($1/$5) or Qwen ($0.22/$1.40)
-# - Standard reviews: Sonnet ($3/$15) or Mistral ($2/$6)
-# - Complex/security reviews: Opus ($5/$25) or GPT-5.2-Codex ($1.75/$14)
-# - Budget-conscious: Qwen ($0.22/$1.40) or Minimax ($0.30/$1.20)
+# - Quick: Haiku ($1/$5) or Qwen ($0.22/$1.40)
+# - Standard: Sonnet ($3/$15) or Mistral ($2/$6)
+# - Complex: Opus ($5/$25) or GPT-5.2 ($1.75/$14)
+# - Budget: Qwen ($0.22/$1.40) or Minimax ($0.30)

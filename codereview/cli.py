@@ -85,6 +85,7 @@ class ModelChoice(click.ParamType):
             param,
             ctx,
         )
+        return value  # unreachable: self.fail() raises
 
 
 console = Console()
@@ -356,6 +357,7 @@ def main(
     if directory is None:
         click.echo(ctx.get_help())
         ctx.exit(0)
+        return
 
     # Create console (quiet mode suppresses all Rich output)
     con = _create_console(quiet=quiet)
@@ -664,7 +666,7 @@ def main(
             static_summary = StaticAnalyzer.get_summary(static_results)
             # Create a new metrics object with static analysis fields
             # Exclude static_analysis fields to avoid duplicate keyword arguments
-            base_metrics = metrics.model_dump(
+            base_metrics = metrics.model_dump(  # type: ignore[attr-defined]
                 exclude_none=True,
                 exclude={
                     "static_analysis_run",
@@ -749,7 +751,7 @@ def main(
             try:
                 if output_format.lower() == "json":
                     # Export as JSON for programmatic consumption
-                    output.write_text(final_report.model_dump_json(indent=2))
+                    output.write_text(final_report.model_dump_json(indent=2))  # type: ignore[attr-defined]
                     con.print(f"\n[green]✓ JSON report exported to: {output}[/green]\n")
                 else:
                     # Export as Markdown (default)

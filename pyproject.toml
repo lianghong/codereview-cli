@@ -19,13 +19,13 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 dependencies = [
-    "langchain>=1.2.9",
-    "langchain-aws>=1.2.2",
-    "langchain-openai>=0.2.14",
-    "langchain-nvidia-ai-endpoints>=1.0.3",
+    "langchain>=1.2.10",
+    "langchain-aws>=1.2.5",
+    "langchain-openai>=1.1.9",
+    "langchain-nvidia-ai-endpoints>=1.0.4",
     "langchain-google-genai>=2.1.0",
     "google-api-core>=2.0.0",
-    "boto3>=1.42.44",
+    "boto3>=1.42.50",
     "click>=8.1.0",
     "rich>=14.3.2",
     "pydantic>=2.9.0",
@@ -63,6 +63,9 @@ dev = [
     "pytest>=8.0.0",
     "pytest-mock>=3.14.0",
 ]
+
+[tool.mypy]
+ignore_missing_imports = true
 
 [tool.isort]
 profile = "black"

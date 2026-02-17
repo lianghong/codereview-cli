@@ -80,9 +80,6 @@ class CodeAnalyzer:
             "global.anthropic.claude-opus-4-5-20251101-v1:0": "opus4.5",
             "global.anthropic.claude-sonnet-4-5-20250929-v1:0": "sonnet",
             "global.anthropic.claude-haiku-4-5-20251001-v1:0": "haiku",
-            "minimax.minimax-m2": "minimax",
-            "mistral.mistral-large-3-675b-instruct": "mistral",
-            "moonshot.kimi-k2-thinking": "kimi",
             "qwen.qwen3-coder-480b-a35b-v1:0": "qwen",
         }
 

@@ -521,8 +521,6 @@ codereview ./src --model haiku    # Claude Haiku 4.5 (fastest)
 # AWS Bedrock - Other models
 codereview ./src --model deepseek-r1-bedrock  # DeepSeek-R1 (reasoning)
 codereview ./src --model qwen-bedrock         # Qwen3 Coder 480B
-codereview ./src --model kimi-k2-bedrock      # Kimi K2 Thinking
-
 # Azure OpenAI
 codereview ./src --model gpt      # GPT-5.2 Codex
 codereview ./src --model kimi-azure  # Kimi K2.5 (256K context)

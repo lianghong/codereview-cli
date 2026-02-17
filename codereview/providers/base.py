@@ -336,7 +336,7 @@ class ModelProvider(ABC):
 
                 # Handle None result (structured output parsing failed)
                 if result is None:
-                    raise ValidationError.from_exception_data(
+                    raise ValidationError.from_exception_data(  # type: ignore[attr-defined]
                         "Model returned None - structured output parsing failed",
                         [],
                     )

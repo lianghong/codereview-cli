@@ -3,7 +3,7 @@
 import math
 from pathlib import Path
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict  # type: ignore[attr-defined]
 
 
 class FileBatch(BaseModel):

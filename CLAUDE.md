@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-LangChain-based CLI tool for AI-powered code reviews via AWS Bedrock, Azure OpenAI, NVIDIA NIM, and Google Generative AI. Supports multiple models including Claude (Opus, Sonnet, Haiku), GPT-5.2 Codex, Grok 4 Fast Reasoning, Gemini 3 (Pro, Flash), Devstral 2, Minimax M2, MiniMax M2.1, Mistral Large 3, Kimi K2, Kimi K2.5, Qwen3 Coder, DeepSeek-R1, DeepSeek V3.2, GLM 4.7, and GLM-5. Reviews **Python, Go, Shell Script, C++, Java, JavaScript, and TypeScript** codebases with structured output (categories, severity levels, line numbers, suggested fixes).
+LangChain-based CLI tool for AI-powered code reviews via AWS Bedrock, Azure OpenAI, NVIDIA NIM, and Google Generative AI. Supports multiple models including Claude (Opus, Sonnet, Haiku), GPT-5.2 Codex, Grok 4 Fast Reasoning, Gemini 3 (Pro, Flash), Devstral 2, MiniMax M2, MiniMax M2.1, Kimi K2.5, Qwen3 Coder, Qwen3 Coder Next, Qwen3.5, DeepSeek-R1, DeepSeek V3.2, GLM 4.7, GLM 4.7 Flash, and GLM-5. Reviews **Python, Go, Shell Script, C++, Java, JavaScript, and TypeScript** codebases with structured output (categories, severity levels, line numbers, suggested fixes).
 
 **Tech Stack:** Python 3.14, LangChain, AWS Bedrock, Azure OpenAI, NVIDIA NIM, Google Generative AI, Pydantic V2, Click, Rich
 
@@ -42,9 +42,9 @@ uv pip install ruff mypy isort vulture types-PyYAML
 # Run all static analysis tools
 uv run ruff check codereview/ tests/        # Linting
 uv run ruff format --check codereview/ tests/  # Code formatting (PEP 758 aware)
-uv run mypy codereview/ --ignore-missing-imports  # Type checking
+uv run mypy codereview/                          # Type checking
 uv run isort --check-only codereview/ tests/   # Import sorting
-uv run vulture codereview/ --min-confidence 80  # Dead code detection
+uv run vulture codereview/ vulture_whitelist.py --min-confidence 80  # Dead code detection
 
 # Auto-fix issues where possible
 uv run ruff check --fix codereview/ tests/
@@ -55,8 +55,8 @@ uv run isort codereview/ tests/
 uv run ruff check codereview/ tests/ && \
 uv run ruff format --check codereview/ tests/ && \
 uv run isort --check-only codereview/ tests/ && \
-uv run mypy codereview/ --ignore-missing-imports && \
-uv run vulture codereview/ --min-confidence 80 && \
+uv run mypy codereview/ && \
+uv run vulture codereview/ vulture_whitelist.py --min-confidence 80 && \
 echo "✓ All static analysis checks passed"
 ```
 
@@ -78,7 +78,6 @@ uv run codereview /path/to/code -m haiku
 uv run codereview /path/to/code -m gpt  # Azure OpenAI
 uv run codereview /path/to/code -m devstral  # NVIDIA NIM
 uv run codereview /path/to/code -m qwen
-uv run codereview /path/to/code -m mistral
 uv run codereview /path/to/code -m gemini-3-pro   # Google GenAI
 uv run codereview /path/to/code -m gemini-3-flash  # Google GenAI (fast)
 
@@ -151,19 +150,22 @@ Use primary model IDs (case-insensitive). Run `codereview --list-models` to see 
 | `kimi-k2.5-azure` | Kimi K2.5 (Azure) | azure_openai | kimi25-azure, kimi-azure |
 | `grok-4-fast` | Grok 4 Fast Reasoning (Azure) | azure_openai | grok, grok4, grok-fast, g4fast |
 | `devstral` | Devstral 2 123B | nvidia | devstral-2 |
-| `minimax-bedrock` | Minimax M2 (Bedrock) | bedrock | mm2-bedrock |
 | `minimax-nvidia` | MiniMax M2 (NVIDIA) | nvidia | mm2-nvidia |
 | `minimax-m2.1-nvidia` | MiniMax M2.1 (NVIDIA) | nvidia | mm2.1-nvidia, minimax-m2.1, mm21 |
 | `qwen-bedrock` | Qwen3 Coder 480B (Bedrock) | bedrock | qwen, qwen-coder |
 | `deepseek-r1-bedrock` | DeepSeek-R1 (Bedrock) | bedrock | deepseek, deepseek-r1, ds-bedrock, deepseek-bedrock |
+| `deepseek-v3.2-bedrock` | DeepSeek V3.2 (Bedrock) | bedrock | deepseek-v3-bedrock, ds-v3-bedrock |
+| `minimax-m2.1-bedrock` | MiniMax M2.1 (Bedrock) | bedrock | mm2.1-bedrock |
+| `glm47-bedrock` | GLM 4.7 (Bedrock) | bedrock | glm4-bedrock |
+| `glm47-flash-bedrock` | GLM 4.7 Flash (Bedrock) | bedrock | glm4-flash, glm47f, glm47-flash |
+| `kimi-k2.5-bedrock` | Kimi K2.5 (Bedrock) | bedrock | kimi, kimi-bedrock, kimi25-bedrock |
+| `qwen-next-bedrock` | Qwen3 Coder Next (Bedrock) | bedrock | qwen-next, qwen3-next, qwen-coder-next |
 | `qwen-nvidia` | Qwen3 Coder 480B (NVIDIA) | nvidia | qwen3-nvidia, qwen-coder-nvidia |
-| `kimi-k2-bedrock` | Kimi K2 Thinking (Bedrock) | bedrock | kimi, kimi-k2, kimi-bedrock |
-| `kimi-k2-nvidia` | Kimi K2 Instruct (NVIDIA) | nvidia | kimi-nvidia |
+| `qwen3.5-nvidia` | Qwen3.5 397B A17B (NVIDIA) | nvidia | qwen3.5, qwen35, qwen35-nvidia |
 | `kimi-k2.5-nvidia` | Kimi K2.5 (NVIDIA) | nvidia | kimi-k2.5, kimi25 |
 | `deepseek-v3.2-nvidia` | DeepSeek V3.2 (NVIDIA) | nvidia | deepseek-v3-nvidia, ds-nvidia, deepseek-nvidia |
 | `glm47` | GLM 4.7 (NVIDIA) | nvidia | glm4, glm-nvidia |
 | `glm5` | GLM-5 (NVIDIA) | nvidia | glm-5, glm5-nvidia |
-| `mistral` | Mistral Large 3 | bedrock | mistral-large |
 | `gemini-3-pro` | Gemini 3 Pro Preview | google_genai | gemini-pro, gemini3-pro, g3pro |
 | `gemini-3-flash` | Gemini 3 Flash Preview | google_genai | gemini-flash, gemini3-flash, g3flash |
 
@@ -314,9 +316,9 @@ FileScanner → FileBatcher → CodeAnalyzer → ProviderFactory → BedrockProv
 3. **CodeAnalyzer** (`analyzer.py`): Orchestrates analysis using provider abstraction
 4. **ProviderFactory** (`providers/factory.py`): Auto-detects provider based on model name
 5. **Providers** (`providers/`):
-   - **BedrockProvider**: AWS Bedrock implementation (Claude, Mistral, Minimax, Kimi, Qwen)
+   - **BedrockProvider**: AWS Bedrock implementation (Claude, Kimi K2.5, Qwen, DeepSeek, MiniMax M2.1, GLM)
    - **AzureOpenAIProvider**: Azure OpenAI implementation (GPT, Kimi K2.5, Grok models)
-   - **NVIDIAProvider**: NVIDIA NIM API implementation (Devstral, MiniMax M2, MiniMax M2.1, Qwen3, DeepSeek, GLM 4.7, GLM-5)
+   - **NVIDIAProvider**: NVIDIA NIM API implementation (Devstral, MiniMax M2, MiniMax M2.1, Qwen3, Qwen3.5, DeepSeek, GLM 4.7, GLM-5)
    - **GoogleGenAIProvider**: Google Generative AI implementation (Gemini 3 Pro, Gemini 3 Flash)
 6. **Aggregation** (`cli.py`): Merges results from all batches (issues, suggestions, design insights)
 7. **Renderers** (`renderer.py`): Outputs to Rich terminal UI or Markdown file
@@ -429,11 +431,16 @@ Models defined in `codereview/config/models.yaml`:
 | Claude Opus 4.5 | `global.anthropic.claude-opus-4-5-20251101-v1:0` | $5.00 | $25.00 | temp=0.1 |
 | Claude Sonnet 4.5 | `global.anthropic.claude-sonnet-4-5-20250929-v1:0` | $3.00 | $15.00 | temp=0.1 |
 | Claude Haiku 4.5 | `global.anthropic.claude-haiku-4-5-20251001-v1:0` | $1.00 | $5.00 | temp=0.1 |
-| Minimax M2 (Bedrock) | `minimax.minimax-m2` | $0.30 | $1.20 | temp=0.3, top_p=0.9, top_k=40, max=8192 |
-| Mistral Large 3 | `mistral.mistral-large-3-675b-instruct` | $2.00 | $6.00 | temp=0.1, top_p=0.5, top_k=5 |
-| Kimi K2 Thinking (Bedrock) | `moonshot.kimi-k2-thinking` | $0.60 | $2.50 | temp=0.6, max=16K-256K |
 | Qwen3 Coder 480B (Bedrock) | `qwen.qwen3-coder-480b-a35b-v1:0` | $0.22 | $1.40 | temp=0.3, top_p=0.8, top_k=20, max=65536 |
 | DeepSeek-R1 (Bedrock) | `us.deepseek.r1-v1:0` | $1.35 | $5.40 | temp=0.6, max=32000 |
+| DeepSeek V3.2 (Bedrock) | `deepseek.v3.2` | $0.62 | $1.85 | temp=0.3, top_p=0.9, max=16384 |
+| MiniMax M2.1 (Bedrock) | `minimax.minimax-m2.1` | $0.30 | $1.20 | temp=1.0, top_p=0.95, top_k=40, max=128000, thinking=on |
+| GLM 4.7 (Bedrock) | `zai.glm-4.7` | $0.00* | $0.00* | temp=0.5, top_p=0.95, max=16384, thinking=on |
+| GLM 4.7 Flash (Bedrock) | `zai.glm-4.7-flash` | $0.00* | $0.00* | temp=0.5, top_p=0.95, max=8192 |
+| Kimi K2.5 (Bedrock) | `moonshotai.kimi-k2.5` | $0.60 | $3.00 | temp=0.6, top_p=0.95, top_k=40, max=65536 |
+| Qwen3 Coder Next (Bedrock) | `qwen.qwen3-coder-next` | $0.50 | $1.20 | temp=0.7, top_p=0.95, top_k=40, max=16384 |
+
+**Note:** *GLM Bedrock pricing TBD - update when AWS publishes official pricing.
 
 **Azure OpenAI Models:**
 | Model | Deployment Name | Input $/M | Output $/M | Defaults |
@@ -453,7 +460,7 @@ Models defined in `codereview/config/models.yaml`:
 | MiniMax M2 (NVIDIA) | `minimaxai/minimax-m2` | $0.00* | $0.00* | temp=0.3, top_p=0.9, max=8192 |
 | MiniMax M2.1 (NVIDIA) | `minimaxai/minimax-m2.1` | $0.00* | $0.00* | temp=1.0, top_p=0.95, top_k=40, max=128000, thinking=on |
 | Qwen3 Coder 480B (NVIDIA) | `qwen/qwen3-coder-480b-a35b-instruct` | $0.00* | $0.00* | temp=0.3, top_p=0.8, max=16384, thinking=on |
-| Kimi K2 Instruct (NVIDIA) | `moonshotai/kimi-k2-instruct-0905` | $0.00* | $0.00* | temp=0.5, top_p=0.9, max=16384 |
+| Qwen3.5 397B A17B (NVIDIA) | `qwen/qwen3.5-397b-a17b` | $0.00* | $0.00* | temp=0.6, top_p=0.95, top_k=20, max=16384, thinking=on |
 | Kimi K2.5 (NVIDIA) | `moonshotai/kimi-k2.5` | $0.00* | $0.00* | temp=0.6, top_p=0.95, top_k=40, max=16384 |
 | DeepSeek V3.2 (NVIDIA) | `deepseek-ai/deepseek-v3.2` | $0.00* | $0.00* | temp=0.3, top_p=0.9, max=16384, thinking=on |
 | GLM 4.7 (NVIDIA) | `z-ai/glm4.7` | $0.00* | $0.00* | temp=0.5, top_p=0.95, max=16384, thinking=on |

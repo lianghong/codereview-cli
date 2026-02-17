@@ -12,7 +12,13 @@ The models include validators to normalize LLM output variations (e.g., mapping
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (  # type: ignore[attr-defined]
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 # Valid categories for issues
 VALID_CATEGORIES = (

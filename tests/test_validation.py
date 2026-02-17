@@ -1,12 +1,12 @@
 """Tests for credential validation functionality."""
 
 import os
-from unittest.mock import Mock
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
-from botocore.exceptions import ClientError
-from codereview.providers.base import ValidationResult
 import httpx
+from botocore.exceptions import ClientError
+
+from codereview.providers.base import ValidationResult
 
 
 class TestValidationResult:
@@ -64,9 +64,7 @@ class TestBedrockValidation:
 
     def test_bedrock_validation_no_credentials(self):
         """Test validation fails when no AWS credentials."""
-        from codereview.config.models import BedrockConfig
-        from codereview.config.models import ModelConfig
-        from codereview.config.models import PricingConfig
+        from codereview.config.models import BedrockConfig, ModelConfig, PricingConfig
         from codereview.providers.bedrock import BedrockProvider
 
         with patch("codereview.providers.bedrock.ChatBedrockConverse"):
@@ -94,9 +92,7 @@ class TestBedrockValidation:
 
     def test_bedrock_validation_valid_credentials(self):
         """Test validation passes with valid credentials."""
-        from codereview.config.models import BedrockConfig
-        from codereview.config.models import ModelConfig
-        from codereview.config.models import PricingConfig
+        from codereview.config.models import BedrockConfig, ModelConfig, PricingConfig
         from codereview.providers.bedrock import BedrockProvider
 
         with patch("codereview.providers.bedrock.ChatBedrockConverse"):
@@ -130,9 +126,7 @@ class TestBedrockValidation:
 
     def test_bedrock_validation_expired_token(self):
         """Test validation handles expired token."""
-        from codereview.config.models import BedrockConfig
-        from codereview.config.models import ModelConfig
-        from codereview.config.models import PricingConfig
+        from codereview.config.models import BedrockConfig, ModelConfig, PricingConfig
         from codereview.providers.bedrock import BedrockProvider
 
         with patch("codereview.providers.bedrock.ChatBedrockConverse"):
@@ -167,9 +161,7 @@ class TestBedrockValidation:
 
     def test_bedrock_validation_invalid_client_token(self):
         """Test validation handles InvalidClientTokenId STS error."""
-        from codereview.config.models import BedrockConfig
-        from codereview.config.models import ModelConfig
-        from codereview.config.models import PricingConfig
+        from codereview.config.models import BedrockConfig, ModelConfig, PricingConfig
         from codereview.providers.bedrock import BedrockProvider
 
         with patch("codereview.providers.bedrock.ChatBedrockConverse"):
@@ -209,9 +201,7 @@ class TestBedrockValidation:
 
     def test_bedrock_validation_model_found(self):
         """Test validation passes when model is found in Bedrock list."""
-        from codereview.config.models import BedrockConfig
-        from codereview.config.models import ModelConfig
-        from codereview.config.models import PricingConfig
+        from codereview.config.models import BedrockConfig, ModelConfig, PricingConfig
         from codereview.providers.bedrock import BedrockProvider
 
         with patch("codereview.providers.bedrock.ChatBedrockConverse"):
@@ -260,9 +250,7 @@ class TestBedrockValidation:
 
     def test_bedrock_validation_model_not_found(self):
         """Test validation warns when model is not in Bedrock list."""
-        from codereview.config.models import BedrockConfig
-        from codereview.config.models import ModelConfig
-        from codereview.config.models import PricingConfig
+        from codereview.config.models import BedrockConfig, ModelConfig, PricingConfig
         from codereview.providers.bedrock import BedrockProvider
 
         with patch("codereview.providers.bedrock.ChatBedrockConverse"):
@@ -310,9 +298,7 @@ class TestBedrockValidation:
 
     def test_bedrock_validation_cross_region_model_id(self):
         """Test validation strips global. prefix for cross-region model matching."""
-        from codereview.config.models import BedrockConfig
-        from codereview.config.models import ModelConfig
-        from codereview.config.models import PricingConfig
+        from codereview.config.models import BedrockConfig, ModelConfig, PricingConfig
         from codereview.providers.bedrock import BedrockProvider
 
         with patch("codereview.providers.bedrock.ChatBedrockConverse"):
@@ -359,9 +345,7 @@ class TestBedrockValidation:
 
     def test_bedrock_validation_access_denied_model_check(self):
         """Test validation warns (not fails) when AccessDeniedException on list models."""
-        from codereview.config.models import BedrockConfig
-        from codereview.config.models import ModelConfig
-        from codereview.config.models import PricingConfig
+        from codereview.config.models import BedrockConfig, ModelConfig, PricingConfig
         from codereview.providers.bedrock import BedrockProvider
 
         with patch("codereview.providers.bedrock.ChatBedrockConverse"):
@@ -413,9 +397,7 @@ class TestBedrockValidation:
 
     def test_bedrock_validation_generic_credential_error(self):
         """Test validation handles generic exception during credential check."""
-        from codereview.config.models import BedrockConfig
-        from codereview.config.models import ModelConfig
-        from codereview.config.models import PricingConfig
+        from codereview.config.models import BedrockConfig, ModelConfig, PricingConfig
         from codereview.providers.bedrock import BedrockProvider
 
         with patch("codereview.providers.bedrock.ChatBedrockConverse"):
@@ -447,9 +429,11 @@ class TestAzureValidation:
 
     def test_azure_validation_placeholder_api_key(self):
         """Test validation fails when API key is a placeholder."""
-        from codereview.config.models import AzureOpenAIConfig
-        from codereview.config.models import ModelConfig
-        from codereview.config.models import PricingConfig
+        from codereview.config.models import (
+            AzureOpenAIConfig,
+            ModelConfig,
+            PricingConfig,
+        )
         from codereview.providers.azure_openai import AzureOpenAIProvider
 
         with patch("codereview.providers.azure_openai.AzureChatOpenAI"):
@@ -474,9 +458,11 @@ class TestAzureValidation:
 
     def test_azure_validation_placeholder_endpoint(self):
         """Test validation fails when endpoint is a placeholder."""
-        from codereview.config.models import AzureOpenAIConfig
-        from codereview.config.models import ModelConfig
-        from codereview.config.models import PricingConfig
+        from codereview.config.models import (
+            AzureOpenAIConfig,
+            ModelConfig,
+            PricingConfig,
+        )
         from codereview.providers.azure_openai import AzureOpenAIProvider
 
         with patch("codereview.providers.azure_openai.AzureChatOpenAI"):
@@ -502,9 +488,11 @@ class TestAzureValidation:
         """Test validation passes with valid config."""
         import os
 
-        from codereview.config.models import AzureOpenAIConfig
-        from codereview.config.models import ModelConfig
-        from codereview.config.models import PricingConfig
+        from codereview.config.models import (
+            AzureOpenAIConfig,
+            ModelConfig,
+            PricingConfig,
+        )
         from codereview.providers.azure_openai import AzureOpenAIProvider
 
         # Skip connection test
@@ -541,9 +529,11 @@ class TestAzureValidation:
         """Test validation warns when API key seems too short."""
         import os
 
-        from codereview.config.models import AzureOpenAIConfig
-        from codereview.config.models import ModelConfig
-        from codereview.config.models import PricingConfig
+        from codereview.config.models import (
+            AzureOpenAIConfig,
+            ModelConfig,
+            PricingConfig,
+        )
         from codereview.providers.azure_openai import AzureOpenAIProvider
 
         # Skip connection test
@@ -576,9 +566,11 @@ class TestAzureValidation:
 
     def test_azure_validation_invalid_url_format(self):
         """Test validation fails when endpoint URL has invalid format (no scheme/netloc)."""
-        from codereview.config.models import AzureOpenAIConfig
-        from codereview.config.models import ModelConfig
-        from codereview.config.models import PricingConfig
+        from codereview.config.models import (
+            AzureOpenAIConfig,
+            ModelConfig,
+            PricingConfig,
+        )
         from codereview.providers.azure_openai import AzureOpenAIProvider
 
         with patch("codereview.providers.azure_openai.AzureChatOpenAI"):
@@ -606,9 +598,11 @@ class TestAzureValidation:
 
     def test_azure_validation_http_endpoint_warning(self):
         """Test validation warns when endpoint uses HTTP instead of HTTPS."""
-        from codereview.config.models import AzureOpenAIConfig
-        from codereview.config.models import ModelConfig
-        from codereview.config.models import PricingConfig
+        from codereview.config.models import (
+            AzureOpenAIConfig,
+            ModelConfig,
+            PricingConfig,
+        )
         from codereview.providers.azure_openai import AzureOpenAIProvider
 
         os.environ["CODEREVIEW_SKIP_CONNECTION_TEST"] = "1"
@@ -647,9 +641,11 @@ class TestAzureValidation:
 
     def test_azure_validation_missing_deployment(self):
         """Test validation fails when deployment name is not set."""
-        from codereview.config.models import AzureOpenAIConfig
-        from codereview.config.models import ModelConfig
-        from codereview.config.models import PricingConfig
+        from codereview.config.models import (
+            AzureOpenAIConfig,
+            ModelConfig,
+            PricingConfig,
+        )
         from codereview.providers.azure_openai import AzureOpenAIProvider
 
         with patch("codereview.providers.azure_openai.AzureChatOpenAI"):
@@ -674,9 +670,11 @@ class TestAzureValidation:
 
     def test_azure_validation_connection_test_success(self):
         """Test connection test passes when endpoint returns 200."""
-        from codereview.config.models import AzureOpenAIConfig
-        from codereview.config.models import ModelConfig
-        from codereview.config.models import PricingConfig
+        from codereview.config.models import (
+            AzureOpenAIConfig,
+            ModelConfig,
+            PricingConfig,
+        )
         from codereview.providers.azure_openai import AzureOpenAIProvider
 
         # Ensure connection test is NOT skipped
@@ -716,9 +714,11 @@ class TestAzureValidation:
 
     def test_azure_validation_connection_test_auth_error(self):
         """Test connection test still passes when endpoint returns 401."""
-        from codereview.config.models import AzureOpenAIConfig
-        from codereview.config.models import ModelConfig
-        from codereview.config.models import PricingConfig
+        from codereview.config.models import (
+            AzureOpenAIConfig,
+            ModelConfig,
+            PricingConfig,
+        )
         from codereview.providers.azure_openai import AzureOpenAIProvider
 
         os.environ.pop("CODEREVIEW_SKIP_CONNECTION_TEST", None)
@@ -757,9 +757,11 @@ class TestAzureValidation:
 
     def test_azure_validation_connection_test_exception(self):
         """Test connection test failure produces warning, not failure."""
-        from codereview.config.models import AzureOpenAIConfig
-        from codereview.config.models import ModelConfig
-        from codereview.config.models import PricingConfig
+        from codereview.config.models import (
+            AzureOpenAIConfig,
+            ModelConfig,
+            PricingConfig,
+        )
         from codereview.providers.azure_openai import AzureOpenAIProvider
 
         os.environ.pop("CODEREVIEW_SKIP_CONNECTION_TEST", None)
@@ -799,9 +801,7 @@ class TestNVIDIAValidation:
 
     def test_nvidia_validation_missing_model_id(self):
         """Test validation fails when model full_id is not set."""
-        from codereview.config.models import ModelConfig
-        from codereview.config.models import NVIDIAConfig
-        from codereview.config.models import PricingConfig
+        from codereview.config.models import ModelConfig, NVIDIAConfig, PricingConfig
         from codereview.providers.nvidia import NVIDIAProvider
 
         os.environ["CODEREVIEW_SKIP_CONNECTION_TEST"] = "1"
@@ -833,9 +833,7 @@ class TestNVIDIAValidation:
 
     def test_nvidia_validation_connection_timeout(self):
         """Test validation warns on connection timeout."""
-        from codereview.config.models import ModelConfig
-        from codereview.config.models import NVIDIAConfig
-        from codereview.config.models import PricingConfig
+        from codereview.config.models import ModelConfig, NVIDIAConfig, PricingConfig
         from codereview.providers.nvidia import NVIDIAProvider
 
         os.environ.pop("CODEREVIEW_SKIP_CONNECTION_TEST", None)
@@ -865,9 +863,7 @@ class TestNVIDIAValidation:
 
     def test_nvidia_validation_custom_base_url(self):
         """Test validation shows custom base URL in checks."""
-        from codereview.config.models import ModelConfig
-        from codereview.config.models import NVIDIAConfig
-        from codereview.config.models import PricingConfig
+        from codereview.config.models import ModelConfig, NVIDIAConfig, PricingConfig
         from codereview.providers.nvidia import NVIDIAProvider
 
         os.environ["CODEREVIEW_SKIP_CONNECTION_TEST"] = "1"
@@ -900,9 +896,7 @@ class TestNVIDIAValidation:
 
     def test_nvidia_validation_connection_other_status(self):
         """Test validation handles non-200 non-auth status codes."""
-        from codereview.config.models import ModelConfig
-        from codereview.config.models import NVIDIAConfig
-        from codereview.config.models import PricingConfig
+        from codereview.config.models import ModelConfig, NVIDIAConfig, PricingConfig
         from codereview.providers.nvidia import NVIDIAProvider
 
         os.environ.pop("CODEREVIEW_SKIP_CONNECTION_TEST", None)
@@ -941,6 +935,7 @@ class TestCLIValidation:
     def test_validate_unknown_model(self):
         """Test --validate with ValueError from factory exits with code 1."""
         from click.testing import CliRunner
+
         from codereview.cli import main
 
         runner = CliRunner()
@@ -958,6 +953,7 @@ class TestCLIValidation:
     def test_validate_unexpected_error(self):
         """Test --validate handles generic Exception with exit code 1."""
         from click.testing import CliRunner
+
         from codereview.cli import main
 
         runner = CliRunner()
