@@ -151,6 +151,22 @@ def test_env_var_expansion(temp_config_file, monkeypatch):
     assert config.api_key == "secret-key"
 
 
+def test_env_var_expansion_with_digits(monkeypatch):
+    """Test that env var names containing digits are expanded correctly."""
+    monkeypatch.setenv("API_V2_KEY", "my-v2-key")
+    monkeypatch.setenv("OPENAI_3_TOKEN", "tok-123")
+
+    loader = ConfigLoader.__new__(ConfigLoader)  # bypass __init__
+    assert loader._expand_env_var_string("${API_V2_KEY}") == "my-v2-key"
+    assert loader._expand_env_var_string("${OPENAI_3_TOKEN}") == "tok-123"
+    # Mixed: var without digits still works
+    monkeypatch.setenv("PLAIN_KEY", "plain")
+    assert loader._expand_env_var_string("${PLAIN_KEY}") == "plain"
+    # Non-matching patterns left untouched
+    assert loader._expand_env_var_string("${lowercase}") == "${lowercase}"
+    assert loader._expand_env_var_string("no-vars-here") == "no-vars-here"
+
+
 def test_missing_env_vars_handled(temp_config_file, monkeypatch):
     """Test missing env vars result in empty strings (validation catches later)."""
     # Don't set env vars

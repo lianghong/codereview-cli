@@ -269,10 +269,15 @@ class TestPromptReadmeConfirmation:
         context_file = tmp_path / "CONTEXT.md"
         context_file.write_text("# Context")
 
-        # User specifies a file when prompted
-        with patch(
-            "codereview.readme_finder.click.prompt", return_value=str(context_file)
+        # User specifies a file when prompted (simulate interactive terminal)
+        with (
+            patch("codereview.readme_finder.sys.stdin") as mock_stdin,
+            patch(
+                "codereview.readme_finder.click.prompt",
+                return_value=str(context_file),
+            ),
         ):
+            mock_stdin.isatty.return_value = True
             result = prompt_readme_confirmation(None)
             assert result == context_file
 
@@ -282,18 +287,30 @@ class TestPromptReadmeConfirmation:
 
         from codereview.readme_finder import prompt_readme_confirmation
 
-        # Test with empty string (default skip)
-        with patch("codereview.readme_finder.click.prompt", return_value=""):
+        # Test with empty string (default skip, interactive terminal)
+        with (
+            patch("codereview.readme_finder.sys.stdin") as mock_stdin,
+            patch("codereview.readme_finder.click.prompt", return_value=""),
+        ):
+            mock_stdin.isatty.return_value = True
             result = prompt_readme_confirmation(None)
             assert result is None
 
         # Test with "n"
-        with patch("codereview.readme_finder.click.prompt", return_value="n"):
+        with (
+            patch("codereview.readme_finder.sys.stdin") as mock_stdin,
+            patch("codereview.readme_finder.click.prompt", return_value="n"),
+        ):
+            mock_stdin.isatty.return_value = True
             result = prompt_readme_confirmation(None)
             assert result is None
 
         # Test with "N" (uppercase)
-        with patch("codereview.readme_finder.click.prompt", return_value="N"):
+        with (
+            patch("codereview.readme_finder.sys.stdin") as mock_stdin,
+            patch("codereview.readme_finder.click.prompt", return_value="N"),
+        ):
+            mock_stdin.isatty.return_value = True
             result = prompt_readme_confirmation(None)
             assert result is None
 

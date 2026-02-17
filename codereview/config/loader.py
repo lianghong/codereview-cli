@@ -98,7 +98,7 @@ class ConfigLoader:
                 return ""
             return value
 
-        return re.sub(r"\$\{([A-Z_]+)\}", replacer, text)
+        return re.sub(r"\$\{([A-Z0-9_]+)\}", replacer, text)
 
     def _expand_env_vars_in_dict(self, data: Any) -> None:
         """Recursively expand ${VAR_NAME} in parsed YAML dict values in-place.
@@ -137,11 +137,16 @@ class ConfigLoader:
             existing_provider, existing_config = self._models_by_id[name]
             if existing_provider != provider:
                 logging.warning(
-                    f"Model name conflict: '{name}' exists in both "
-                    f"'{existing_provider}' ({existing_config.name}) and "
-                    f"'{provider}' ({model_config.name}). "
-                    f"Using '{existing_provider}'. To use '{provider}', "
-                    f"choose a unique ID or alias."
+                    "Model name conflict: '%s' exists in both "
+                    "'%s' (%s) and '%s' (%s). "
+                    "Using '%s'. To use '%s', choose a unique ID or alias.",
+                    name,
+                    existing_provider,
+                    existing_config.name,
+                    provider,
+                    model_config.name,
+                    existing_provider,
+                    provider,
                 )
                 return  # Keep first registration
         self._models_by_id[name] = (provider, model_config)
@@ -196,9 +201,10 @@ class ConfigLoader:
                     self._providers["azure_openai"] = azure_config
                 except (KeyError, ValueError, TypeError, ValidationError) as e:
                     logging.info(
-                        f"Azure OpenAI provider not configured: {e}. "
+                        "Azure OpenAI provider not configured: %s. "
                         "Set AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_KEY, and "
-                        "AZURE_OPENAI_API_VERSION environment variables to enable Azure models."
+                        "AZURE_OPENAI_API_VERSION environment variables to enable Azure models.",
+                        e,
                     )
 
         # Parse NVIDIA provider
@@ -227,8 +233,9 @@ class ConfigLoader:
                     self._providers["nvidia"] = nvidia_config
                 except (KeyError, ValueError, TypeError, ValidationError) as e:
                     logging.info(
-                        f"NVIDIA provider not configured: {e}. "
-                        "Set NVIDIA_API_KEY environment variable to enable NVIDIA models."
+                        "NVIDIA provider not configured: %s. "
+                        "Set NVIDIA_API_KEY environment variable to enable NVIDIA models.",
+                        e,
                     )
 
         # Parse Google Generative AI provider
@@ -257,8 +264,9 @@ class ConfigLoader:
                     self._providers["google_genai"] = google_config
                 except (KeyError, ValueError, TypeError, ValidationError) as e:
                     logging.info(
-                        f"Google GenAI provider not configured: {e}. "
-                        "Set GOOGLE_API_KEY environment variable to enable Google models."
+                        "Google GenAI provider not configured: %s. "
+                        "Set GOOGLE_API_KEY environment variable to enable Google models.",
+                        e,
                     )
 
     def _parse_scanning_config(self) -> None:

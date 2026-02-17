@@ -3,7 +3,6 @@
 from typing import Any
 
 from langchain_core.callbacks import BaseCallbackHandler
-from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.rate_limiters import InMemoryRateLimiter
 from langchain_google_genai import ChatGoogleGenerativeAI
 
@@ -11,16 +10,13 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from codereview.config import SYSTEM_PROMPT
 from codereview.config.models import GoogleGenAIConfig, ModelConfig
 from codereview.models import CodeReviewReport
-from codereview.providers.base import ModelProvider, RetryConfig, ValidationResult
-from codereview.providers.mixins import TokenTrackingMixin
-
-# Shared prompt template for consistent formatting
-BATCH_PROMPT_TEMPLATE = ChatPromptTemplate.from_messages(
-    [
-        ("system", "{system_prompt}"),
-        ("human", "{batch_context}"),
-    ]
+from codereview.providers.base import (
+    BATCH_PROMPT_TEMPLATE,
+    ModelProvider,
+    RetryConfig,
+    ValidationResult,
 )
+from codereview.providers.mixins import TokenTrackingMixin
 
 
 class GoogleGenAIProvider(TokenTrackingMixin, ModelProvider):
@@ -117,7 +113,11 @@ class GoogleGenAIProvider(TokenTrackingMixin, ModelProvider):
             model_params["top_k"] = self.top_k
 
         base_model = ChatGoogleGenerativeAI(**model_params)
-        return base_model.with_structured_output(CodeReviewReport, method="json_schema")
+        # include_raw=True returns {"raw": AIMessage, "parsed": CodeReviewReport}
+        # so we can extract actual token counts from the raw AIMessage
+        return base_model.with_structured_output(
+            CodeReviewReport, method="json_schema", include_raw=True
+        )
 
     def _create_chain(self) -> Any:
         """Create LangChain chain with prompt template."""

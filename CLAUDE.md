@@ -382,40 +382,43 @@ Provider-specific retry logic:
 
 ### Code Review Rules
 
-The AI code review behavior is defined in `config/prompts.py`. Key rule sections:
+The AI code review behavior is defined in `config/prompts.py` (~310 lines). The prompt is structured for maximum instruction adherence with critical constraints near the top.
 
-**Severity Classification:**
-- **Critical**: Security vulnerabilities, data loss risk, crashes, memory corruption
-- **High**: Significant bugs, resource leaks, race conditions, missing error handling
-- **Medium**: Code quality issues, minor bugs, suboptimal patterns
+**Prompt Structure (in order):**
+1. Role & task definition
+2. Core constraints (8 critical rules — positioned first for attention)
+3. Prompt injection defense (ignores adversarial instructions in user code)
+4. Severity classification (with concrete examples per level)
+5. False positive prevention (consolidated from multiple sections)
+6. Security analysis (with CWE references)
+7. Architecture & production readiness (boundary violations, coupling, observability)
+8. Performance guidelines
+9. Testing quality (anti-patterns, coverage gaps)
+10. Language-specific rules (Python, Go, Shell, C++, Java, JS, TS)
+11. Typo detection (concise instructions, not exhaustive lists)
+12. Output requirements (categories, severities, format)
+13. Self-verification step (line number check, false positive check, context check)
+14. Two concrete examples (good finding + false positive to avoid)
+
+**Severity Classification (with examples):**
+- **Critical**: Security vulnerabilities, data loss risk, crashes — e.g., `subprocess.call(user_input, shell=True)`
+- **High**: Significant bugs, resource leaks, race conditions — e.g., file handle not closed in error path
+- **Medium**: Code quality issues, minor bugs — e.g., bare `except Exception` swallowing errors
 - **Low**: Style inconsistencies, naming improvements, minor optimizations
 - **Info**: Best practices, documentation improvements, alternative approaches
 
-**Security Analysis:**
-- Command/SQL/code injection detection
-- Unsafe deserialization, missing input validation
-- Insecure cryptographic practices, XSS vulnerabilities
-- Missing authentication/authorization checks
-
-**Sensitive Information Detection (Critical Priority):**
-- Detects hardcoded secrets: passwords, API keys, tokens, private keys
-- Pattern matching for provider-specific keys (Stripe, Slack, GitHub, AWS, Google)
-- High-entropy string detection (40+ chars)
-- Connection strings with embedded credentials
-- Excludes false positives: empty strings, placeholders, env lookups, test files
-
-**Typo and Spelling Detection:**
-- Comments and docstrings (primary focus)
-- User-facing string literals (error messages, logs, UI text)
-- Obviously misspelled identifiers
-- 35+ common programming typos (e.g., `recieve`, `occured`, `seperate`)
-- Excludes: domain terms, abbreviations (usr, cfg, env), library-specific names
+**Security Analysis (with CWE references):**
+- CWE-78 (OS Command Injection), CWE-89 (SQL Injection), CWE-94 (Code Injection)
+- CWE-798 (Hardcoded Credentials), CWE-327 (Weak Cryptography)
+- CWE-79 (XSS), CWE-502 (Unsafe Deserialization), CWE-400 (Resource Exhaustion)
+- Sensitive information detection with false positive exclusions
 
 **False Positive Prevention:**
 - Only reports issues with >80% confidence
-- Context-aware analysis (checks for intentional patterns, comments, test files)
-- Excludes defensive code patterns, context managers, glob patterns
+- Context-aware self-verification before each issue
+- Consolidated exclusion rules (defensive patterns, test files, glob patterns, etc.)
 - Proportionality guidelines to avoid over-engineering suggestions
+- Prompt injection defense prevents user code from altering review behavior
 
 **Language-Specific Rules:**
 Based on Google Style Guides for Python, Go, Shell/Bash, C++, Java, JavaScript, and TypeScript.
@@ -733,14 +736,15 @@ Edit `DEFAULT_EXCLUDE_PATTERNS` or `DEFAULT_EXCLUDE_EXTENSIONS` in `config.py`
 
 ### Modifying Code Review Rules
 Edit `SYSTEM_PROMPT` in `config/prompts.py`. Key sections:
-- **SEVERITY CLASSIFICATION CRITERIA**: Define what constitutes each severity level
-- **CONFIDENCE AND FALSE POSITIVE PREVENTION**: Control what issues are reported
-- **LANGUAGE-SPECIFIC RULES**: Add or modify language style guides
-- **SECURITY ANALYSIS**: Add new vulnerability patterns to detect
-- **SENSITIVE INFORMATION DETECTION**: Add new secret patterns or false positives
-- **TYPO AND SPELLING DETECTION**: Add common typos or exclusions
-- **PERFORMANCE GUIDELINES**: Define when to report performance issues
-- **OUTPUT FORMAT**: Keep JSON schema specification intact for structured output
+- **CORE CONSTRAINTS**: 8 critical rules positioned at top for maximum adherence
+- **SEVERITY CLASSIFICATION**: Severity levels with concrete examples
+- **FALSE POSITIVE PREVENTION**: Consolidated exclusion rules and confidence threshold
+- **SECURITY ANALYSIS**: Vulnerability patterns with CWE references
+- **SENSITIVE INFORMATION DETECTION**: Secret patterns with false positive exclusions
+- **ARCHITECTURE & PRODUCTION READINESS**: Boundary violations, coupling, observability
+- **LANGUAGE-SPECIFIC RULES**: Per-language style guide rules
+- **SELF-VERIFICATION**: Pre-output validation step
+- **EXAMPLES**: Good finding and false positive examples (update to match new patterns)
 
 ### Adding Support for New Languages
 1. Add extension to `scanner.py` target_extensions set

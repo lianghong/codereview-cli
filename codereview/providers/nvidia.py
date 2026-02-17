@@ -8,7 +8,6 @@ from typing import Any
 
 import httpx
 from langchain_core.callbacks import BaseCallbackHandler
-from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.rate_limiters import InMemoryRateLimiter
 from langchain_nvidia_ai_endpoints import ChatNVIDIA
 from pydantic import SecretStr
@@ -17,16 +16,13 @@ from pydantic import SecretStr
 from codereview.config import SYSTEM_PROMPT
 from codereview.config.models import ModelConfig, NVIDIAConfig
 from codereview.models import CodeReviewReport
-from codereview.providers.base import ModelProvider, RetryConfig, ValidationResult
-from codereview.providers.mixins import TokenTrackingMixin
-
-# Shared prompt template for consistent formatting
-BATCH_PROMPT_TEMPLATE = ChatPromptTemplate.from_messages(
-    [
-        ("system", "{system_prompt}"),
-        ("human", "{batch_context}"),
-    ]
+from codereview.providers.base import (
+    BATCH_PROMPT_TEMPLATE,
+    ModelProvider,
+    RetryConfig,
+    ValidationResult,
 )
+from codereview.providers.mixins import TokenTrackingMixin
 
 
 @contextlib.contextmanager
@@ -176,8 +172,15 @@ class NVIDIAProvider(TokenTrackingMixin, ModelProvider):
         # Suppress warnings about unknown model types and parameters from langchain-nvidia
         with suppress_nvidia_warnings():
             base_model = ChatNVIDIA(**model_params)
-            # Configure for structured output
-            return base_model.with_structured_output(CodeReviewReport)
+            # Try include_raw=True first (returns {"raw": AIMessage, "parsed": CodeReviewReport}
+            # so we can extract actual token counts from the raw AIMessage).
+            # Some models (e.g., GLM-5) don't support include_raw — fall back gracefully.
+            try:
+                return base_model.with_structured_output(
+                    CodeReviewReport, include_raw=True
+                )
+            except NotImplementedError:
+                return base_model.with_structured_output(CodeReviewReport)
 
     def _create_chain(self) -> Any:
         """Create LangChain chain with prompt template."""

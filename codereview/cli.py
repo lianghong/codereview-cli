@@ -826,13 +826,13 @@ def main(
 
 
 def _generate_recommendations(issues: list[ReviewIssue]) -> list[str]:
-    """Generate top recommendations based on issue severity distribution.
+    """Generate top recommendations based on issue severity and category distribution.
 
     Args:
         issues: List of ReviewIssue objects from analysis
 
     Returns:
-        Up to 5 prioritized recommendations based on issue counts
+        Up to 5 prioritized recommendations based on severity and category counts
     """
     critical = [i for i in issues if i.severity == "Critical"]
     high = [i for i in issues if i.severity == "High"]
@@ -841,14 +841,26 @@ def _generate_recommendations(issues: list[ReviewIssue]) -> list[str]:
 
     if critical:
         recommendations.append(
-            f"🚨 Address {len(critical)} critical issues immediately"
+            f"🚨 Address {len(critical)} critical issue(s) immediately"
         )
 
     if high:
-        recommendations.append(f"⚠️  Fix {len(high)} high-priority issues")
+        recommendations.append(f"⚠️  Fix {len(high)} high-priority issue(s)")
 
-    if len(issues) > 10:
-        recommendations.append("📊 Consider refactoring to reduce technical debt")
+    # Category-based recommendations (ordered by impact)
+    category_configs = [
+        ("Security", "🔒 Resolve {n} security issue(s)"),
+        ("Performance", "⚡ Investigate {n} performance issue(s)"),
+        ("Testing", "🧪 Address {n} testing issue(s)"),
+        ("Code Quality", "🔧 Review {n} code quality issue(s)"),
+        ("System Design", "🏗️ Review {n} system design issue(s)"),
+    ]
+    for category, template in category_configs:
+        if len(recommendations) >= 5:
+            break
+        count = sum(1 for i in issues if i.category == category)
+        if count:
+            recommendations.append(template.format(n=count))
 
     return recommendations[:5]
 

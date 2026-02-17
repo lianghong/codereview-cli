@@ -7,23 +7,19 @@ from botocore.exceptions import ClientError  # type: ignore[import-untyped]
 from langchain_aws import ChatBedrockConverse
 from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.output_parsers import PydanticOutputParser
-from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.rate_limiters import InMemoryRateLimiter
 
 # Import system prompt from config
 from codereview.config import SYSTEM_PROMPT
 from codereview.config.models import BedrockConfig, ModelConfig
 from codereview.models import CodeReviewReport
-from codereview.providers.base import ModelProvider, RetryConfig, ValidationResult
-from codereview.providers.mixins import TokenTrackingMixin
-
-# Shared prompt template for consistent formatting
-BATCH_PROMPT_TEMPLATE = ChatPromptTemplate.from_messages(
-    [
-        ("system", "{system_prompt}"),
-        ("human", "{batch_context}"),
-    ]
+from codereview.providers.base import (
+    BATCH_PROMPT_TEMPLATE,
+    ModelProvider,
+    RetryConfig,
+    ValidationResult,
 )
+from codereview.providers.mixins import TokenTrackingMixin
 
 
 class BedrockProvider(TokenTrackingMixin, ModelProvider):
@@ -138,7 +134,9 @@ class BedrockProvider(TokenTrackingMixin, ModelProvider):
         # Check if model supports tool use for structured output
         if self.model_config.supports_tool_use:
             # Configure for structured output using tool calling
-            return base_model.with_structured_output(CodeReviewReport)
+            # include_raw=True returns {"raw": AIMessage, "parsed": CodeReviewReport}
+            # so we can extract actual token counts from the raw AIMessage
+            return base_model.with_structured_output(CodeReviewReport, include_raw=True)
         else:
             # Return base model for prompt-based JSON parsing
             self._use_prompt_parsing = True

@@ -511,8 +511,10 @@ class StaticAnalyzer:
                 )
             if len(shell_files) > MAX_FILES_PER_TOOL:
                 logging.warning(
-                    f"{tool_name}: Limiting to {MAX_FILES_PER_TOOL} of "
-                    f"{len(shell_files)} files to avoid command line length limits"
+                    "%s: Limiting to %d of %d files to avoid command line length limits",
+                    tool_name,
+                    MAX_FILES_PER_TOOL,
+                    len(shell_files),
                 )
                 shell_files = shell_files[:MAX_FILES_PER_TOOL]
             command = base_command + [str(f) for f in shell_files]
@@ -538,8 +540,10 @@ class StaticAnalyzer:
                 )
             if len(cpp_files) > MAX_FILES_PER_TOOL:
                 logging.warning(
-                    f"{tool_name}: Limiting to {MAX_FILES_PER_TOOL} of "
-                    f"{len(cpp_files)} files to avoid command line length limits"
+                    "%s: Limiting to %d of %d files to avoid command line length limits",
+                    tool_name,
+                    MAX_FILES_PER_TOOL,
+                    len(cpp_files),
                 )
                 cpp_files = cpp_files[:MAX_FILES_PER_TOOL]
             command = base_command + [str(f) for f in cpp_files]
@@ -563,8 +567,10 @@ class StaticAnalyzer:
                 )
             if len(java_files) > MAX_FILES_PER_TOOL:
                 logging.warning(
-                    f"checkstyle: Limiting to {MAX_FILES_PER_TOOL} of "
-                    f"{len(java_files)} files to avoid command line length limits"
+                    "%s: Limiting to %d of %d files to avoid command line length limits",
+                    tool_name,
+                    MAX_FILES_PER_TOOL,
+                    len(java_files),
                 )
                 java_files = java_files[:MAX_FILES_PER_TOOL]
             command = base_command + [str(f) for f in java_files]
@@ -615,8 +621,10 @@ class StaticAnalyzer:
             # Pass explicit files to prettier (--ignore-unknown may not be supported)
             if len(prettier_files) > MAX_FILES_PER_TOOL:
                 logging.warning(
-                    f"prettier: Limiting to {MAX_FILES_PER_TOOL} of "
-                    f"{len(prettier_files)} files to avoid command line length limits"
+                    "%s: Limiting to %d of %d files to avoid command line length limits",
+                    tool_name,
+                    MAX_FILES_PER_TOOL,
+                    len(prettier_files),
                 )
                 prettier_files = prettier_files[:MAX_FILES_PER_TOOL]
             command = base_command + [str(f) for f in prettier_files]
@@ -642,8 +650,10 @@ class StaticAnalyzer:
                 # Pass explicit files to tsc
                 if len(ts_files) > MAX_FILES_PER_TOOL:
                     logging.warning(
-                        f"tsc: Limiting to {MAX_FILES_PER_TOOL} of "
-                        f"{len(ts_files)} files to avoid command line length limits"
+                        "%s: Limiting to %d of %d files to avoid command line length limits",
+                        tool_name,
+                        MAX_FILES_PER_TOOL,
+                        len(ts_files),
                     )
                     ts_files = ts_files[:MAX_FILES_PER_TOOL]
                 command = base_command + [str(f) for f in ts_files]

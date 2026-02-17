@@ -122,6 +122,13 @@ class CodeAnalyzer:
                 # Track skipped file for reporting
                 self.skipped_files.append((str(file_path), str(e)))
 
+        # Skip provider call if no files were readable
+        if not files_content:
+            return CodeReviewReport(
+                summary="No readable files in batch",
+                issues=[],
+            )
+
         # Delegate to provider
         return self.provider.analyze_batch(
             batch_number=batch.batch_number,

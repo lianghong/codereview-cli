@@ -573,7 +573,7 @@ codereview-cli/
 │       ├── nvidia.py         # NVIDIA NIM provider implementation
 │       └── google_genai.py   # Google GenAI provider implementation
 ├── tests/
-│   ├── test_*.py             # Unit tests (281 tests)
+│   ├── test_*.py             # Unit tests (301 tests)
 │   └── fixtures/             # Test fixtures
 ├── docs/
 │   ├── usage.md              # Detailed usage guide
@@ -596,7 +596,7 @@ The codebase follows strict quality standards:
 - Pydantic V2 for data validation
 - Rich for terminal UI
 - Click for CLI interface
-- Comprehensive test coverage (281 tests)
+- Comprehensive test coverage (301 tests)
 
 **Static Analysis Tools:**
 ```bash
@@ -650,7 +650,17 @@ For issues, questions, or contributions:
 
 ## Version History
 
-### v0.2.6 (Current)
+### v0.2.7 (Current)
+- **System Prompt Rewrite**: Restructured SYSTEM_PROMPT (~513 to ~310 lines, 40% reduction) for better instruction adherence — critical constraints at top, CWE references, prompt injection defense, self-verification, concrete examples
+- **Category-Based Recommendations**: Enhanced report recommendations with category-aware suggestions (Security, Performance, Testing, Code Quality, System Design)
+- **NVIDIA GLM-5 Fix**: Graceful fallback when `include_raw=True` is not supported by a provider
+- **Non-Interactive Mode**: CI/CD-safe README finder with `sys.stdin.isatty()` guard
+- **Env Var Expansion Fix**: Regex now supports digits in variable names (`API_V2_KEY`)
+- **Empty Batch Guard**: Early return when no files are readable in a batch
+- **Logging Best Practices**: Converted f-string logging to %-style format
+- **Test Suite**: Expanded to 301 tests
+
+### v0.2.6
 - **Google Generative AI Provider**: Added Google GenAI as 4th provider with Gemini 3 Pro Preview and Gemini 3 Flash Preview models (1M token context)
 - **Code Quality Fixes**: Fixed redundant retry logic, added severity guard in renderer, optimized ESLint file detection, removed dead code, improved logging format
 - **Test Suite**: Expanded to 281 tests with Google GenAI provider tests

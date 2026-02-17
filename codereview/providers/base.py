@@ -5,9 +5,19 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any
 
+from langchain_core.exceptions import ContextOverflowError
+from langchain_core.prompts import ChatPromptTemplate
 from pydantic import ValidationError
 
 from codereview.models import CodeReviewReport
+
+# Shared prompt template used by all providers
+BATCH_PROMPT_TEMPLATE = ChatPromptTemplate.from_messages(
+    [
+        ("system", "{system_prompt}"),
+        ("human", "{batch_context}"),
+    ]
+)
 
 
 @dataclass(frozen=True)
@@ -282,9 +292,12 @@ class ModelProvider(ABC):
         """Extract (input_tokens, output_tokens) from provider response.
 
         Override in subclasses for provider-specific metadata extraction.
+        With include_raw=True, this receives the raw AIMessage which carries
+        response_metadata with actual token counts. For the prompt-parsing
+        path (no include_raw), it receives the result directly.
 
         Args:
-            result: The result from chain invocation
+            result: The raw AIMessage (from include_raw dict) or direct result
 
         Returns:
             Tuple of (input_tokens, output_tokens)
@@ -317,6 +330,10 @@ class ModelProvider(ABC):
         - _calculate_backoff(): computes wait time per attempt
         - _extract_token_usage(): extracts tokens from response metadata
 
+        Handles two result formats:
+        - dict from include_raw=True: {"raw": AIMessage, "parsed": CodeReviewReport}
+        - CodeReviewReport directly from prompt-parsing path (e.g., DeepSeek-R1)
+
         Args:
             chain_input: Input dictionary for the chain
             retry_config: Retry configuration
@@ -326,6 +343,7 @@ class ModelProvider(ABC):
             CodeReviewReport with findings
 
         Raises:
+            ValueError: If input exceeds model context window (ContextOverflowError)
             ValidationError: If structured output parsing fails after all retries
             Exception: Provider-specific errors after all retries exhausted
         """
@@ -334,7 +352,36 @@ class ModelProvider(ABC):
             try:
                 result = self._invoke_chain(chain_input)
 
-                # Handle None result (structured output parsing failed)
+                # Handle include_raw=True dict format:
+                # {"raw": AIMessage, "parsed": CodeReviewReport, "parsing_error": ...}
+                if isinstance(result, dict):
+                    raw = result.get("raw")
+                    parsed = result.get("parsed")
+                    parsing_error = result.get("parsing_error")
+
+                    if parsed is None:
+                        msg = "Structured output parsing failed"
+                        if parsing_error:
+                            msg = f"{msg}: {parsing_error}"
+                        raise ValidationError.from_exception_data(  # type: ignore[attr-defined]
+                            msg, []
+                        )
+
+                    # Extract token usage from the raw AIMessage
+                    input_tokens, output_tokens = self._extract_token_usage(raw)
+
+                    # Fallback to estimation if actual counts unavailable
+                    if input_tokens == 0:
+                        input_tokens = self._estimate_tokens(batch_context)
+                    if output_tokens == 0:
+                        output_tokens = self._estimate_tokens(
+                            str(parsed.model_dump_json())
+                        )
+
+                    self._track_tokens(input_tokens, output_tokens)
+                    return parsed
+
+                # Handle direct CodeReviewReport (prompt-parsing path)
                 if result is None:
                     raise ValidationError.from_exception_data(  # type: ignore[attr-defined]
                         "Model returned None - structured output parsing failed",
@@ -353,6 +400,13 @@ class ModelProvider(ABC):
                 self._track_tokens(input_tokens, output_tokens)
 
                 return result
+
+            except ContextOverflowError as e:
+                # Input exceeds model context window — retrying won't help
+                raise ValueError(
+                    f"Input exceeds model context window ({e}). "
+                    "Try reducing --batch-size."
+                ) from e
 
             except ValidationError as e:
                 # Output parsing/validation failed

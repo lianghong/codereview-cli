@@ -193,6 +193,10 @@ def prompt_readme_confirmation(
     # No README found (either initially or after read failure)
     if readme_path is None:
         console.print("[dim]No README.md found in target or parent directories[/dim]")
+
+        if not sys.stdin.isatty():
+            return None
+
         response = click.prompt(
             "   Specify a file for project context? [path/N]",
             default="",

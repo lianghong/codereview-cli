@@ -4,7 +4,7 @@
 #
 # Pricing/parameters researched: January 2026
 # Sources: AWS Bedrock, Azure OpenAI,
-#   Anthropic, Mistral, Moonshot, Alibaba
+#   Anthropic, Moonshot, Alibaba, Zhipu
 
 ---
 version: "1.1"
@@ -125,7 +125,6 @@ providers:
           default_temperature: 0.3
           default_top_p: 0.8
           default_top_k: 20
-          repetition_penalty: 1.05
           max_output_tokens: 65536
         context_window: 131072
         architecture: "MoE (480B total, 35B active)"
@@ -155,8 +154,8 @@ providers:
           input_per_million: 1.35
           output_per_million: 5.40
         inference_params:
-          # DeepSeek recommended (0.5-0.7)
-          default_temperature: 0.6
+          # Lower end of DeepSeek range (0.5-0.7)
+          default_temperature: 0.5
           # top_k/top_p unsupported on Bedrock
           max_output_tokens: 32000
         context_window: 128000
@@ -212,14 +211,12 @@ providers:
           input_per_million: 0.30
           output_per_million: 1.20
         inference_params:
-          # MiniMax recommended
-          default_temperature: 1.0
+          # Lowered for code review (Bedrock has
+          # no thinking mode support)
+          default_temperature: 0.3
           default_top_p: 0.95
           default_top_k: 40
           max_output_tokens: 128000
-          # Produces <think> reasoning tags
-          enable_thinking: true
-          clear_thinking: false
         context_window: 196000
         capabilities:
           - coding
@@ -244,13 +241,11 @@ providers:
           input_per_million: 0.00
           output_per_million: 0.00
         inference_params:
-          # Balanced for code review
-          default_temperature: 0.5
+          # Low temp for code review (Bedrock has
+          # no thinking mode support)
+          default_temperature: 0.3
           default_top_p: 0.95
           max_output_tokens: 16384
-          # Interleaved thinking mode
-          enable_thinking: true
-          clear_thinking: false
         context_window: 200000
         capabilities:
           - reasoning
@@ -276,9 +271,10 @@ providers:
           input_per_million: 0.00
           output_per_million: 0.00
         inference_params:
-          default_temperature: 0.5
+          # Low temp for code review
+          default_temperature: 0.3
           default_top_p: 0.95
-          max_output_tokens: 8192
+          max_output_tokens: 16384
         context_window: 200000
         architecture: "MoE (30B total, 3B active)"
         capabilities:
@@ -304,8 +300,8 @@ providers:
           input_per_million: 0.60
           output_per_million: 3.00
         inference_params:
-          # Moonshot recommended for thinking
-          default_temperature: 0.6
+          # Lowered from 0.6 for code review
+          default_temperature: 0.5
           default_top_p: 0.95
           default_top_k: 40
           max_output_tokens: 65536
@@ -337,8 +333,8 @@ providers:
           input_per_million: 0.50
           output_per_million: 1.20
         inference_params:
-          # Qwen instruct mode recommendation
-          default_temperature: 0.7
+          # Lowered from 0.7 for code review
+          default_temperature: 0.3
           default_top_p: 0.95
           default_top_k: 40
           max_output_tokens: 16384
@@ -407,8 +403,8 @@ providers:
           input_per_million: 0.60
           output_per_million: 3.00
         inference_params:
-          # Moonshot recommended for thinking
-          default_temperature: 0.6
+          # Lowered from 0.6 for code review
+          default_temperature: 0.5
           default_top_p: 0.95
           max_output_tokens: 65536
         context_window: 262144
@@ -475,7 +471,7 @@ providers:
         inference_params:
           default_temperature: 0.15
           default_top_p: 0.95
-          max_output_tokens: 8192
+          max_output_tokens: 16384
         context_window: 128000
         capabilities:
           - code_review
@@ -500,7 +496,7 @@ providers:
           # Lower for code review
           default_temperature: 0.3
           default_top_p: 0.9
-          max_output_tokens: 8192
+          max_output_tokens: 16384
         context_window: 256000
         capabilities:
           - coding
@@ -591,8 +587,8 @@ providers:
           input_per_million: 0.00
           output_per_million: 0.00
         inference_params:
-          # Qwen recommended for thinking
-          default_temperature: 0.6
+          # Lowered from 0.6 for code review
+          default_temperature: 0.3
           default_top_p: 0.95
           default_top_k: 20
           # For detailed reports
@@ -656,12 +652,12 @@ providers:
           input_per_million: 0.00
           output_per_million: 0.00
         inference_params:
-          # Moonshot Instant mode
-          default_temperature: 0.6
+          # Lowered from 0.6 for code review
+          default_temperature: 0.5
           default_top_p: 0.95
           default_top_k: 40
           # Up to 32K supported
-          max_output_tokens: 16384
+          max_output_tokens: 32768
         context_window: 256000
         architecture: "MoE (1T total, multimodal)"
         capabilities:
@@ -717,7 +713,9 @@ providers:
           input_per_million: 0.00
           output_per_million: 0.00
         inference_params:
-          default_temperature: 1.0
+          # Lowered from 1.0 per model docs:
+          # use 0.5-0.7 for non-creative prompts
+          default_temperature: 0.5
           default_top_p: 0.95
           max_output_tokens: 128000
         context_window: 200000
@@ -728,8 +726,7 @@ providers:
           - general_intelligence
         notes: >-
           Next-gen GLM, 200K context, 128K
-          output. Use temp 0.5-0.7 for
-          complex non-creative prompts.
+          output.
 
       # Step-3.5-Flash (via NVIDIA) - StepFun
       # 256K context, optimized for fast inference
@@ -745,8 +742,8 @@ providers:
           input_per_million: 0.00
           output_per_million: 0.00
         inference_params:
-          # Coherent analysis (range 0.6-1.0)
-          default_temperature: 0.6
+          # Lowered from 0.6 for code review
+          default_temperature: 0.3
           default_top_p: 0.95
           default_top_k: 40
           # For detailed reports
@@ -879,6 +876,6 @@ scanning:
 #
 # Model selection by use case:
 # - Quick: Haiku ($1/$5) or Qwen ($0.22/$1.40)
-# - Standard: Sonnet ($3/$15) or Mistral ($2/$6)
+# - Standard: Sonnet ($3/$15) or Gemini ($2/$12)
 # - Complex: Opus ($5/$25) or GPT-5.2 ($1.75/$14)
-# - Budget: Qwen ($0.22/$1.40) or Minimax ($0.30)
+# - Budget: Qwen ($0.22/$1.40) or Grok ($0.20)

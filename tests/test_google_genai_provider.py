@@ -156,9 +156,9 @@ def test_google_genai_model_params(model_config, provider_config):
         assert call_kwargs["max_output_tokens"] == 65536
         assert call_kwargs["top_p"] == 0.95
 
-        # Verify structured output method
+        # Verify structured output method with include_raw for token tracking
         mock_instance.with_structured_output.assert_called_once_with(
-            CodeReviewReport, method="json_schema"
+            CodeReviewReport, method="json_schema", include_raw=True
         )
 
 
