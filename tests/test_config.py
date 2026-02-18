@@ -56,7 +56,7 @@ def test_resolve_model_id_with_alias():
     assert model_config.full_id == "global.anthropic.claude-opus-4-6-v1"
 
     provider, model_config = loader.resolve_model("sonnet")
-    assert model_config.full_id == "global.anthropic.claude-sonnet-4-5-20250929-v1:0"
+    assert model_config.full_id == "global.anthropic.claude-sonnet-4-6"
 
     provider, model_config = loader.resolve_model("haiku")
     assert model_config.full_id == "global.anthropic.claude-haiku-4-5-20251001-v1:0"
@@ -72,7 +72,7 @@ def test_resolve_model_id_case_insensitive():
     provider1, model1 = loader.resolve_model("opus")
     provider2, model2 = loader.resolve_model("sonnet")
     assert model1.name == "Claude Opus 4.6"
-    assert model2.name == "Claude Sonnet 4.5"
+    assert model2.name == "Claude Sonnet 4.6"
 
 
 def test_resolve_model_id_with_full_id():

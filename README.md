@@ -232,7 +232,7 @@ codereview --list-models
 
 # AWS Bedrock Models (Claude family)
 codereview /path/to/code --model opus      # Claude Opus 4.6 (highest quality)
-codereview /path/to/code --model sonnet    # Claude Sonnet 4.5 (balanced)
+codereview /path/to/code --model sonnet    # Claude Sonnet 4.6 (balanced)
 codereview /path/to/code --model haiku     # Claude Haiku 4.5 (fastest)
 
 # AWS Bedrock (other providers)
@@ -272,7 +272,7 @@ codereview /path/to/code -m devstral
 | Model | Provider | Use Case | Input $/M | Output $/M |
 |-------|----------|----------|-----------|------------|
 | Opus 4.6 | AWS Bedrock | Highest quality, critical reviews | $5.00 | $25.00 |
-| Sonnet 4.5 | AWS Bedrock | Balanced performance and cost | $3.00 | $15.00 |
+| Sonnet 4.6 | AWS Bedrock | Balanced performance and cost | $3.00 | $15.00 |
 | Haiku 4.5 | AWS Bedrock | Fast, economical, large codebases | $1.00 | $5.00 |
 | GPT-5.2 Codex | Azure OpenAI | Code-specialized, Microsoft ecosystem | $1.75 | $14.00 |
 | Kimi K2.5 (Azure) | Azure OpenAI | Multimodal MoE, 256K context | $0.60 | $3.00 |

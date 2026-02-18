@@ -196,7 +196,7 @@ def test_cli_with_model_option(cli_runner, sample_code_dir):
     ):
         # Setup factory mock
         mock_factory = Mock()
-        mock_factory.get_model_display_name.return_value = "Claude Sonnet 4.5"
+        mock_factory.get_model_display_name.return_value = "Claude Sonnet 4.6"
         mock_factory_cls.return_value = mock_factory
 
         # Setup analyzer mock

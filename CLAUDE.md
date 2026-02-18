@@ -144,7 +144,7 @@ Use primary model IDs (case-insensitive). Run `codereview --list-models` to see 
 |----------|------|----------|---------|
 | `opus` | Claude Opus 4.6 | bedrock | claude-opus, opus4.6, claude-opus-4.6 |
 | `opus4.5` | Claude Opus 4.5 | bedrock | claude-opus-4.5 |
-| `sonnet` | Claude Sonnet 4.5 | bedrock | claude-sonnet |
+| `sonnet` | Claude Sonnet 4.6 | bedrock | claude-sonnet, sonnet4.6, claude-sonnet-4.6 |
 | `haiku` | Claude Haiku 4.5 | bedrock | claude-haiku |
 | `gpt-5.2-codex` | GPT-5.2 Codex | azure_openai | gpt, gpt52, codex |
 | `kimi-k2.5-azure` | Kimi K2.5 (Azure) | azure_openai | kimi25-azure, kimi-azure |
@@ -432,7 +432,7 @@ Models defined in `codereview/config/models.yaml`:
 |-------|----------|-----------|------------|----------|
 | Claude Opus 4.6 | `global.anthropic.claude-opus-4-6-v1` | $5.00 | $25.00 | temp=0.1, max=128000 |
 | Claude Opus 4.5 | `global.anthropic.claude-opus-4-5-20251101-v1:0` | $5.00 | $25.00 | temp=0.1 |
-| Claude Sonnet 4.5 | `global.anthropic.claude-sonnet-4-5-20250929-v1:0` | $3.00 | $15.00 | temp=0.1 |
+| Claude Sonnet 4.6 | `global.anthropic.claude-sonnet-4-6` | $3.00 | $15.00 | temp=0.1 |
 | Claude Haiku 4.5 | `global.anthropic.claude-haiku-4-5-20251001-v1:0` | $1.00 | $5.00 | temp=0.1 |
 | Qwen3 Coder 480B (Bedrock) | `qwen.qwen3-coder-480b-a35b-v1:0` | $0.22 | $1.40 | temp=0.3, top_p=0.8, top_k=20, max=65536 |
 | DeepSeek-R1 (Bedrock) | `us.deepseek.r1-v1:0` | $1.35 | $5.40 | temp=0.6, max=32000 |

@@ -114,7 +114,7 @@ codereview ./src --model gemini-3-flash
 🔍 Code Review Tool
 
 📂 Scanning directory: ./src
-🤖 Model: Claude Sonnet 4.5
+🤖 Model: Claude Sonnet 4.6
 
 ✓ Found 50 files to review
 

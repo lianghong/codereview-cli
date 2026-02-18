@@ -347,7 +347,7 @@ Match the model to your use case:
 codereview ./src/auth --model opus
 ```
 
-**Sonnet 4.5** - Daily development (AWS Bedrock):
+**Sonnet 4.6** - Daily development (AWS Bedrock):
 ```bash
 codereview ./src --model sonnet
 ```
@@ -393,7 +393,7 @@ Be aware of costs and choose models accordingly:
 
 **AWS Bedrock:**
 - **Opus 4.6**: Highest quality ($5/M input, $25/M output)
-- **Sonnet 4.5**: Balanced option for daily use ($3/M input, $15/M output)
+- **Sonnet 4.6**: Balanced option for daily use ($3/M input, $15/M output)
 - **Haiku 4.5**: Economical for large codebases ($1/M input, $5/M output)
 - **DeepSeek-R1**: Reasoning model ($1.35/M input, $5.40/M output)
 
@@ -515,7 +515,7 @@ codereview --list-models
 
 # AWS Bedrock - Claude models
 codereview ./src --model opus     # Claude Opus 4.6 (default, highest quality)
-codereview ./src --model sonnet   # Claude Sonnet 4.5 (balanced)
+codereview ./src --model sonnet   # Claude Sonnet 4.6 (balanced)
 codereview ./src --model haiku    # Claude Haiku 4.5 (fastest)
 
 # AWS Bedrock - Other models
@@ -543,7 +543,7 @@ codereview ./src --model gemini-3-flash     # Gemini 3 Flash (fast, cheap)
 | Model | Provider | Use Case | Pricing |
 |-------|----------|----------|---------|
 | **Opus 4.6** (default) | AWS Bedrock | Critical code reviews, security audits | $5/M input, $25/M output |
-| **Sonnet 4.5** | AWS Bedrock | Daily development, PR reviews | $3/M input, $15/M output |
+| **Sonnet 4.6** | AWS Bedrock | Daily development, PR reviews | $3/M input, $15/M output |
 | **Haiku 4.5** | AWS Bedrock | Large codebases, CI/CD integration | $1/M input, $5/M output |
 | **GPT-5.2 Codex** | Azure OpenAI | Code-specialized, Microsoft ecosystem | $1.75/M input, $14/M output |
 | **Kimi K2.5 (Azure)** | Azure OpenAI | Multimodal MoE, 256K context | $0.60/M input, $3/M output |
@@ -693,7 +693,7 @@ For projects with 1000+ files:
 | Scenario | Recommended Model | Provider | Estimated Cost* |
 |----------|-------------------|----------|-----------------|
 | 100 files, critical review | Opus 4.6 | AWS Bedrock | $0.30-$1.50 |
-| 100 files, daily review | Sonnet 4.5 | AWS Bedrock | $0.10-$0.40 |
+| 100 files, daily review | Sonnet 4.6 | AWS Bedrock | $0.10-$0.40 |
 | 1000 files, bulk scan | Haiku 4.5 | AWS Bedrock | $0.10-$0.50 |
 | Development/testing | Devstral 2 | NVIDIA NIM | Free |
 | Large context (1M) | Gemini 3 Flash | Google GenAI | $0.50-$3.00/M |

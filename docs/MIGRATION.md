@@ -24,7 +24,7 @@ Version 0.2.0 maintains **full backward compatibility**. Existing code will cont
 **Before (v0.1.x):**
 ```bash
 codereview ./src --model-id global.anthropic.claude-opus-4-5-20251101-v1:0
-codereview ./src --model-id global.anthropic.claude-sonnet-4-5-20250929-v1:0
+codereview ./src --model-id global.anthropic.claude-sonnet-4-6
 codereview ./src --aws-region us-east-1
 ```
 
@@ -122,7 +122,7 @@ See [README.md](../README.md#azure-openai-configuration) for detailed setup.
 |--------------|---------------|---------|
 | `global.anthropic.claude-opus-4-6-v1` | `opus` | `claude-opus`, `opus4.6` |
 | `global.anthropic.claude-opus-4-5-20251101-v1:0` | `opus4.5` | `claude-opus-4.5` |
-| `global.anthropic.claude-sonnet-4-5-20250929-v1:0` | `sonnet` | `claude-sonnet` |
+| `global.anthropic.claude-sonnet-4-6` | `sonnet` | `claude-sonnet`, `sonnet4.6` |
 | `global.anthropic.claude-haiku-4-5-20251001-v1:0` | `haiku` | `claude-haiku` |
 | `qwen.qwen3-coder-480b-a35b-v1:0` | `qwen` | `qwen-coder` |
 
