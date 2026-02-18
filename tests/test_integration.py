@@ -190,7 +190,7 @@ class TestFullWorkflow:
         ):
             # Setup factory mock
             mock_factory = Mock()
-            mock_factory.get_model_display_name.return_value = "Claude Opus 4.5"
+            mock_factory.get_model_display_name.return_value = "Claude Opus 4.6"
             mock_factory_class.return_value = mock_factory
 
             # Setup analyzer mock
@@ -228,7 +228,7 @@ class TestFullWorkflow:
         ):
             # Setup factory mock
             mock_factory = Mock()
-            mock_factory.get_model_display_name.return_value = "Claude Opus 4.5"
+            mock_factory.get_model_display_name.return_value = "Claude Opus 4.6"
             mock_factory_class.return_value = mock_factory
 
             # Setup analyzer mock
@@ -267,7 +267,7 @@ class TestFullWorkflow:
         ):
             # Setup factory mock
             mock_factory = Mock()
-            mock_factory.get_model_display_name.return_value = "Claude Opus 4.5"
+            mock_factory.get_model_display_name.return_value = "Claude Opus 4.6"
             mock_factory_class.return_value = mock_factory
 
             # Setup analyzer mock
@@ -301,7 +301,7 @@ class TestFullWorkflow:
         ):
             # Setup factory mock
             mock_factory = Mock()
-            mock_factory.get_model_display_name.return_value = "Claude Opus 4.5"
+            mock_factory.get_model_display_name.return_value = "Claude Opus 4.6"
             mock_factory_class.return_value = mock_factory
 
             # Setup analyzer mock
@@ -335,7 +335,7 @@ class TestFullWorkflow:
         ):
             # Setup factory mock
             mock_factory = Mock()
-            mock_factory.get_model_display_name.return_value = "Claude Opus 4.5"
+            mock_factory.get_model_display_name.return_value = "Claude Opus 4.6"
             mock_factory_class.return_value = mock_factory
 
             # Setup analyzer mock
@@ -397,7 +397,7 @@ class TestWorkflowWithFixtures:
         ):
             # Setup factory mock
             mock_factory = Mock()
-            mock_factory.get_model_display_name.return_value = "Claude Opus 4.5"
+            mock_factory.get_model_display_name.return_value = "Claude Opus 4.6"
             mock_factory_class.return_value = mock_factory
 
             # Setup analyzer mock
@@ -433,7 +433,7 @@ class TestErrorHandlingIntegration:
         ):
             # Setup factory mock
             mock_factory = Mock()
-            mock_factory.get_model_display_name.return_value = "Claude Opus 4.5"
+            mock_factory.get_model_display_name.return_value = "Claude Opus 4.6"
             mock_factory_class.return_value = mock_factory
 
             Path("empty_dir").mkdir()
@@ -493,7 +493,7 @@ class TestOutputFormats:
         ):
             # Setup factory mock
             mock_factory = Mock()
-            mock_factory.get_model_display_name.return_value = "Claude Opus 4.5"
+            mock_factory.get_model_display_name.return_value = "Claude Opus 4.6"
             mock_factory_class.return_value = mock_factory
 
             # Setup analyzer mock
@@ -563,7 +563,7 @@ class TestBatchProcessing:
         ):
             # Setup factory mock
             mock_factory = Mock()
-            mock_factory.get_model_display_name.return_value = "Claude Opus 4.5"
+            mock_factory.get_model_display_name.return_value = "Claude Opus 4.6"
             mock_factory_class.return_value = mock_factory
 
             # Setup analyzer mock
@@ -635,7 +635,7 @@ class TestBatchProcessing:
         ):
             # Setup factory mock
             mock_factory = Mock()
-            mock_factory.get_model_display_name.return_value = "Claude Opus 4.5"
+            mock_factory.get_model_display_name.return_value = "Claude Opus 4.6"
             mock_factory_class.return_value = mock_factory
 
             # Setup analyzer mock

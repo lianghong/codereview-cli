@@ -77,7 +77,6 @@ class CodeAnalyzer:
         # Map common legacy IDs to new names
         legacy_mappings = {
             "global.anthropic.claude-opus-4-6-v1": "opus",
-            "global.anthropic.claude-opus-4-5-20251101-v1:0": "opus4.5",
             "global.anthropic.claude-sonnet-4-6": "sonnet",
             "global.anthropic.claude-haiku-4-5-20251001-v1:0": "haiku",
             "qwen.qwen3-coder-480b-a35b-v1:0": "qwen",

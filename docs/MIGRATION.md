@@ -23,7 +23,7 @@ Version 0.2.0 maintains **full backward compatibility**. Existing code will cont
 
 **Before (v0.1.x):**
 ```bash
-codereview ./src --model-id global.anthropic.claude-opus-4-5-20251101-v1:0
+codereview ./src --model-id global.anthropic.claude-opus-4-6-v1
 codereview ./src --model-id global.anthropic.claude-sonnet-4-6
 codereview ./src --aws-region us-east-1
 ```
@@ -61,7 +61,7 @@ codereview ./src --model gpt-5.2-codex
 from codereview.analyzer import CodeAnalyzer
 
 analyzer = CodeAnalyzer(
-    model_id="global.anthropic.claude-opus-4-5-20251101-v1:0",
+    model_id="global.anthropic.claude-opus-4-6-v1",
     region="us-west-2",
     temperature=0.1,
 )
@@ -87,7 +87,7 @@ analyzer = CodeAnalyzer(
 **Current code (v0.1.x) - Still Works:**
 ```python
 analyzer = CodeAnalyzer(
-    model_id="global.anthropic.claude-opus-4-5-20251101-v1:0",
+    model_id="global.anthropic.claude-opus-4-6-v1",
     region="us-west-2",
 )
 ```
@@ -121,12 +121,11 @@ See [README.md](../README.md#azure-openai-configuration) for detailed setup.
 | Old (v0.1.x) | New (v0.2.0+) | Aliases |
 |--------------|---------------|---------|
 | `global.anthropic.claude-opus-4-6-v1` | `opus` | `claude-opus`, `opus4.6` |
-| `global.anthropic.claude-opus-4-5-20251101-v1:0` | `opus4.5` | `claude-opus-4.5` |
 | `global.anthropic.claude-sonnet-4-6` | `sonnet` | `claude-sonnet`, `sonnet4.6` |
 | `global.anthropic.claude-haiku-4-5-20251001-v1:0` | `haiku` | `claude-haiku` |
 | `qwen.qwen3-coder-480b-a35b-v1:0` | `qwen` | `qwen-coder` |
 
-> **Note:** As of v0.2.5, `opus` resolves to Claude Opus 4.6. Use `opus4.5` to explicitly select Claude Opus 4.5.
+> **Note:** As of v0.2.5, `opus` resolves to Claude Opus 4.6.
 
 ## Testing
 

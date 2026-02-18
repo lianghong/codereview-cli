@@ -666,7 +666,7 @@ For issues, questions, or contributions:
 - **Test Suite**: Expanded to 281 tests with Google GenAI provider tests
 
 ### v0.2.5
-- **Claude Opus 4.6**: Added Claude Opus 4.6 as new default model (128K max output). Previous Opus 4.5 available as `opus4.5`
+- **Claude Opus 4.6**: Added Claude Opus 4.6 as new default model (128K max output)
 - **MiniMax M2.1 Model**: Added MiniMax M2.1 via NVIDIA NIM (200K context, 128K output, thinking mode)
 - **Export Error Handling**: Report export (JSON/Markdown) now handles file I/O errors gracefully instead of crashing with unhandled exceptions
 - **Callbacks Cleanup**: Fixed potential Rich `Live` display errors by using consistent `cleanup()` method
@@ -722,7 +722,7 @@ For issues, questions, or contributions:
 ### v0.1.0
 - Initial release
 - Support for Python and Go
-- Claude Opus 4.5 integration via AWS Bedrock
+- Claude integration via AWS Bedrock
 - Smart batching and token management
 - Terminal and Markdown output
 - Comprehensive error handling

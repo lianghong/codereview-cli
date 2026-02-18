@@ -74,7 +74,7 @@ def test_analyzer_legacy_parameters_deprecated():
         pytest.warns(DeprecationWarning, match="model_id.*deprecated"),
     ):
         mock_factory.return_value.create_provider.return_value = Mock()
-        CodeAnalyzer(model_id="global.anthropic.claude-opus-4-5-20251101-v1:0")
+        CodeAnalyzer(model_id="global.anthropic.claude-opus-4-6-v1")
 
 
 def test_analyzer_legacy_model_id_mapping(mock_provider):
@@ -85,14 +85,12 @@ def test_analyzer_legacy_model_id_mapping(mock_provider):
     ):
         mock_factory.return_value.create_provider.return_value = mock_provider
 
-        analyzer = CodeAnalyzer(
-            model_id="global.anthropic.claude-opus-4-5-20251101-v1:0"
-        )
+        analyzer = CodeAnalyzer(model_id="global.anthropic.claude-opus-4-6-v1")
 
-        # Should map to "opus4.5" (Opus 4.5 legacy ID)
-        assert analyzer.model_name == "opus4.5"
+        # Should map to "opus" (Opus 4.6 legacy ID)
+        assert analyzer.model_name == "opus"
         mock_factory.return_value.create_provider.assert_called_once_with(
-            "opus4.5", None, callbacks=None, project_context=None
+            "opus", None, callbacks=None, project_context=None
         )
 
 

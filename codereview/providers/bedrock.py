@@ -313,8 +313,8 @@ class BedrockProvider(TokenTrackingMixin, ModelProvider):
             base_model_id: str = model_id
             if model_id.startswith("global."):
                 # Extract base model from global inference ID
-                # e.g., "global.anthropic.claude-opus-4-5-20251101-v1:0"
-                # -> "anthropic.claude-opus-4-5-20251101-v1:0"
+                # e.g., "global.anthropic.claude-opus-4-6-v1"
+                # -> "anthropic.claude-opus-4-6-v1"
                 parts = model_id.split(".", 1)
                 if len(parts) > 1:
                     base_model_id = parts[1]
