@@ -96,6 +96,9 @@ class ModelConfig(BaseModel):
         True,
         description="Whether the model supports tool/function calling for structured output",
     )
+    context_window: int | None = Field(
+        None, gt=0, description="Maximum context window size in tokens"
+    )
 
 
 class ProviderConfig(BaseModel):

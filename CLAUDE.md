@@ -125,10 +125,10 @@ The README content is included in each batch sent to the LLM, helping it underst
 | `--format, -f` | Output format: markdown, json | markdown |
 | `--severity, -s` | Minimum severity to display (critical/high/medium/low/info) | info |
 | `--temperature` | Model temperature (0.0-2.0) | Model-specific |
-| `--batch-size` | Files per batch (1-50, helps with timeout issues) | 10 |
+| `--batch-size` | Max files per batch (1-50, acts as file-count cap alongside token budget) | 10 |
 | `--static-analysis` | Run static analysis tools (parallel) | False |
 | `--dry-run` | Preview files and cost without API calls | False |
-| `--verbose, -v` | Show detailed progress | False |
+| `--verbose, -v` | Show detailed progress (includes token budget breakdown) | False |
 | `--exclude, -e` | Additional exclusion patterns | None |
 | `--max-files` | Maximum files to analyze | None |
 | `--max-file-size` | Maximum file size in KB | 500 |
@@ -237,6 +237,7 @@ codereview/config/
 | Excluded file extensions | `models.yaml` | Add to `scanning.exclude_extensions` |
 | Max file size | `models.yaml` | Change `scanning.max_file_size_kb` |
 | Tool use support | `models.yaml` | Set `supports_tool_use: false` for models without tool calling |
+| Context window size | `models.yaml` | Set `context_window` per model for token-budget-aware batching |
 | API credentials | Environment variables | `AZURE_OPENAI_API_KEY`, `NVIDIA_API_KEY`, `GOOGLE_API_KEY` |
 | Code review rules | `prompts.py` | Modify `SYSTEM_PROMPT` |
 
@@ -274,6 +275,7 @@ bedrock:
       inference_params:
         default_temperature: 0.1
         max_output_tokens: 8192
+      context_window: 128000  # Enables token-budget-aware batching
 ```
 
 Then use immediately: `codereview ./src --model my-new-model`
@@ -310,8 +312,8 @@ Edit `SYSTEM_PROMPT` in `config/prompts.py` to:
 FileScanner → FileBatcher → CodeAnalyzer → ProviderFactory → BedrockProvider/AzureOpenAIProvider/NVIDIAProvider/GoogleGenAIProvider → Aggregation → TerminalRenderer/MarkdownExporter
 ```
 
-1. **FileScanner** (`scanner.py`): Discovers code files (.py, .go, .sh, .bash, .cpp, .cc, .cxx, .h, .hpp, .java, .js, .jsx, .mjs, .ts, .tsx), applies exclusion patterns, validates paths
-2. **FileBatcher** (`batcher.py`): Groups files into batches (default 10 files/batch) for token efficiency
+1. **FileScanner** (`scanner.py`): Discovers code files (.py, .go, .sh, .bash, .cpp, .cc, .cxx, .h, .hpp, .java, .js, .jsx, .mjs, .ts, .tsx), applies exclusion patterns, validates paths, tracks all skipped files with reasons (too large, stat failures, etc.)
+2. **FileBatcher** (`batcher.py`): Groups files into token-budget-aware batches. When a model's `context_window` is configured, computes a token budget (`context_window - max_output - system_prompt - readme - safety_margin`) and packs files greedily within that budget. Falls back to count-only batching (default 10 files/batch) when no context window is set or budget is non-positive. `--batch-size` always acts as a file-count cap
 3. **CodeAnalyzer** (`analyzer.py`): Orchestrates analysis using provider abstraction
 4. **ProviderFactory** (`providers/factory.py`): Auto-detects provider based on model name
 5. **Providers** (`providers/`):
@@ -378,6 +380,17 @@ Provider-specific retry logic:
 - `StaticAnalyzer.run_all(parallel=True)` runs tools concurrently
 - Uses `ThreadPoolExecutor` for I/O-bound subprocess calls
 - Reduces total time from sum of tools to ~slowest tool
+
+**Token-Budget-Aware Batching:**
+- `FileBatcher` supports an optional `token_budget` parameter computed from the model's `context_window`
+- Budget formula: `context_window - max_output_tokens - system_prompt_tokens - readme_tokens - safety_margin`
+- Safety margin: `clamp(context_window // 10, 1000, 20000)` — 10% of context, covers estimation error
+- Token estimation heuristic: `file_size_bytes // 4 + 50` (50 tokens overhead per file for headers/separators)
+- Greedy packing: adds files to current batch until next file would exceed token budget or file-count cap
+- Oversized files (exceeding budget alone) get their own single-file batch with a warning
+- Falls back to count-only batching when `context_window` is not set or budget computes to non-positive
+- `--batch-size` CLI option still works as a max file-count cap alongside the token budget
+- `--verbose` displays the full token budget breakdown
 
 ### Code Review Rules
 
@@ -482,8 +495,8 @@ Models defined in `codereview/config/models.yaml`:
 ### Configuration Constants
 
 **Core configuration** (`config/`):
-- `models.yaml`: All model and provider definitions
-- `models.py`: Pydantic data models for validation
+- `models.yaml`: All model and provider definitions (includes `context_window` per model)
+- `models.py`: Pydantic data models for validation (ModelConfig includes `context_window` for token-budget-aware batching)
 - `loader.py`: YAML parsing and model resolution (uses `@lru_cache` singleton pattern)
 - `prompts.py`: Code review rules and SYSTEM_PROMPT (primary location for review behavior)
 
@@ -615,6 +628,7 @@ uv run codereview ./src --model gemini-3-flash
    - `aliases`: List of alternative names
    - `pricing`: Input and output prices per million tokens
    - `inference_params`: Temperature, top_p, top_k, max_tokens, etc.
+   - `context_window`: Context window size in tokens (enables token-budget-aware batching)
 2. No code changes needed - ConfigLoader automatically picks up new models
 3. Update this document's Supported Models table
 
@@ -630,6 +644,7 @@ bedrock:
         output_per_million: 5.00
       inference_params:
         temperature: 0.1
+      context_window: 200000
 ```
 
 **Example (Azure OpenAI model):**
@@ -645,6 +660,7 @@ azure_openai:
       inference_params:
         temperature: 0.0
       use_responses_api: true  # Required if model doesn't support ChatCompletion API
+      context_window: 400000
 ```
 
 **Example (NVIDIA NIM model):**
@@ -663,6 +679,7 @@ nvidia:
         default_temperature: 0.15
         default_top_p: 0.95
         max_output_tokens: 8192
+      context_window: 128000
 ```
 
 **Example (Google GenAI model):**
@@ -681,6 +698,7 @@ google_genai:
         default_temperature: 0.1
         default_top_p: 0.95
         max_output_tokens: 65536
+      context_window: 1000000
 ```
 
 ### Adding New Providers

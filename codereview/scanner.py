@@ -124,7 +124,10 @@ class FileScanner:
                 # Skip if file too large (but track it)
                 try:
                     file_size_kb = file_path.stat().st_size / 1024
-                except OSError:
+                except OSError as e:
+                    self.skipped_files.append(
+                        (file_path, f"Cannot read file stats: {e}")
+                    )
                     continue
                 if file_size_kb > self.max_file_size_kb:
                     self.skipped_files.append(

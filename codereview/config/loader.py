@@ -325,6 +325,7 @@ class ConfigLoader:
             deployment_name=model_data.get("deployment_name"),
             use_responses_api=model_data.get("use_responses_api"),
             supports_tool_use=model_data.get("supports_tool_use", True),
+            context_window=model_data.get("context_window"),
         )
 
     def resolve_model(self, name: str) -> tuple[str, ModelConfig]:

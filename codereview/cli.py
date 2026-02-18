@@ -34,6 +34,7 @@ from codereview.config import (
     DEFAULT_EXCLUDE_PATTERNS,
     MAX_FILE_SIZE_KB,
     MODEL_ALIASES,
+    SYSTEM_PROMPT,
     get_config_loader,
 )
 from codereview.models import CodeReviewReport, ReviewIssue, ReviewMetrics
@@ -492,8 +493,44 @@ def main(
 
                 StaticAnalysisRenderer(con).render(static_results)
 
-        # Step 2: Create batches
-        batcher = FileBatcher(max_files_per_batch=batch_size)
+        # Step 2: Create batches (token-budget-aware when possible)
+        token_budget: int | None = None
+        if model_config.context_window:
+            max_output = (
+                model_config.inference_params.max_output_tokens
+                if model_config.inference_params
+                and model_config.inference_params.max_output_tokens
+                else 16000
+            )
+            system_prompt_tokens = len(SYSTEM_PROMPT) // 4
+            readme_tokens = len(readme_content) // 4 if readme_content else 0
+            safety_margin = max(1000, min(model_config.context_window // 10, 20000))
+            computed_budget = (
+                model_config.context_window
+                - max_output
+                - system_prompt_tokens
+                - readme_tokens
+                - safety_margin
+            )
+            if computed_budget > 0:
+                token_budget = computed_budget
+                if verbose:
+                    con.print("[cyan]Token budget breakdown:[/cyan]")
+                    con.print(
+                        f"   Context window:    {model_config.context_window:>10,}"
+                    )
+                    con.print(f"   Max output:        {max_output:>10,}")
+                    con.print(f"   System prompt:     {system_prompt_tokens:>10,}")
+                    con.print(f"   README context:    {readme_tokens:>10,}")
+                    con.print(f"   Safety margin:     {safety_margin:>10,}")
+                    con.print(f"   [bold]Token budget:      {token_budget:>10,}[/bold]")
+                    con.print()
+            elif verbose:
+                con.print(
+                    "[yellow]Token budget negative; falling back to count-only batching[/yellow]\n"
+                )
+
+        batcher = FileBatcher(max_files_per_batch=batch_size, token_budget=token_budget)
         batches = batcher.create_batches(files)
 
         try:
@@ -892,14 +929,6 @@ def _render_dry_run(
     ValidationRenderer(console).render(validation)
     console.print()
 
-    # Estimate tokens from file size (avoids reading file content for speed)
-    def estimate_tokens_from_size(file_path: Path) -> int:
-        """Estimate token count from file size (~4 bytes per token heuristic)."""
-        try:
-            return file_path.stat().st_size // 4
-        except OSError:
-            return 0
-
     # Build file table
     table = Table(title="Files to Analyze", show_header=True, header_style="bold cyan")
     table.add_column("File", style="cyan")
@@ -912,7 +941,7 @@ def _render_dry_run(
             size_kb = file_path.stat().st_size / 1024
         except OSError:
             size_kb = 0.0  # File may have been deleted since scan
-        tokens = estimate_tokens_from_size(file_path)
+        tokens = FileBatcher.estimate_file_tokens(file_path)
         total_tokens += tokens
         table.add_row(
             str(file_path.name),
