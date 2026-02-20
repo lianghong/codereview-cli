@@ -765,6 +765,34 @@ providers:
           - multimodal
           - tool_use
 
+      # Gemini 3.1 Pro Preview - Most advanced reasoning
+      # 1M token context, Deep Think with 3 levels
+      # 77.1% ARC-AGI-2, 94.3% GPQA Diamond
+      - id: gemini-3.1-pro
+        full_id: gemini-3.1-pro-preview
+        name: Gemini 3.1 Pro Preview
+        aliases:
+          - gemini31-pro
+          - g31pro
+        pricing:
+          input_per_million: 2.00
+          output_per_million: 12.00
+        inference_params:
+          default_temperature: 0.1
+          default_top_p: 0.95
+          max_output_tokens: 65536
+        context_window: 1000000
+        capabilities:
+          - code_review
+          - reasoning
+          - multimodal
+          - tool_use
+          - agentic_tasks
+        notes: >-
+          77.1% ARC-AGI-2, 94.3% GPQA Diamond,
+          2x reasoning over Gemini 3 Pro,
+          Deep Think with 3 levels
+
       # Gemini 3 Flash Preview - Fast, efficient
       # 1M token context, Flash-tier pricing
       - id: gemini-3-flash

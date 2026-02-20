@@ -10,8 +10,8 @@ A LangChain-based CLI tool that provides comprehensive, intelligent code reviews
 
 ## Features
 
-- **Multi-Provider Support**: AWS Bedrock (Claude, Mistral, Minimax, Kimi, Qwen, DeepSeek, GLM), Azure OpenAI (GPT, Kimi K2.5, Grok 4), NVIDIA NIM (Devstral, MiniMax M2.1, Qwen3.5, DeepSeek, GLM 4.7), and Google GenAI (Gemini 3 Pro, Gemini 3 Flash)
-- **AI-Powered Analysis**: Leverages Claude Opus 4.6, GPT-5.2 Codex, Grok 4 Fast Reasoning, Gemini 3 Pro, Devstral 2, and other leading models for deep code understanding
+- **Multi-Provider Support**: AWS Bedrock (Claude, Mistral, Minimax, Kimi, Qwen, DeepSeek, GLM), Azure OpenAI (GPT, Kimi K2.5, Grok 4), NVIDIA NIM (Devstral, MiniMax M2.1, Qwen3.5, DeepSeek, GLM 4.7), and Google GenAI (Gemini 3.1 Pro, Gemini 3 Pro, Gemini 3 Flash)
+- **AI-Powered Analysis**: Leverages Claude Opus 4.6, GPT-5.2 Codex, Grok 4 Fast Reasoning, Gemini 3.1 Pro, Devstral 2, and other leading models for deep code understanding
 - **Multi-Language Support**: Reviews Python, Go, Shell Script, C++, Java, JavaScript, and TypeScript codebases
 - **Smart Batching**: Automatically groups files for efficient token usage
 - **Structured Output**: Get categorized issues with severity levels and actionable suggestions
@@ -33,7 +33,7 @@ A LangChain-based CLI tool that provides comprehensive, intelligent code reviews
   - AWS account with Bedrock access (for Claude, Mistral, Minimax, Kimi, Qwen models)
   - Azure OpenAI resource with model deployment (for GPT, Kimi K2.5, Grok 4 models)
   - NVIDIA API key from [build.nvidia.com](https://build.nvidia.com) (for Devstral, MiniMax M2.1, Qwen3.5, DeepSeek, free tier available)
-  - Google API key from [AI Studio](https://aistudio.google.com/apikey) (for Gemini 3 Pro, Gemini 3 Flash)
+  - Google API key from [AI Studio](https://aistudio.google.com/apikey) (for Gemini 3.1 Pro, Gemini 3 Pro, Gemini 3 Flash)
 
 ### Install with uv (recommended)
 
@@ -191,7 +191,7 @@ codereview /path/to/code --model kimi-k2.5
 
 ## Google Generative AI Configuration (Alternative Provider)
 
-Google Generative AI provides access to Gemini 3 models with 1M token context windows.
+Google Generative AI provides access to Gemini 3.1 Pro and Gemini 3 models with 1M token context windows.
 
 ### 1. Get API Key
 
@@ -208,6 +208,9 @@ export GOOGLE_API_KEY="your-api-key-here"
 ### 3. Use Gemini Models
 
 ```bash
+# Gemini 3.1 Pro - Most advanced reasoning model (1M context)
+codereview /path/to/code --model gemini-3.1-pro
+
 # Gemini 3 Pro - Flagship reasoning model (1M context)
 codereview /path/to/code --model gemini-3-pro
 
@@ -259,6 +262,7 @@ codereview /path/to/code --model glm47              # GLM 4.7 (thinking mode)
 codereview /path/to/code --model kimi-k2.5          # Kimi K2.5 (256K context)
 
 # Google Generative AI Models
+codereview /path/to/code --model gemini-3.1-pro     # Gemini 3.1 Pro (1M context, best reasoning)
 codereview /path/to/code --model gemini-3-pro       # Gemini 3 Pro (1M context)
 codereview /path/to/code --model gemini-3-flash     # Gemini 3 Flash (fast, cheap)
 
@@ -284,6 +288,7 @@ codereview /path/to/code -m devstral
 | Qwen3.5 397B | NVIDIA NIM | Next-gen Qwen, thinking mode, 262K context | Free* | Free* |
 | GLM 4.7 | NVIDIA NIM | 73.8% SWE-bench, thinking mode | Free* | Free* |
 | Kimi K2.5 | NVIDIA NIM | 256K context, instant/thinking modes | Free* | Free* |
+| Gemini 3.1 Pro | Google GenAI | Most advanced reasoning, 1M context | $2.00 | $12.00 |
 | Gemini 3 Pro | Google GenAI | Flagship reasoning, 1M context | $2.00 | $12.00 |
 | Gemini 3 Flash | Google GenAI | Fast and cheap, 1M context | $0.50 | $3.00 |
 | DeepSeek-R1 | AWS Bedrock | Reasoning model, 128K context | $1.35 | $5.40 |

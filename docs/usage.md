@@ -372,6 +372,11 @@ codereview ./src --model grok
 codereview ./src --model devstral
 ```
 
+**Gemini 3.1 Pro** - Most advanced reasoning, 1M context (Google GenAI):
+```bash
+codereview ./src --model gemini-3.1-pro
+```
+
 **Gemini 3 Pro** - Large context, strong reasoning (Google GenAI):
 ```bash
 codereview ./src --model gemini-3-pro
@@ -403,6 +408,7 @@ Be aware of costs and choose models accordingly:
 - **Grok 4 Fast (Azure)**: 2M context, cost-efficient ($0.20/M input, $0.50/M output)
 
 **Google Generative AI:**
+- **Gemini 3.1 Pro**: Most advanced reasoning ($2/M input, $12/M output)
 - **Gemini 3 Pro**: Flagship model ($2/M input, $12/M output)
 - **Gemini 3 Flash**: Cost-efficient ($0.50/M input, $3/M output)
 
@@ -534,6 +540,7 @@ codereview ./src --model glm47              # GLM 4.7
 codereview ./src --model kimi-k2.5          # Kimi K2.5 (256K context)
 
 # Google Generative AI
+codereview ./src --model gemini-3.1-pro     # Gemini 3.1 Pro (1M context, best reasoning)
 codereview ./src --model gemini-3-pro       # Gemini 3 Pro (1M context)
 codereview ./src --model gemini-3-flash     # Gemini 3 Flash (fast, cheap)
 ```
@@ -553,6 +560,7 @@ codereview ./src --model gemini-3-flash     # Gemini 3 Flash (fast, cheap)
 | **MiniMax M2.1** | NVIDIA NIM | Free tier, thinking mode, 200K context | Free* |
 | **GLM 4.7** | NVIDIA NIM | Free tier, thinking mode | Free* |
 | **Kimi K2.5** | NVIDIA NIM | Free tier, 256K context | Free* |
+| **Gemini 3.1 Pro** | Google GenAI | Most advanced reasoning, 1M context | $2/M input, $12/M output |
 | **Gemini 3 Pro** | Google GenAI | Flagship reasoning, 1M context | $2/M input, $12/M output |
 | **Gemini 3 Flash** | Google GenAI | Fast and cheap, 1M context | $0.50/M input, $3/M output |
 
@@ -696,6 +704,7 @@ For projects with 1000+ files:
 | 100 files, daily review | Sonnet 4.6 | AWS Bedrock | $0.10-$0.40 |
 | 1000 files, bulk scan | Haiku 4.5 | AWS Bedrock | $0.10-$0.50 |
 | Development/testing | Devstral 2 | NVIDIA NIM | Free |
+| Advanced reasoning (1M) | Gemini 3.1 Pro | Google GenAI | $2.00-$12.00/M |
 | Large context (1M) | Gemini 3 Flash | Google GenAI | $0.50-$3.00/M |
 | Large context needed | Kimi K2.5 | NVIDIA NIM | Free |
 

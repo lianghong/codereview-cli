@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-LangChain-based CLI tool for AI-powered code reviews via AWS Bedrock, Azure OpenAI, NVIDIA NIM, and Google Generative AI. Supports multiple models including Claude (Opus, Sonnet, Haiku), GPT-5.2 Codex, Grok 4 Fast Reasoning, Gemini 3 (Pro, Flash), Devstral 2, MiniMax M2, MiniMax M2.1, Kimi K2.5, Qwen3 Coder, Qwen3 Coder Next, Qwen3.5, DeepSeek-R1, DeepSeek V3.2, GLM 4.7, GLM 4.7 Flash, and GLM-5. Reviews **Python, Go, Shell Script, C++, Java, JavaScript, and TypeScript** codebases with structured output (categories, severity levels, line numbers, suggested fixes).
+LangChain-based CLI tool for AI-powered code reviews via AWS Bedrock, Azure OpenAI, NVIDIA NIM, and Google Generative AI. Supports multiple models including Claude (Opus, Sonnet, Haiku), GPT-5.2 Codex, Grok 4 Fast Reasoning, Gemini 3.1 Pro, Gemini 3 (Pro, Flash), Devstral 2, MiniMax M2, MiniMax M2.1, Kimi K2.5, Qwen3 Coder, Qwen3 Coder Next, Qwen3.5, DeepSeek-R1, DeepSeek V3.2, GLM 4.7, GLM 4.7 Flash, and GLM-5. Reviews **Python, Go, Shell Script, C++, Java, JavaScript, and TypeScript** codebases with structured output (categories, severity levels, line numbers, suggested fixes).
 
 **Tech Stack:** Python 3.14, LangChain, AWS Bedrock, Azure OpenAI, NVIDIA NIM, Google Generative AI, Pydantic V2, Click, Rich
 
@@ -78,6 +78,7 @@ uv run codereview /path/to/code -m haiku
 uv run codereview /path/to/code -m gpt  # Azure OpenAI
 uv run codereview /path/to/code -m devstral  # NVIDIA NIM
 uv run codereview /path/to/code -m qwen
+uv run codereview /path/to/code -m gemini-3.1-pro  # Google GenAI (best reasoning)
 uv run codereview /path/to/code -m gemini-3-pro   # Google GenAI
 uv run codereview /path/to/code -m gemini-3-flash  # Google GenAI (fast)
 
@@ -165,6 +166,7 @@ Use primary model IDs (case-insensitive). Run `codereview --list-models` to see 
 | `deepseek-v3.2-nvidia` | DeepSeek V3.2 (NVIDIA) | nvidia | deepseek-v3-nvidia, ds-nvidia, deepseek-nvidia |
 | `glm47` | GLM 4.7 (NVIDIA) | nvidia | glm4, glm-nvidia |
 | `glm5` | GLM-5 (NVIDIA) | nvidia | glm-5, glm5-nvidia |
+| `gemini-3.1-pro` | Gemini 3.1 Pro Preview | google_genai | gemini31-pro, g31pro |
 | `gemini-3-pro` | Gemini 3 Pro Preview | google_genai | gemini-pro, gemini3-pro, g3pro |
 | `gemini-3-flash` | Gemini 3 Flash Preview | google_genai | gemini-flash, gemini3-flash, g3flash |
 
@@ -485,6 +487,7 @@ Models defined in `codereview/config/models.yaml`:
 **Google Generative AI Models:**
 | Model | Model ID | Input $/M | Output $/M | Defaults |
 |-------|----------|-----------|------------|----------|
+| Gemini 3.1 Pro Preview | `gemini-3.1-pro-preview` | $2.00 | $12.00 | temp=0.1, top_p=0.95, max=65536 |
 | Gemini 3 Pro Preview | `gemini-3-pro-preview` | $2.00 | $12.00 | temp=0.1, top_p=0.95, max=65536 |
 | Gemini 3 Flash Preview | `gemini-3-flash-preview` | $0.50 | $3.00 | temp=0.1, top_p=0.95, max=65536 |
 
@@ -612,7 +615,10 @@ uv run codereview ./src --model devstral
 # 3. Export the key
 export GOOGLE_API_KEY="your-api-key-here"
 
-# Run code review with Gemini 3 Pro
+# Run code review with Gemini 3.1 Pro (best reasoning)
+uv run codereview ./src --model gemini-3.1-pro
+
+# Run with Gemini 3 Pro
 uv run codereview ./src --model gemini-3-pro
 
 # Run with Gemini 3 Flash (faster, cheaper)

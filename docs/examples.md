@@ -102,6 +102,9 @@ codereview ./src --model grok
 # Kimi K2.5 - Multimodal MoE, 256K context (Azure)
 codereview ./src --model kimi-azure
 
+# Gemini 3.1 Pro - Most advanced reasoning, 1M context (Google GenAI)
+codereview ./src --model gemini-3.1-pro
+
 # Gemini 3 Pro - Large context, strong reasoning (Google GenAI)
 codereview ./src --model gemini-3-pro
 
@@ -197,6 +200,7 @@ codereview ./src \
 
 **Cost Comparison**:
 - Opus (100 files): ~$1.50
+- Gemini 3.1 Pro (100 files): ~$0.50
 - Gemini 3 Pro (100 files): ~$0.50
 - Sonnet (100 files): ~$0.30
 - Kimi K2.5 Azure (100 files): ~$0.12
@@ -789,6 +793,7 @@ diff before.md after.md
    - **Grok 4 Fast** for CI/CD quality gates ($0.20/$0.50 per M, 2M context)
    - **Haiku** for CI/CD quality gates (fastest, cheapest Bedrock option)
    - **Gemini 3 Flash** for large-context reviews (1M context, low cost)
+   - **Gemini 3.1 Pro** for advanced reasoning reviews (1M context)
    - **Sonnet** for PR reviews (balanced)
    - **Opus** for production releases only (highest quality)
 
