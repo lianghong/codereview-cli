@@ -19,7 +19,7 @@ A LangChain-based CLI tool that provides comprehensive, intelligent code reviews
 - **Architectural Review**: Detects boundary violations, coupling issues, and layering leaks
 - **Operational Readiness**: Checks for missing error handling, timeouts, and observability gaps
 - **Testing Quality**: Identifies test anti-patterns and coverage gaps
-- **Terminal UI**: Rich, colorful terminal output with progress indicators
+- **Terminal UI**: Rich, colorful terminal output with progress indicators (`--no-color` for copy-paste friendly output)
 - **Markdown/JSON Export**: Generate shareable reports in Markdown or JSON format for CI/CD
 - **Error Handling**: Robust retry logic with exponential backoff for API rate limits
 - **Flexible Configuration**: Customize file size limits, exclusion patterns, and provider settings
@@ -375,6 +375,18 @@ codereview /path/to/code --model sonnet --static-analysis --output comprehensive
 codereview /path/to/code --verbose
 ```
 
+### Copy-Paste Friendly Output
+
+Disable ANSI color/style codes for terminal output that's safe to copy-paste into other tools:
+
+```bash
+# No color mode - strips all ANSI escape codes
+codereview /path/to/code --no-color
+
+# Also respects the NO_COLOR environment variable (https://no-color.org/)
+NO_COLOR=1 codereview /path/to/code
+```
+
 ### All Options Combined
 
 ```bash
@@ -578,7 +590,7 @@ codereview-cli/
 │       ├── nvidia.py         # NVIDIA NIM provider implementation
 │       └── google_genai.py   # Google GenAI provider implementation
 ├── tests/
-│   ├── test_*.py             # Unit tests (301 tests)
+│   ├── test_*.py             # Unit tests (311 tests)
 │   └── fixtures/             # Test fixtures
 ├── docs/
 │   ├── usage.md              # Detailed usage guide
@@ -601,7 +613,7 @@ The codebase follows strict quality standards:
 - Pydantic V2 for data validation
 - Rich for terminal UI
 - Click for CLI interface
-- Comprehensive test coverage (301 tests)
+- Comprehensive test coverage (311 tests)
 
 **Static Analysis Tools:**
 ```bash
@@ -623,7 +635,7 @@ uv run ruff check --fix codereview/ tests/
 
 **Quality Requirements:**
 - All code must pass: ruff (linting + formatting), mypy (type checking), isort (import sorting), vulture (dead code)
-- All tests must pass (281/281)
+- All tests must pass (311/311)
 - Type hints required for public APIs
 - No unused imports or variables
 - Provider implementations must include `get_pricing()` method
@@ -655,7 +667,12 @@ For issues, questions, or contributions:
 
 ## Version History
 
-### v0.2.7 (Current)
+### v0.2.8 (Current)
+- **Copy-Paste Friendly Output**: Added `--no-color` flag to disable ANSI color/style codes, preventing terminal hangs when pasting output into other tools. Also respects the `NO_COLOR` environment variable ([no-color.org](https://no-color.org/))
+- **Dependency Upgrades**: Updated all dependencies to latest versions — langchain-aws 1.3.0, langchain-nvidia-ai-endpoints 1.1.0, langchain-openai 1.1.10, langchain-google-genai 4.2.1, openai 2.24.0 (fixes structured output memory leak), langchain-core 1.2.16, langsmith 0.7.7, and more
+- **Test Suite**: 311 tests
+
+### v0.2.7
 - **System Prompt Rewrite**: Restructured SYSTEM_PROMPT (~513 to ~310 lines, 40% reduction) for better instruction adherence — critical constraints at top, CWE references, prompt injection defense, self-verification, concrete examples
 - **Category-Based Recommendations**: Enhanced report recommendations with category-aware suggestions (Security, Performance, Testing, Code Quality, System Design)
 - **NVIDIA GLM-5 Fix**: Graceful fallback when `include_raw=True` is not supported by a provider

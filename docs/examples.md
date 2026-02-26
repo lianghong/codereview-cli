@@ -789,7 +789,12 @@ diff before.md after.md
 
 ## Tips for CI/CD Integration
 
-1. **Choose Cost-Effective Models**:
+1. **Use `--no-color` in CI/CD**: Disable ANSI codes for cleaner logs and artifact output:
+   ```bash
+   codereview ./src --no-color --output review.md
+   ```
+
+2. **Choose Cost-Effective Models**:
    - **Grok 4 Fast** for CI/CD quality gates ($0.20/$0.50 per M, 2M context)
    - **Haiku** for CI/CD quality gates (fastest, cheapest Bedrock option)
    - **Gemini 3 Flash** for large-context reviews (1M context, low cost)
@@ -797,23 +802,23 @@ diff before.md after.md
    - **Sonnet** for PR reviews (balanced)
    - **Opus** for production releases only (highest quality)
 
-2. **Use Artifacts**: Always save review reports as build artifacts
+3. **Use Artifacts**: Always save review reports as build artifacts
 
-3. **Set Severity Thresholds**: Fail builds only on Critical/High issues
+4. **Set Severity Thresholds**: Fail builds only on Critical/High issues
 
-4. **Limit Scope**: Use `--max-files` to control costs and time
+5. **Limit Scope**: Use `--max-files` to control costs and time
 
-5. **Cache Dependencies**: Cache the tool installation for faster builds
+6. **Cache Dependencies**: Cache the tool installation for faster builds
 
-6. **Parallel Reviews**: Review different modules in parallel jobs
+7. **Parallel Reviews**: Review different modules in parallel jobs
 
-7. **Scheduled Reviews**: Run full reviews nightly, not on every commit
+8. **Scheduled Reviews**: Run full reviews nightly, not on every commit
 
-8. **Notification Integration**: Send review summaries to Slack/email
+9. **Notification Integration**: Send review summaries to Slack/email
 
-9. **Store Metrics**: Track issue trends over time in dashboards
+10. **Store Metrics**: Track issue trends over time in dashboards
 
-10. **Cost Monitoring**: Track token usage and costs across builds
+11. **Cost Monitoring**: Track token usage and costs across builds
 
 **Cost Optimization Example**:
 ```yaml

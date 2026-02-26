@@ -484,6 +484,24 @@ codereview ./src --no-readme
 - More relevant and context-aware code review suggestions
 - Better identification of project-specific patterns
 
+### Copy-Paste Friendly Output
+
+Disable ANSI color/style codes to prevent issues when pasting terminal output into other tools (e.g., Claude Code, Slack, email):
+
+```bash
+# Disable colors for safe copy-paste
+codereview ./src --no-color
+
+# Also respects the NO_COLOR environment variable (https://no-color.org/)
+NO_COLOR=1 codereview ./src
+```
+
+**When to use `--no-color`:**
+- When you plan to copy-paste terminal output into other tools
+- When terminal output contains invisible ANSI escape codes that cause pasting issues
+- In CI/CD environments where color codes aren't needed
+- When piping output to non-terminal destinations
+
 ### Region Selection
 
 ```bash

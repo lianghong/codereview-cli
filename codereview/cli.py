@@ -92,17 +92,20 @@ class ModelChoice(click.ParamType):
 console = Console()
 
 
-def _create_console(quiet: bool = False) -> Console:
-    """Create a Rich console, optionally in quiet mode.
+def _create_console(quiet: bool = False, no_color: bool = False) -> Console:
+    """Create a Rich console, optionally in quiet or no-color mode.
 
     Args:
         quiet: If True, suppress all Rich output via Console(quiet=True)
+        no_color: If True, strip ANSI color/style codes from output
 
     Returns:
         Console instance
     """
     if quiet:
         return Console(quiet=True)
+    if no_color:
+        return Console(no_color=True, highlight=False)
     return Console()
 
 
@@ -314,6 +317,11 @@ def validate_provider_credentials(model_name: str, aws_profile: str | None) -> N
     is_flag=True,
     help="Skip README context entirely (no prompt)",
 )
+@click.option(
+    "--no-color",
+    is_flag=True,
+    help="Disable ANSI colors/styles for copy-paste friendly output",
+)
 @click.pass_context
 def main(
     ctx: click.Context,
@@ -337,6 +345,7 @@ def main(
     validate: bool,
     readme: Path | None,
     no_readme: bool,
+    no_color: bool,
 ) -> None:
     """
     Analyze code in DIRECTORY and generate a comprehensive review report.
@@ -361,7 +370,7 @@ def main(
         return
 
     # Create console (quiet mode suppresses all Rich output)
-    con = _create_console(quiet=quiet)
+    con = _create_console(quiet=quiet, no_color=no_color)
 
     # Quiet mode overrides verbose and stream
     if quiet:

@@ -137,6 +137,7 @@ The README content is included in each batch sent to the LLM, helping it underst
 | `--list-models` | List all available models and exit | - |
 | `--readme <path>` | Specify README file for project context | None |
 | `--no-readme` | Skip README context entirely | False |
+| `--no-color` | Disable ANSI colors/styles for copy-paste friendly output | False |
 
 ### Model Names
 Use primary model IDs (case-insensitive). Run `codereview --list-models` to see all available models.
