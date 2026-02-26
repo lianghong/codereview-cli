@@ -250,7 +250,7 @@ wheels = [
 
 [[package]]
 name = "codereview-cli"
-version = "0.2.5"
+version = "0.2.8"
 source = { editable = "." }
 dependencies = [
     { name = "boto3" },
