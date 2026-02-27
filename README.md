@@ -10,7 +10,7 @@ A LangChain-based CLI tool that provides comprehensive, intelligent code reviews
 
 ## Features
 
-- **Multi-Provider Support**: AWS Bedrock (Claude, Mistral, Minimax, Kimi, Qwen, DeepSeek, GLM), Azure OpenAI (GPT, Kimi K2.5, Grok 4), NVIDIA NIM (Devstral, MiniMax M2.1, Qwen3.5, DeepSeek, GLM 4.7), and Google GenAI (Gemini 3.1 Pro, Gemini 3 Pro, Gemini 3 Flash)
+- **Multi-Provider Support**: AWS Bedrock (Claude, Mistral, Minimax, Kimi, Qwen, DeepSeek, GLM), Azure OpenAI (GPT, Kimi K2.5, Grok 4), NVIDIA NIM (Devstral, MiniMax M2.5, MiniMax M2.1, Qwen3.5, DeepSeek, GLM 4.7), and Google GenAI (Gemini 3.1 Pro, Gemini 3 Pro, Gemini 3 Flash)
 - **AI-Powered Analysis**: Leverages Claude Opus 4.6, GPT-5.2 Codex, Grok 4 Fast Reasoning, Gemini 3.1 Pro, Devstral 2, and other leading models for deep code understanding
 - **Multi-Language Support**: Reviews Python, Go, Shell Script, C++, Java, JavaScript, and TypeScript codebases
 - **Smart Batching**: Automatically groups files for efficient token usage
@@ -32,7 +32,7 @@ A LangChain-based CLI tool that provides comprehensive, intelligent code reviews
 - **One of the following:**
   - AWS account with Bedrock access (for Claude, Mistral, Minimax, Kimi, Qwen models)
   - Azure OpenAI resource with model deployment (for GPT, Kimi K2.5, Grok 4 models)
-  - NVIDIA API key from [build.nvidia.com](https://build.nvidia.com) (for Devstral, MiniMax M2.1, Qwen3.5, DeepSeek, free tier available)
+  - NVIDIA API key from [build.nvidia.com](https://build.nvidia.com) (for Devstral, MiniMax M2.5, MiniMax M2.1, Qwen3.5, DeepSeek, free tier available)
   - Google API key from [AI Studio](https://aistudio.google.com/apikey) (for Gemini 3.1 Pro, Gemini 3 Pro, Gemini 3 Flash)
 
 ### Install with uv (recommended)
@@ -148,7 +148,7 @@ codereview --list-models  # Should show Azure models
 
 ## NVIDIA NIM Configuration (Alternative Provider)
 
-NVIDIA NIM provides access to models like Devstral 2, MiniMax M2.1, Qwen3.5, DeepSeek V3.2, Qwen3 Coder, and more with a free tier for development.
+NVIDIA NIM provides access to models like Devstral 2, MiniMax M2.5, MiniMax M2.1, Qwen3.5, DeepSeek V3.2, Qwen3 Coder, and more with a free tier for development.
 
 ### 1. Get API Key
 
@@ -180,6 +180,9 @@ codereview /path/to/code --model qwen3.5
 # GLM 4.7 - Reasoning model with interleaved thinking (73.8% SWE-bench)
 codereview /path/to/code --model glm47
 
+# MiniMax M2.5 - SOTA coding model with thinking mode (80.2% SWE-bench)
+codereview /path/to/code --model minimax-m2.5
+
 # MiniMax M2.1 - Enhanced reasoning model with thinking mode
 codereview /path/to/code --model minimax-m2.1
 
@@ -187,7 +190,7 @@ codereview /path/to/code --model minimax-m2.1
 codereview /path/to/code --model kimi-k2.5
 ```
 
-**Note:** NVIDIA NIM models are currently in free tier. No charges apply during the preview period. Models with thinking mode enabled (MiniMax M2.1, Qwen3.5, DeepSeek, Qwen3 Coder, GLM 4.7) provide deeper reasoning for complex code analysis.
+**Note:** NVIDIA NIM models are currently in free tier. No charges apply during the preview period. Models with thinking mode enabled (MiniMax M2.5, MiniMax M2.1, Qwen3.5, DeepSeek, Qwen3 Coder, GLM 4.7) provide deeper reasoning for complex code analysis.
 
 ## Google Generative AI Configuration (Alternative Provider)
 
@@ -254,7 +257,8 @@ codereview /path/to/code --model grok            # Grok 4 Fast Reasoning (2M con
 
 # NVIDIA NIM Models (free tier)
 codereview /path/to/code --model devstral           # Devstral 2 123B
-codereview /path/to/code --model minimax-m2.1         # MiniMax M2.1 (thinking mode)
+codereview /path/to/code --model minimax-m2.5           # MiniMax M2.5 (thinking mode, 80.2% SWE-bench)
+codereview /path/to/code --model minimax-m2.1           # MiniMax M2.1 (thinking mode)
 codereview /path/to/code --model deepseek-v3.2-nvidia # DeepSeek V3.2 (thinking mode)
 codereview /path/to/code --model qwen-nvidia        # Qwen3 Coder 480B (thinking mode)
 codereview /path/to/code --model qwen3.5            # Qwen3.5 397B (thinking mode, 262K context)
@@ -282,6 +286,7 @@ codereview /path/to/code -m devstral
 | Kimi K2.5 (Azure) | Azure OpenAI | Multimodal MoE, 256K context | $0.60 | $3.00 |
 | Grok 4 Fast (Azure) | Azure OpenAI | 2M context, cost-efficient reasoning | $0.20 | $0.50 |
 | Devstral 2 | NVIDIA NIM | Code-specialized, free tier | Free* | Free* |
+| MiniMax M2.5 | NVIDIA NIM | 204K context, 128K output, thinking mode, SOTA coding | Free* | Free* |
 | MiniMax M2.1 | NVIDIA NIM | 200K context, 128K output, thinking mode | Free* | Free* |
 | DeepSeek V3.2 | NVIDIA NIM | Large reasoning model, thinking mode | Free* | Free* |
 | Qwen3 Coder (NIM) | NVIDIA NIM | Ultra-large coding, thinking mode | Free* | Free* |
@@ -667,7 +672,12 @@ For issues, questions, or contributions:
 
 ## Version History
 
-### v0.2.8 (Current)
+### v0.2.9 (Current)
+- **MiniMax M2.5 Model**: Added MiniMax M2.5 via NVIDIA NIM (80.2% SWE-Bench Verified, 204K context, 128K output, interleaved thinking mode, 37% faster than M2.1)
+- **Dependency Upgrades**: Updated all dependencies to latest versions — langchain-aws 1.3.1, langsmith 0.7.7, google-genai 1.65.0, openai 2.24.0, websockets 16.0, isort 8.0.0, ruff 0.15.4, mypy 1.19.1, and more
+- **Test Suite**: 311 tests
+
+### v0.2.8
 - **Copy-Paste Friendly Output**: Added `--no-color` flag to disable ANSI color/style codes, preventing terminal hangs when pasting output into other tools. Also respects the `NO_COLOR` environment variable ([no-color.org](https://no-color.org/))
 - **Dependency Upgrades**: Updated all dependencies to latest versions — langchain-aws 1.3.0, langchain-nvidia-ai-endpoints 1.1.0, langchain-openai 1.1.10, langchain-google-genai 4.2.1, openai 2.24.0 (fixes structured output memory leak), langchain-core 1.2.16, langsmith 0.7.7, and more
 - **Test Suite**: 311 tests

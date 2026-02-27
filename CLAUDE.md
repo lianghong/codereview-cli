@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-LangChain-based CLI tool for AI-powered code reviews via AWS Bedrock, Azure OpenAI, NVIDIA NIM, and Google Generative AI. Supports multiple models including Claude (Opus, Sonnet, Haiku), GPT-5.2 Codex, Grok 4 Fast Reasoning, Gemini 3.1 Pro, Gemini 3 (Pro, Flash), Devstral 2, MiniMax M2, MiniMax M2.1, Kimi K2.5, Qwen3 Coder, Qwen3 Coder Next, Qwen3.5, DeepSeek-R1, DeepSeek V3.2, GLM 4.7, GLM 4.7 Flash, and GLM-5. Reviews **Python, Go, Shell Script, C++, Java, JavaScript, and TypeScript** codebases with structured output (categories, severity levels, line numbers, suggested fixes).
+LangChain-based CLI tool for AI-powered code reviews via AWS Bedrock, Azure OpenAI, NVIDIA NIM, and Google Generative AI. Supports multiple models including Claude (Opus, Sonnet, Haiku), GPT-5.2 Codex, Grok 4 Fast Reasoning, Gemini 3.1 Pro, Gemini 3 (Pro, Flash), Devstral 2, MiniMax M2, MiniMax M2.1, MiniMax M2.5, Kimi K2.5, Qwen3 Coder, Qwen3 Coder Next, Qwen3.5, DeepSeek-R1, DeepSeek V3.2, GLM 4.7, GLM 4.7 Flash, and GLM-5. Reviews **Python, Go, Shell Script, C++, Java, JavaScript, and TypeScript** codebases with structured output (categories, severity levels, line numbers, suggested fixes).
 
 **Tech Stack:** Python 3.14, LangChain, AWS Bedrock, Azure OpenAI, NVIDIA NIM, Google Generative AI, Pydantic V2, Click, Rich
 
@@ -153,6 +153,7 @@ Use primary model IDs (case-insensitive). Run `codereview --list-models` to see 
 | `devstral` | Devstral 2 123B | nvidia | devstral-2 |
 | `minimax-nvidia` | MiniMax M2 (NVIDIA) | nvidia | mm2-nvidia |
 | `minimax-m2.1-nvidia` | MiniMax M2.1 (NVIDIA) | nvidia | mm2.1-nvidia, minimax-m2.1, mm21 |
+| `minimax-m2.5-nvidia` | MiniMax M2.5 (NVIDIA) | nvidia | mm2.5-nvidia, minimax-m2.5, mm25 |
 | `qwen-bedrock` | Qwen3 Coder 480B (Bedrock) | bedrock | qwen, qwen-coder |
 | `deepseek-r1-bedrock` | DeepSeek-R1 (Bedrock) | bedrock | deepseek, deepseek-r1, ds-bedrock, deepseek-bedrock |
 | `deepseek-v3.2-bedrock` | DeepSeek V3.2 (Bedrock) | bedrock | deepseek-v3-bedrock, ds-v3-bedrock |
@@ -476,6 +477,7 @@ Models defined in `codereview/config/models.yaml`:
 | Devstral 2 123B | `mistralai/devstral-2-123b-instruct-2512` | $0.00* | $0.00* | temp=0.15, top_p=0.95, max=8192 |
 | MiniMax M2 (NVIDIA) | `minimaxai/minimax-m2` | $0.00* | $0.00* | temp=0.3, top_p=0.9, max=8192 |
 | MiniMax M2.1 (NVIDIA) | `minimaxai/minimax-m2.1` | $0.00* | $0.00* | temp=1.0, top_p=0.95, top_k=40, max=128000, thinking=on |
+| MiniMax M2.5 (NVIDIA) | `minimaxai/minimax-m2.5` | $0.00* | $0.00* | temp=1.0, top_p=0.95, top_k=40, max=128000, thinking=on |
 | Qwen3 Coder 480B (NVIDIA) | `qwen/qwen3-coder-480b-a35b-instruct` | $0.00* | $0.00* | temp=0.3, top_p=0.8, max=16384, thinking=on |
 | Qwen3.5 397B A17B (NVIDIA) | `qwen/qwen3.5-397b-a17b` | $0.00* | $0.00* | temp=0.6, top_p=0.95, top_k=20, max=16384, thinking=on |
 | Kimi K2.5 (NVIDIA) | `moonshotai/kimi-k2.5` | $0.00* | $0.00* | temp=0.6, top_p=0.95, top_k=40, max=16384 |

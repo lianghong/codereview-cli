@@ -413,7 +413,7 @@ Be aware of costs and choose models accordingly:
 - **Gemini 3 Flash**: Cost-efficient ($0.50/M input, $3/M output)
 
 **NVIDIA NIM (Free Tier):**
-- **Devstral 2, MiniMax M2.1, DeepSeek V3.2, Qwen3 Coder, GLM 4.7, Kimi K2.5**: Currently free
+- **Devstral 2, MiniMax M2.5, MiniMax M2.1, DeepSeek V3.2, Qwen3 Coder, GLM 4.7, Kimi K2.5**: Currently free
 
 **Cost optimization tips:**
 - Use `--max-files` to limit scope
@@ -552,6 +552,7 @@ codereview ./src --model grok     # Grok 4 Fast Reasoning (2M context)
 
 # NVIDIA NIM (free tier)
 codereview ./src --model devstral           # Devstral 2 123B
+codereview ./src --model minimax-m2.5       # MiniMax M2.5 (thinking mode, SOTA)
 codereview ./src --model minimax-m2.1       # MiniMax M2.1 (thinking mode)
 codereview ./src --model deepseek-v3.2-nvidia # DeepSeek V3.2
 codereview ./src --model glm47              # GLM 4.7
@@ -575,6 +576,7 @@ codereview ./src --model gemini-3-flash     # Gemini 3 Flash (fast, cheap)
 | **Grok 4 Fast (Azure)** | Azure OpenAI | 2M context, cost-efficient reasoning | $0.20/M input, $0.50/M output |
 | **DeepSeek-R1** | AWS Bedrock | Reasoning-focused reviews | $1.35/M input, $5.40/M output |
 | **Devstral 2** | NVIDIA NIM | Free tier, code-focused | Free* |
+| **MiniMax M2.5** | NVIDIA NIM | Free tier, thinking mode, 204K context, SOTA coding | Free* |
 | **MiniMax M2.1** | NVIDIA NIM | Free tier, thinking mode, 200K context | Free* |
 | **GLM 4.7** | NVIDIA NIM | Free tier, thinking mode | Free* |
 | **Kimi K2.5** | NVIDIA NIM | Free tier, 256K context | Free* |

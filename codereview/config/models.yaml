@@ -519,6 +519,59 @@ providers:
           Enhanced MoE with 200K context and
           128K output, coding/agentic optimized
 
+      # MiniMax M2.5 (via NVIDIA)
+      # MoE: 230B total, 10B active parameters
+      # 204K shared context (input+output combined)
+      # 80.2% SWE-Bench Verified, 37% faster than M2.1
+      # Best for: Code review, agentic coding
+      - id: minimax-m2.5-nvidia
+        full_id: minimaxai/minimax-m2.5
+        name: MiniMax M2.5 (NVIDIA)
+        aliases:
+          - mm2.5-nvidia
+          - minimax-m2.5
+          - mm25
+        pricing:
+          input_per_million: 0.00
+          output_per_million: 0.00
+        inference_params:
+          # IMPORTANT: Keep at 1.0 — M2.5 was RL-trained
+          # assuming temp=1.0 (logits pass unscaled).
+          # Lowering DEGRADES quality by distorting the
+          # trained distribution. API rejects 0.0; valid
+          # range is (0.0, 1.0]. Consistency is controlled
+          # via top_p, not temperature.
+          default_temperature: 1.0
+          default_top_p: 0.95
+          # top_k: stored for documentation but NOT passed
+          # to NVIDIA NIM API (provider ignores it)
+          default_top_k: 40
+          # M2.5 supports up to 128K output natively.
+          # NVIDIA NIM may cap lower (M2 had 16K limit);
+          # reserves output space in token budget calc.
+          max_output_tokens: 128000
+          # Interleaved thinking (<think> tags) enables
+          # deeper code analysis. Adds ~27-50% token
+          # overhead to output but improves review quality.
+          # Single-turn review — clear_thinking irrelevant.
+          enable_thinking: true
+          clear_thinking: false
+        # Shared input+output window (confirmed: MiniMax
+        # docs, NVIDIA model card, HuggingFace)
+        context_window: 204800
+        architecture: "MoE (230B total, 10B active)"
+        capabilities:
+          - coding
+          - reasoning
+          - agentic_tasks
+          - code_review
+          - thinking
+          - tool_use
+        notes: >-
+          80.2% SWE-Bench Verified, SOTA coding
+          and agentic tool use, 37% faster than
+          M2.1, cost-efficient MoE
+
       # Qwen3 Coder 480B (via NVIDIA)
       # MoE: 480B total, 35B active parameters
       # Best for: Code generation, code review
