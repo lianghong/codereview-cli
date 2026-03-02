@@ -357,7 +357,7 @@ codereview ./src --model sonnet
 codereview ./src --model haiku --max-files 500
 ```
 
-**GPT-5.2 Codex** - Code-specialized (Azure OpenAI):
+**GPT-5.3 Codex** - Code-specialized (Azure OpenAI):
 ```bash
 codereview ./src --model gpt
 ```
@@ -403,7 +403,7 @@ Be aware of costs and choose models accordingly:
 - **DeepSeek-R1**: Reasoning model ($1.35/M input, $5.40/M output)
 
 **Azure OpenAI:**
-- **GPT-5.2 Codex**: Code-specialized ($1.75/M input, $14/M output)
+- **GPT-5.3 Codex**: Code-specialized ($1.75/M input, $14/M output)
 - **Kimi K2.5 (Azure)**: Multimodal MoE, 256K context ($0.60/M input, $3/M output)
 - **Grok 4 Fast (Azure)**: 128K context (Azure), cost-efficient ($0.20/M input, $0.50/M output)
 
@@ -546,7 +546,7 @@ codereview ./src --model haiku    # Claude Haiku 4.5 (fastest)
 codereview ./src --model deepseek-r1-bedrock  # DeepSeek-R1 (reasoning)
 codereview ./src --model qwen-bedrock         # Qwen3 Coder 480B
 # Azure OpenAI
-codereview ./src --model gpt      # GPT-5.2 Codex
+codereview ./src --model gpt      # GPT-5.3 Codex
 codereview ./src --model kimi-azure  # Kimi K2.5 (256K context)
 codereview ./src --model grok     # Grok 4 Fast Reasoning (128K context (Azure))
 
@@ -571,7 +571,7 @@ codereview ./src --model gemini-3-flash     # Gemini 3 Flash (fast, cheap)
 | **Opus 4.6** (default) | AWS Bedrock | Critical code reviews, security audits | $5/M input, $25/M output |
 | **Sonnet 4.6** | AWS Bedrock | Daily development, PR reviews | $3/M input, $15/M output |
 | **Haiku 4.5** | AWS Bedrock | Large codebases, CI/CD integration | $1/M input, $5/M output |
-| **GPT-5.2 Codex** | Azure OpenAI | Code-specialized, Microsoft ecosystem | $1.75/M input, $14/M output |
+| **GPT-5.3 Codex** | Azure OpenAI | Code-specialized, Microsoft ecosystem | $1.75/M input, $14/M output |
 | **Kimi K2.5 (Azure)** | Azure OpenAI | Multimodal MoE, 256K context | $0.60/M input, $3/M output |
 | **Grok 4 Fast (Azure)** | Azure OpenAI | 128K context (Azure), cost-efficient reasoning | $0.20/M input, $0.50/M output |
 | **DeepSeek-R1** | AWS Bedrock | Reasoning-focused reviews | $1.35/M input, $5.40/M output |

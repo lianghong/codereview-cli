@@ -11,7 +11,7 @@ A LangChain-based CLI tool that provides comprehensive, intelligent code reviews
 ## Features
 
 - **Multi-Provider Support**: AWS Bedrock (Claude, Mistral, Minimax, Kimi, Qwen, DeepSeek, GLM), Azure OpenAI (GPT, Kimi K2.5, Grok 4), NVIDIA NIM (Devstral, MiniMax M2.5, MiniMax M2.1, Qwen3.5, DeepSeek, GLM 4.7), and Google GenAI (Gemini 3.1 Pro, Gemini 3 Pro, Gemini 3 Flash)
-- **AI-Powered Analysis**: Leverages Claude Opus 4.6, GPT-5.2 Codex, Grok 4 Fast Reasoning, Gemini 3.1 Pro, Devstral 2, and other leading models for deep code understanding
+- **AI-Powered Analysis**: Leverages Claude Opus 4.6, GPT-5.3 Codex, Grok 4 Fast Reasoning, Gemini 3.1 Pro, Devstral 2, and other leading models for deep code understanding
 - **Multi-Language Support**: Reviews Python, Go, Shell Script, C++, Java, JavaScript, and TypeScript codebases
 - **Smart Batching**: Automatically groups files for efficient token usage
 - **Structured Output**: Get categorized issues with severity levels and actionable suggestions
@@ -107,7 +107,7 @@ Ensure your IAM user/role has the following permissions:
 
 ## Azure OpenAI Configuration (Alternative to AWS)
 
-Azure OpenAI provides access to GPT-5.2 Codex, Kimi K2.5, and Grok 4 Fast Reasoning via Microsoft Azure AI Foundry.
+Azure OpenAI provides access to GPT-5.3 Codex, Kimi K2.5, and Grok 4 Fast Reasoning via Microsoft Azure AI Foundry.
 
 ### 1. Set Environment Variables
 
@@ -120,7 +120,7 @@ export AZURE_OPENAI_API_KEY="your-api-key"
 
 1. Create an Azure OpenAI resource in Azure Portal
 2. Deploy models from Azure AI Foundry catalog:
-   - **GPT-5.2 Codex** (deployment name: `gpt-5.2-codex`)
+   - **GPT-5.3 Codex** (deployment name: `gpt-5.3-codex`)
    - **Kimi K2.5** (deployment name: `Kimi-K2.5`) - Moonshot AI's multimodal MoE model
    - **Grok 4 Fast Reasoning** (deployment name: `grok-4-fast-reasoning`) - xAI's cost-efficient reasoning model
 3. Note your deployment name, endpoint, and API key
@@ -128,7 +128,7 @@ export AZURE_OPENAI_API_KEY="your-api-key"
 ### 3. Use Azure Models
 
 ```bash
-# GPT-5.2 Codex - Code-specialized
+# GPT-5.3 Codex - Code-specialized
 codereview /path/to/code --model gpt
 
 # Kimi K2.5 - Multimodal MoE, 256K context
@@ -251,7 +251,7 @@ codereview /path/to/code --model glm47-bedrock      # GLM 4.7 (thinking mode)
 codereview /path/to/code --model glm47-flash-bedrock # GLM 4.7 Flash (cost-efficient)
 
 # Azure OpenAI Models
-codereview /path/to/code --model gpt-5.2-codex  # GPT-5.2 Codex
+codereview /path/to/code --model gpt-5.3-codex  # GPT-5.3 Codex
 codereview /path/to/code --model kimi-azure      # Kimi K2.5 (256K context)
 codereview /path/to/code --model grok            # Grok 4 Fast Reasoning (128K context)
 
@@ -282,7 +282,7 @@ codereview /path/to/code -m devstral
 | Opus 4.6 | AWS Bedrock | Highest quality, critical reviews | $5.00 | $25.00 |
 | Sonnet 4.6 | AWS Bedrock | Balanced performance and cost | $3.00 | $15.00 |
 | Haiku 4.5 | AWS Bedrock | Fast, economical, large codebases | $1.00 | $5.00 |
-| GPT-5.2 Codex | Azure OpenAI | Code-specialized, Microsoft ecosystem | $1.75 | $14.00 |
+| GPT-5.3 Codex | Azure OpenAI | Code-specialized, Microsoft ecosystem | $1.75 | $14.00 |
 | Kimi K2.5 (Azure) | Azure OpenAI | Multimodal MoE, 256K context | $0.60 | $3.00 |
 | Grok 4 Fast (Azure) | Azure OpenAI | 128K context (Azure), cost-efficient reasoning | $0.20 | $0.50 |
 | Devstral 2 | NVIDIA NIM | Code-specialized, free tier | Free* | Free* |

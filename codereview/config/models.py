@@ -90,7 +90,7 @@ class ModelConfig(BaseModel):
     )
     use_responses_api: bool | None = Field(
         None,
-        description="Use OpenAI Responses API instead of ChatCompletion (required for some models like GPT-5.2 Codex)",
+        description="Use OpenAI Responses API instead of ChatCompletion (required for some models like GPT-5.3 Codex)",
     )
     supports_tool_use: bool = Field(
         True,

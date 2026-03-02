@@ -26,7 +26,7 @@ class CodeAnalyzer:
         """Initialize analyzer.
 
         Args:
-            model_name: Model name (ID or alias) - e.g., "opus", "gpt-5.2-codex"
+            model_name: Model name (ID or alias) - e.g., "opus", "gpt-5.3-codex"
             temperature: Temperature for inference (uses model-specific default if not provided)
             provider_factory: ProviderFactory instance (creates default if not provided)
             callbacks: Optional list of callback handlers for streaming/progress

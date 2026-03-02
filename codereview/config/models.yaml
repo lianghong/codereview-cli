@@ -336,15 +336,15 @@ providers:
     api_key: "${AZURE_OPENAI_API_KEY}"
     api_version: "2025-04-01-preview"
     models:
-      # GPT-5.2 Codex Model
-      # Best for: Enterprise code review
+      # GPT-5.3 Codex Model
+      # Best for: Enterprise code review, agentic coding
       # Note: Requires Responses API
-      - id: gpt-5.2-codex
-        deployment_name: gpt-5.2-codex
-        name: GPT-5.2 Codex
+      - id: gpt-5.3-codex
+        deployment_name: gpt-5.3-codex
+        name: GPT-5.3 Codex
         aliases:
           - gpt
-          - gpt52
+          - gpt53
           - codex
         pricing:
           input_per_million: 1.75
@@ -356,7 +356,7 @@ providers:
           default_temperature: 0.0
           default_top_p: 0.95
           max_output_tokens: 128000
-        # GPT-5.2 Codex uses Responses API
+        # GPT-5.3 Codex uses Responses API
         use_responses_api: true
         context_window: 400000
         capabilities:
@@ -365,9 +365,10 @@ providers:
           - security_analysis
           - structured_output
           - function_calling
+          - agentic_coding
         notes: >-
-          56.4% SWE-Bench Pro,
-          security-aware by design
+          Unifies frontier coding with broader
+          reasoning, supports xhigh reasoning effort
 
       # Kimi K2.5 (Azure AI Foundry)
       # MoE: 1T total, 32B active parameters
@@ -874,7 +875,7 @@ providers:
 # Default model configuration
 defaults:
   bedrock_default: opus
-  azure_default: gpt-5.2-codex
+  azure_default: gpt-5.3-codex
   nvidia_default: devstral
   aws_region: us-west-2
   max_tokens: 16000
@@ -941,5 +942,5 @@ scanning:
 # Model selection by use case:
 # - Quick: Haiku ($1/$5) or Qwen ($0.22/$1.40)
 # - Standard: Sonnet 4.6 ($3/$15) or Gemini ($2/$12)
-# - Complex: Opus ($5/$25) or GPT-5.2 ($1.75/$14)
+# - Complex: Opus ($5/$25) or GPT-5.3 ($1.75/$14)
 # - Budget: Qwen ($0.22/$1.40) or Grok ($0.20)

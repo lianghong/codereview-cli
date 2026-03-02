@@ -284,10 +284,10 @@ def test_responses_api_enabled(provider_config):
     as these parameters are not supported by the Responses API.
     """
     model_config_with_responses_api = ModelConfig(
-        id="gpt-5.2-codex",
-        name="GPT-5.2 Codex",
+        id="gpt-5.3-codex",
+        name="GPT-5.3 Codex",
         aliases=["gpt"],
-        deployment_name="gpt-5.2-codex",
+        deployment_name="gpt-5.3-codex",
         pricing=PricingConfig(
             input_per_million=1.75,
             output_per_million=14.0,

@@ -106,7 +106,7 @@ class AzureOpenAIProvider(TokenTrackingMixin, ModelProvider):
             "timeout": self.provider_config.request_timeout,  # Request timeout in seconds
         }
 
-        # Enable Responses API if model requires it (e.g., GPT-5.2 Codex)
+        # Enable Responses API if model requires it (e.g., GPT-5.3 Codex)
         # Models using Responses API don't support temperature/top_p parameters
         if self.model_config.use_responses_api:
             model_params["use_responses_api"] = True

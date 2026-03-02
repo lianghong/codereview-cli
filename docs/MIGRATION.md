@@ -49,7 +49,7 @@ codereview --list-models
 
 **Use Azure OpenAI:**
 ```bash
-codereview ./src --model gpt-5.2-codex
+codereview ./src --model gpt-5.3-codex
 ```
 
 ## Library API Changes
@@ -157,7 +157,7 @@ with patch("codereview.analyzer.ProviderFactory") as mock_factory:
 
 ```python
 # Use GPT models via Azure OpenAI
-analyzer = CodeAnalyzer(model_name="gpt-5.2-codex")
+analyzer = CodeAnalyzer(model_name="gpt-5.3-codex")
 ```
 
 ### 2. Multi-Language Static Analysis
@@ -180,7 +180,7 @@ Available Models
 │ ID            │ Name              │ Provider     │ Aliases          │
 ├───────────────┼───────────────────┼──────────────┼──────────────────┤
 │ opus          │ Claude Opus 4.6   │ bedrock      │ claude-opus      │
-│ gpt-5.2-codex │ GPT-5.2 Codex     │ azure_openai │ gpt52, codex     │
+│ gpt-5.3-codex │ GPT-5.3 Codex     │ azure_openai │ gpt53, codex     │
 ...
 ```
 

@@ -792,15 +792,20 @@ class StaticAnalyzer:
         """
         try:
             data = json.loads(output)
-            # npm audit v2+ format: {"vulnerabilities": {...}} with per-package entries
+            # npm audit v2+ includes metadata.vulnerabilities with severity totals
+            # Check this first as it provides accurate counts (not just package count)
+            if "metadata" in data and isinstance(data.get("metadata"), dict):
+                vuln_counts = data["metadata"].get("vulnerabilities", {})
+                if isinstance(vuln_counts, dict):
+                    return sum(
+                        v for v in vuln_counts.values() if isinstance(v, int) and v > 0
+                    )
+            # Fallback: v2+ package map when metadata is unavailable
             if "vulnerabilities" in data and isinstance(data["vulnerabilities"], dict):
-                return len(data["vulnerabilities"])
-            # npm audit v1 format: {"metadata": {"vulnerabilities": {"low": N, ...}}}
-            metadata = data.get("metadata", {})
-            vuln_counts = metadata.get("vulnerabilities", {})
-            if isinstance(vuln_counts, dict):
                 return sum(
-                    v for v in vuln_counts.values() if isinstance(v, int) and v > 0
+                    1
+                    for pkg in data["vulnerabilities"].values()
+                    if isinstance(pkg, dict) and pkg.get("severity")
                 )
         except json.JSONDecodeError, TypeError, AttributeError:
             # Fallback: count non-empty lines as a rough estimate

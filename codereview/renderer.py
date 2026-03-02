@@ -196,6 +196,7 @@ class TerminalRenderer:
         for i, suggestion in enumerate(report.improvement_suggestions, 1):
             clean = self._strip_variation_selectors(suggestion)
             self.console.print(f"  {i}. {clean}")
+        self.console.rule(style="dim")
 
     def _group_by_severity(
         self, issues: list[ReviewIssue]

@@ -40,26 +40,31 @@ def suppress_nvidia_warnings() -> Generator[None, None, None]:
             "ignore",
             message=".*timeout is not default parameter.*",
             category=UserWarning,
+            module=r"langchain_nvidia_ai_endpoints(\..*)?",
         )
         warnings.filterwarnings(
             "ignore",
             message=".*chat_template_kwargs is not default parameter.*",
             category=UserWarning,
+            module=r"langchain_nvidia_ai_endpoints(\..*)?",
         )
         warnings.filterwarnings(
             "ignore",
             message=".*available_models.*type is unknown.*",
             category=UserWarning,
+            module=r"langchain_nvidia_ai_endpoints(\..*)?",
         )
         warnings.filterwarnings(
             "ignore",
             message=".*not known to support structured output.*",
             category=UserWarning,
+            module=r"langchain_nvidia_ai_endpoints(\..*)?",
         )
         warnings.filterwarnings(
             "ignore",
             message=".*Reasoning content with <think> tags.*",
             category=UserWarning,
+            module=r"langchain_nvidia_ai_endpoints(\..*)?",
         )
         yield
 
