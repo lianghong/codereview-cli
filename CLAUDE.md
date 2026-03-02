@@ -374,7 +374,7 @@ Non-Claude models may return non-standard category names. The `ReviewIssue` mode
 **Retry Logic with Exponential Backoff:**
 Provider-specific retry logic:
 - **BedrockProvider**: Handles `ThrottlingException` and `TooManyRequestsException`
-- **AzureOpenAIProvider**: Handles `RateLimitError`
+- **AzureOpenAIProvider**: Handles `RateLimitError`; respects `Retry-After` header, falls back to 10s base backoff, 5 retries
 - **NVIDIAProvider**: Handles gateway errors (502/503/504) and rate limits (429)
 - **GoogleGenAIProvider**: Handles `ResourceExhausted` (429) and `ServiceUnavailable` (503); uses longer backoff (10s base, 5 retries) for rate limits on preview models
 - All use exponential backoff capped at 60 seconds with configurable max retries

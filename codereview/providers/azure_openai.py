@@ -171,7 +171,7 @@ class AzureOpenAIProvider(TokenTrackingMixin, ModelProvider):
         batch_number: int,
         total_batches: int,
         files_content: dict[str, str],
-        max_retries: int = 3,
+        max_retries: int = 5,
     ) -> CodeReviewReport:
         """Analyze a batch of files using Azure OpenAI.
 
@@ -179,7 +179,7 @@ class AzureOpenAIProvider(TokenTrackingMixin, ModelProvider):
             batch_number: Current batch number
             total_batches: Total number of batches
             files_content: Dictionary mapping file paths to file contents
-            max_retries: Maximum number of retries for rate limiting
+            max_retries: Maximum number of retries for rate limiting (default: 5)
 
         Returns:
             CodeReviewReport with findings
@@ -196,7 +196,7 @@ class AzureOpenAIProvider(TokenTrackingMixin, ModelProvider):
             "batch_context": batch_context,
         }
 
-        retry_config = RetryConfig(max_retries=max_retries, base_wait=1.0)
+        retry_config = RetryConfig(max_retries=max_retries, base_wait=5.0)
         return self._execute_with_retry(chain_input, retry_config, batch_context)
 
     def get_model_display_name(self) -> str:
