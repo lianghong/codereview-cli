@@ -376,9 +376,10 @@ Provider-specific retry logic:
 - **BedrockProvider**: Handles `ThrottlingException` and `TooManyRequestsException`
 - **AzureOpenAIProvider**: Handles `RateLimitError`
 - **NVIDIAProvider**: Handles gateway errors (502/503/504) and rate limits (429)
-- **GoogleGenAIProvider**: Handles `ResourceExhausted` (429) and `ServiceUnavailable` (503)
+- **GoogleGenAIProvider**: Handles `ResourceExhausted` (429) and `ServiceUnavailable` (503); uses longer backoff (10s base, 5 retries) for rate limits on preview models
 - All use exponential backoff capped at 60 seconds with configurable max retries
 - NVIDIA uses longer initial wait (4s) for 504 gateway timeouts
+- Google GenAI uses adaptive backoff: 10s base for rate limits (429), 5s base for service errors (503)
 - CLI tracks failed batches: aborts with clear error when all fail; warns about partial results when some fail
 
 **Parallel Static Analysis:**

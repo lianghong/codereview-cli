@@ -676,6 +676,7 @@ For issues, questions, or contributions:
 - **MiniMax M2.5 Model**: Added MiniMax M2.5 via NVIDIA NIM (80.2% SWE-Bench Verified, 192K context, 128K output, interleaved thinking mode, 37% faster than M2.1)
 - **Oversized File Handling**: Files exceeding the token budget are now skipped with a warning instead of creating doomed single-file batches that fail at the API level
 - **Batch Failure Handling**: When all batches fail (rate limits, auth errors, etc.), shows a clear error with possible causes instead of a misleading "0 issues found" report. Partial failures warn that results are incomplete
+- **Google GenAI Retry Backoff**: Adaptive backoff for rate-limited preview models — 10s/20s/40s/60s/60s progression (5 retries, ~190s total wait) for ResourceExhausted (429) errors
 - **Plain Text Suggestions**: Improvement Suggestions section renders as plain text without box-drawing characters for clean copy-paste
 - **Dependency Upgrades**: Updated all dependencies to latest versions — langchain-aws 1.3.1, langsmith 0.7.7, google-genai 1.65.0, openai 2.24.0, websockets 16.0, isort 8.0.0, ruff 0.15.4, mypy 1.19.1, and more
 - **Test Suite**: 311 tests
