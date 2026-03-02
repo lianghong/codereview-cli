@@ -416,14 +416,16 @@ providers:
           default_temperature: 0.1
           default_top_p: 0.95
           max_output_tokens: 32000
-        context_window: 2000000
+        # Azure deployment enforces 128K sequence_length
+        # (native xAI API supports 2M, but Azure caps lower)
+        context_window: 128000
         capabilities:
           - reasoning
           - code_review
           - structured_output
           - function_calling
         notes: >-
-          2M context, SOTA cost-efficiency,
+          128K context (Azure), SOTA cost-efficiency,
           212 tokens/sec
 
   # NVIDIA NIM API Provider

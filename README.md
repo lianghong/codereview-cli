@@ -134,7 +134,7 @@ codereview /path/to/code --model gpt
 # Kimi K2.5 - Multimodal MoE, 256K context
 codereview /path/to/code --model kimi-azure
 
-# Grok 4 Fast Reasoning - 2M context, cost-efficient
+# Grok 4 Fast Reasoning - 128K context (Azure), cost-efficient
 codereview /path/to/code --model grok
 ```
 
@@ -253,7 +253,7 @@ codereview /path/to/code --model glm47-flash-bedrock # GLM 4.7 Flash (cost-effic
 # Azure OpenAI Models
 codereview /path/to/code --model gpt-5.2-codex  # GPT-5.2 Codex
 codereview /path/to/code --model kimi-azure      # Kimi K2.5 (256K context)
-codereview /path/to/code --model grok            # Grok 4 Fast Reasoning (2M context)
+codereview /path/to/code --model grok            # Grok 4 Fast Reasoning (128K context)
 
 # NVIDIA NIM Models (free tier)
 codereview /path/to/code --model devstral           # Devstral 2 123B
@@ -284,7 +284,7 @@ codereview /path/to/code -m devstral
 | Haiku 4.5 | AWS Bedrock | Fast, economical, large codebases | $1.00 | $5.00 |
 | GPT-5.2 Codex | Azure OpenAI | Code-specialized, Microsoft ecosystem | $1.75 | $14.00 |
 | Kimi K2.5 (Azure) | Azure OpenAI | Multimodal MoE, 256K context | $0.60 | $3.00 |
-| Grok 4 Fast (Azure) | Azure OpenAI | 2M context, cost-efficient reasoning | $0.20 | $0.50 |
+| Grok 4 Fast (Azure) | Azure OpenAI | 128K context (Azure), cost-efficient reasoning | $0.20 | $0.50 |
 | Devstral 2 | NVIDIA NIM | Code-specialized, free tier | Free* | Free* |
 | MiniMax M2.5 | NVIDIA NIM | 192K context, 128K output, thinking mode, SOTA coding | Free* | Free* |
 | MiniMax M2.1 | NVIDIA NIM | 200K context, 128K output, thinking mode | Free* | Free* |
@@ -676,6 +676,7 @@ For issues, questions, or contributions:
 - **MiniMax M2.5 Model**: Added MiniMax M2.5 via NVIDIA NIM (80.2% SWE-Bench Verified, 192K context, 128K output, interleaved thinking mode, 37% faster than M2.1)
 - **Oversized File Handling**: Files exceeding the token budget are now skipped with a warning instead of creating doomed single-file batches that fail at the API level
 - **Batch Failure Handling**: When all batches fail (rate limits, auth errors, etc.), shows a clear error with possible causes instead of a misleading "0 issues found" report. Partial failures warn that results are incomplete
+- **Grok 4 Fast Context Fix**: Corrected context window from 2M to 128K to match Azure deployment limit (prevents prompt-too-long errors)
 - **Improved Retry Backoff**: Azure OpenAI and Google GenAI providers now use 5 retries with longer backoff (10s/20s/40s/60s/60s progression, ~190s total wait). Azure also respects `Retry-After` headers
 - **Plain Text Suggestions**: Improvement Suggestions section renders as plain text without box-drawing characters for clean copy-paste
 - **Dependency Upgrades**: Updated all dependencies to latest versions — langchain-aws 1.3.1, langsmith 0.7.7, google-genai 1.65.0, openai 2.24.0, websockets 16.0, isort 8.0.0, ruff 0.15.4, mypy 1.19.1, and more

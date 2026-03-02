@@ -96,7 +96,7 @@ codereview ./src --model sonnet
 # Fast review with Haiku (large codebase)
 codereview ./monorepo --model haiku --max-files 1000
 
-# Grok 4 Fast - Cost-efficient reasoning, 2M context (Azure)
+# Grok 4 Fast - Cost-efficient reasoning, 128K context (Azure)
 codereview ./src --model grok
 
 # Kimi K2.5 - Multimodal MoE, 256K context (Azure)
@@ -795,7 +795,7 @@ diff before.md after.md
    ```
 
 2. **Choose Cost-Effective Models**:
-   - **Grok 4 Fast** for CI/CD quality gates ($0.20/$0.50 per M, 2M context)
+   - **Grok 4 Fast** for CI/CD quality gates ($0.20/$0.50 per M, 128K context)
    - **Haiku** for CI/CD quality gates (fastest, cheapest Bedrock option)
    - **Gemini 3 Flash** for large-context reviews (1M context, low cost)
    - **Gemini 3.1 Pro** for advanced reasoning reviews (1M context)
