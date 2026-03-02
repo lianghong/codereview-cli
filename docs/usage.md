@@ -576,7 +576,7 @@ codereview ./src --model gemini-3-flash     # Gemini 3 Flash (fast, cheap)
 | **Grok 4 Fast (Azure)** | Azure OpenAI | 2M context, cost-efficient reasoning | $0.20/M input, $0.50/M output |
 | **DeepSeek-R1** | AWS Bedrock | Reasoning-focused reviews | $1.35/M input, $5.40/M output |
 | **Devstral 2** | NVIDIA NIM | Free tier, code-focused | Free* |
-| **MiniMax M2.5** | NVIDIA NIM | Free tier, thinking mode, 204K context, SOTA coding | Free* |
+| **MiniMax M2.5** | NVIDIA NIM | Free tier, thinking mode, 192K context, SOTA coding | Free* |
 | **MiniMax M2.1** | NVIDIA NIM | Free tier, thinking mode, 200K context | Free* |
 | **GLM 4.7** | NVIDIA NIM | Free tier, thinking mode | Free* |
 | **Kimi K2.5** | NVIDIA NIM | Free tier, 256K context | Free* |

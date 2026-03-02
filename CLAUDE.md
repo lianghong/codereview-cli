@@ -391,7 +391,8 @@ Provider-specific retry logic:
 - Safety margin: `clamp(context_window // 10, 1000, 20000)` — 10% of context, covers estimation error
 - Token estimation heuristic: `file_size_bytes // 4 + 50` (50 tokens overhead per file for headers/separators)
 - Greedy packing: adds files to current batch until next file would exceed token budget or file-count cap
-- Oversized files (exceeding budget alone) get their own single-file batch with a warning
+- Oversized files (exceeding budget) are skipped with a warning — they would exceed the model's input limit and fail at the API level
+- Skipped files are reported in CLI output with estimated token counts
 - Falls back to count-only batching when `context_window` is not set or budget computes to non-positive
 - `--batch-size` CLI option still works as a max file-count cap alongside the token budget
 - `--verbose` displays the full token budget breakdown

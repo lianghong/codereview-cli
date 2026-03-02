@@ -286,7 +286,7 @@ codereview /path/to/code -m devstral
 | Kimi K2.5 (Azure) | Azure OpenAI | Multimodal MoE, 256K context | $0.60 | $3.00 |
 | Grok 4 Fast (Azure) | Azure OpenAI | 2M context, cost-efficient reasoning | $0.20 | $0.50 |
 | Devstral 2 | NVIDIA NIM | Code-specialized, free tier | Free* | Free* |
-| MiniMax M2.5 | NVIDIA NIM | 204K context, 128K output, thinking mode, SOTA coding | Free* | Free* |
+| MiniMax M2.5 | NVIDIA NIM | 192K context, 128K output, thinking mode, SOTA coding | Free* | Free* |
 | MiniMax M2.1 | NVIDIA NIM | 200K context, 128K output, thinking mode | Free* | Free* |
 | DeepSeek V3.2 | NVIDIA NIM | Large reasoning model, thinking mode | Free* | Free* |
 | Qwen3 Coder (NIM) | NVIDIA NIM | Ultra-large coding, thinking mode | Free* | Free* |
@@ -673,7 +673,9 @@ For issues, questions, or contributions:
 ## Version History
 
 ### v0.2.9 (Current)
-- **MiniMax M2.5 Model**: Added MiniMax M2.5 via NVIDIA NIM (80.2% SWE-Bench Verified, 204K context, 128K output, interleaved thinking mode, 37% faster than M2.1)
+- **MiniMax M2.5 Model**: Added MiniMax M2.5 via NVIDIA NIM (80.2% SWE-Bench Verified, 192K context, 128K output, interleaved thinking mode, 37% faster than M2.1)
+- **Oversized File Handling**: Files exceeding the token budget are now skipped with a warning instead of creating doomed single-file batches that fail at the API level
+- **Plain Text Suggestions**: Improvement Suggestions section renders as plain text without box-drawing characters for clean copy-paste
 - **Dependency Upgrades**: Updated all dependencies to latest versions — langchain-aws 1.3.1, langsmith 0.7.7, google-genai 1.65.0, openai 2.24.0, websockets 16.0, isort 8.0.0, ruff 0.15.4, mypy 1.19.1, and more
 - **Test Suite**: 311 tests
 
@@ -718,7 +720,7 @@ For issues, questions, or contributions:
 
 ### v0.2.3
 - **Auto-confirm README Context**: README prompt auto-confirms after 3 seconds with "Y" default
-- **Improved UI**: Removed left/right borders from Improvement Suggestions panel for easier copy
+- **Improved UI**: Improvement Suggestions rendered as plain text for easier copy
 - **Exponential Backoff Cap**: Limited retry wait time to 60 seconds maximum
 - **ASCII-safe Fallback**: Terminal fallback uses ASCII characters for better compatibility
 - **Performance Optimization**: Cached repeated string operations in static analysis parsing

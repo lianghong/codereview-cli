@@ -521,7 +521,7 @@ providers:
 
       # MiniMax M2.5 (via NVIDIA)
       # MoE: 230B total, 10B active parameters
-      # 204K shared context (input+output combined)
+      # 192K shared context (input+output combined)
       # 80.2% SWE-Bench Verified, 37% faster than M2.1
       # Best for: Code review, agentic coding
       - id: minimax-m2.5-nvidia
