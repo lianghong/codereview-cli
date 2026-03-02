@@ -193,6 +193,7 @@ class TerminalRenderer:
 
         self.console.print()
         self.console.print("[bold cyan]Improvement Suggestions[/bold cyan]")
+        self.console.rule(style="dim")
         for i, suggestion in enumerate(report.improvement_suggestions, 1):
             clean = self._strip_variation_selectors(suggestion)
             self.console.print(f"  {i}. {clean}")
