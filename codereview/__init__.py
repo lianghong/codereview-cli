@@ -16,6 +16,9 @@ import warnings
 
 # Suppress Pydantic V1 compatibility warning from LangChain (Python 3.14+)
 warnings.filterwarnings("ignore", message="Core Pydantic V1 functionality")
+# Suppress Pydantic V2 serialization warning from LangChain's include_raw=True
+# (returns dict with "parsed" field typed Optional[T], triggers warning when non-None)
+warnings.filterwarnings("ignore", message="Pydantic serializer warnings")
 
 from codereview.analyzer import CodeAnalyzer  # noqa: E402
 from codereview.models import CodeReviewReport, ReviewIssue  # noqa: E402
