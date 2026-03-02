@@ -129,6 +129,18 @@ class GoogleGenAIProvider(TokenTrackingMixin, ModelProvider):
 
         return isinstance(error, (ResourceExhausted, ServiceUnavailable))
 
+    def _calculate_backoff(
+        self, error: Exception, attempt: int, config: RetryConfig
+    ) -> float:
+        """Calculate backoff: longer for rate limits (429) on preview models."""
+        from google.api_core.exceptions import ResourceExhausted
+
+        # Google preview models have strict rate limits — use longer base (10s)
+        # giving 10, 20, 40, 60, 60 ... progression
+        if isinstance(error, ResourceExhausted):
+            return min(10.0 * (2**attempt), config.max_wait)
+        return min(config.base_wait * (2**attempt), config.max_wait)
+
     def _extract_token_usage(self, result: Any) -> tuple[int, int]:
         """Extract token usage from Google GenAI response metadata."""
         # Google GenAI uses usage_metadata attribute
@@ -169,7 +181,7 @@ class GoogleGenAIProvider(TokenTrackingMixin, ModelProvider):
             CodeReviewReport with findings
         """
         if max_retries is None:
-            max_retries = 3
+            max_retries = 5
 
         batch_context = self._prepare_batch_context(
             batch_number, total_batches, files_content, self.project_context
@@ -180,7 +192,7 @@ class GoogleGenAIProvider(TokenTrackingMixin, ModelProvider):
             "batch_context": batch_context,
         }
 
-        retry_config = RetryConfig(max_retries=max_retries, base_wait=2.0)
+        retry_config = RetryConfig(max_retries=max_retries, base_wait=5.0)
         return self._execute_with_retry(chain_input, retry_config, batch_context)
 
     def get_model_display_name(self) -> str:

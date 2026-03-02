@@ -386,8 +386,10 @@ def test_retry_logic_on_resource_exhausted(model_config, provider_config, mock_r
 
         assert result == mock_report
         assert mock_sleep.call_count == 2
-        mock_sleep.assert_any_call(2)  # 2 * 2^0
-        mock_sleep.assert_any_call(4)  # 2 * 2^1
+        mock_sleep.assert_any_call(
+            10.0
+        )  # 10 * 2^0 (ResourceExhausted uses longer backoff)
+        mock_sleep.assert_any_call(20.0)  # 10 * 2^1
 
 
 def test_retry_logic_on_service_unavailable(model_config, provider_config, mock_report):
@@ -419,7 +421,9 @@ def test_retry_logic_on_service_unavailable(model_config, provider_config, mock_
 
         assert result == mock_report
         assert mock_sleep.call_count == 1
-        mock_sleep.assert_called_with(2)  # 2 * 2^0
+        mock_sleep.assert_called_with(
+            5.0
+        )  # 5 * 2^0 (ServiceUnavailable uses base_wait)
 
 
 def test_retry_exhausted_raises_error(model_config, provider_config):
