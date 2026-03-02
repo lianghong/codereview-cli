@@ -325,7 +325,7 @@ FileScanner → FileBatcher → CodeAnalyzer → ProviderFactory → BedrockProv
    - **AzureOpenAIProvider**: Azure OpenAI implementation (GPT, Kimi K2.5, Grok models)
    - **NVIDIAProvider**: NVIDIA NIM API implementation (Devstral, MiniMax M2, MiniMax M2.1, Qwen3, Qwen3.5, DeepSeek, GLM 4.7, GLM-5)
    - **GoogleGenAIProvider**: Google Generative AI implementation (Gemini 3 Pro, Gemini 3 Flash)
-6. **Aggregation** (`cli.py`): Merges results from all batches (issues, suggestions, design insights)
+6. **Aggregation** (`cli.py`): Merges results from all batches (issues, suggestions, design insights). Tracks failed batches — aborts with a clear error when all batches fail; warns about partial results when some batches fail
 7. **Renderers** (`renderer.py`): Outputs to Rich terminal UI or Markdown file
 
 ### Key Architectural Patterns
@@ -379,6 +379,7 @@ Provider-specific retry logic:
 - **GoogleGenAIProvider**: Handles `ResourceExhausted` (429) and `ServiceUnavailable` (503)
 - All use exponential backoff capped at 60 seconds with configurable max retries
 - NVIDIA uses longer initial wait (4s) for 504 gateway timeouts
+- CLI tracks failed batches: aborts with clear error when all fail; warns about partial results when some fail
 
 **Parallel Static Analysis:**
 - `StaticAnalyzer.run_all(parallel=True)` runs tools concurrently
