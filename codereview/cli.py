@@ -589,6 +589,7 @@ def main(
         all_issues = []
         all_suggestions = []
         all_design_insights = []
+        failed_batches = 0
         total_files = len(files)
 
         with Progress(
@@ -629,6 +630,7 @@ def main(
                         all_design_insights.append(report.system_design_insights)
 
                 except ClientError as e:
+                    failed_batches += 1
                     error_code = e.response.get("Error", {}).get("Code", "")
                     error_msg = e.response.get("Error", {}).get("Message", "")
 
@@ -656,6 +658,7 @@ def main(
                         con.print(traceback.format_exc())
 
                 except (ValueError, KeyError) as e:
+                    failed_batches += 1
                     # Parse/validation errors from structured output
                     con.print(
                         f"\n[red]✗ Parse error in batch {i}: {type(e).__name__}: {escape(str(e))}[/red]"
@@ -664,6 +667,7 @@ def main(
                         con.print(traceback.format_exc())
 
                 except (RuntimeError, OSError) as e:
+                    failed_batches += 1
                     # Recoverable errors - log and continue with other batches
                     con.print(
                         f"\n[red]✗ Error analyzing batch {i}: "
@@ -673,6 +677,7 @@ def main(
                         con.print(traceback.format_exc())
 
                 except Exception as e:
+                    failed_batches += 1
                     # Catch-all for provider-specific errors after retries exhausted
                     # (e.g., openai.RateLimitError, httpx.HTTPStatusError,
                     #  google.api_core.exceptions.ResourceExhausted)
@@ -696,6 +701,33 @@ def main(
                         con.print(traceback.format_exc())
 
                 progress.update(task, advance=1)
+
+        # Abort if every batch failed — no results to report
+        if failed_batches == len(batches):
+            con.print()
+            con.print(
+                f"[bold red]✗ All {len(batches)} batch(es) failed. "
+                "No code review results to report.[/bold red]"
+            )
+            con.print("[yellow]Possible causes:[/yellow]")
+            con.print("  - API rate limits exceeded (wait and retry)")
+            con.print("  - Invalid or expired credentials")
+            con.print("  - Model service temporarily unavailable")
+            elapsed = time.time() - start_time
+            if elapsed >= 60:
+                m, s = int(elapsed // 60), int(elapsed % 60)
+                con.print(f"\n[dim]⏱️  Completed in {m}m {s}s[/dim]")
+            else:
+                con.print(f"\n[dim]⏱️  Completed in {elapsed:.1f}s[/dim]")
+            return
+
+        # Warn about partial results when some batches failed
+        if failed_batches > 0:
+            succeeded = len(batches) - failed_batches
+            con.print(
+                f"\n[yellow]⚠ {failed_batches}/{len(batches)} batch(es) failed. "
+                f"Results below are from {succeeded} successful batch(es) only.[/yellow]"
+            )
 
         # Step 4: Create final report
         # Get pricing from provider
