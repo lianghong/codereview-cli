@@ -33,6 +33,7 @@ def suppress_nvidia_warnings() -> Generator[None, None, None]:
     - Non-standard parameters (timeout, chat_template_kwargs)
     - Unknown model types
     - Structured output support
+    - Reasoning <think> tags stripped from structured output
     """
     with warnings.catch_warnings():
         warnings.filterwarnings(
@@ -53,6 +54,11 @@ def suppress_nvidia_warnings() -> Generator[None, None, None]:
         warnings.filterwarnings(
             "ignore",
             message=".*not known to support structured output.*",
+            category=UserWarning,
+        )
+        warnings.filterwarnings(
+            "ignore",
+            message=".*Reasoning content with <think> tags.*",
             category=UserWarning,
         )
         yield
