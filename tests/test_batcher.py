@@ -131,8 +131,8 @@ def test_file_count_cap_still_respected(tmp_path: Path):
         assert len(batch.files) <= 5
 
 
-def test_oversized_file_gets_own_batch(tmp_path: Path):
-    """A file exceeding the token budget is placed in a single-file batch."""
+def test_oversized_file_skipped(tmp_path: Path):
+    """A file exceeding the token budget is skipped, not batched."""
     small = _create_file(tmp_path, "small.py", 400)  # ~150 tokens
     huge = _create_file(tmp_path, "huge.py", 100_000)  # ~25050 tokens
     small2 = _create_file(tmp_path, "small2.py", 400)
@@ -140,13 +140,14 @@ def test_oversized_file_gets_own_batch(tmp_path: Path):
     batcher = FileBatcher(max_files_per_batch=50, token_budget=5000)
     batches = batcher.create_batches([small, huge, small2])
 
-    assert len(batches) == 3
-    # First batch: small file
-    assert batches[0].files == [small]
-    # Second batch: oversized file alone
-    assert batches[1].files == [huge]
-    # Third batch: remaining small file
-    assert batches[2].files == [small2]
+    # Oversized file is skipped — only small files are batched together
+    assert len(batches) == 1
+    assert batches[0].files == [small, small2]
+
+    # Skipped file is tracked
+    assert len(batcher.skipped_oversized) == 1
+    assert batcher.skipped_oversized[0][0] == huge
+    assert batcher.skipped_oversized[0][1] > 5000
 
 
 def test_invalid_token_budget_raises():

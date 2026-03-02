@@ -45,6 +45,7 @@ class FileBatcher:
             raise ValueError("token_budget must be greater than 0")
         self.max_files_per_batch = max_files_per_batch
         self.token_budget = token_budget
+        self.skipped_oversized: list[tuple[Path, int]] = []
 
     @staticmethod
     def estimate_file_tokens(file_path: Path) -> int:
@@ -128,22 +129,17 @@ class FileBatcher:
         for file_path in files:
             file_tokens = self.estimate_file_tokens(file_path)
 
-            # Oversized file: give it its own batch
+            # Oversized file: skip — it exceeds the token budget derived
+            # from the model's context window and would fail at the API level.
             if file_tokens > self.token_budget:
-                # Flush current batch first
-                if current_batch:
-                    raw_batches.append(current_batch)
-                    current_batch = []
-                    current_tokens = 0
-
                 logging.warning(
                     "File %s estimated at %d tokens exceeds budget of %d tokens; "
-                    "placing in single-file batch",
+                    "skipping (too large to review with this model)",
                     file_path,
                     file_tokens,
                     self.token_budget,
                 )
-                raw_batches.append([file_path])
+                self.skipped_oversized.append((file_path, file_tokens))
                 continue
 
             # Would exceed token budget or file-count cap: start new batch

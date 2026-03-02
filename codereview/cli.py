@@ -542,6 +542,21 @@ def main(
         batcher = FileBatcher(max_files_per_batch=batch_size, token_budget=token_budget)
         batches = batcher.create_batches(files)
 
+        if batcher.skipped_oversized:
+            try:
+                con.print(
+                    f"[yellow]⚠ Skipped {len(batcher.skipped_oversized)} file(s) "
+                    "too large to review with this model:[/yellow]"
+                )
+                for skipped_path, est_tokens in batcher.skipped_oversized:
+                    con.print(f"   {skipped_path.name} (~{est_tokens:,} tokens)")
+                con.print()
+            except OSError:
+                for skipped_path, est_tokens in batcher.skipped_oversized:
+                    print(
+                        f"  Skipped (too large): {skipped_path.name} (~{est_tokens:,} tokens)"
+                    )
+
         try:
             con.print(f"📦 Created {len(batches)} batches\n")
         except OSError:

@@ -5,7 +5,6 @@ from datetime import datetime
 from pathlib import Path, PurePath
 from typing import Any
 
-from rich import box
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
@@ -188,23 +187,15 @@ class TerminalRenderer:
         )
 
     def _render_improvement_suggestions(self, report: CodeReviewReport) -> None:
-        """Render improvement suggestions panel without left/right borders for easier copy."""
+        """Render improvement suggestions as plain text for easy copy-paste."""
         if not report.improvement_suggestions:
             return
 
-        lines = []
+        self.console.print()
+        self.console.print("[bold cyan]Improvement Suggestions[/bold cyan]")
         for i, suggestion in enumerate(report.improvement_suggestions, 1):
-            lines.append(f"{i}. {suggestion}")
-
-        content = self._strip_variation_selectors("\n".join(lines))
-        self.console.print(
-            Panel(
-                content,
-                title="💡 Improvement Suggestions",
-                border_style="cyan",
-                box=box.HORIZONTALS,
-            )
-        )
+            clean = self._strip_variation_selectors(suggestion)
+            self.console.print(f"  {i}. {clean}")
 
     def _group_by_severity(
         self, issues: list[ReviewIssue]

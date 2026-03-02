@@ -556,9 +556,10 @@ providers:
           # Single-turn review — clear_thinking irrelevant.
           enable_thinking: true
           clear_thinking: false
-        # Shared input+output window (confirmed: MiniMax
-        # docs, NVIDIA model card, HuggingFace)
-        context_window: 204800
+        # Shared input+output window.  NVIDIA API enforces
+        # 196 608 (192 K); our config must match to keep
+        # token-budget calculations accurate.
+        context_window: 196608
         architecture: "MoE (230B total, 10B active)"
         capabilities:
           - coding
