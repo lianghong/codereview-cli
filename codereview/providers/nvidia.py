@@ -30,7 +30,9 @@ def suppress_nvidia_warnings() -> Generator[None, None, None]:
     """Context manager to suppress known NVIDIA langchain warnings.
 
     Suppresses warnings about:
-    - Non-standard parameters (timeout, chat_template_kwargs)
+    - Non-standard parameters (timeout, chat_template_kwargs) — emitted from
+      langchain_core.utils.utils with stacklevel=7, so module filter won't work;
+      we filter by message pattern only
     - Unknown model types
     - Structured output support
     - Reasoning <think> tags stripped from structured output
@@ -40,13 +42,11 @@ def suppress_nvidia_warnings() -> Generator[None, None, None]:
             "ignore",
             message=".*timeout is not default parameter.*",
             category=UserWarning,
-            module=r"langchain_nvidia_ai_endpoints(\..*)?",
         )
         warnings.filterwarnings(
             "ignore",
             message=".*chat_template_kwargs is not default parameter.*",
             category=UserWarning,
-            module=r"langchain_nvidia_ai_endpoints(\..*)?",
         )
         warnings.filterwarnings(
             "ignore",
