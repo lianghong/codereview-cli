@@ -107,6 +107,10 @@ def read_readme_content(
         # Get file size first
         file_size = readme_path.stat().st_size
 
+        # Skip excessively large files (>100x max_size likely not a README)
+        if file_size > max_size * 100:
+            return None
+
         # Read content
         content = readme_path.read_text(encoding="utf-8")
 

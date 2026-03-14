@@ -4,7 +4,7 @@ import logging
 import math
 from pathlib import Path
 
-from pydantic import BaseModel, ConfigDict  # type: ignore[attr-defined]
+from pydantic import BaseModel, ConfigDict
 
 # Estimated token overhead per file for headers/separators in batch context
 PER_FILE_OVERHEAD_TOKENS = 50
@@ -120,7 +120,11 @@ class FileBatcher:
         Returns:
             List of FileBatch objects
         """
-        assert self.token_budget is not None
+        if self.token_budget is None:
+            raise RuntimeError(
+                "_batch_by_tokens called with token_budget=None; "
+                "use _batch_by_count instead"
+            )
 
         raw_batches: list[list[Path]] = []
         current_batch: list[Path] = []

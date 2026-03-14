@@ -397,11 +397,11 @@ class StaticAnalyzer:
             except FileNotFoundError:
                 logging.debug("Tool %s not installed", tool_name)
             except subprocess.TimeoutExpired:
-                # Version check timed out, but tool may still work with longer timeout
+                # Version check timed out — tool is likely not functional; skip it
                 logging.debug(
-                    "Tool %s version check timed out (assuming available)", tool_name
+                    "Tool %s version check timed out, marking as unavailable",
+                    tool_name,
                 )
-                available.append(tool_name)
             except PermissionError:
                 logging.debug("Tool %s not executable (permission denied)", tool_name)
         return available
@@ -677,7 +677,7 @@ class StaticAnalyzer:
             cwd = self.directory
         elif tool_name == "gofmt":
             # gofmt accepts a directory path but needs Go files to exist
-            go_files = self._safe_rglob("*.go")
+            go_files = self._filter_safe_files(self._safe_rglob("*.go"))
             if not go_files:
                 return StaticAnalysisResult(
                     tool=tool_name,
@@ -777,7 +777,7 @@ class StaticAnalyzer:
                 passed=False,
                 issues_count=0,
                 output="",
-                errors=[f"Error running tool: {str(e)}"],
+                errors=[f"Error running tool: {e}"],
             )
 
     @staticmethod

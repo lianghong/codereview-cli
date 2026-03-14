@@ -1,5 +1,6 @@
 """LangChain callbacks for streaming output and progress tracking."""
 
+import logging
 from typing import Any
 from uuid import UUID
 
@@ -56,8 +57,6 @@ class StreamingCallbackHandler(BaseCallbackHandler):
                 pass  # Best effort cleanup - expected failure modes
             except Exception:
                 # Log unexpected errors but don't propagate during cleanup
-                import logging
-
                 logging.debug(
                     "Unexpected error during Live display cleanup", exc_info=True
                 )

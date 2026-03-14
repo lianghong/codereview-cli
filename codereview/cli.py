@@ -351,7 +351,7 @@ def main(
     Analyze code in DIRECTORY and generate a comprehensive review report.
 
     Reviews Python, Go, Shell, C++, Java, JavaScript, and TypeScript files using
-    LLM models via AWS Bedrock or Azure OpenAI.
+    LLM models via AWS Bedrock, Azure OpenAI, NVIDIA NIM, or Google Generative AI.
     """
     # Handle --list-models flag first
     if list_models:

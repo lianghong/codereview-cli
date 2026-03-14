@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-LangChain-based CLI tool for AI-powered code reviews via AWS Bedrock, Azure OpenAI, NVIDIA NIM, and Google Generative AI. Supports multiple models including Claude (Opus, Sonnet, Haiku), GPT-5.3 Codex, Grok 4 Fast Reasoning, Gemini 3.1 Pro, Gemini 3 (Pro, Flash), Devstral 2, MiniMax M2, MiniMax M2.1, MiniMax M2.5, Kimi K2.5, Qwen3 Coder, Qwen3 Coder Next, Qwen3.5, DeepSeek-R1, DeepSeek V3.2, GLM 4.7, GLM 4.7 Flash, and GLM-5. Reviews **Python, Go, Shell Script, C++, Java, JavaScript, and TypeScript** codebases with structured output (categories, severity levels, line numbers, suggested fixes).
+LangChain-based CLI tool for AI-powered code reviews via AWS Bedrock, Azure OpenAI, NVIDIA NIM, and Google Generative AI. Supports multiple models including Claude (Opus, Sonnet, Haiku), GPT-5.4 Pro, GPT-5.3 Codex, Grok 4 Fast Reasoning, Gemini 3.1 Pro, Gemini 3 (Pro, Flash), Devstral 2, MiniMax M2, MiniMax M2.1, MiniMax M2.5, Kimi K2.5, Qwen3 Coder, Qwen3 Coder Next, Qwen3.5, DeepSeek-R1, DeepSeek V3.2, GLM 4.7, GLM 4.7 Flash, and GLM-5. Reviews **Python, Go, Shell Script, C++, Java, JavaScript, and TypeScript** codebases with structured output (categories, severity levels, line numbers, suggested fixes).
 
 **Tech Stack:** Python 3.14, LangChain, AWS Bedrock, Azure OpenAI, NVIDIA NIM, Google Generative AI, Pydantic V2, Click, Rich
 
@@ -148,6 +148,7 @@ Use primary model IDs (case-insensitive). Run `codereview --list-models` to see 
 | `sonnet` | Claude Sonnet 4.6 | bedrock | claude-sonnet, sonnet4.6, claude-sonnet-4.6 |
 | `haiku` | Claude Haiku 4.5 | bedrock | claude-haiku |
 | `gpt-5.3-codex` | GPT-5.3 Codex | azure_openai | gpt, gpt53, codex |
+| `gpt-5.4-pro` | GPT-5.4 Pro | azure_openai | gpt54-pro, gpt-pro, gpt54p |
 | `kimi-k2.5-azure` | Kimi K2.5 (Azure) | azure_openai | kimi25-azure, kimi-azure |
 | `grok-4-fast` | Grok 4 Fast Reasoning (Azure) | azure_openai | grok, grok4, grok-fast, g4fast |
 | `devstral` | Devstral 2 123B | nvidia | devstral-2 |
@@ -467,10 +468,11 @@ Models defined in `codereview/config/models.yaml`:
 | Model | Deployment Name | Input $/M | Output $/M | Defaults |
 |-------|-----------------|-----------|------------|----------|
 | GPT-5.3 Codex | `gpt-5.3-codex` | $1.75 | $14.00 | temp=0.0, top_p=0.95, max=128000 |
+| GPT-5.4 Pro | `gpt-5.4-pro` | $30.00 | $180.00 | max=128000 (reasoning model, no temp/top_p) |
 | Kimi K2.5 (Azure) | `Kimi-K2.5` | $0.60 | $3.00 | temp=0.6, top_p=0.95, max=65536 |
 | Grok 4 Fast Reasoning (Azure) | `grok-4-fast-reasoning` | $0.20 | $0.50 | temp=0.1, top_p=0.95, max=32000 |
 
-**Note:** GPT-5.3 Codex uses OpenAI's Responses API (not ChatCompletion). This is configured automatically via `use_responses_api: true` in `models.yaml`. Kimi K2.5 and Grok 4 Fast Reasoning use the standard ChatCompletion API.
+**Note:** GPT-5.3 Codex and GPT-5.4 Pro use OpenAI's Responses API (not ChatCompletion). This is configured automatically via `use_responses_api: true` in `models.yaml`. GPT-5.4 Pro is a reasoning model that does not support temperature/top_p parameters. Kimi K2.5 and Grok 4 Fast Reasoning use the standard ChatCompletion API.
 
 **Note:** DeepSeek-R1 doesn't support tool use, so it uses prompt-based JSON parsing instead of structured output. This is configured via `supports_tool_use: false` in `models.yaml`.
 

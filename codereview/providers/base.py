@@ -289,18 +289,16 @@ class ModelProvider(ABC):
         return min(config.base_wait * (2**attempt), config.max_wait)
 
     def _extract_token_usage(self, result: Any) -> tuple[int, int]:
-        """Extract (input_tokens, output_tokens) from provider response.
+        """Extract (input_tokens, output_tokens) from a provider response.
 
-        Override in subclasses for provider-specific metadata extraction.
-        With include_raw=True, this receives the raw AIMessage which carries
-        response_metadata with actual token counts. For the prompt-parsing
-        path (no include_raw), it receives the result directly.
+        Override in subclasses to extract actual token counts from
+        provider-specific response metadata.
 
         Args:
-            result: The raw AIMessage (from include_raw dict) or direct result
+            result: The provider response object
 
         Returns:
-            Tuple of (input_tokens, output_tokens)
+            Tuple of (input_tokens, output_tokens), or (0, 0) if unavailable
         """
         return (0, 0)
 
@@ -363,9 +361,7 @@ class ModelProvider(ABC):
                         msg = "Structured output parsing failed"
                         if parsing_error:
                             msg = f"{msg}: {parsing_error}"
-                        raise ValidationError.from_exception_data(  # type: ignore[attr-defined]
-                            msg, []
-                        )
+                        raise ValueError(msg)
 
                     # Extract token usage from the raw AIMessage
                     input_tokens, output_tokens = self._extract_token_usage(raw)
@@ -383,9 +379,8 @@ class ModelProvider(ABC):
 
                 # Handle direct CodeReviewReport (prompt-parsing path)
                 if result is None:
-                    raise ValidationError.from_exception_data(  # type: ignore[attr-defined]
-                        "Model returned None - structured output parsing failed",
-                        [],
+                    raise ValueError(
+                        "Model returned None - structured output parsing failed"
                     )
 
                 # Extract token usage from response metadata

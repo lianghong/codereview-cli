@@ -373,7 +373,10 @@ class AzureOpenAIProvider(TokenTrackingMixin, ModelProvider):
                 # httpx not available, skip connection test
                 result.add_warning("Could not test connection (httpx not installed)")
             except Exception as e:
-                result.add_warning(f"Connection test failed: {e}")
+                error_msg = str(e)
+                if api_key and api_key in error_msg:
+                    error_msg = error_msg.replace(api_key, "***")
+                result.add_warning(f"Connection test failed: {error_msg}")
                 result.add_suggestion("Verify endpoint URL and network connectivity")
 
         return result

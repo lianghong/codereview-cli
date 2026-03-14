@@ -57,7 +57,7 @@ class ConfigLoader:
     def _load_config(self) -> None:
         """Load and parse YAML configuration."""
         try:
-            with open(self.config_path, encoding="utf-8") as f:
+            with self.config_path.open(encoding="utf-8") as f:
                 raw_yaml = f.read()
 
             # Parse YAML first, then expand env vars in parsed values.
