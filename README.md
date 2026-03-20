@@ -172,6 +172,9 @@ export NVIDIA_API_KEY="nvapi-your-key-here"
 # Devstral 2 - Code-specialized model
 codereview /path/to/code --model devstral
 
+# Mistral Small 4 - MoE model with 256K context
+codereview /path/to/code --model mistral-small
+
 # DeepSeek V3.2 - Large reasoning model with thinking mode
 codereview /path/to/code --model deepseek-nvidia
 
@@ -262,6 +265,7 @@ codereview /path/to/code --model grok             # Grok 4 Fast Reasoning (128K 
 
 # NVIDIA NIM Models (free tier)
 codereview /path/to/code --model devstral           # Devstral 2 123B
+codereview /path/to/code --model mistral-small      # Mistral Small 4 119B
 codereview /path/to/code --model minimax-m2.5           # MiniMax M2.5 (thinking mode, 80.2% SWE-bench)
 codereview /path/to/code --model minimax-m2.1           # MiniMax M2.1 (thinking mode)
 codereview /path/to/code --model deepseek-v3.2-nvidia # DeepSeek V3.2 (thinking mode)
@@ -292,6 +296,7 @@ codereview /path/to/code -m devstral
 | Kimi K2.5 (Azure) | Azure OpenAI | Multimodal MoE, 256K context | $0.60 | $3.00 |
 | Grok 4 Fast (Azure) | Azure OpenAI | 128K context (Azure), cost-efficient reasoning | $0.20 | $0.50 |
 | Devstral 2 | NVIDIA NIM | Code-specialized, free tier | Free* | Free* |
+| Mistral Small 4 | NVIDIA NIM | 256K context, MoE architecture | Free* | Free* |
 | MiniMax M2.5 | NVIDIA NIM | 192K context, 128K output, thinking mode, SOTA coding | Free* | Free* |
 | MiniMax M2.1 | NVIDIA NIM | 200K context, 128K output, thinking mode | Free* | Free* |
 | DeepSeek V3.2 | NVIDIA NIM | Large reasoning model, thinking mode | Free* | Free* |
@@ -679,7 +684,9 @@ For issues, questions, or contributions:
 ## Version History
 
 ### v0.2.9 (Current)
+- **Mistral Small 4 Model**: Added Mistral Small 4 119B via NVIDIA NIM (MoE architecture, 256K context, 16K max output, prompt-based JSON parsing)
 - **MiniMax M2.5 Model**: Added MiniMax M2.5 via NVIDIA NIM (80.2% SWE-Bench Verified, 192K context, 128K output, interleaved thinking mode, 37% faster than M2.1)
+- **Prompt-Based JSON Parsing**: Added fallback JSON parsing for models without tool use support (DeepSeek-R1, Mistral Small 4)
 - **Oversized File Handling**: Files exceeding the token budget are now skipped with a warning instead of creating doomed single-file batches that fail at the API level
 - **Batch Failure Handling**: When all batches fail (rate limits, auth errors, etc.), shows a clear error with possible causes instead of a misleading "0 issues found" report. Partial failures warn that results are incomplete
 - **Grok 4 Fast Context Fix**: Corrected context window from 2M to 128K to match Azure deployment limit (prevents prompt-too-long errors)

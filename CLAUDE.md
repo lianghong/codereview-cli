@@ -152,6 +152,7 @@ Use primary model IDs (case-insensitive). Run `codereview --list-models` to see 
 | `kimi-k2.5-azure` | Kimi K2.5 (Azure) | azure_openai | kimi25-azure, kimi-azure |
 | `grok-4-fast` | Grok 4 Fast Reasoning (Azure) | azure_openai | grok, grok4, grok-fast, g4fast |
 | `devstral` | Devstral 2 123B | nvidia | devstral-2 |
+| `mistral-small-nvidia` | Mistral Small 4 119B | nvidia | mistral-small, mistral-small-4, ms4 |
 | `minimax-nvidia` | MiniMax M2 (NVIDIA) | nvidia | mm2-nvidia |
 | `minimax-m2.1-nvidia` | MiniMax M2.1 (NVIDIA) | nvidia | mm2.1-nvidia, minimax-m2.1, mm21 |
 | `minimax-m2.5-nvidia` | MiniMax M2.5 (NVIDIA) | nvidia | mm2.5-nvidia, minimax-m2.5, mm25 |
@@ -480,6 +481,7 @@ Models defined in `codereview/config/models.yaml`:
 | Model | Model ID | Input $/M | Output $/M | Defaults |
 |-------|----------|-----------|------------|----------|
 | Devstral 2 123B | `mistralai/devstral-2-123b-instruct-2512` | $0.00* | $0.00* | temp=0.15, top_p=0.95, max=8192 |
+| Mistral Small 4 119B | `mistralai/mistral-small-4-119b-2603` | $0.00* | $0.00* | temp=0.15, top_p=0.95, max=16384 |
 | MiniMax M2 (NVIDIA) | `minimaxai/minimax-m2` | $0.00* | $0.00* | temp=0.3, top_p=0.9, max=8192 |
 | MiniMax M2.1 (NVIDIA) | `minimaxai/minimax-m2.1` | $0.00* | $0.00* | temp=1.0, top_p=0.95, top_k=40, max=128000, thinking=on |
 | MiniMax M2.5 (NVIDIA) | `minimaxai/minimax-m2.5` | $0.00* | $0.00* | temp=1.0, top_p=0.95, top_k=40, max=128000, thinking=on |

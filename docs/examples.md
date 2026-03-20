@@ -96,6 +96,10 @@ codereview ./src --model sonnet
 # Fast review with Haiku (large codebase)
 codereview ./monorepo --model haiku --max-files 1000
 
+# Free tier models for development/testing (NVIDIA NIM)
+codereview ./src --model devstral         # Devstral 2 123B
+codereview ./src --model mistral-small    # Mistral Small 4 119B
+
 # Grok 4 Fast - Cost-efficient reasoning, 128K context (Azure)
 codereview ./src --model grok
 

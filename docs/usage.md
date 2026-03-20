@@ -372,6 +372,11 @@ codereview ./src --model grok
 codereview ./src --model devstral
 ```
 
+**Mistral Small 4** - Free tier, MoE architecture, 256K context (NVIDIA NIM):
+```bash
+codereview ./src --model mistral-small
+```
+
 **Gemini 3.1 Pro** - Most advanced reasoning, 1M context (Google GenAI):
 ```bash
 codereview ./src --model gemini-3.1-pro
@@ -552,6 +557,7 @@ codereview ./src --model grok     # Grok 4 Fast Reasoning (128K context (Azure))
 
 # NVIDIA NIM (free tier)
 codereview ./src --model devstral           # Devstral 2 123B
+codereview ./src --model mistral-small      # Mistral Small 4 119B
 codereview ./src --model minimax-m2.5       # MiniMax M2.5 (thinking mode, SOTA)
 codereview ./src --model minimax-m2.1       # MiniMax M2.1 (thinking mode)
 codereview ./src --model deepseek-v3.2-nvidia # DeepSeek V3.2
@@ -576,6 +582,7 @@ codereview ./src --model gemini-3-flash     # Gemini 3 Flash (fast, cheap)
 | **Grok 4 Fast (Azure)** | Azure OpenAI | 128K context (Azure), cost-efficient reasoning | $0.20/M input, $0.50/M output |
 | **DeepSeek-R1** | AWS Bedrock | Reasoning-focused reviews | $1.35/M input, $5.40/M output |
 | **Devstral 2** | NVIDIA NIM | Free tier, code-focused | Free* |
+| **Mistral Small 4** | NVIDIA NIM | Free tier, MoE architecture, 256K context | Free* |
 | **MiniMax M2.5** | NVIDIA NIM | Free tier, thinking mode, 192K context, SOTA coding | Free* |
 | **MiniMax M2.1** | NVIDIA NIM | Free tier, thinking mode, 200K context | Free* |
 | **GLM 4.7** | NVIDIA NIM | Free tier, thinking mode | Free* |

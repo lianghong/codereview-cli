@@ -8,6 +8,7 @@ from typing import Any
 
 import httpx
 from langchain_core.callbacks import BaseCallbackHandler
+from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.rate_limiters import InMemoryRateLimiter
 from langchain_nvidia_ai_endpoints import ChatNVIDIA
 from pydantic import SecretStr
@@ -95,6 +96,7 @@ class NVIDIAProvider(TokenTrackingMixin, ModelProvider):
         """
         self.callbacks = callbacks or []
         self.enable_output_fixing = enable_output_fixing
+        self._output_parser = PydanticOutputParser(pydantic_object=CodeReviewReport)
         self.model_config = model_config
         self.provider_config = provider_config
         self.project_context = project_context
@@ -125,6 +127,9 @@ class NVIDIAProvider(TokenTrackingMixin, ModelProvider):
 
         # Token tracking (from mixin)
         self._init_token_tracking()
+
+        # Flag for prompt-based parsing (set in _create_model if model doesn't support tool use)
+        self._use_prompt_parsing = False
 
         # Rate limiter for API calls
         self.rate_limiter = InMemoryRateLimiter(
@@ -183,6 +188,13 @@ class NVIDIAProvider(TokenTrackingMixin, ModelProvider):
         # Suppress warnings about unknown model types and parameters from langchain-nvidia
         with suppress_nvidia_warnings():
             base_model = ChatNVIDIA(**model_params)
+
+            # Check if model supports tool use for structured output
+            if not self.model_config.supports_tool_use:
+                # Return base model for prompt-based JSON parsing
+                self._use_prompt_parsing = True
+                return base_model
+
             # Try include_raw=True first (returns {"raw": AIMessage, "parsed": CodeReviewReport}
             # so we can extract actual token counts from the raw AIMessage).
             # Some models (e.g., GLM-5) don't support include_raw — fall back gracefully.
@@ -195,6 +207,9 @@ class NVIDIAProvider(TokenTrackingMixin, ModelProvider):
 
     def _create_chain(self) -> Any:
         """Create LangChain chain with prompt template."""
+        if self._use_prompt_parsing:
+            # For models without tool use, add output parser to chain
+            return BATCH_PROMPT_TEMPLATE | self.model | self._output_parser
         return BATCH_PROMPT_TEMPLATE | self.model
 
     def _is_retryable_error(self, error: Exception) -> bool:
@@ -262,8 +277,14 @@ class NVIDIAProvider(TokenTrackingMixin, ModelProvider):
             batch_number, total_batches, files_content, self.project_context
         )
 
+        # Build system prompt (add format instructions for prompt-based parsing)
+        system_prompt = SYSTEM_PROMPT
+        if self._use_prompt_parsing:
+            format_instructions = self._output_parser.get_format_instructions()
+            system_prompt = f"{SYSTEM_PROMPT}\n\n{format_instructions}"
+
         chain_input = {
-            "system_prompt": SYSTEM_PROMPT,
+            "system_prompt": system_prompt,
             "batch_context": batch_context,
         }
 

@@ -500,6 +500,42 @@ providers:
           72.2% SWE-Bench Verified,
           excellent for code review tasks
 
+      # Mistral Small 4 119B (Mistral AI)
+      # MoE: 119B total, 128 experts, 4 active per token
+      # ~6-8B active parameters (incl. embedding/output)
+      # Best for: Code review, structured output, reasoning
+      # Apache 2.0 open-weight, multimodal (text+image)
+      # Note: NVIDIA NIM endpoint does not support tool-based
+      #   structured output — uses prompt-based JSON parsing
+      - id: mistral-small-nvidia
+        full_id: >-
+          mistralai/mistral-small-4-119b-2603
+        name: Mistral Small 4 119B
+        aliases:
+          - mistral-small
+          - mistral-small-4
+          - ms4
+        pricing:
+          input_per_million: 0.00
+          output_per_million: 0.00
+        inference_params:
+          # Low temp for deterministic code review
+          default_temperature: 0.15
+          default_top_p: 0.95
+          max_output_tokens: 16384
+        context_window: 256000
+        supports_tool_use: false
+        architecture: "MoE (119B total, ~8B active)"
+        capabilities:
+          - code_review
+          - code_generation
+          - reasoning
+          - multimodal
+        notes: >-
+          Apache 2.0 open-weight MoE, 256K context,
+          128 experts with 4 active per token,
+          prompt-based JSON on NVIDIA NIM
+
       # MiniMax M2 (via NVIDIA)
       # Best for: Quick code analysis
       - id: minimax-nvidia
