@@ -60,6 +60,27 @@ ALL_MODEL_NAMES = sorted(MODEL_ALIASES.keys())
 PRIMARY_MODEL_IDS = sorted(set(MODEL_ALIASES.values()))
 
 
+def validate_exclude_pattern(pattern: str) -> bool:
+    """Validate exclude pattern for safety (prevent ReDoS attacks).
+
+    Args:
+        pattern: Glob pattern to validate
+
+    Returns:
+        True if pattern is safe to use, False otherwise
+    """
+    # Limit pattern length to prevent ReDoS
+    if len(pattern) > 200:
+        return False
+    # Limit ** recursion depth to prevent catastrophic backtracking
+    if pattern.count("**") > 3:
+        return False
+    # Disallow null bytes
+    if "\x00" in pattern:
+        return False
+    return True
+
+
 class ModelChoice(click.ParamType):
     """Custom Click type that accepts model IDs and aliases but shows only primary IDs."""
 
@@ -430,8 +451,16 @@ def main(
         ) as progress:
             task = progress.add_task("Scanning files...", total=None)
 
-            # Combine default exclusions with user-provided patterns
-            exclude_patterns = list(DEFAULT_EXCLUDE_PATTERNS) + list(exclude)
+            # Validate and filter user-provided exclude patterns
+            validated_exclude = [p for p in exclude if validate_exclude_pattern(p)]
+            if len(validated_exclude) < len(exclude):
+                con.print(
+                    "[yellow]⚠️  Some exclude patterns were invalid and ignored "
+                    "(too long, too complex, or contain invalid characters)[/yellow]"
+                )
+
+            # Combine default exclusions with validated user-provided patterns
+            exclude_patterns = list(DEFAULT_EXCLUDE_PATTERNS) + validated_exclude
             scanner = FileScanner(
                 directory,
                 exclude_patterns=exclude_patterns,

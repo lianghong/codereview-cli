@@ -151,16 +151,21 @@ def test_env_var_expansion(temp_config_file, monkeypatch):
     assert config.api_key == "secret-key"
 
 
-def test_env_var_expansion_with_digits(monkeypatch):
+def test_env_var_expansion_with_digits(monkeypatch, temp_config_file):
     """Test that env var names containing digits are expanded correctly."""
     monkeypatch.setenv("API_V2_KEY", "my-v2-key")
     monkeypatch.setenv("OPENAI_3_TOKEN", "tok-123")
+    monkeypatch.setenv("PLAIN_KEY", "plain")
+    # Set required env vars for config validation
+    monkeypatch.setenv("AZURE_TEST_ENDPOINT", "https://test.com")
+    monkeypatch.setenv("AZURE_TEST_KEY", "test-key")
 
-    loader = ConfigLoader.__new__(ConfigLoader)  # bypass __init__
+    # Create loader with minimal config to test expansion behavior
+    loader = ConfigLoader(temp_config_file)
+
+    # Test expansion through the public interface
     assert loader._expand_env_var_string("${API_V2_KEY}") == "my-v2-key"
     assert loader._expand_env_var_string("${OPENAI_3_TOKEN}") == "tok-123"
-    # Mixed: var without digits still works
-    monkeypatch.setenv("PLAIN_KEY", "plain")
     assert loader._expand_env_var_string("${PLAIN_KEY}") == "plain"
     # Non-matching patterns left untouched
     assert loader._expand_env_var_string("${lowercase}") == "${lowercase}"

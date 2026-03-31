@@ -330,6 +330,79 @@ providers:
           70%+ SWE-Bench Verified,
           purpose-built for coding agents
 
+      # MiniMax M2.5 Model (Bedrock)
+      # MoE: 230B total, 10B active parameters
+      # Agent-native frontier model optimized for task decomposition
+      # 80.2% SWE-Bench Verified, 37% faster than M2.1
+      # Best for: Agentic workflows, complex code review
+      - id: minimax-m2.5-bedrock
+        full_id: minimax.minimax-m2.5
+        name: MiniMax M2.5 (Bedrock)
+        aliases:
+          - mm2.5-bedrock
+        pricing:
+          # TBD - update when AWS publishes
+          input_per_million: 0.00
+          output_per_million: 0.00
+        inference_params:
+          # IMPORTANT: M2.5 was RL-trained assuming temp=1.0.
+          # However, for deterministic code review on Bedrock
+          # (which lacks thinking mode), we use 0.5 to balance
+          # consistency with M2.5's trained distribution.
+          default_temperature: 0.5
+          default_top_p: 0.95
+          default_top_k: 40
+          max_output_tokens: 128000
+        # Shared 192K input+output window (196608 tokens).
+        # Bedrock enforces same limits as NVIDIA NIM.
+        context_window: 196608
+        # MiniMax M2.5 on Bedrock doesn't support tool use for structured output
+        supports_tool_use: false
+        architecture: "MoE (230B total, 10B active)"
+        capabilities:
+          - coding
+          - reasoning
+          - agentic_tasks
+          - code_review
+        notes: >-
+          80.2% SWE-Bench Verified, agent-native frontier
+          model trained for efficient task decomposition,
+          37% faster than M2.1, cost-efficient MoE.
+          Uses prompt-based JSON parsing on Bedrock.
+
+      # GLM 5 Model (Zhipu AI via Bedrock)
+      # Frontier-class model optimized for systems engineering
+      # 200K context window, 128K max output
+      # Best for: Complex reasoning, long-horizon agentic tasks
+      - id: glm5-bedrock
+        full_id: zai.glm-5
+        name: GLM 5 (Bedrock)
+        aliases:
+          - glm-5-bedrock
+          - glm5b
+        pricing:
+          # TBD - update when AWS publishes
+          input_per_million: 0.00
+          output_per_million: 0.00
+        inference_params:
+          # Lowered from 1.0 for non-creative code review.
+          # Model docs recommend 0.5-0.7 for structured tasks.
+          default_temperature: 0.5
+          default_top_p: 0.95
+          max_output_tokens: 128000
+        context_window: 200000
+        capabilities:
+          - reasoning
+          - code_review
+          - code_generation
+          - agentic_tasks
+          - tool_use
+        notes: >-
+          Frontier-class model optimized for complex systems
+          engineering and long-horizon agentic tasks,
+          multi-step reasoning, advanced coding, tool-augmented
+          workflows
+
   # Azure OpenAI Provider
   azure_openai:
     endpoint: "${AZURE_OPENAI_ENDPOINT}"

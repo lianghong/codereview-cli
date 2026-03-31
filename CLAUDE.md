@@ -66,6 +66,7 @@ echo "✓ All static analysis checks passed"
 - Minimum 80% confidence for vulture (dead code detection)
 - Unused imports/variables must be removed
 - All provider implementations must include `get_pricing()` method
+- Python 3.14 compliance: PEP 758 (unparenthesized exceptions) and PEP 765 (no control flow in finally)
 
 ### Running the Tool
 ```bash
@@ -164,6 +165,8 @@ Use primary model IDs (case-insensitive). Run `codereview --list-models` to see 
 | `glm47-flash-bedrock` | GLM 4.7 Flash (Bedrock) | bedrock | glm4-flash, glm47f, glm47-flash |
 | `kimi-k2.5-bedrock` | Kimi K2.5 (Bedrock) | bedrock | kimi, kimi-bedrock, kimi25-bedrock |
 | `qwen-next-bedrock` | Qwen3 Coder Next (Bedrock) | bedrock | qwen-next, qwen3-next, qwen-coder-next |
+| `minimax-m2.5-bedrock` | MiniMax M2.5 (Bedrock) | bedrock | mm2.5-bedrock |
+| `glm5-bedrock` | GLM 5 (Bedrock) | bedrock | glm-5-bedrock, glm5b |
 | `qwen-nvidia` | Qwen3 Coder 480B (NVIDIA) | nvidia | qwen3-nvidia, qwen-coder-nvidia |
 | `qwen3.5-nvidia` | Qwen3.5 397B A17B (NVIDIA) | nvidia | qwen3.5, qwen35, qwen35-nvidia |
 | `kimi-k2.5-nvidia` | Kimi K2.5 (NVIDIA) | nvidia | kimi-k2.5, kimi25 |
@@ -462,8 +465,10 @@ Models defined in `codereview/config/models.yaml`:
 | GLM 4.7 Flash (Bedrock) | `zai.glm-4.7-flash` | $0.00* | $0.00* | temp=0.5, top_p=0.95, max=8192 |
 | Kimi K2.5 (Bedrock) | `moonshotai.kimi-k2.5` | $0.60 | $3.00 | temp=0.6, top_p=0.95, top_k=40, max=65536 |
 | Qwen3 Coder Next (Bedrock) | `qwen.qwen3-coder-next` | $0.50 | $1.20 | temp=0.7, top_p=0.95, top_k=40, max=16384 |
+| MiniMax M2.5 (Bedrock) | `minimax.minimax-m2.5` | $0.00* | $0.00* | temp=0.5, top_p=0.95, top_k=40, max=128000 |
+| GLM 5 (Bedrock) | `zai.glm-5` | $0.00* | $0.00* | temp=0.5, top_p=0.95, max=128000 |
 
-**Note:** *GLM Bedrock pricing TBD - update when AWS publishes official pricing.
+**Note:** *GLM and MiniMax M2.5 Bedrock pricing TBD - update when AWS publishes official pricing.
 
 **Azure OpenAI Models:**
 | Model | Deployment Name | Input $/M | Output $/M | Defaults |
@@ -475,7 +480,7 @@ Models defined in `codereview/config/models.yaml`:
 
 **Note:** GPT-5.3 Codex and GPT-5.4 Pro use OpenAI's Responses API (not ChatCompletion). This is configured automatically via `use_responses_api: true` in `models.yaml`. GPT-5.4 Pro is a reasoning model that does not support temperature/top_p parameters. Kimi K2.5 and Grok 4 Fast Reasoning use the standard ChatCompletion API.
 
-**Note:** DeepSeek-R1 doesn't support tool use, so it uses prompt-based JSON parsing instead of structured output. This is configured via `supports_tool_use: false` in `models.yaml`.
+**Note:** DeepSeek-R1 and MiniMax M2.5 (Bedrock) don't support tool use, so they use prompt-based JSON parsing instead of structured output. This is configured via `supports_tool_use: false` in `models.yaml`.
 
 **NVIDIA NIM Models:**
 | Model | Model ID | Input $/M | Output $/M | Defaults |

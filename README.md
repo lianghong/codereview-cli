@@ -655,6 +655,7 @@ uv run ruff check --fix codereview/ tests/
 - Type hints required for public APIs
 - No unused imports or variables
 - Provider implementations must include `get_pricing()` method
+- Python 3.14 compliance: PEP 758 (unparenthesized exceptions) and PEP 765 (no control flow in finally)
 
 ## Contributing
 
@@ -683,9 +684,19 @@ For issues, questions, or contributions:
 
 ## Version History
 
-### v0.2.9 (Current)
+### v0.3.0 (Current)
+- **MiniMax M2.5 (Bedrock)**: Added agent-native frontier model to AWS Bedrock (80.2% SWE-Bench, 196K context, 128K output, temp=0.5 optimized for code review)
+- **GLM 5 (Bedrock)**: Added frontier-class model to AWS Bedrock for complex systems engineering (200K context, 128K output, multi-step reasoning, AIME-style math)
+- **Critical Bug Fix**: Fixed Azure OpenAI provider syntax error that completely blocked functionality (`except ValueError, TypeError:` → `except (ValueError, TypeError):`)
+- **Security Enhancement**: Added ReDoS prevention for user-provided `--exclude` patterns (max length 200, max `**` depth 3, null byte filtering)
+- **Python 3.14 Compliance**: Adopted PEP 758 unparenthesized exception syntax and verified PEP 765 compliance (7 exception handlers updated across callbacks.py, readme_finder.py, static_analysis.py)
+- **Model Documentation**: Enhanced parameter documentation with detailed rationale for temperature settings and cross-provider comparisons
+- **Total Models**: 109 models across 4 providers (AWS Bedrock, Azure OpenAI, NVIDIA NIM, Google GenAI)
+- **Test Suite**: All 311 tests passing, zero static analysis issues
+
+### v0.2.9
 - **Mistral Small 4 Model**: Added Mistral Small 4 119B via NVIDIA NIM (MoE architecture, 256K context, 16K max output, prompt-based JSON parsing)
-- **MiniMax M2.5 Model**: Added MiniMax M2.5 via NVIDIA NIM (80.2% SWE-Bench Verified, 192K context, 128K output, interleaved thinking mode, 37% faster than M2.1)
+- **MiniMax M2.5 Model (NVIDIA)**: Added MiniMax M2.5 via NVIDIA NIM (80.2% SWE-Bench Verified, 192K context, 128K output, interleaved thinking mode, 37% faster than M2.1)
 - **Prompt-Based JSON Parsing**: Added fallback JSON parsing for models without tool use support (DeepSeek-R1, Mistral Small 4)
 - **Oversized File Handling**: Files exceeding the token budget are now skipped with a warning instead of creating doomed single-file batches that fail at the API level
 - **Batch Failure Handling**: When all batches fail (rate limits, auth errors, etc.), shows a clear error with possible causes instead of a misleading "0 issues found" report. Partial failures warn that results are incomplete

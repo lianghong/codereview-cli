@@ -516,31 +516,24 @@ def test_validate_credentials_missing_model_id(provider_config):
         ),
     )
 
-    with patch(
-        "codereview.providers.google_genai.ChatGoogleGenerativeAI"
-    ) as mock_google:
+    with (
+        patch(
+            "codereview.providers.google_genai.ChatGoogleGenerativeAI"
+        ) as mock_google,
+        patch.object(GoogleGenAIProvider, "_create_model") as mock_create_model,
+        patch.object(GoogleGenAIProvider, "_create_chain") as mock_create_chain,
+    ):
         mock_instance = Mock()
         mock_instance.with_structured_output.return_value = Mock()
         mock_google.return_value = mock_instance
+        mock_create_model.return_value = mock_instance
+        mock_create_chain.return_value = Mock()
 
-        # Provider creation will fail because of missing full_id
-        # But we can test validate_credentials by creating with a full_id first
-        # and then modifying
-        model_config_with_id = ModelConfig(
-            id="test-model",
-            name="Test Model",
-            aliases=[],
-            full_id="test-model-id",
-            pricing=PricingConfig(
-                input_per_million=2.0,
-                output_per_million=12.0,
-            ),
-        )
+        # Create provider with missing full_id - mocks allow this to succeed
+        # so we can test validate_credentials specifically
+        provider = GoogleGenAIProvider(model_config_no_full_id, provider_config)
 
-        provider = GoogleGenAIProvider(model_config_with_id, provider_config)
-
-        # Override model_config to simulate missing full_id for validation
-        provider.model_config = model_config_no_full_id
+        # Test that validate_credentials catches the missing full_id
         result = provider.validate_credentials()
 
         assert result.valid is False

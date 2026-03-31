@@ -473,8 +473,15 @@ class TestErrorHandlingIntegration:
                 main, [str(sample_project_dir), "--verbose", "--no-readme"]
             )
 
-            # Should handle error gracefully (not crash)
-            assert "AWS" in result.output or "Error" in result.output
+            # Should handle error gracefully (not crash) and show error message
+            # Note: CLI returns 0 because error occurs during batch processing,
+            # not during initialization. All batches fail so it shows error message.
+            assert result.exit_code == 0, "CLI should not crash on batch errors"
+            assert (
+                "All" in result.output and "failed" in result.output
+            ) or "AccessDeniedException" in result.output or (
+                "error" in result.output.lower()
+            ), f"Expected error message, got: {result.output}"
 
 
 class TestOutputFormats:
@@ -632,6 +639,7 @@ class TestBatchProcessing:
         with (
             patch("codereview.cli.CodeAnalyzer") as mock_analyzer_class,
             patch("codereview.cli.ProviderFactory") as mock_factory_class,
+            patch("codereview.cli.FileBatcher") as mock_batcher_class,
         ):
             # Setup factory mock
             mock_factory = Mock()
@@ -653,11 +661,29 @@ class TestBatchProcessing:
             mock_analyzer.skipped_files = []
             mock_analyzer_class.return_value = mock_analyzer
 
+            # Mock batcher to create 2 batches
+            mock_batcher = Mock()
+            mock_batcher.skipped_oversized = []
+            from codereview.batcher import FileBatch
+
+            # Create 2 batches with different files
+            batch1 = FileBatch(
+                files=[sample_project_dir / "test.py"], batch_number=1, total_batches=2
+            )
+            batch2 = FileBatch(
+                files=[sample_project_dir / "test.go"], batch_number=2, total_batches=2
+            )
+            mock_batcher.create_batches.return_value = [batch1, batch2]
+            mock_batcher_class.return_value = mock_batcher
+
             result = runner.invoke(main, [str(sample_project_dir), "--no-readme"])
 
             assert result.exit_code == 0, f"CLI failed with: {result.output}"
-            # Both issues should be in final report
-            # (This is implicit in the aggregation logic)
+            # Both issues should be in final report - verify aggregation worked
+            assert "Issue 1" in result.output, "Issue 1 from batch 1 missing"
+            assert "Issue 2" in result.output, "Issue 2 from batch 2 missing"
+            assert "file1.py" in result.output, "file1.py from batch 1 missing"
+            assert "file2.py" in result.output, "file2.py from batch 2 missing"
 
 
 @pytest.mark.slow
