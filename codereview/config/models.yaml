@@ -16,6 +16,35 @@ providers:
     models:
       # Claude Models (Anthropic)
       # Best for: Code review, reasoning, security
+      - id: opus4.7
+        full_id: us.anthropic.claude-opus-4-7
+        name: Claude Opus 4.7
+        aliases:
+          - claude-opus-4.7
+          - opus-4.7
+          - claude-opus-47
+        pricing:
+          input_per_million: 5.00
+          output_per_million: 25.00
+          cache_write_per_million: 6.25
+          cache_read_per_million: 0.50
+        inference_params:
+          # Opus 4.7 is a reasoning model - temperature not supported
+          # default_temperature omitted intentionally
+          max_output_tokens: 32000
+        context_window: 200000
+        capabilities:
+          - code_review
+          - security_analysis
+          - reasoning
+          - computer_use
+          - adaptive_thinking
+        notes: >-
+          Latest Opus model with enhanced reasoning,
+          adaptive thinking, and up to 32K output tokens.
+          Reasoning model - temperature parameter not supported.
+          Available in US East (N. Virginia) and Asia Pacific (Tokyo)
+
       - id: opus
         full_id: global.anthropic.claude-opus-4-6-v1
         name: Claude Opus 4.6
@@ -720,6 +749,49 @@ providers:
           and agentic tool use, 37% faster than
           M2.1, cost-efficient MoE
 
+      # MiniMax M2.7 (via NVIDIA)
+      # MoE: 230B total, 10B active (62 layers,
+      # 256 experts, 8 activated per token)
+      # 204,800 input context length
+      # Best for: Complex software engineering,
+      # agentic tool use, long-horizon workflows
+      - id: minimax-m2.7-nvidia
+        full_id: minimaxai/minimax-m2.7
+        name: MiniMax M2.7 (NVIDIA)
+        aliases:
+          - mm2.7-nvidia
+          - minimax-m2.7
+          - mm27
+        pricing:
+          input_per_million: 0.00
+          output_per_million: 0.00
+        inference_params:
+          # NVIDIA model card recommends
+          # temperature=1.0, top_p=0.95, top_k=40
+          default_temperature: 1.0
+          default_top_p: 0.95
+          default_top_k: 40
+          max_output_tokens: 128000
+          # Interleaved thinking for deeper
+          # code analysis (matches M2.5 behavior)
+          enable_thinking: true
+          clear_thinking: false
+        # Input Context Length (ISL): 204,800
+        context_window: 204800
+        architecture: "MoE (230B total, 10B active)"
+        capabilities:
+          - coding
+          - reasoning
+          - agentic_tasks
+          - code_review
+          - thinking
+          - tool_use
+        notes: >-
+          56.22% SWE-Pro, 57.0% Terminal Bench 2,
+          1495 ELO GDPval-AA (highest among
+          open-source), agent-native model for
+          long-horizon engineering workflows
+
       # Qwen3 Coder 480B (via NVIDIA)
       # MoE: 480B total, 35B active parameters
       # Best for: Code generation, code review
@@ -1018,7 +1090,7 @@ providers:
 
 # Default model configuration
 defaults:
-  bedrock_default: opus
+  bedrock_default: opus4.7
   azure_default: gpt-5.3-codex
   nvidia_default: devstral
   aws_region: us-west-2

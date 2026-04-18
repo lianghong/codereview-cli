@@ -150,6 +150,7 @@ class AzureOpenAIProvider(TokenTrackingMixin, ModelProvider):
                         "Azure rate limit: waiting %ds (Retry-After header)", wait
                     )
                     return wait
+                # PEP 758 syntax (Python 3.14+): unparenthesized multi-exception catch
                 except ValueError, TypeError:
                     pass
 

@@ -33,6 +33,7 @@ def _timed_input(prompt: str, default: str, timeout: int) -> str:
 
     try:
         ready, _, _ = select.select([sys.stdin], [], [], timeout)
+    # PEP 758 syntax (Python 3.14+): unparenthesized multi-exception catch
     except OSError, ValueError:
         # select not supported or stdin closed - return default
         print()
@@ -45,6 +46,7 @@ def _timed_input(prompt: str, default: str, timeout: int) -> str:
                 return line.rstrip("\n")
             # EOF
             return default
+        # PEP 758 syntax (Python 3.14+): unparenthesized multi-exception catch
         except EOFError, KeyboardInterrupt:
             return default
     else:
@@ -127,6 +129,7 @@ def read_readme_content(
 
         return content, file_size
 
+    # PEP 758 syntax (Python 3.14+): unparenthesized multi-exception catch
     except OSError, UnicodeDecodeError:
         return None
 

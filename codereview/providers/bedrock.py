@@ -53,7 +53,8 @@ class BedrockProvider(TokenTrackingMixin, ModelProvider):
         self.provider_config = provider_config
         self.project_context = project_context
 
-        # Determine temperature (override > model default > 0.1)
+        # Determine temperature (override > model default > 0.1 > None for reasoning models)
+        # Some reasoning models (e.g., Opus 4.7) don't support temperature parameter
         if temperature is not None:
             if not 0.0 <= temperature <= 2.0:
                 raise ValueError(
@@ -65,8 +66,12 @@ class BedrockProvider(TokenTrackingMixin, ModelProvider):
             and model_config.inference_params.temperature is not None
         ):
             self.temperature = model_config.inference_params.temperature
-        else:
+        elif model_config.inference_params is None:
+            # No inference params at all - use default
             self.temperature = 0.1
+        else:
+            # Inference params exist but temperature is None - reasoning model
+            self.temperature = None
 
         # Get model-specific inference parameters
         self.top_p = None
@@ -118,18 +123,24 @@ class BedrockProvider(TokenTrackingMixin, ModelProvider):
             retries={"max_attempts": 0},  # We handle retries ourselves
         )
 
-        base_model = ChatBedrockConverse(
-            model=self.model_config.full_id,
-            region_name=self.provider_config.region,
-            temperature=self.temperature,
-            max_tokens=self.max_tokens,
-            config=botocore_config,
-            rate_limiter=self.rate_limiter,
-            callbacks=self.callbacks if self.callbacks else None,
-            additional_model_request_fields=(
+        # Build model kwargs - omit temperature for reasoning models
+        model_kwargs: dict = {
+            "model": self.model_config.full_id,
+            "region_name": self.provider_config.region,
+            "max_tokens": self.max_tokens,
+            "config": botocore_config,
+            "rate_limiter": self.rate_limiter,
+            "callbacks": self.callbacks if self.callbacks else None,
+            "additional_model_request_fields": (
                 additional_fields if additional_fields else None
             ),
-        )
+        }
+
+        # Only add temperature if model supports it (reasoning models don't)
+        if self.temperature is not None:
+            model_kwargs["temperature"] = self.temperature
+
+        base_model = ChatBedrockConverse(**model_kwargs)
 
         # Check if model supports tool use for structured output
         if self.model_config.supports_tool_use:

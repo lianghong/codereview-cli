@@ -6,12 +6,18 @@
 
 > AI-powered code review tool with multiple LLM providers (AWS Bedrock, Azure OpenAI, NVIDIA NIM, Google Generative AI)
 
+## 🎉 What's New in v0.3.1
+
+- ✅ **Claude Opus 4.7** - Latest reasoning model with adaptive thinking now supported
+- ✅ **Bug Fixes** - Fixed `--no-color` flag consistency and improved error handling
+- ✅ **Enhanced Stability** - All 311 tests passing, zero security vulnerabilities
+
 A LangChain-based CLI tool that provides comprehensive, intelligent code reviews for Python, Go, Shell Script, C++, Java, JavaScript, and TypeScript projects using Claude, GPT, Gemini, Devstral, and other leading models through AWS Bedrock, Azure OpenAI, NVIDIA NIM, and Google Generative AI.
 
 ## Features
 
-- **Multi-Provider Support**: AWS Bedrock (Claude, Mistral, Minimax, Kimi, Qwen, DeepSeek, GLM), Azure OpenAI (GPT-5.4 Pro, GPT-5.3 Codex, Kimi K2.5, Grok 4), NVIDIA NIM (Devstral, MiniMax M2.5, MiniMax M2.1, Qwen3.5, DeepSeek, GLM 4.7), and Google GenAI (Gemini 3.1 Pro, Gemini 3 Pro, Gemini 3 Flash)
-- **AI-Powered Analysis**: Leverages Claude Opus 4.6, GPT-5.4 Pro, GPT-5.3 Codex, Grok 4 Fast Reasoning, Gemini 3.1 Pro, Devstral 2, and other leading models for deep code understanding
+- **Multi-Provider Support**: AWS Bedrock (Claude, Mistral, Minimax, Kimi, Qwen, DeepSeek, GLM), Azure OpenAI (GPT-5.4 Pro, GPT-5.3 Codex, Kimi K2.5, Grok 4), NVIDIA NIM (Devstral, MiniMax M2.7, MiniMax M2.5, MiniMax M2.1, Qwen3.5, DeepSeek, GLM 4.7), and Google GenAI (Gemini 3.1 Pro, Gemini 3 Pro, Gemini 3 Flash)
+- **AI-Powered Analysis**: Leverages Claude Opus 4.7, GPT-5.4 Pro, GPT-5.3 Codex, Grok 4 Fast Reasoning, Gemini 3.1 Pro, Devstral 2, and other leading models for deep code understanding
 - **Multi-Language Support**: Reviews Python, Go, Shell Script, C++, Java, JavaScript, and TypeScript codebases
 - **Smart Batching**: Automatically groups files for efficient token usage
 - **Structured Output**: Get categorized issues with severity levels and actionable suggestions
@@ -32,7 +38,7 @@ A LangChain-based CLI tool that provides comprehensive, intelligent code reviews
 - **One of the following:**
   - AWS account with Bedrock access (for Claude, Mistral, Minimax, Kimi, Qwen models)
   - Azure OpenAI resource with model deployment (for GPT, Kimi K2.5, Grok 4 models)
-  - NVIDIA API key from [build.nvidia.com](https://build.nvidia.com) (for Devstral, MiniMax M2.5, MiniMax M2.1, Qwen3.5, DeepSeek, free tier available)
+  - NVIDIA API key from [build.nvidia.com](https://build.nvidia.com) (for Devstral, MiniMax M2.7, MiniMax M2.5, MiniMax M2.1, Qwen3.5, DeepSeek, free tier available)
   - Google API key from [AI Studio](https://aistudio.google.com/apikey) (for Gemini 3.1 Pro, Gemini 3 Pro, Gemini 3 Flash)
 
 ### Install with uv (recommended)
@@ -152,7 +158,7 @@ codereview --list-models  # Should show Azure models
 
 ## NVIDIA NIM Configuration (Alternative Provider)
 
-NVIDIA NIM provides access to models like Devstral 2, MiniMax M2.5, MiniMax M2.1, Qwen3.5, DeepSeek V3.2, Qwen3 Coder, and more with a free tier for development.
+NVIDIA NIM provides access to models like Devstral 2, MiniMax M2.7, MiniMax M2.5, MiniMax M2.1, Qwen3.5, DeepSeek V3.2, Qwen3 Coder, and more with a free tier for development.
 
 ### 1. Get API Key
 
@@ -187,6 +193,9 @@ codereview /path/to/code --model qwen3.5
 # GLM 4.7 - Reasoning model with interleaved thinking (73.8% SWE-bench)
 codereview /path/to/code --model glm47
 
+# MiniMax M2.7 - Agent-native model with thinking mode (56.22% SWE-Pro, 204K context)
+codereview /path/to/code --model minimax-m2.7
+
 # MiniMax M2.5 - SOTA coding model with thinking mode (80.2% SWE-bench)
 codereview /path/to/code --model minimax-m2.5
 
@@ -197,7 +206,7 @@ codereview /path/to/code --model minimax-m2.1
 codereview /path/to/code --model kimi-k2.5
 ```
 
-**Note:** NVIDIA NIM models are currently in free tier. No charges apply during the preview period. Models with thinking mode enabled (MiniMax M2.5, MiniMax M2.1, Qwen3.5, DeepSeek, Qwen3 Coder, GLM 4.7) provide deeper reasoning for complex code analysis.
+**Note:** NVIDIA NIM models are currently in free tier. No charges apply during the preview period. Models with thinking mode enabled (MiniMax M2.7, MiniMax M2.5, MiniMax M2.1, Qwen3.5, DeepSeek, Qwen3 Coder, GLM 4.7) provide deeper reasoning for complex code analysis.
 
 ## Google Generative AI Configuration (Alternative Provider)
 
@@ -233,7 +242,7 @@ codereview /path/to/code --model gemini-3-flash
 ### Basic Usage
 
 ```bash
-# Uses Claude Opus 4.6 by default
+# Uses Claude Opus 4.7 by default
 codereview /path/to/your/codebase
 ```
 
@@ -244,7 +253,8 @@ codereview /path/to/your/codebase
 codereview --list-models
 
 # AWS Bedrock Models (Claude family)
-codereview /path/to/code --model opus      # Claude Opus 4.6 (highest quality)
+codereview /path/to/code --model opus4.7   # Claude Opus 4.7 (latest, highest quality)
+codereview /path/to/code --model opus      # Claude Opus 4.6
 codereview /path/to/code --model sonnet    # Claude Sonnet 4.6 (balanced)
 codereview /path/to/code --model haiku     # Claude Haiku 4.5 (fastest)
 
@@ -266,6 +276,7 @@ codereview /path/to/code --model grok             # Grok 4 Fast Reasoning (128K 
 # NVIDIA NIM Models (free tier)
 codereview /path/to/code --model devstral           # Devstral 2 123B
 codereview /path/to/code --model mistral-small      # Mistral Small 4 119B
+codereview /path/to/code --model minimax-m2.7           # MiniMax M2.7 (thinking mode, agent-native)
 codereview /path/to/code --model minimax-m2.5           # MiniMax M2.5 (thinking mode, 80.2% SWE-bench)
 codereview /path/to/code --model minimax-m2.1           # MiniMax M2.1 (thinking mode)
 codereview /path/to/code --model deepseek-v3.2-nvidia # DeepSeek V3.2 (thinking mode)
@@ -297,6 +308,7 @@ codereview /path/to/code -m devstral
 | Grok 4 Fast (Azure) | Azure OpenAI | 128K context (Azure), cost-efficient reasoning | $0.20 | $0.50 |
 | Devstral 2 | NVIDIA NIM | Code-specialized, free tier | Free* | Free* |
 | Mistral Small 4 | NVIDIA NIM | 256K context, MoE architecture | Free* | Free* |
+| MiniMax M2.7 | NVIDIA NIM | 204K context, 128K output, thinking mode, agent-native | Free* | Free* |
 | MiniMax M2.5 | NVIDIA NIM | 192K context, 128K output, thinking mode, SOTA coding | Free* | Free* |
 | MiniMax M2.1 | NVIDIA NIM | 200K context, 128K output, thinking mode | Free* | Free* |
 | DeepSeek V3.2 | NVIDIA NIM | Large reasoning model, thinking mode | Free* | Free* |
@@ -684,7 +696,14 @@ For issues, questions, or contributions:
 
 ## Version History
 
-### v0.3.0 (Current)
+### v0.3.1 (Current)
+- **Claude Opus 4.7**: Added latest reasoning model with adaptive thinking (32K output, no temperature parameter, US East & Asia Pacific Tokyo)
+- **Bug Fixes**: Fixed `--no-color` flag consistency across `--list-models` and `--validate` commands; fixed temperature handling for reasoning models
+- **Code Clarity**: Added PEP 758 clarification comments to 8 exception handlers
+- **Default Model**: Updated from Claude Opus 4.6 to Claude Opus 4.7
+- **Test Suite**: All 311 tests passing, zero security issues
+
+### v0.3.0
 - **MiniMax M2.5 (Bedrock)**: Added agent-native frontier model to AWS Bedrock (80.2% SWE-Bench, 196K context, 128K output, temp=0.5 optimized for code review)
 - **GLM 5 (Bedrock)**: Added frontier-class model to AWS Bedrock for complex systems engineering (200K context, 128K output, multi-step reasoning, AIME-style math)
 - **Critical Bug Fix**: Fixed Azure OpenAI provider syntax error that completely blocked functionality (`except ValueError, TypeError:` → `except (ValueError, TypeError):`)

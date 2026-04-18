@@ -5,6 +5,88 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-04-18
+
+### Added
+- **Claude Opus 4.7** support via AWS Bedrock (`us.anthropic.claude-opus-4-7`)
+  - Latest reasoning model with adaptive thinking capability
+  - Max output tokens: 32,000
+  - Model ID: `opus4.7`, aliases: `claude-opus-4.7`, `opus-4.7`, `claude-opus-47`
+  - Available in US East (N. Virginia) and Asia Pacific (Tokyo)
+  - Reasoning model - does not support temperature parameter
+  - Automatically configured as the new default model
+- **PEP 758 clarification comments** to exception handlers (8 locations)
+  - Added comments explaining Python 3.14+ unparenthesized multi-exception syntax
+  - Prevents confusion for contributors unfamiliar with PEP 758
+  - Files: `callbacks.py` (2), `azure_openai.py` (1), `readme_finder.py` (3), `static_analysis.py` (2)
+
+### Fixed
+- **--no-color flag consistency** across all CLI commands
+  - `--list-models` now respects `--no-color` flag (outputs plain text without ANSI codes)
+  - `--validate` now respects `--no-color` flag
+  - Removed module-level `Console()` instance that ignored user flags
+  - Console instance now created early in main() and passed to all helper functions
+  - Affected functions: `display_available_models()`, `validate_provider_credentials()`
+- **Bedrock provider temperature handling** for reasoning models
+  - Conditionally omits temperature parameter for models that don't support it
+  - Prevents `ValidationException: temperature is deprecated for this model` errors
+  - Dynamically detects when model config omits temperature (reasoning models)
+  - Builds model kwargs dict and only includes temperature when appropriate
+
+### Changed
+- **Default model**: Updated from Claude Opus 4.6 to Claude Opus 4.7
+  - Set in `models.yaml`: `bedrock_default: opus4.7`
+  - Users can still explicitly use Opus 4.6 with `--model opus`
+- **Dependencies**: Updated all packages to latest versions
+  - Core: `langchain>=1.2.15`, `langchain-aws>=1.4.4`, `langchain-openai>=1.1.14`, `langchain-nvidia-ai-endpoints>=1.2.1`, `langchain-google-genai>=4.2.2`
+  - Providers: `boto3>=1.42.91`, `google-api-core>=2.30.3`, `google-genai>=1.73.1`
+  - UI: `click>=8.3.2`, `rich>=15.0.0`
+  - Data: `pydantic>=2.13.2`
+  - Dev tools: `pytest>=9.0.3`, `ruff>=0.15.11`, `mypy>=1.20.1`, `black>=26.3.1`, `vulture>=2.16`
+  - All transitive dependencies updated
+- **Documentation updates**:
+  - CLAUDE.md: Added "Recent Updates" section with v0.3.1 changes
+  - README.md: Added "What's New" section highlighting Opus 4.7
+  - Updated model tables with correct Opus 4.7 model ID and parameters
+  - Added notes about reasoning model characteristics (no temperature support)
+
+### Technical Details
+- **Files modified**: 9 files
+  - Configuration: `models.yaml`, `CLAUDE.md`, `README.md`, `CHANGELOG.md`
+  - Code: `cli.py`, `bedrock.py`, `callbacks.py`, `azure_openai.py`, `readme_finder.py`, `static_analysis.py`
+- **Quality metrics**:
+  - All 311 tests passing (100%)
+  - Zero security vulnerabilities (Bandit: 5,656 lines scanned)
+  - Zero linting issues (Ruff)
+  - Zero type errors (Mypy: 22 source files)
+  - Zero dead code (Vulture at 80% confidence)
+- **Testing verified**:
+  - ✅ `codereview --list-models` (shows Opus 4.7)
+  - ✅ `codereview --list-models --no-color` (no ANSI codes)
+  - ✅ `codereview --model opus4.7 --dry-run` (validates successfully)
+  - ✅ `codereview /path/to/code --model opus4.7` (analyzes successfully)
+
+### Migration Guide
+
+**No breaking changes.** All existing functionality continues to work.
+
+To use Claude Opus 4.7 (new default):
+```bash
+codereview ./src                    # Uses Opus 4.7 automatically
+codereview ./src --model opus4.7    # Explicit
+```
+
+To continue using Claude Opus 4.6:
+```bash
+codereview ./src --model opus       # Opus 4.6
+```
+
+### References
+- [AWS Blog: Introducing Claude Opus 4.7](https://aws.amazon.com/blogs/aws/introducing-anthropics-claude-opus-4-7-model-in-amazon-bedrock/)
+- [PEP 758: Allow except without parentheses](https://peps.python.org/pep-0758/)
+
+---
+
 ## [0.3.0] - 2026-03-31
 
 ### Added

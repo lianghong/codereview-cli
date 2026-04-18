@@ -2,9 +2,18 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Recent Updates (2026-04-18)
+
+**v0.3.1 - Claude Opus 4.7 Integration & Bug Fixes**
+- ✅ Added Claude Opus 4.7 support (reasoning model with adaptive thinking)
+- ✅ Fixed `--no-color` flag consistency across all CLI commands
+- ✅ Added PEP 758 clarification comments to exception handlers
+- ✅ Updated Bedrock provider to handle reasoning models (no temperature parameter)
+- ✅ All 311 tests passing, zero security issues
+
 ## Project Overview
 
-LangChain-based CLI tool for AI-powered code reviews via AWS Bedrock, Azure OpenAI, NVIDIA NIM, and Google Generative AI. Supports multiple models including Claude (Opus, Sonnet, Haiku), GPT-5.4 Pro, GPT-5.3 Codex, Grok 4 Fast Reasoning, Gemini 3.1 Pro, Gemini 3 (Pro, Flash), Devstral 2, MiniMax M2, MiniMax M2.1, MiniMax M2.5, Kimi K2.5, Qwen3 Coder, Qwen3 Coder Next, Qwen3.5, DeepSeek-R1, DeepSeek V3.2, GLM 4.7, GLM 4.7 Flash, and GLM-5. Reviews **Python, Go, Shell Script, C++, Java, JavaScript, and TypeScript** codebases with structured output (categories, severity levels, line numbers, suggested fixes).
+LangChain-based CLI tool for AI-powered code reviews via AWS Bedrock, Azure OpenAI, NVIDIA NIM, and Google Generative AI. Supports multiple models including **Claude Opus 4.7** (reasoning model), Claude (Opus 4.6, Sonnet, Haiku), GPT-5.4 Pro, GPT-5.3 Codex, Grok 4 Fast Reasoning, Gemini 3.1 Pro, Gemini 3 (Pro, Flash), Devstral 2, MiniMax M2, MiniMax M2.1, MiniMax M2.5, MiniMax M2.7, Kimi K2.5, Qwen3 Coder, Qwen3 Coder Next, Qwen3.5, DeepSeek-R1, DeepSeek V3.2, GLM 4.7, GLM 4.7 Flash, and GLM-5. Reviews **Python, Go, Shell Script, C++, Java, JavaScript, and TypeScript** codebases with structured output (categories, severity levels, line numbers, suggested fixes).
 
 **Tech Stack:** Python 3.14, LangChain, AWS Bedrock, Azure OpenAI, NVIDIA NIM, Google Generative AI, Pydantic V2, Click, Rich
 
@@ -70,7 +79,7 @@ echo "✓ All static analysis checks passed"
 
 ### Running the Tool
 ```bash
-# Basic usage (uses Claude Opus 4.6 by default)
+# Basic usage (uses Claude Opus 4.7 by default)
 uv run codereview /path/to/code
 
 # With model selection (use short names!)
@@ -145,6 +154,7 @@ Use primary model IDs (case-insensitive). Run `codereview --list-models` to see 
 
 | Model ID | Name | Provider | Aliases |
 |----------|------|----------|---------|
+| `opus4.7` | Claude Opus 4.7 | bedrock | claude-opus-4.7, opus-4.7, claude-opus-47 |
 | `opus` | Claude Opus 4.6 | bedrock | claude-opus, opus4.6, claude-opus-4.6 |
 | `sonnet` | Claude Sonnet 4.6 | bedrock | claude-sonnet, sonnet4.6, claude-sonnet-4.6 |
 | `haiku` | Claude Haiku 4.5 | bedrock | claude-haiku |
@@ -157,6 +167,7 @@ Use primary model IDs (case-insensitive). Run `codereview --list-models` to see 
 | `minimax-nvidia` | MiniMax M2 (NVIDIA) | nvidia | mm2-nvidia |
 | `minimax-m2.1-nvidia` | MiniMax M2.1 (NVIDIA) | nvidia | mm2.1-nvidia, minimax-m2.1, mm21 |
 | `minimax-m2.5-nvidia` | MiniMax M2.5 (NVIDIA) | nvidia | mm2.5-nvidia, minimax-m2.5, mm25 |
+| `minimax-m2.7-nvidia` | MiniMax M2.7 (NVIDIA) | nvidia | mm2.7-nvidia, minimax-m2.7, mm27 |
 | `qwen-bedrock` | Qwen3 Coder 480B (Bedrock) | bedrock | qwen, qwen-coder |
 | `deepseek-r1-bedrock` | DeepSeek-R1 (Bedrock) | bedrock | deepseek, deepseek-r1, ds-bedrock, deepseek-bedrock |
 | `deepseek-v3.2-bedrock` | DeepSeek V3.2 (Bedrock) | bedrock | deepseek-v3-bedrock, ds-v3-bedrock |
@@ -328,7 +339,7 @@ FileScanner → FileBatcher → CodeAnalyzer → ProviderFactory → BedrockProv
 5. **Providers** (`providers/`):
    - **BedrockProvider**: AWS Bedrock implementation (Claude, Kimi K2.5, Qwen, DeepSeek, MiniMax M2.1, GLM)
    - **AzureOpenAIProvider**: Azure OpenAI implementation (GPT, Kimi K2.5, Grok models)
-   - **NVIDIAProvider**: NVIDIA NIM API implementation (Devstral, MiniMax M2, MiniMax M2.1, Qwen3, Qwen3.5, DeepSeek, GLM 4.7, GLM-5)
+   - **NVIDIAProvider**: NVIDIA NIM API implementation (Devstral, MiniMax M2, MiniMax M2.1, MiniMax M2.5, MiniMax M2.7, Qwen3, Qwen3.5, DeepSeek, GLM 4.7, GLM-5)
    - **GoogleGenAIProvider**: Google Generative AI implementation (Gemini 3 Pro, Gemini 3 Flash)
 6. **Aggregation** (`cli.py`): Merges results from all batches (issues, suggestions, design insights). Tracks failed batches — aborts with a clear error when all batches fail; warns about partial results when some batches fail
 7. **Renderers** (`renderer.py`): Outputs to Rich terminal UI or Markdown file
@@ -454,6 +465,7 @@ Models defined in `codereview/config/models.yaml`:
 **AWS Bedrock Models:**
 | Model | Model ID | Input $/M | Output $/M | Defaults |
 |-------|----------|-----------|------------|----------|
+| Claude Opus 4.7 | `us.anthropic.claude-opus-4-7` | $5.00 | $25.00 | max=32000 (reasoning model, no temp) |
 | Claude Opus 4.6 | `global.anthropic.claude-opus-4-6-v1` | $5.00 | $25.00 | temp=0.1, max=128000 |
 | Claude Sonnet 4.6 | `global.anthropic.claude-sonnet-4-6` | $3.00 | $15.00 | temp=0.1 |
 | Claude Haiku 4.5 | `global.anthropic.claude-haiku-4-5-20251001-v1:0` | $1.00 | $5.00 | temp=0.1 |
@@ -468,7 +480,9 @@ Models defined in `codereview/config/models.yaml`:
 | MiniMax M2.5 (Bedrock) | `minimax.minimax-m2.5` | $0.00* | $0.00* | temp=0.5, top_p=0.95, top_k=40, max=128000 |
 | GLM 5 (Bedrock) | `zai.glm-5` | $0.00* | $0.00* | temp=0.5, top_p=0.95, max=128000 |
 
-**Note:** *GLM and MiniMax M2.5 Bedrock pricing TBD - update when AWS publishes official pricing.
+**Notes:** 
+- *GLM and MiniMax M2.5 Bedrock pricing TBD - update when AWS publishes official pricing.
+- **Claude Opus 4.7** is a reasoning model with adaptive thinking. Temperature parameter not supported. Available in US East (N. Virginia) and Asia Pacific (Tokyo).
 
 **Azure OpenAI Models:**
 | Model | Deployment Name | Input $/M | Output $/M | Defaults |
@@ -490,6 +504,7 @@ Models defined in `codereview/config/models.yaml`:
 | MiniMax M2 (NVIDIA) | `minimaxai/minimax-m2` | $0.00* | $0.00* | temp=0.3, top_p=0.9, max=8192 |
 | MiniMax M2.1 (NVIDIA) | `minimaxai/minimax-m2.1` | $0.00* | $0.00* | temp=1.0, top_p=0.95, top_k=40, max=128000, thinking=on |
 | MiniMax M2.5 (NVIDIA) | `minimaxai/minimax-m2.5` | $0.00* | $0.00* | temp=1.0, top_p=0.95, top_k=40, max=128000, thinking=on |
+| MiniMax M2.7 (NVIDIA) | `minimaxai/minimax-m2.7` | $0.00* | $0.00* | temp=1.0, top_p=0.95, top_k=40, max=128000, thinking=on |
 | Qwen3 Coder 480B (NVIDIA) | `qwen/qwen3-coder-480b-a35b-instruct` | $0.00* | $0.00* | temp=0.3, top_p=0.8, max=16384, thinking=on |
 | Qwen3.5 397B A17B (NVIDIA) | `qwen/qwen3.5-397b-a17b` | $0.00* | $0.00* | temp=0.6, top_p=0.95, top_k=20, max=16384, thinking=on |
 | Kimi K2.5 (NVIDIA) | `moonshotai/kimi-k2.5` | $0.00* | $0.00* | temp=0.6, top_p=0.95, top_k=40, max=16384 |

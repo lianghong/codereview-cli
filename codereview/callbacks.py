@@ -51,6 +51,7 @@ class StreamingCallbackHandler(BaseCallbackHandler):
         if self._live:
             try:
                 self._live.stop()
+            # PEP 758 syntax (Python 3.14+): unparenthesized multi-exception catch
             except OSError, RuntimeError:
                 # OSError: terminal I/O errors (e.g., broken pipe, write blocking)
                 # RuntimeError: threading issues during shutdown
@@ -242,6 +243,7 @@ class ProgressCallbackHandler(BaseCallbackHandler):
         if self._status:
             try:
                 self._status.stop()
+            # PEP 758 syntax (Python 3.14+): unparenthesized multi-exception catch
             except OSError, RuntimeError:
                 pass
             self._status = None

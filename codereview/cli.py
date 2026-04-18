@@ -110,9 +110,6 @@ class ModelChoice(click.ParamType):
         return value  # unreachable: self.fail() raises
 
 
-console = Console()
-
-
 def _create_console(quiet: bool = False, no_color: bool = False) -> Console:
     """Create a Rich console, optionally in quiet or no-color mode.
 
@@ -130,8 +127,12 @@ def _create_console(quiet: bool = False, no_color: bool = False) -> Console:
     return Console()
 
 
-def display_available_models() -> None:
-    """Display all available models in a formatted table."""
+def display_available_models(console: Console) -> None:
+    """Display all available models in a formatted table.
+
+    Args:
+        console: Rich console instance (respects --no-color flag)
+    """
     factory = ProviderFactory()
     models_by_provider = factory.list_available_models()
 
@@ -192,12 +193,15 @@ def display_available_models() -> None:
     console.print("[dim]Example: codereview ./src --model opus[/dim]")
 
 
-def validate_provider_credentials(model_name: str, aws_profile: str | None) -> None:
+def validate_provider_credentials(
+    model_name: str, aws_profile: str | None, console: Console
+) -> None:
     """Validate provider credentials without running analysis.
 
     Args:
         model_name: Model ID or alias to validate
         aws_profile: Optional AWS profile to use
+        console: Rich console instance (respects --no-color flag)
     """
     # Set AWS profile if provided
     if aws_profile:
@@ -287,8 +291,8 @@ def validate_provider_credentials(model_name: str, aws_profile: str | None) -> N
     "-m",
     "model_name",
     type=ModelChoice(),
-    default="opus",
-    help="Model to use (default: opus). Use --list-models to see all options.",
+    default="opus4.7",
+    help="Model to use (default: opus4.7). Use --list-models to see all options.",
 )
 @click.option(
     "--static-analysis",
@@ -374,14 +378,17 @@ def main(
     Reviews Python, Go, Shell, C++, Java, JavaScript, and TypeScript files using
     LLM models via AWS Bedrock, Azure OpenAI, NVIDIA NIM, or Google Generative AI.
     """
+    # Create console early to support --list-models and --validate with --no-color
+    con = _create_console(quiet=quiet, no_color=no_color)
+
     # Handle --list-models flag first
     if list_models:
-        display_available_models()
+        display_available_models(con)
         return
 
     # Handle --validate flag
     if validate:
-        validate_provider_credentials(model_name, aws_profile)
+        validate_provider_credentials(model_name, aws_profile, con)
         return
 
     # Show help if no directory provided
@@ -389,9 +396,6 @@ def main(
         click.echo(ctx.get_help())
         ctx.exit(0)
         return
-
-    # Create console (quiet mode suppresses all Rich output)
-    con = _create_console(quiet=quiet, no_color=no_color)
 
     # Quiet mode overrides verbose and stream
     if quiet:

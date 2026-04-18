@@ -584,6 +584,7 @@ class StaticAnalyzer:
                     next(self.directory.rglob(ext))
                     has_js_files = True
                     break
+                # PEP 758 syntax (Python 3.14+): unparenthesized multi-exception catch
                 except StopIteration, OSError:
                     continue
             if not has_js_files:
@@ -807,6 +808,7 @@ class StaticAnalyzer:
                     for pkg in data["vulnerabilities"].values()
                     if isinstance(pkg, dict) and pkg.get("severity")
                 )
+        # PEP 758 syntax (Python 3.14+): unparenthesized multi-exception catch
         except json.JSONDecodeError, TypeError, AttributeError:
             # Fallback: count non-empty lines as a rough estimate
             return len([line for line in output.split("\n") if line.strip()])
