@@ -182,6 +182,10 @@ class NVIDIAProvider(TokenTrackingMixin, ModelProvider):
                 chat_template_kwargs["clear_thinking"] = (
                     self.model_config.inference_params.clear_thinking
                 )
+            if self.model_config.inference_params.thinking is not None:
+                chat_template_kwargs["thinking"] = (
+                    self.model_config.inference_params.thinking
+                )
             if chat_template_kwargs:
                 model_params["chat_template_kwargs"] = chat_template_kwargs
 

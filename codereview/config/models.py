@@ -31,6 +31,7 @@ class InferenceParams(BaseModel):
         max_output_tokens: Maximum number of tokens to generate (>0).
         enable_thinking: Enable thinking/reasoning mode (model-specific).
         clear_thinking: Clear thinking content between turns (False preserves reasoning).
+        thinking: Thinking mode selector (e.g. DeepSeek-V4-Pro: False/'high'/'max').
     """
 
     model_config = {"frozen": True}
@@ -51,6 +52,14 @@ class InferenceParams(BaseModel):
     clear_thinking: bool | None = Field(
         None,
         description="Clear thinking content between turns (False preserves reasoning)",
+    )
+    thinking: bool | str | None = Field(
+        None,
+        description=(
+            "Thinking mode selector passed as chat_template_kwargs['thinking']. "
+            "Used by DeepSeek-V4-Pro (False=Non-think, 'high'=Think High, "
+            "'max'=Think Max)."
+        ),
     )
 
 

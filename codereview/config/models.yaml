@@ -860,6 +860,47 @@ providers:
           Next-gen Qwen MoE with 262K context,
           thinking mode for complex analysis
 
+      # DeepSeek-V4-Pro (via NVIDIA) - DeepSeek AI
+      # MoE: 1.6T total, 49B active parameters
+      # Hybrid attention (CSA + HCA), 1M token context
+      # Best for: Long-context coding, agentic workflows
+      # Note: Three reasoning modes — Non-think (fast),
+      #   Think High (logical), Think Max (full reasoning).
+      #   Per model card sample, uses Non-think for code review.
+      - id: deepseek-v4-pro-nvidia
+        full_id: deepseek-ai/deepseek-v4-pro
+        name: DeepSeek-V4-Pro (NVIDIA)
+        aliases:
+          - deepseek-v4
+          - deepseek-v4-pro
+          - ds-v4-nvidia
+          - dsv4
+        pricing:
+          # Free endpoint on build.nvidia.com
+          input_per_million: 0.00
+          output_per_million: 0.00
+        inference_params:
+          # NVIDIA model card recommends temp=1.0, top_p=0.95
+          default_temperature: 1.0
+          default_top_p: 0.95
+          max_output_tokens: 16384
+          # Non-think mode for deterministic code review
+          # (Think High/Max would add reasoning overhead;
+          # reviewer prompt is sufficiently constrained)
+          thinking: false
+        context_window: 1000000
+        architecture: "MoE (1.6T total, 49B active)"
+        capabilities:
+          - code_review
+          - code_generation
+          - reasoning
+          - agentic_tasks
+          - tool_use
+        notes: >-
+          1M-token context, hybrid Compressed Sparse +
+          Heavily Compressed Attention, 27% of V3.2 FLOPs
+          at 1M context, three reasoning modes
+
       # DeepSeek V3.2 (via NVIDIA)
       # MoE: 671B total, 37B active parameters
       # Best for: Complex reasoning with thinking

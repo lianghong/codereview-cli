@@ -13,7 +13,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-LangChain-based CLI tool for AI-powered code reviews via AWS Bedrock, Azure OpenAI, NVIDIA NIM, and Google Generative AI. Supports multiple models including **Claude Opus 4.7** (reasoning model), Claude (Opus 4.6, Sonnet, Haiku), GPT-5.4 Pro, GPT-5.3 Codex, Grok 4 Fast Reasoning, Gemini 3.1 Pro, Gemini 3 (Pro, Flash), Devstral 2, MiniMax M2, MiniMax M2.1, MiniMax M2.5, MiniMax M2.7, Kimi K2.5, Qwen3 Coder, Qwen3 Coder Next, Qwen3.5, DeepSeek-R1, DeepSeek V3.2, GLM 4.7, GLM 4.7 Flash, and GLM-5. Reviews **Python, Go, Shell Script, C++, Java, JavaScript, and TypeScript** codebases with structured output (categories, severity levels, line numbers, suggested fixes).
+LangChain-based CLI tool for AI-powered code reviews via AWS Bedrock, Azure OpenAI, NVIDIA NIM, and Google Generative AI. Supports multiple models including **Claude Opus 4.7** (reasoning model), Claude (Opus 4.6, Sonnet, Haiku), GPT-5.4 Pro, GPT-5.3 Codex, Grok 4 Fast Reasoning, Gemini 3.1 Pro, Gemini 3 (Pro, Flash), Devstral 2, MiniMax M2, MiniMax M2.1, MiniMax M2.5, MiniMax M2.7, Kimi K2.5, Qwen3 Coder, Qwen3 Coder Next, Qwen3.5, DeepSeek-R1, DeepSeek V3.2, DeepSeek-V4-Pro, GLM 4.7, GLM 4.7 Flash, and GLM-5. Reviews **Python, Go, Shell Script, C++, Java, JavaScript, and TypeScript** codebases with structured output (categories, severity levels, line numbers, suggested fixes).
 
 **Tech Stack:** Python 3.14, LangChain, AWS Bedrock, Azure OpenAI, NVIDIA NIM, Google Generative AI, Pydantic V2, Click, Rich
 
@@ -182,6 +182,7 @@ Use primary model IDs (case-insensitive). Run `codereview --list-models` to see 
 | `qwen3.5-nvidia` | Qwen3.5 397B A17B (NVIDIA) | nvidia | qwen3.5, qwen35, qwen35-nvidia |
 | `kimi-k2.5-nvidia` | Kimi K2.5 (NVIDIA) | nvidia | kimi-k2.5, kimi25 |
 | `deepseek-v3.2-nvidia` | DeepSeek V3.2 (NVIDIA) | nvidia | deepseek-v3-nvidia, ds-nvidia, deepseek-nvidia |
+| `deepseek-v4-pro-nvidia` | DeepSeek-V4-Pro (NVIDIA) | nvidia | deepseek-v4, deepseek-v4-pro, ds-v4-nvidia, dsv4 |
 | `glm47` | GLM 4.7 (NVIDIA) | nvidia | glm4, glm-nvidia |
 | `glm5` | GLM-5 (NVIDIA) | nvidia | glm-5, glm5-nvidia |
 | `gemini-3.1-pro` | Gemini 3.1 Pro Preview | google_genai | gemini31-pro, g31pro |
@@ -339,7 +340,7 @@ FileScanner → FileBatcher → CodeAnalyzer → ProviderFactory → BedrockProv
 5. **Providers** (`providers/`):
    - **BedrockProvider**: AWS Bedrock implementation (Claude, Kimi K2.5, Qwen, DeepSeek, MiniMax M2.1, GLM)
    - **AzureOpenAIProvider**: Azure OpenAI implementation (GPT, Kimi K2.5, Grok models)
-   - **NVIDIAProvider**: NVIDIA NIM API implementation (Devstral, MiniMax M2, MiniMax M2.1, MiniMax M2.5, MiniMax M2.7, Qwen3, Qwen3.5, DeepSeek, GLM 4.7, GLM-5)
+   - **NVIDIAProvider**: NVIDIA NIM API implementation (Devstral, MiniMax M2, MiniMax M2.1, MiniMax M2.5, MiniMax M2.7, Qwen3, Qwen3.5, DeepSeek V3.2, DeepSeek-V4-Pro, GLM 4.7, GLM-5)
    - **GoogleGenAIProvider**: Google Generative AI implementation (Gemini 3 Pro, Gemini 3 Flash)
 6. **Aggregation** (`cli.py`): Merges results from all batches (issues, suggestions, design insights). Tracks failed batches — aborts with a clear error when all batches fail; warns about partial results when some batches fail
 7. **Renderers** (`renderer.py`): Outputs to Rich terminal UI or Markdown file
@@ -509,6 +510,7 @@ Models defined in `codereview/config/models.yaml`:
 | Qwen3.5 397B A17B (NVIDIA) | `qwen/qwen3.5-397b-a17b` | $0.00* | $0.00* | temp=0.6, top_p=0.95, top_k=20, max=16384, thinking=on |
 | Kimi K2.5 (NVIDIA) | `moonshotai/kimi-k2.5` | $0.00* | $0.00* | temp=0.6, top_p=0.95, top_k=40, max=16384 |
 | DeepSeek V3.2 (NVIDIA) | `deepseek-ai/deepseek-v3.2` | $0.00* | $0.00* | temp=0.3, top_p=0.9, max=16384, thinking=on |
+| DeepSeek-V4-Pro (NVIDIA) | `deepseek-ai/deepseek-v4-pro` | $0.00* | $0.00* | temp=1.0, top_p=0.95, max=16384, thinking=off (Non-think) |
 | GLM 4.7 (NVIDIA) | `z-ai/glm4.7` | $0.00* | $0.00* | temp=0.5, top_p=0.95, max=16384, thinking=on |
 | GLM-5 (NVIDIA) | `z-ai/glm5` | $0.00* | $0.00* | temp=1.0, top_p=0.95, max=128000 |
 

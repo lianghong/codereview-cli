@@ -312,6 +312,7 @@ class ConfigLoader:
                 max_output_tokens=params_data.get("max_output_tokens"),
                 enable_thinking=params_data.get("enable_thinking"),
                 clear_thinking=params_data.get("clear_thinking"),
+                thinking=params_data.get("thinking"),
             )
 
         # Create ModelConfig
