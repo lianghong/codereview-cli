@@ -10,7 +10,7 @@
 
 - ✅ **Claude Opus 4.7** - Latest reasoning model with adaptive thinking now supported
 - ✅ **Bug Fixes** - Fixed `--no-color` flag consistency and improved error handling
-- ✅ **Enhanced Stability** - All 316 tests passing, zero security vulnerabilities
+- ✅ **Enhanced Stability** - All 319 tests passing, zero security vulnerabilities
 
 A LangChain-based CLI tool that provides comprehensive, intelligent code reviews for Python, Go, Shell Script, C++, Java, JavaScript, and TypeScript projects using Claude, GPT, Gemini, Devstral, and other leading models through AWS Bedrock, Azure OpenAI, NVIDIA NIM, and Google Generative AI.
 
@@ -621,7 +621,7 @@ codereview-cli/
 │       ├── nvidia.py         # NVIDIA NIM provider implementation
 │       └── google_genai.py   # Google GenAI provider implementation
 ├── tests/
-│   ├── test_*.py             # Unit tests (316 tests)
+│   ├── test_*.py             # Unit tests (319 tests)
 │   └── fixtures/             # Test fixtures
 ├── docs/
 │   ├── usage.md              # Detailed usage guide
@@ -644,7 +644,7 @@ The codebase follows strict quality standards:
 - Pydantic V2 for data validation
 - Rich for terminal UI
 - Click for CLI interface
-- Comprehensive test coverage (316 tests)
+- Comprehensive test coverage (319 tests)
 
 **Static Analysis Tools:**
 ```bash

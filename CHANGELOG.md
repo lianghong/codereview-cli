@@ -5,6 +5,87 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Kimi K2.6 (NVIDIA NIM)** — 1T MoE, 32B active, 262K context, thinking mode
+  - Model ID: `kimi-k2.6-nvidia`, aliases: `kimi-k2.6`, `kimi26`, `kimi-nvidia-26`
+  - Fixed temperature=1.0 and top_p=0.95 required by Moonshot serving backend
+- **Mistral Medium 3.5 128B (NVIDIA NIM)** — dense 128B, 256K context, 77.6% SWE-Bench
+  - Model ID: `mistral-medium-nvidia`, aliases: `mistral-medium`, `mistral-medium-3.5`, `mm35`, `mmed`
+  - Per-request `reasoning_effort` parameter (`none`/`low`/`medium`/`high`)
+  - New `InferenceParams.reasoning_effort` field in the config schema; passed
+    through `NVIDIAProvider` via `ChatNVIDIA.model_kwargs`
+- **GLM-5.1 (NVIDIA NIM)** — 744B/40B active MoE, 131K context, interleaved thinking
+  - Model ID: `glm51`, aliases: `glm-5.1`, `glm51-nvidia`, `glm5.1`
+  - Replaces the GLM-5 endpoint deprecated by NVIDIA on 2026-04-20
+- **Logged Pydantic coercion drift** — `ReviewIssue.normalize_severity` /
+  `normalize_category` now emit a deduplicated warning when an unknown value
+  is coerced to the default, surfacing LLM schema drift instead of silently
+  absorbing it
+- **`_safe_rglob_suffixes()` helper** in `StaticAnalyzer` — single tree walk
+  across multiple extensions (C++ went from 5 rglobs to 1, prettier from 8 to 1)
+
+### Changed
+- **GLM-5 (NVIDIA)** marked deprecated in YAML and docs; NVIDIA deprecated
+  the `z-ai/glm5` endpoint on 2026-04-20. Entry kept until NVIDIA fully
+  removes the endpoint so existing `--model glm5` invocations keep working.
+- **Provider boilerplate consolidated** — `ModelProvider` base class gained
+  `_resolve_temperature()`, `_build_rate_limiter()`, and
+  `_system_prompt_with_format_instructions()` helpers plus concrete-default
+  `get_model_display_name()` / `get_pricing()`. Each of the four providers
+  (Bedrock, Azure OpenAI, NVIDIA, Google GenAI) dropped the duplicate
+  implementations.
+- **Env var expansion** in `ConfigLoader` now warns once per missing variable
+  (deduplicated) with a clearer message pointing at provider-registration
+  impact.
+- **Line counting in CLI** switched to chunked binary newline counting
+  (~2-3× faster than UTF-8 decode-and-iterate) in `cli.py`.
+
+### Fixed
+- **AWS Bedrock error messages** no longer hardcode "Claude Opus 4.6" —
+  access-denied / model-access troubleshooting now names the actual resolved
+  model. Falls back to the raw `--model` argument if resolution itself failed.
+- **Invalid `--exclude` patterns** are now named individually when rejected,
+  so users can identify and fix typos instead of seeing a generic warning.
+- **Azure API key redaction** in `validate_credentials` connection-error path
+  now scrubs 16-char key prefixes in addition to full-key matches.
+- **Rich callback cleanup** — removed `__del__` finalizers in
+  `StreamingCallbackHandler` / `ProgressCallbackHandler`. The CLI already
+  calls `cleanup()` in its `finally` block; the destructors produced noisy
+  tracebacks during interpreter shutdown when Rich internals were already
+  torn down.
+- **`next()` / `StopIteration` pattern** in ESLint file discovery replaced
+  with `next(gen, None)` sentinel form.
+
+### Removed
+- **Dead duplicate severity-count fields** (`critical`, `high`, `medium`,
+  `low`, `info`) from `ReviewMetrics`. They were populated by `cli.py` but
+  never read anywhere in the codebase or tests. Canonical `*_issues` fields
+  are unchanged.
+- **Obsolete release-note files** — `RELEASE_NOTES_v0.3.0.md` (363 lines)
+  and `RELEASE_NOTES_v0.3.1.md` (328 lines). Content is fully covered by
+  this CHANGELOG.
+- **`docs/MIGRATION.md`** (321 lines) — v0.1.x → v0.2.0 migration guide,
+  long obsolete.
+- **Per-release history block** from `README.md` (~112 lines) — replaced
+  with a 3-line pointer to this CHANGELOG as the single source of truth.
+- **Shipped-feature planning docs** in `docs/plans/` (~1,100 lines) — the
+  readme-context feature they designed landed in `codereview/readme_finder.py`
+  long ago.
+
+### Documentation
+- Trimmed overall documentation footprint from ~5,600 to ~4,500 lines
+- Updated `CLAUDE.md` and `README.md` to v0.3.1-current state: correct
+  default model (Opus 4.7), correct test count (319), new model tables
+- Added `.ruff_cache/` to `.gitignore` to match existing cache ignores
+
+### Quality
+- Test suite: **319 passing** (up from 311; +5 for Pydantic-fallback logging,
+  +3 for `reasoning_effort` wiring)
+- `ruff check`, `ruff format --check`, `isort`, `mypy`, `vulture`: clean
+- Zero security regressions
+
 ## [0.3.1] - 2026-04-18
 
 ### Added
