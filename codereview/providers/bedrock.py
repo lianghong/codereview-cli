@@ -7,7 +7,6 @@ from botocore.exceptions import ClientError  # type: ignore[import-untyped]
 from langchain_aws import ChatBedrockConverse
 from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.output_parsers import PydanticOutputParser
-from langchain_core.rate_limiters import InMemoryRateLimiter
 
 # Import system prompt from config
 from codereview.config import SYSTEM_PROMPT
@@ -53,25 +52,14 @@ class BedrockProvider(TokenTrackingMixin, ModelProvider):
         self.provider_config = provider_config
         self.project_context = project_context
 
-        # Determine temperature (override > model default > 0.1 > None for reasoning models)
-        # Some reasoning models (e.g., Opus 4.7) don't support temperature parameter
-        if temperature is not None:
-            if not 0.0 <= temperature <= 2.0:
-                raise ValueError(
-                    f"Temperature must be between 0.0 and 2.0, got {temperature}"
-                )
-            self.temperature = temperature
-        elif (
-            model_config.inference_params
-            and model_config.inference_params.temperature is not None
-        ):
-            self.temperature = model_config.inference_params.temperature
-        elif model_config.inference_params is None:
-            # No inference params at all - use default
-            self.temperature = 0.1
-        else:
-            # Inference params exist but temperature is None - reasoning model
-            self.temperature = None
+        # Determine temperature; allow_none preserves opt-out for reasoning
+        # models (e.g. Opus 4.7) that set inference_params.temperature = None.
+        self.temperature = self._resolve_temperature(
+            override=temperature,
+            model_config=model_config,
+            provider_default=0.1,
+            allow_none=True,
+        )
 
         # Get model-specific inference parameters
         self.top_p = None
@@ -91,11 +79,7 @@ class BedrockProvider(TokenTrackingMixin, ModelProvider):
         self._use_prompt_parsing = False
 
         # Rate limiter for API calls
-        self.rate_limiter = InMemoryRateLimiter(
-            requests_per_second=requests_per_second,
-            check_every_n_seconds=0.1,
-            max_bucket_size=10,
-        )
+        self.rate_limiter = self._build_rate_limiter(requests_per_second)
 
         # Create LangChain model and chain
         self.model = self._create_model()
@@ -202,31 +186,15 @@ class BedrockProvider(TokenTrackingMixin, ModelProvider):
             batch_number, total_batches, files_content, self.project_context
         )
 
-        # Build system prompt (add format instructions for prompt-based parsing)
-        system_prompt = SYSTEM_PROMPT
-        if self._use_prompt_parsing:
-            # Add JSON format instructions for models without tool use
-            format_instructions = self._output_parser.get_format_instructions()
-            system_prompt = f"{SYSTEM_PROMPT}\n\n{format_instructions}"
-
         chain_input = {
-            "system_prompt": system_prompt,
+            "system_prompt": self._system_prompt_with_format_instructions(
+                SYSTEM_PROMPT
+            ),
             "batch_context": batch_context,
         }
 
         retry_config = RetryConfig(max_retries=max_retries, base_wait=1.0)
         return self._execute_with_retry(chain_input, retry_config, batch_context)
-
-    def get_model_display_name(self) -> str:
-        """Get human-readable model name."""
-        return self.model_config.name
-
-    def get_pricing(self) -> dict[str, float]:
-        """Get pricing information for the model."""
-        return {
-            "input_price_per_million": self.model_config.pricing.input_per_million,
-            "output_price_per_million": self.model_config.pricing.output_per_million,
-        }
 
     def validate_credentials(self) -> ValidationResult:
         """Validate AWS credentials and Bedrock access.

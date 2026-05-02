@@ -3,7 +3,6 @@
 from typing import Any
 
 from langchain_core.callbacks import BaseCallbackHandler
-from langchain_core.rate_limiters import InMemoryRateLimiter
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 # Import system prompt from config
@@ -49,20 +48,11 @@ class GoogleGenAIProvider(TokenTrackingMixin, ModelProvider):
         self.provider_config = provider_config
         self.project_context = project_context
 
-        # Determine temperature (override > model default > 0.15)
-        if temperature is not None:
-            if not 0.0 <= temperature <= 2.0:
-                raise ValueError(
-                    f"Temperature must be between 0.0 and 2.0, got {temperature}"
-                )
-            self.temperature = temperature
-        elif (
-            model_config.inference_params
-            and model_config.inference_params.temperature is not None
-        ):
-            self.temperature = model_config.inference_params.temperature
-        else:
-            self.temperature = 0.15
+        self.temperature = self._resolve_temperature(
+            override=temperature,
+            model_config=model_config,
+            provider_default=0.15,
+        )
 
         # Get model-specific inference parameters
         self.top_p: float | None = None
@@ -79,11 +69,7 @@ class GoogleGenAIProvider(TokenTrackingMixin, ModelProvider):
         self._init_token_tracking()
 
         # Rate limiter for API calls
-        self.rate_limiter = InMemoryRateLimiter(
-            requests_per_second=requests_per_second,
-            check_every_n_seconds=0.1,
-            max_bucket_size=10,
-        )
+        self.rate_limiter = self._build_rate_limiter(requests_per_second)
 
         # Create LangChain model and chain
         self.model = self._create_model()
@@ -194,17 +180,6 @@ class GoogleGenAIProvider(TokenTrackingMixin, ModelProvider):
 
         retry_config = RetryConfig(max_retries=max_retries, base_wait=5.0)
         return self._execute_with_retry(chain_input, retry_config, batch_context)
-
-    def get_model_display_name(self) -> str:
-        """Get human-readable model name."""
-        return self.model_config.name
-
-    def get_pricing(self) -> dict[str, float]:
-        """Get pricing information for the model."""
-        return {
-            "input_price_per_million": self.model_config.pricing.input_per_million,
-            "output_price_per_million": self.model_config.pricing.output_per_million,
-        }
 
     def validate_credentials(self) -> ValidationResult:
         """Validate Google API credentials and configuration.

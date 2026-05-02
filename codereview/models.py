@@ -10,6 +10,7 @@ The models include validators to normalize LLM output variations (e.g., mapping
 "error" to "Critical" severity, "architecture" to "System Design" category).
 """
 
+import logging
 from typing import Any, Literal
 
 from pydantic import (  # type: ignore[attr-defined]
@@ -19,6 +20,27 @@ from pydantic import (  # type: ignore[attr-defined]
     field_validator,
     model_validator,
 )
+
+logger = logging.getLogger(__name__)
+
+# Track values we've already warned about so we don't spam the log when the
+# same unknown severity/category shows up on every issue in a batch.
+_warned_unknown_severities: set[str] = set()
+_warned_unknown_categories: set[str] = set()
+
+
+def _warn_once(bucket: set[str], value: str, kind: str, default: str) -> None:
+    if value in bucket:
+        return
+    bucket.add(value)
+    logger.warning(
+        "Unknown %s %r from model output; coerced to %r. "
+        "This may indicate a model prompt/schema drift.",
+        kind,
+        value,
+        default,
+    )
+
 
 # Valid categories for issues
 VALID_CATEGORIES = (
@@ -244,14 +266,19 @@ class ReviewIssue(BaseModel):
         if v is None:
             return "Code Quality"
         if not isinstance(v, str):
+            _warn_once(
+                _warned_unknown_categories,
+                type(v).__name__,
+                "category type",
+                "Code Quality",
+            )
             return "Code Quality"
         if v in VALID_CATEGORIES:
             return v
-        # Try case-insensitive lookup
         normalized = CATEGORY_MAPPING.get(v.lower().strip())
         if normalized:
             return normalized
-        # Default fallback for unknown categories
+        _warn_once(_warned_unknown_categories, v, "category", "Code Quality")
         return "Code Quality"
 
     severity: Literal["Critical", "High", "Medium", "Low", "Info"] = Field(
@@ -266,14 +293,19 @@ class ReviewIssue(BaseModel):
         if v is None:
             return "Medium"  # Default for missing severity
         if not isinstance(v, str):
+            _warn_once(
+                _warned_unknown_severities,
+                type(v).__name__,
+                "severity type",
+                "Medium",
+            )
             return "Medium"
         if v in VALID_SEVERITIES:
             return v
-        # Try case-insensitive lookup
         normalized = SEVERITY_MAPPING.get(v.lower().strip())
         if normalized:
             return normalized
-        # Default fallback for unknown severities
+        _warn_once(_warned_unknown_severities, v, "severity", "Medium")
         return "Medium"
 
     file_path: str = Field(default="unknown", description="Relative path to file")

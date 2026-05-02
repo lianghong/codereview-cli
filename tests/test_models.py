@@ -1,8 +1,21 @@
 # tests/test_models.py
+import logging
+
 import pytest
 from pydantic import ValidationError
 
+from codereview import models
 from codereview.models import CodeReviewReport, ReviewIssue, ReviewMetrics
+
+
+@pytest.fixture(autouse=True)
+def _reset_warn_dedupe():
+    """Clear the warn-once caches so each test sees a fresh log state."""
+    models._warned_unknown_severities.clear()
+    models._warned_unknown_categories.clear()
+    yield
+    models._warned_unknown_severities.clear()
+    models._warned_unknown_categories.clear()
 
 
 def test_review_issue_creation():
@@ -162,3 +175,51 @@ def test_line_end_before_line_start():
             description="Test",
             rationale="Test",
         )
+
+
+def test_unknown_severity_logs_warning(caplog):
+    """Unknown severity must coerce to Medium AND emit a warning."""
+    with caplog.at_level(logging.WARNING, logger="codereview.models"):
+        issue = ReviewIssue(severity="SuperCritical")
+    assert issue.severity == "Medium"
+    assert any(
+        "SuperCritical" in rec.message and "severity" in rec.message
+        for rec in caplog.records
+    )
+
+
+def test_unknown_category_logs_warning(caplog):
+    """Unknown category must coerce to Code Quality AND emit a warning."""
+    with caplog.at_level(logging.WARNING, logger="codereview.models"):
+        issue = ReviewIssue(category="QuantumEntanglement")
+    assert issue.category == "Code Quality"
+    assert any(
+        "QuantumEntanglement" in rec.message and "category" in rec.message
+        for rec in caplog.records
+    )
+
+
+def test_known_severity_mapping_does_not_log(caplog):
+    """Mapped variations (e.g. 'major' -> 'High') must NOT emit a warning."""
+    with caplog.at_level(logging.WARNING, logger="codereview.models"):
+        issue = ReviewIssue(severity="major")
+    assert issue.severity == "High"
+    assert not caplog.records
+
+
+def test_valid_severity_does_not_log(caplog):
+    """Already-valid values must NOT emit a warning."""
+    with caplog.at_level(logging.WARNING, logger="codereview.models"):
+        issue = ReviewIssue(severity="Critical", category="Security")
+    assert issue.severity == "Critical"
+    assert issue.category == "Security"
+    assert not caplog.records
+
+
+def test_unknown_severity_warning_is_deduped(caplog):
+    """Same unknown value must only warn once even across many issues."""
+    with caplog.at_level(logging.WARNING, logger="codereview.models"):
+        for _ in range(5):
+            ReviewIssue(severity="BogusLevel")
+    matching = [r for r in caplog.records if "BogusLevel" in r.message]
+    assert len(matching) == 1

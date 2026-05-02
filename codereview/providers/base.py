@@ -7,6 +7,7 @@ from typing import Any
 
 from langchain_core.exceptions import ContextOverflowError
 from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.rate_limiters import InMemoryRateLimiter
 from pydantic import ValidationError
 
 from codereview.models import CodeReviewReport
@@ -98,23 +99,40 @@ class ModelProvider(ABC):
         """
         ...
 
-    @abstractmethod
     def get_model_display_name(self) -> str:
         """Get human-readable model name.
+
+        Default reads ``self.model_config.name``. Providers without a
+        ``model_config`` attribute must override.
 
         Returns:
             Display name like "Claude Opus 4.6" or "GPT-5.3 Codex"
         """
-        ...
+        model_config = getattr(self, "model_config", None)
+        if model_config is None:
+            raise NotImplementedError(
+                "Provider has no model_config; override get_model_display_name()"
+            )
+        return str(model_config.name)
 
-    @abstractmethod
     def get_pricing(self) -> dict[str, float]:
         """Get pricing information for the model.
+
+        Default reads ``self.model_config.pricing``. Providers without a
+        ``model_config`` attribute must override.
 
         Returns:
             Dictionary with keys: input_price_per_million, output_price_per_million
         """
-        ...
+        model_config = getattr(self, "model_config", None)
+        if model_config is None:
+            raise NotImplementedError(
+                "Provider has no model_config; override get_pricing()"
+            )
+        return {
+            "input_price_per_million": model_config.pricing.input_per_million,
+            "output_price_per_million": model_config.pricing.output_per_million,
+        }
 
     def reset_state(self) -> None:
         """Reset token counters and state for fresh run.
@@ -227,6 +245,70 @@ class ModelProvider(ABC):
             Estimated token count
         """
         return len(text) // 4
+
+    @staticmethod
+    def _resolve_temperature(
+        override: float | None,
+        model_config: Any,
+        provider_default: float,
+        allow_none: bool = False,
+    ) -> float | None:
+        """Resolve the effective temperature for a provider.
+
+        Precedence: explicit ``override`` > ``model_config.inference_params.temperature``
+        > ``provider_default``. When ``allow_none`` is True, a model that
+        explicitly sets ``temperature=None`` (reasoning models like Claude
+        Opus 4.7) stays None.
+
+        Args:
+            override: Caller-supplied temperature (usually from CLI), or None
+            model_config: ModelConfig with optional ``inference_params``
+            provider_default: Fallback when no other value is set
+            allow_none: If True, preserves an explicit None from inference_params
+
+        Returns:
+            Effective temperature, or None for reasoning models when allow_none
+
+        Raises:
+            ValueError: If override is outside [0.0, 2.0]
+        """
+        if override is not None:
+            if not 0.0 <= override <= 2.0:
+                raise ValueError(
+                    f"Temperature must be between 0.0 and 2.0, got {override}"
+                )
+            return override
+
+        params = getattr(model_config, "inference_params", None)
+        if params is not None:
+            if params.temperature is not None:
+                return float(params.temperature)
+            if allow_none:
+                # Reasoning models explicitly opt out of temperature
+                return None
+        return provider_default
+
+    @staticmethod
+    def _build_rate_limiter(requests_per_second: float) -> InMemoryRateLimiter:
+        """Construct the shared InMemoryRateLimiter used by every provider."""
+        return InMemoryRateLimiter(
+            requests_per_second=requests_per_second,
+            check_every_n_seconds=0.1,
+            max_bucket_size=10,
+        )
+
+    def _system_prompt_with_format_instructions(self, system_prompt: str) -> str:
+        """Append Pydantic format instructions when using prompt-based parsing.
+
+        Models without tool-use support (e.g. DeepSeek-R1) need the JSON schema
+        embedded in the system prompt. Providers that never set
+        ``_use_prompt_parsing`` get the prompt back unchanged.
+        """
+        if getattr(self, "_use_prompt_parsing", False):
+            parser = getattr(self, "_output_parser", None)
+            if parser is not None:
+                return f"{system_prompt}\n\n{parser.get_format_instructions()}"
+        return system_prompt
 
     def validate_credentials(self) -> ValidationResult:
         """Validate credentials and configuration before making API calls.
