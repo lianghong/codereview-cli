@@ -963,6 +963,38 @@ providers:
           1T multimodal MoE for video and
           image understanding, efficient
 
+      # Kimi K2.6 (via NVIDIA)
+      # MoE: 1T total, 32B active, 384 experts
+      # Best for: Long-horizon agentic coding, reasoning with thinking
+      - id: kimi-k2.6-nvidia
+        full_id: moonshotai/kimi-k2.6
+        name: Kimi K2.6 (NVIDIA)
+        aliases:
+          - kimi-k2.6
+          - kimi26
+          - kimi-nvidia-26
+        pricing:
+          input_per_million: 0.00
+          output_per_million: 0.00
+        inference_params:
+          # Moonshot fixes temperature=1.0 and top_p=0.95 for K2.6/K2.5;
+          # deviating causes a server-side error.
+          default_temperature: 1.0
+          default_top_p: 0.95
+          max_output_tokens: 16384
+          thinking: true
+        context_window: 262144
+        architecture: "MoE (1T total, 32B active, 384 experts)"
+        capabilities:
+          - reasoning
+          - code_review
+          - tool_use
+          - thinking
+        notes: >-
+          Long-horizon agentic model with interleaved
+          thinking. Fixed temperature=1.0, top_p=0.95
+          required by Moonshot serving backend.
+
       # GLM4.7 (via NVIDIA) - Zhipu AI
       # 73.8% SWE-bench, interleaved thinking
       # Best for: Complex reasoning with thinking
