@@ -150,12 +150,6 @@ class ReviewMetrics(BaseModel):
 
     All fields are optional to allow flexibility in what metrics the LLM reports.
     Uses model_config to set additionalProperties=false for Responses API compatibility.
-
-    Note: Severity counts have two field names for backward compatibility:
-    - ``critical_issues``, ``high_issues``, etc. - preferred for new code (LLM output)
-    - ``critical``, ``high``, etc. - legacy aliases used by CLI aggregation
-
-    Both refer to the same counts; prefer the ``*_issues`` variants in new code.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -187,13 +181,6 @@ class ReviewMetrics(BaseModel):
     info_issues: int | None = Field(
         default=None, description="Number of info level issues"
     )
-
-    # Legacy severity count fields (for backward compatibility with CLI aggregation)
-    critical: int | None = Field(default=None, description="Alias for critical_issues")
-    high: int | None = Field(default=None, description="Alias for high_issues")
-    medium: int | None = Field(default=None, description="Alias for medium_issues")
-    low: int | None = Field(default=None, description="Alias for low_issues")
-    info: int | None = Field(default=None, description="Alias for info_issues")
 
     # Issue category counts
     security_issues: int | None = Field(

@@ -350,8 +350,14 @@ class AzureOpenAIProvider(TokenTrackingMixin, ModelProvider):
                 result.add_warning("Could not test connection (httpx not installed)")
             except Exception as e:
                 error_msg = str(e)
-                if api_key and api_key in error_msg:
+                # Redact the API key aggressively: full-string match is
+                # insufficient because intermediate layers may log only a
+                # prefix or URL-encode special chars. We scrub both the full
+                # key and any 16-char prefix if the key is long enough.
+                if api_key:
                     error_msg = error_msg.replace(api_key, "***")
+                    if len(api_key) >= 16:
+                        error_msg = error_msg.replace(api_key[:16], "***")
                 result.add_warning(f"Connection test failed: {error_msg}")
                 result.add_suggestion("Verify endpoint URL and network connectivity")
 

@@ -373,6 +373,29 @@ class StaticAnalyzer:
             logging.warning("Error scanning for %s files: %s", pattern, e)
             return []
 
+    def _safe_rglob_suffixes(self, suffixes: set[str]) -> list[Path]:
+        """Single-pass recursive glob filtered by file suffix set.
+
+        Equivalent to calling _safe_rglob once per suffix, but walks the
+        tree a single time — useful when a tool accepts many extensions
+        (e.g. prettier covers 8 suffixes, C++ covers 5).
+
+        Args:
+            suffixes: Set of extensions including the dot (e.g. {".js", ".tsx"}).
+
+        Returns:
+            List of matching file paths, or empty list if scanning fails.
+        """
+        try:
+            return [
+                p
+                for p in self.directory.rglob("*")
+                if p.is_file() and p.suffix in suffixes
+            ]
+        except OSError as e:
+            logging.warning("Error scanning tree for %s: %s", sorted(suffixes), e)
+            return []
+
     def _check_available_tools(self) -> list[str]:
         """Check which static analysis tools are installed and available.
 
@@ -520,14 +543,8 @@ class StaticAnalyzer:
             command = base_command + [str(f) for f in shell_files]
             cwd = self.directory
         elif tool_name in ("clang-tidy", "clang-format"):
-            # C++ tools that need explicit file list
-            cpp_files = (
-                self._safe_rglob("*.cpp")
-                + self._safe_rglob("*.cc")
-                + self._safe_rglob("*.cxx")
-                + self._safe_rglob("*.h")
-                + self._safe_rglob("*.hpp")
-            )
+            # C++ tools that need explicit file list (single tree walk)
+            cpp_files = self._safe_rglob_suffixes({".cpp", ".cc", ".cxx", ".h", ".hpp"})
             # Validate files are within analysis directory (security measure)
             cpp_files = self._filter_safe_files(cpp_files)
             if not cpp_files:
@@ -576,16 +593,17 @@ class StaticAnalyzer:
             command = base_command + [str(f) for f in java_files]
             cwd = self.directory
         elif tool_name == "eslint":
-            # ESLint accepts directory, looks for JS/TS files
-            # Use next() on generator to stop at first match instead of collecting all files
+            # ESLint accepts directory, looks for JS/TS files.
+            # Use next(gen, None) sentinel to avoid catching StopIteration.
             has_js_files = False
             for ext in ("*.js", "*.jsx", "*.ts", "*.tsx"):
                 try:
-                    next(self.directory.rglob(ext))
-                    has_js_files = True
-                    break
-                # PEP 758 syntax (Python 3.14+): unparenthesized multi-exception catch
-                except StopIteration, OSError:
+                    if next(self.directory.rglob(ext), None) is not None:
+                        has_js_files = True
+                        break
+                except OSError as e:
+                    # rglob may raise lazily during iteration (permissions, etc.)
+                    logging.debug("OSError scanning for %s: %s", ext, e)
                     continue
             if not has_js_files:
                 return StaticAnalysisResult(
@@ -598,16 +616,9 @@ class StaticAnalyzer:
             command = base_command + [dir_path]
             cwd = self.directory
         elif tool_name == "prettier":
-            # Prettier needs files to format - check for JS/TS/CSS/HTML files
-            prettier_files = (
-                self._safe_rglob("*.js")
-                + self._safe_rglob("*.jsx")
-                + self._safe_rglob("*.ts")
-                + self._safe_rglob("*.tsx")
-                + self._safe_rglob("*.css")
-                + self._safe_rglob("*.html")
-                + self._safe_rglob("*.json")
-                + self._safe_rglob("*.md")
+            # Prettier needs files to format (single tree walk across 8 suffixes)
+            prettier_files = self._safe_rglob_suffixes(
+                {".js", ".jsx", ".ts", ".tsx", ".css", ".html", ".json", ".md"}
             )
             # Validate files are within analysis directory (security measure)
             prettier_files = self._filter_safe_files(prettier_files)

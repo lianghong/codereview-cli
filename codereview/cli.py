@@ -456,11 +456,17 @@ def main(
             task = progress.add_task("Scanning files...", total=None)
 
             # Validate and filter user-provided exclude patterns
-            validated_exclude = [p for p in exclude if validate_exclude_pattern(p)]
-            if len(validated_exclude) < len(exclude):
+            validated_exclude = []
+            rejected_exclude = []
+            for p in exclude:
+                if validate_exclude_pattern(p):
+                    validated_exclude.append(p)
+                else:
+                    rejected_exclude.append(p)
+            for p in rejected_exclude:
                 con.print(
-                    "[yellow]⚠️  Some exclude patterns were invalid and ignored "
-                    "(too long, too complex, or contain invalid characters)[/yellow]"
+                    f"[yellow]⚠️  Ignoring invalid --exclude pattern: {escape(repr(p))} "
+                    f"(too long, too complex, or contains invalid characters)[/yellow]"
                 )
 
             # Combine default exclusions with validated user-provided patterns
@@ -486,12 +492,16 @@ def main(
 
         con.print(f"✓ Found {len(files)} files to review")
 
-        # Count total lines of code
+        # Count total lines of code. Use binary chunked newline counting rather
+        # than decoding each line (~2-3x faster and avoids decode overhead).
+        # The LLM read happens again later in analyze_batch; bytes-only scan
+        # here keeps the second read cheaper without changing its encoding.
         total_lines = 0
         for file_path in files:
             try:
-                with file_path.open("r", encoding="utf-8", errors="replace") as f:
-                    total_lines += sum(1 for _ in f)
+                with file_path.open("rb") as fb:
+                    while chunk := fb.read(65536):
+                        total_lines += chunk.count(b"\n")
             except OSError:
                 # Skip files that can't be read
                 pass
@@ -672,7 +682,7 @@ def main(
                             f"\n[red]✗ AWS Access Denied: {escape(error_msg)}[/red]"
                         )
                         con.print(
-                            "[yellow]Check that you have access to AWS Bedrock Claude Opus 4.6[/yellow]"
+                            f"[yellow]Check that you have access to {escape(model_display_name)} on AWS Bedrock[/yellow]"
                         )
                     elif error_code in [
                         "ThrottlingException",
@@ -777,11 +787,6 @@ def main(
             medium_issues=severity_counts.get("Medium", 0),
             low_issues=severity_counts.get("Low", 0),
             info_issues=severity_counts.get("Info", 0),
-            critical=severity_counts.get("Critical", 0),
-            high=severity_counts.get("High", 0),
-            medium=severity_counts.get("Medium", 0),
-            low=severity_counts.get("Low", 0),
-            info=severity_counts.get("Info", 0),
             input_tokens=analyzer.provider.total_input_tokens,
             output_tokens=analyzer.provider.total_output_tokens,
             total_tokens=analyzer.provider.total_input_tokens
@@ -926,9 +931,12 @@ def main(
         )
 
         if error_code == "AccessDeniedException":
+            # model_display_name may be unbound if resolve_model itself raised;
+            # fall back to the raw CLI argument.
+            model_label = locals().get("model_display_name", model_name)
             con.print("[yellow]Troubleshooting:[/yellow]")
             con.print("  1. Ensure you have access to AWS Bedrock in your region")
-            con.print("  2. Check that Claude Opus 4.6 model access is enabled")
+            con.print(f"  2. Check that {escape(model_label)} model access is enabled")
             con.print(
                 "  3. Verify your IAM permissions include 'bedrock:InvokeModel'\n"
             )

@@ -31,6 +31,10 @@ from codereview.config.models import (
     ScanningConfig,
 )
 
+# Track missing env vars so we warn once per variable rather than per
+# occurrence (a single models.yaml load can reference the same var many times).
+_warned_missing_env_vars: set[str] = set()
+
 
 class ConfigLoader:
     """Loads and manages model configuration from YAML."""
@@ -94,7 +98,14 @@ class ConfigLoader:
             var_name = match.group(1)
             value = os.environ.get(var_name, "")
             if not value:
-                logging.warning("Environment variable not set: %s", var_name)
+                if var_name not in _warned_missing_env_vars:
+                    _warned_missing_env_vars.add(var_name)
+                    logging.warning(
+                        "Environment variable %s is not set; providers that "
+                        "require it will fail credential validation or be "
+                        "skipped during provider registration.",
+                        var_name,
+                    )
                 return ""
             return value
 
