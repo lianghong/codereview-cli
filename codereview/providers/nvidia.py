@@ -175,6 +175,15 @@ class NVIDIAProvider(TokenTrackingMixin, ModelProvider):
             if chat_template_kwargs:
                 model_params["chat_template_kwargs"] = chat_template_kwargs
 
+            # reasoning_effort is a top-level payload key (Mistral Medium 3.5).
+            # ChatNVIDIA merges model_kwargs into the request payload.
+            if self.model_config.inference_params.reasoning_effort is not None:
+                model_params["model_kwargs"] = {
+                    "reasoning_effort": (
+                        self.model_config.inference_params.reasoning_effort
+                    ),
+                }
+
         # Suppress warnings about unknown model types and parameters from langchain-nvidia
         with suppress_nvidia_warnings():
             base_model = ChatNVIDIA(**model_params)

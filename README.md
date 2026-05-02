@@ -308,6 +308,7 @@ codereview /path/to/code -m devstral
 | Grok 4 Fast (Azure) | Azure OpenAI | 128K context (Azure), cost-efficient reasoning | $0.20 | $0.50 |
 | Devstral 2 | NVIDIA NIM | Code-specialized, free tier | Free* | Free* |
 | Mistral Small 4 | NVIDIA NIM | 256K context, MoE architecture | Free* | Free* |
+| Mistral Medium 3.5 | NVIDIA NIM | 128B dense, 256K context, reasoning_effort, 77.6% SWE-Bench | Free* | Free* |
 | MiniMax M2.7 | NVIDIA NIM | 204K context, 128K output, thinking mode, agent-native | Free* | Free* |
 | MiniMax M2.5 | NVIDIA NIM | 192K context, 128K output, thinking mode, SOTA coding | Free* | Free* |
 | MiniMax M2.1 | NVIDIA NIM | 200K context, 128K output, thinking mode | Free* | Free* |

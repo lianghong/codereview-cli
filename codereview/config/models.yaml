@@ -638,6 +638,41 @@ providers:
           128 experts with 4 active per token,
           prompt-based JSON on NVIDIA NIM
 
+      # Mistral Medium 3.5 128B (Mistral AI)
+      # Dense: 128B, 256K context, multimodal (text+image)
+      # First Mistral "merged" model — unified instruct + reasoning
+      # Best for: Agentic coding, SWE-bench 77.6%, reasoning
+      - id: mistral-medium-nvidia
+        full_id: mistralai/mistral-medium-3.5-128b
+        name: Mistral Medium 3.5 128B
+        aliases:
+          - mistral-medium
+          - mistral-medium-3.5
+          - mm35
+          - mmed
+        pricing:
+          input_per_million: 0.00
+          output_per_million: 0.00
+        inference_params:
+          # Mistral recommends temp=0.7 with reasoning_effort=high
+          # for complex/agentic code tasks.
+          default_temperature: 0.7
+          default_top_p: 1.0
+          max_output_tokens: 16384
+          reasoning_effort: high
+        context_window: 262144
+        architecture: "Dense (128B, multimodal)"
+        capabilities:
+          - code_review
+          - code_generation
+          - reasoning
+          - multimodal
+          - tool_use
+        notes: >-
+          Mistral's flagship merged model. 77.6% on
+          SWE-Bench Verified. Per-request reasoning_effort
+          toggles instant vs deep reasoning.
+
       # MiniMax M2 (via NVIDIA)
       # Best for: Quick code analysis
       - id: minimax-nvidia

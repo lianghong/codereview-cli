@@ -13,7 +13,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-LangChain-based CLI tool for AI-powered code reviews via AWS Bedrock, Azure OpenAI, NVIDIA NIM, and Google Generative AI. Supports multiple models including **Claude Opus 4.7** (reasoning model), Claude (Opus 4.6, Sonnet, Haiku), GPT-5.4 Pro, GPT-5.3 Codex, Grok 4 Fast Reasoning, Gemini 3.1 Pro, Gemini 3 (Pro, Flash), Devstral 2, MiniMax M2, MiniMax M2.1, MiniMax M2.5, MiniMax M2.7, Kimi K2.5, Kimi K2.6, Qwen3 Coder, Qwen3 Coder Next, Qwen3.5, DeepSeek-R1, DeepSeek V3.2, DeepSeek-V4-Pro, GLM 4.7, GLM 4.7 Flash, and GLM-5. Reviews **Python, Go, Shell Script, C++, Java, JavaScript, and TypeScript** codebases with structured output (categories, severity levels, line numbers, suggested fixes).
+LangChain-based CLI tool for AI-powered code reviews via AWS Bedrock, Azure OpenAI, NVIDIA NIM, and Google Generative AI. Supports multiple models including **Claude Opus 4.7** (reasoning model), Claude (Opus 4.6, Sonnet, Haiku), GPT-5.4 Pro, GPT-5.3 Codex, Grok 4 Fast Reasoning, Gemini 3.1 Pro, Gemini 3 (Pro, Flash), Devstral 2, Mistral Medium 3.5, MiniMax M2, MiniMax M2.1, MiniMax M2.5, MiniMax M2.7, Kimi K2.5, Kimi K2.6, Qwen3 Coder, Qwen3 Coder Next, Qwen3.5, DeepSeek-R1, DeepSeek V3.2, DeepSeek-V4-Pro, GLM 4.7, GLM 4.7 Flash, and GLM-5. Reviews **Python, Go, Shell Script, C++, Java, JavaScript, and TypeScript** codebases with structured output (categories, severity levels, line numbers, suggested fixes).
 
 **Tech Stack:** Python 3.14, LangChain, AWS Bedrock, Azure OpenAI, NVIDIA NIM, Google Generative AI, Pydantic V2, Click, Rich
 
@@ -164,6 +164,7 @@ Use primary model IDs (case-insensitive). Run `codereview --list-models` to see 
 | `grok-4-fast` | Grok 4 Fast Reasoning (Azure) | azure_openai | grok, grok4, grok-fast, g4fast |
 | `devstral` | Devstral 2 123B | nvidia | devstral-2 |
 | `mistral-small-nvidia` | Mistral Small 4 119B | nvidia | mistral-small, mistral-small-4, ms4 |
+| `mistral-medium-nvidia` | Mistral Medium 3.5 128B | nvidia | mistral-medium, mistral-medium-3.5, mm35, mmed |
 | `minimax-nvidia` | MiniMax M2 (NVIDIA) | nvidia | mm2-nvidia |
 | `minimax-m2.1-nvidia` | MiniMax M2.1 (NVIDIA) | nvidia | mm2.1-nvidia, minimax-m2.1, mm21 |
 | `minimax-m2.5-nvidia` | MiniMax M2.5 (NVIDIA) | nvidia | mm2.5-nvidia, minimax-m2.5, mm25 |
@@ -503,6 +504,7 @@ Models defined in `codereview/config/models.yaml`:
 |-------|----------|-----------|------------|----------|
 | Devstral 2 123B | `mistralai/devstral-2-123b-instruct-2512` | $0.00* | $0.00* | temp=0.15, top_p=0.95, max=8192 |
 | Mistral Small 4 119B | `mistralai/mistral-small-4-119b-2603` | $0.00* | $0.00* | temp=0.15, top_p=0.95, max=16384 |
+| Mistral Medium 3.5 128B | `mistralai/mistral-medium-3.5-128b` | $0.00* | $0.00* | temp=0.7, top_p=1.0, max=16384, reasoning_effort=high |
 | MiniMax M2 (NVIDIA) | `minimaxai/minimax-m2` | $0.00* | $0.00* | temp=0.3, top_p=0.9, max=8192 |
 | MiniMax M2.1 (NVIDIA) | `minimaxai/minimax-m2.1` | $0.00* | $0.00* | temp=1.0, top_p=0.95, top_k=40, max=128000, thinking=on |
 | MiniMax M2.5 (NVIDIA) | `minimaxai/minimax-m2.5` | $0.00* | $0.00* | temp=1.0, top_p=0.95, top_k=40, max=128000, thinking=on |

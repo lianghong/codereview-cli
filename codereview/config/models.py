@@ -1,5 +1,7 @@
 """Pydantic data models for configuration validation."""
 
+from typing import Literal
+
 from pydantic import BaseModel, Field, HttpUrl
 
 
@@ -32,6 +34,7 @@ class InferenceParams(BaseModel):
         enable_thinking: Enable thinking/reasoning mode (model-specific).
         clear_thinking: Clear thinking content between turns (False preserves reasoning).
         thinking: Thinking mode selector (e.g. DeepSeek-V4-Pro: False/'high'/'max').
+        reasoning_effort: Per-request reasoning budget (Mistral Medium 3.5 and similar).
     """
 
     model_config = {"frozen": True}
@@ -59,6 +62,14 @@ class InferenceParams(BaseModel):
             "Thinking mode selector passed as chat_template_kwargs['thinking']. "
             "Used by DeepSeek-V4-Pro (False=Non-think, 'high'=Think High, "
             "'max'=Think Max)."
+        ),
+    )
+    reasoning_effort: Literal["none", "low", "medium", "high"] | None = Field(
+        None,
+        description=(
+            "Reasoning effort budget sent with each request. Used by models "
+            "like Mistral Medium 3.5 that accept 'none'/'high' to toggle "
+            "between instant reply and deep reasoning."
         ),
     )
 

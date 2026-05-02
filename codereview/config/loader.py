@@ -313,6 +313,7 @@ class ConfigLoader:
                 enable_thinking=params_data.get("enable_thinking"),
                 clear_thinking=params_data.get("clear_thinking"),
                 thinking=params_data.get("thinking"),
+                reasoning_effort=params_data.get("reasoning_effort"),
             )
 
         # Create ModelConfig

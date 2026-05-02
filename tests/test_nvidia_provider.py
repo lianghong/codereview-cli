@@ -603,3 +603,41 @@ def test_validate_credentials_connection_error(model_config, provider_config):
         # Should still be valid but with warning
         assert result.valid is True
         assert any("Connection test failed" in w for w in result.warnings)
+
+
+def test_reasoning_effort_passed_as_model_kwargs(provider_config):
+    """reasoning_effort from config must reach ChatNVIDIA via model_kwargs."""
+    config = ModelConfig(
+        id="test-mistral-medium",
+        name="Test Mistral Medium",
+        full_id="mistralai/mistral-medium-3.5-128b",
+        pricing=PricingConfig(input_per_million=0.0, output_per_million=0.0),
+        inference_params=InferenceParams(
+            temperature=0.7,
+            top_p=1.0,
+            max_output_tokens=16384,
+            reasoning_effort="high",
+        ),
+    )
+    with patch("codereview.providers.nvidia.ChatNVIDIA") as mock_chat:
+        NVIDIAProvider(config, provider_config)
+
+    kwargs = mock_chat.call_args.kwargs
+    assert kwargs["model_kwargs"] == {"reasoning_effort": "high"}
+
+
+def test_reasoning_effort_omitted_when_unset(model_config, provider_config):
+    """Models without reasoning_effort must not pass an empty model_kwargs."""
+    with patch("codereview.providers.nvidia.ChatNVIDIA") as mock_chat:
+        NVIDIAProvider(model_config, provider_config)
+
+    kwargs = mock_chat.call_args.kwargs
+    assert "model_kwargs" not in kwargs
+
+
+def test_reasoning_effort_invalid_value_rejected():
+    """Pydantic must reject unknown reasoning_effort values at config load."""
+    import pydantic
+
+    with pytest.raises(pydantic.ValidationError):
+        InferenceParams(reasoning_effort="ultra")  # type: ignore[arg-type]
