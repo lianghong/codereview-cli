@@ -316,6 +316,7 @@ codereview /path/to/code -m devstral
 | Qwen3 Coder (NIM) | NVIDIA NIM | Ultra-large coding, thinking mode | Free* | Free* |
 | Qwen3.5 397B | NVIDIA NIM | Next-gen Qwen, thinking mode, 262K context | Free* | Free* |
 | GLM 4.7 | NVIDIA NIM | 73.8% SWE-bench, thinking mode | Free* | Free* |
+| GLM-5.1 | NVIDIA NIM | 744B MoE, 131K context, agentic coding, thinking | Free* | Free* |
 | Kimi K2.5 | NVIDIA NIM | 256K context, instant/thinking modes | Free* | Free* |
 | Kimi K2.6 | NVIDIA NIM | 262K context, 1T MoE, agentic thinking | Free* | Free* |
 | Gemini 3.1 Pro | Google GenAI | Most advanced reasoning, 1M context | $2.00 | $12.00 |

@@ -1062,6 +1062,9 @@ providers:
           for complex code analysis
 
       # GLM-5 (via NVIDIA) - Zhipu AI next-gen
+      # DEPRECATED 2026-04-20 by NVIDIA — endpoint returns a deprecation
+      # notice pointing users to z-ai/glm-5.1. Entry kept so existing
+      # --model glm5 invocations don't break until NVIDIA removes it.
       # 200K context window, 128K max output
       # Best for: Complex reasoning, general AI
       - id: glm5
@@ -1086,8 +1089,44 @@ providers:
           - code_generation
           - general_intelligence
         notes: >-
-          Next-gen GLM, 200K context, 128K
-          output.
+          DEPRECATED 2026-04-20: migrate to glm51.
+          Next-gen GLM, 200K context, 128K output.
+
+      # GLM-5.1 (via NVIDIA) - Zhipu AI flagship
+      # Post-training update of GLM-5 for agentic coding
+      # 744B total / 40B active MoE (same arch as GLM-5)
+      # 131K context window, interleaved thinking
+      # Best for: Agentic workflows, long-horizon code tasks
+      - id: glm51
+        full_id: z-ai/glm-5.1
+        name: GLM-5.1 (NVIDIA)
+        aliases:
+          - glm-5.1
+          - glm51-nvidia
+          - glm5.1
+        pricing:
+          input_per_million: 0.00
+          output_per_million: 0.00
+        inference_params:
+          # Sample code uses 1.0/1.0; lowered here to 0.5 for
+          # deterministic code review (same rationale as GLM-5).
+          default_temperature: 0.5
+          default_top_p: 0.95
+          max_output_tokens: 16384
+          enable_thinking: true
+          clear_thinking: false
+        context_window: 131072
+        architecture: "MoE (744B total, 40B active)"
+        capabilities:
+          - reasoning
+          - code_review
+          - code_generation
+          - tool_use
+          - thinking
+        notes: >-
+          Agentic flagship, 131K context, interleaved
+          thinking preserved across turns. Replaces
+          deprecated GLM-5 endpoint.
 
       # Step-3.5-Flash (via NVIDIA) - StepFun
       # 256K context, optimized for fast inference

@@ -13,7 +13,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-LangChain-based CLI tool for AI-powered code reviews via AWS Bedrock, Azure OpenAI, NVIDIA NIM, and Google Generative AI. Supports multiple models including **Claude Opus 4.7** (reasoning model), Claude (Opus 4.6, Sonnet, Haiku), GPT-5.4 Pro, GPT-5.3 Codex, Grok 4 Fast Reasoning, Gemini 3.1 Pro, Gemini 3 (Pro, Flash), Devstral 2, Mistral Medium 3.5, MiniMax M2, MiniMax M2.1, MiniMax M2.5, MiniMax M2.7, Kimi K2.5, Kimi K2.6, Qwen3 Coder, Qwen3 Coder Next, Qwen3.5, DeepSeek-R1, DeepSeek V3.2, DeepSeek-V4-Pro, GLM 4.7, GLM 4.7 Flash, and GLM-5. Reviews **Python, Go, Shell Script, C++, Java, JavaScript, and TypeScript** codebases with structured output (categories, severity levels, line numbers, suggested fixes).
+LangChain-based CLI tool for AI-powered code reviews via AWS Bedrock, Azure OpenAI, NVIDIA NIM, and Google Generative AI. Supports multiple models including **Claude Opus 4.7** (reasoning model), Claude (Opus 4.6, Sonnet, Haiku), GPT-5.4 Pro, GPT-5.3 Codex, Grok 4 Fast Reasoning, Gemini 3.1 Pro, Gemini 3 (Pro, Flash), Devstral 2, Mistral Medium 3.5, MiniMax M2, MiniMax M2.1, MiniMax M2.5, MiniMax M2.7, Kimi K2.5, Kimi K2.6, Qwen3 Coder, Qwen3 Coder Next, Qwen3.5, DeepSeek-R1, DeepSeek V3.2, DeepSeek-V4-Pro, GLM 4.7, GLM 4.7 Flash, GLM-5, and GLM-5.1. Reviews **Python, Go, Shell Script, C++, Java, JavaScript, and TypeScript** codebases with structured output (categories, severity levels, line numbers, suggested fixes).
 
 **Tech Stack:** Python 3.14, LangChain, AWS Bedrock, Azure OpenAI, NVIDIA NIM, Google Generative AI, Pydantic V2, Click, Rich
 
@@ -186,7 +186,8 @@ Use primary model IDs (case-insensitive). Run `codereview --list-models` to see 
 | `deepseek-v3.2-nvidia` | DeepSeek V3.2 (NVIDIA) | nvidia | deepseek-v3-nvidia, ds-nvidia, deepseek-nvidia |
 | `deepseek-v4-pro-nvidia` | DeepSeek-V4-Pro (NVIDIA) | nvidia | deepseek-v4, deepseek-v4-pro, ds-v4-nvidia, dsv4 |
 | `glm47` | GLM 4.7 (NVIDIA) | nvidia | glm4, glm-nvidia |
-| `glm5` | GLM-5 (NVIDIA) | nvidia | glm-5, glm5-nvidia |
+| `glm5` | GLM-5 (NVIDIA) — deprecated 2026-04-20 | nvidia | glm-5, glm5-nvidia |
+| `glm51` | GLM-5.1 (NVIDIA) | nvidia | glm-5.1, glm51-nvidia, glm5.1 |
 | `gemini-3.1-pro` | Gemini 3.1 Pro Preview | google_genai | gemini31-pro, g31pro |
 | `gemini-3-pro` | Gemini 3 Pro Preview | google_genai | gemini-pro, gemini3-pro, g3pro |
 | `gemini-3-flash` | Gemini 3 Flash Preview | google_genai | gemini-flash, gemini3-flash, g3flash |
@@ -516,7 +517,8 @@ Models defined in `codereview/config/models.yaml`:
 | DeepSeek V3.2 (NVIDIA) | `deepseek-ai/deepseek-v3.2` | $0.00* | $0.00* | temp=0.3, top_p=0.9, max=16384, thinking=on |
 | DeepSeek-V4-Pro (NVIDIA) | `deepseek-ai/deepseek-v4-pro` | $0.00* | $0.00* | temp=1.0, top_p=0.95, max=16384, thinking=off (Non-think) |
 | GLM 4.7 (NVIDIA) | `z-ai/glm4.7` | $0.00* | $0.00* | temp=0.5, top_p=0.95, max=16384, thinking=on |
-| GLM-5 (NVIDIA) | `z-ai/glm5` | $0.00* | $0.00* | temp=1.0, top_p=0.95, max=128000 |
+| GLM-5 (NVIDIA) — deprecated 2026-04-20 | `z-ai/glm5` | $0.00* | $0.00* | temp=1.0, top_p=0.95, max=128000 |
+| GLM-5.1 (NVIDIA) | `z-ai/glm-5.1` | $0.00* | $0.00* | temp=0.5, top_p=0.95, max=16384, thinking=on |
 
 **Note:** *NVIDIA models are currently in free tier. Pricing will be updated when NVIDIA announces production pricing. Models with `thinking=on` use interleaved thinking mode for deeper reasoning.
 
