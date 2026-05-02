@@ -543,7 +543,8 @@ Choose the right model for your needs. Use short model names (aliases supported)
 codereview --list-models
 
 # AWS Bedrock - Claude models
-codereview ./src --model opus     # Claude Opus 4.6 (default, highest quality)
+codereview ./src --model opus4.7  # Claude Opus 4.7 (default, reasoning model)
+codereview ./src --model opus     # Claude Opus 4.6 (highest quality, temperature control)
 codereview ./src --model sonnet   # Claude Sonnet 4.6 (balanced)
 codereview ./src --model haiku    # Claude Haiku 4.5 (fastest)
 

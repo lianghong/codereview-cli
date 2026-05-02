@@ -9,7 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - ✅ Fixed `--no-color` flag consistency across all CLI commands
 - ✅ Added PEP 758 clarification comments to exception handlers
 - ✅ Updated Bedrock provider to handle reasoning models (no temperature parameter)
-- ✅ All 311 tests passing, zero security issues
+- ✅ All 316 tests passing, zero security issues
 
 ## Project Overview
 
@@ -525,7 +525,7 @@ Models defined in `codereview/config/models.yaml`:
 
 **Note:** Google GenAI models have 1M token context windows. Uses `method="json_schema"` for structured output.
 
-**Default model:** Claude Opus 4.6
+**Default model:** Claude Opus 4.7
 
 ### Configuration Constants
 

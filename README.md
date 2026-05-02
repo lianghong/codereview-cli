@@ -10,7 +10,7 @@
 
 - ✅ **Claude Opus 4.7** - Latest reasoning model with adaptive thinking now supported
 - ✅ **Bug Fixes** - Fixed `--no-color` flag consistency and improved error handling
-- ✅ **Enhanced Stability** - All 311 tests passing, zero security vulnerabilities
+- ✅ **Enhanced Stability** - All 316 tests passing, zero security vulnerabilities
 
 A LangChain-based CLI tool that provides comprehensive, intelligent code reviews for Python, Go, Shell Script, C++, Java, JavaScript, and TypeScript projects using Claude, GPT, Gemini, Devstral, and other leading models through AWS Bedrock, Azure OpenAI, NVIDIA NIM, and Google Generative AI.
 
@@ -618,16 +618,16 @@ codereview-cli/
 │       ├── nvidia.py         # NVIDIA NIM provider implementation
 │       └── google_genai.py   # Google GenAI provider implementation
 ├── tests/
-│   ├── test_*.py             # Unit tests (311 tests)
+│   ├── test_*.py             # Unit tests (316 tests)
 │   └── fixtures/             # Test fixtures
 ├── docs/
 │   ├── usage.md              # Detailed usage guide
 │   ├── examples.md           # Example commands and workflows
-│   ├── static-analysis.md    # Static analysis tool reference
-│   └── MIGRATION.md          # Migration guide
+│   └── static-analysis.md    # Static analysis tool reference
 ├── pyproject.toml            # Project configuration
 ├── LICENSE                   # MIT License
 ├── CLAUDE.md                 # Claude Code instructions
+├── CHANGELOG.md              # Version history
 └── README.md                 # This file
 ```
 
@@ -641,7 +641,7 @@ The codebase follows strict quality standards:
 - Pydantic V2 for data validation
 - Rich for terminal UI
 - Click for CLI interface
-- Comprehensive test coverage (311 tests)
+- Comprehensive test coverage (316 tests)
 
 **Static Analysis Tools:**
 ```bash
@@ -696,117 +696,9 @@ For issues, questions, or contributions:
 
 ## Version History
 
-### v0.3.1 (Current)
-- **Claude Opus 4.7**: Added latest reasoning model with adaptive thinking (32K output, no temperature parameter, US East & Asia Pacific Tokyo)
-- **Bug Fixes**: Fixed `--no-color` flag consistency across `--list-models` and `--validate` commands; fixed temperature handling for reasoning models
-- **Code Clarity**: Added PEP 758 clarification comments to 8 exception handlers
-- **Default Model**: Updated from Claude Opus 4.6 to Claude Opus 4.7
-- **Test Suite**: All 311 tests passing, zero security issues
+Current release: **v0.3.1** — Claude Opus 4.7 integration, `--no-color` fixes, PEP 758 compliance.
 
-### v0.3.0
-- **MiniMax M2.5 (Bedrock)**: Added agent-native frontier model to AWS Bedrock (80.2% SWE-Bench, 196K context, 128K output, temp=0.5 optimized for code review)
-- **GLM 5 (Bedrock)**: Added frontier-class model to AWS Bedrock for complex systems engineering (200K context, 128K output, multi-step reasoning, AIME-style math)
-- **Critical Bug Fix**: Fixed Azure OpenAI provider syntax error that completely blocked functionality (`except ValueError, TypeError:` → `except (ValueError, TypeError):`)
-- **Security Enhancement**: Added ReDoS prevention for user-provided `--exclude` patterns (max length 200, max `**` depth 3, null byte filtering)
-- **Python 3.14 Compliance**: Adopted PEP 758 unparenthesized exception syntax and verified PEP 765 compliance (7 exception handlers updated across callbacks.py, readme_finder.py, static_analysis.py)
-- **Model Documentation**: Enhanced parameter documentation with detailed rationale for temperature settings and cross-provider comparisons
-- **Total Models**: 109 models across 4 providers (AWS Bedrock, Azure OpenAI, NVIDIA NIM, Google GenAI)
-- **Test Suite**: All 311 tests passing, zero static analysis issues
-
-### v0.2.9
-- **Mistral Small 4 Model**: Added Mistral Small 4 119B via NVIDIA NIM (MoE architecture, 256K context, 16K max output, prompt-based JSON parsing)
-- **MiniMax M2.5 Model (NVIDIA)**: Added MiniMax M2.5 via NVIDIA NIM (80.2% SWE-Bench Verified, 192K context, 128K output, interleaved thinking mode, 37% faster than M2.1)
-- **Prompt-Based JSON Parsing**: Added fallback JSON parsing for models without tool use support (DeepSeek-R1, Mistral Small 4)
-- **Oversized File Handling**: Files exceeding the token budget are now skipped with a warning instead of creating doomed single-file batches that fail at the API level
-- **Batch Failure Handling**: When all batches fail (rate limits, auth errors, etc.), shows a clear error with possible causes instead of a misleading "0 issues found" report. Partial failures warn that results are incomplete
-- **Grok 4 Fast Context Fix**: Corrected context window from 2M to 128K to match Azure deployment limit (prevents prompt-too-long errors)
-- **Improved Retry Backoff**: Azure OpenAI and Google GenAI providers now use 5 retries with longer backoff (10s/20s/40s/60s/60s progression, ~190s total wait). Azure also respects `Retry-After` headers
-- **Plain Text Suggestions**: Improvement Suggestions section renders as plain text without box-drawing characters for clean copy-paste
-- **Dependency Upgrades**: Updated all dependencies to latest versions — langchain-aws 1.3.1, langsmith 0.7.7, google-genai 1.65.0, openai 2.24.0, websockets 16.0, isort 8.0.0, ruff 0.15.4, mypy 1.19.1, and more
-- **Test Suite**: 311 tests
-
-### v0.2.8
-- **Copy-Paste Friendly Output**: Added `--no-color` flag to disable ANSI color/style codes, preventing terminal hangs when pasting output into other tools. Also respects the `NO_COLOR` environment variable ([no-color.org](https://no-color.org/))
-- **Dependency Upgrades**: Updated all dependencies to latest versions — langchain-aws 1.3.0, langchain-nvidia-ai-endpoints 1.1.0, langchain-openai 1.1.10, langchain-google-genai 4.2.1, openai 2.24.0 (fixes structured output memory leak), langchain-core 1.2.16, langsmith 0.7.7, and more
-- **Test Suite**: 311 tests
-
-### v0.2.7
-- **System Prompt Rewrite**: Restructured SYSTEM_PROMPT (~513 to ~310 lines, 40% reduction) for better instruction adherence — critical constraints at top, CWE references, prompt injection defense, self-verification, concrete examples
-- **Category-Based Recommendations**: Enhanced report recommendations with category-aware suggestions (Security, Performance, Testing, Code Quality, System Design)
-- **NVIDIA GLM-5 Fix**: Graceful fallback when `include_raw=True` is not supported by a provider
-- **Non-Interactive Mode**: CI/CD-safe README finder with `sys.stdin.isatty()` guard
-- **Env Var Expansion Fix**: Regex now supports digits in variable names (`API_V2_KEY`)
-- **Empty Batch Guard**: Early return when no files are readable in a batch
-- **Logging Best Practices**: Converted f-string logging to %-style format
-- **Test Suite**: Expanded to 301 tests
-
-### v0.2.6
-- **Google Generative AI Provider**: Added Google GenAI as 4th provider with Gemini 3 Pro Preview and Gemini 3 Flash Preview models (1M token context)
-- **Code Quality Fixes**: Fixed redundant retry logic, added severity guard in renderer, optimized ESLint file detection, removed dead code, improved logging format
-- **Test Suite**: Expanded to 281 tests with Google GenAI provider tests
-
-### v0.2.5
-- **Claude Opus 4.6**: Added Claude Opus 4.6 as new default model (128K max output)
-- **MiniMax M2.1 Model**: Added MiniMax M2.1 via NVIDIA NIM (200K context, 128K output, thinking mode)
-- **Export Error Handling**: Report export (JSON/Markdown) now handles file I/O errors gracefully instead of crashing with unhandled exceptions
-- **Callbacks Cleanup**: Fixed potential Rich `Live` display errors by using consistent `cleanup()` method
-- **Retry Backoff Cap**: Exponential backoff capped at 60 seconds across all providers (Bedrock, Azure OpenAI)
-- **Renderer Optimization**: Eliminated redundant string splitting in static analysis output rendering
-
-### v0.2.4
-- **JSON Output Format**: New `--format json` option for CI/CD integration and programmatic consumption
-- **Enhanced Code Review Prompts**:
-  - Architecture fit analysis (boundary violations, coupling, layering leaks)
-  - Operational readiness checks (error handling, timeouts, observability)
-  - Testing quality guidelines (anti-patterns, coverage gaps)
-  - Project conventions detection (reduces false positives for consistent codebases)
-  - PII exposure detection in logs and responses
-- **Improved Configuration**: ValidationError handling for provider configs prevents crashes on invalid URLs
-- **Documentation**: Improved ReviewMetrics docstring explaining field aliasing pattern
-
-### v0.2.3
-- **Auto-confirm README Context**: README prompt auto-confirms after 3 seconds with "Y" default
-- **Improved UI**: Improvement Suggestions rendered as plain text for easier copy
-- **Exponential Backoff Cap**: Limited retry wait time to 60 seconds maximum
-- **ASCII-safe Fallback**: Terminal fallback uses ASCII characters for better compatibility
-- **Performance Optimization**: Cached repeated string operations in static analysis parsing
-- **Code Quality**: Improved exception handling, docstrings, and type hints throughout codebase
-- **Test Coverage**: Expanded test suite to 261 tests
-
-### v0.2.2
-- **Kimi K2.5 Model**: Added Moonshot AI's Kimi K2.5 via NVIDIA NIM (256K context window)
-- **DeepSeek-R1 Model**: Added DeepSeek-R1 reasoning model via AWS Bedrock (128K context)
-- **Model Version IDs**: Updated model IDs to include version numbers (deepseek-r1-bedrock, deepseek-v3.2-nvidia)
-- **Non-Tool-Use Support**: Added `supports_tool_use` config for models without function calling (uses prompt-based JSON parsing fallback)
-- **Static Analysis Output**: Full error output for failed tools, improved truncation for passed tools
-- **Code Quality**: Fixed type annotations, moved imports to module level, improved code organization
-
-### v0.2.1
-- **GLM 4.7 Model**: Added Zhipu AI's GLM 4.7 via NVIDIA NIM (73.8% SWE-bench score)
-- **Thinking Mode Support**: Enabled interleaved thinking for DeepSeek V3.2, Qwen3 Coder, and GLM 4.7
-- **Batch Size Control**: Added `--batch-size` option to control files per batch (helps with timeout issues)
-- **Gateway Timeout Handling**: Improved retry logic for NVIDIA 504/502/503 errors with exponential backoff
-- **Configurable Polling Timeout**: NVIDIA provider now supports 15-minute polling timeout for large models
-
-### v0.2.0
-- **Multi-Provider Support**: Added Azure OpenAI and NVIDIA NIM alongside AWS Bedrock
-- **NVIDIA NIM Integration**: Free tier access to Devstral 2, DeepSeek V3.2, Qwen3 Coder, Kimi K2
-- **Provider Architecture**: Abstract provider system with factory pattern
-- **YAML Configuration**: Centralized model configuration in `models.yaml`
-- **Enhanced Model Selection**: Simplified `--model` option with aliases
-- **Extended Language Support**: Added Shell Script, C++, Java, JavaScript, and TypeScript
-- **Static Analysis Integration**: Parallel execution of language-specific linters and formatters
-- **Security Scanning**: Added bandit (Python) and gosec (Go) for security vulnerability detection
-- **Improved CLI**: Added `--list-models`, `--dry-run` flags and better error messages
-
-### v0.1.0
-- Initial release
-- Support for Python and Go
-- Claude integration via AWS Bedrock
-- Smart batching and token management
-- Terminal and Markdown output
-- Comprehensive error handling
-- Full test coverage
+Full history is maintained in [CHANGELOG.md](CHANGELOG.md).
 
 ## Acknowledgments
 
