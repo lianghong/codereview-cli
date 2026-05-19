@@ -22,13 +22,16 @@ from pydantic import ValidationError
 from codereview.config.models import (
     AzureOpenAIConfig,
     BedrockConfig,
+    DeepSeekConfig,
     GoogleGenAIConfig,
     InferenceParams,
     ModelConfig,
+    MoonshotConfig,
     NVIDIAConfig,
     PricingConfig,
     ProviderConfig,
     ScanningConfig,
+    ZAIConfig,
 )
 
 # Track missing env vars so we warn once per variable rather than per
@@ -277,6 +280,90 @@ class ConfigLoader:
                     logging.info(
                         "Google GenAI provider not configured: %s. "
                         "Set GOOGLE_API_KEY environment variable to enable Google models.",
+                        e,
+                    )
+
+        # Parse DeepSeek provider (direct API, langchain-deepseek package)
+        if "deepseek" in providers_section:
+            ds_data = providers_section["deepseek"]
+
+            # Always register models for --list-models display.
+            for model_data in ds_data.get("models", []):
+                model_config = self._parse_model_config(model_data)
+                self._register_model("deepseek", model_config, model_config.id)
+                for alias in model_config.aliases:
+                    self._register_model("deepseek", model_config, alias)
+
+            ds_api_key = ds_data.get("api_key", "")
+            if ds_api_key:
+                try:
+                    ds_config = DeepSeekConfig(
+                        api_key=ds_api_key,
+                        api_base=ds_data.get("api_base", "https://api.deepseek.com"),
+                        request_timeout=ds_data.get("request_timeout", 300),
+                    )
+                    self._providers["deepseek"] = ds_config
+                except (KeyError, ValueError, TypeError, ValidationError) as e:
+                    logging.info(
+                        "DeepSeek provider not configured: %s. "
+                        "Set DEEPSEEK_API_KEY environment variable to "
+                        "enable DeepSeek models.",
+                        e,
+                    )
+
+        # Parse Moonshot (Kimi) provider via langchain-moonshot
+        if "moonshot" in providers_section:
+            ms_data = providers_section["moonshot"]
+
+            for model_data in ms_data.get("models", []):
+                model_config = self._parse_model_config(model_data)
+                self._register_model("moonshot", model_config, model_config.id)
+                for alias in model_config.aliases:
+                    self._register_model("moonshot", model_config, alias)
+
+            ms_api_key = ms_data.get("api_key", "")
+            if ms_api_key:
+                try:
+                    ms_config = MoonshotConfig(
+                        api_key=ms_api_key,
+                        base_url=ms_data.get("base_url", "https://api.moonshot.cn/v1"),
+                        request_timeout=ms_data.get("request_timeout", 300),
+                    )
+                    self._providers["moonshot"] = ms_config
+                except (KeyError, ValueError, TypeError, ValidationError) as e:
+                    logging.info(
+                        "Moonshot provider not configured: %s. "
+                        "Set KIMI_API_KEY environment variable to enable Moonshot.",
+                        e,
+                    )
+
+        # Parse Z.AI (Zhipu international) provider
+        if "zai" in providers_section:
+            zai_data = providers_section["zai"]
+
+            # Always register models for --list-models display.
+            for model_data in zai_data.get("models", []):
+                model_config = self._parse_model_config(model_data)
+                self._register_model("zai", model_config, model_config.id)
+                for alias in model_config.aliases:
+                    self._register_model("zai", model_config, alias)
+
+            # Only register provider config when an API key is present.
+            zai_api_key = zai_data.get("api_key", "")
+            if zai_api_key:
+                try:
+                    zai_config = ZAIConfig(
+                        api_key=zai_api_key,
+                        base_url=zai_data.get(
+                            "base_url", "https://api.z.ai/api/paas/v4/"
+                        ),
+                        request_timeout=zai_data.get("request_timeout", 300),
+                    )
+                    self._providers["zai"] = zai_config
+                except (KeyError, ValueError, TypeError, ValidationError) as e:
+                    logging.info(
+                        "Z.AI provider not configured: %s. "
+                        "Set ZAI_API_KEY environment variable to enable Z.AI models.",
                         e,
                     )
 

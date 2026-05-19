@@ -186,3 +186,44 @@ def test_all_files_included_in_token_batches(tmp_path: Path):
 
     result_files = [f for batch in batches for f in batch.files]
     assert result_files == files
+
+
+# ---------------------------------------------------------------------------
+# Per-run state isolation: skipped_oversized must not leak across calls.
+# ---------------------------------------------------------------------------
+
+
+def test_skipped_oversized_resets_between_calls(tmp_path: Path):
+    """Re-running create_batches must start with an empty skipped list.
+
+    Without the reset, callers reusing a FileBatcher instance would see
+    stale entries from earlier runs, making the post-run summary
+    misleading.
+    """
+    huge1 = _create_file(tmp_path, "huge1.py", 100_000)
+    small = _create_file(tmp_path, "small.py", 400)
+
+    batcher = FileBatcher(max_files_per_batch=50, token_budget=5000)
+    batcher.create_batches([huge1, small])
+    assert len(batcher.skipped_oversized) == 1
+
+    # Second call with a *different* file set: only the second oversized
+    # file should be reported, not the first.
+    huge2 = _create_file(tmp_path, "huge2.py", 100_000)
+    batcher.create_batches([huge2, small])
+    assert len(batcher.skipped_oversized) == 1
+    assert batcher.skipped_oversized[0][0] == huge2
+
+
+def test_skipped_oversized_reset_when_no_skips(tmp_path: Path):
+    """If a later run has no oversized files, the list must be empty."""
+    huge = _create_file(tmp_path, "huge.py", 100_000)
+    small = _create_file(tmp_path, "small.py", 400)
+
+    batcher = FileBatcher(max_files_per_batch=50, token_budget=5000)
+    batcher.create_batches([huge, small])
+    assert len(batcher.skipped_oversized) == 1
+
+    # Subsequent run with only small files clears the previous skip.
+    batcher.create_batches([small])
+    assert batcher.skipped_oversized == []

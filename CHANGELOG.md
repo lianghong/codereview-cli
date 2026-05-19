@@ -8,6 +8,115 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+
+#### New Providers (3)
+- **DeepSeek direct API** — 6th provider, via dedicated `langchain-deepseek`
+  package (small single-purpose dep, not the heavy langchain-community)
+  - Models: `deepseek-v4-pro` (1M context, $1.74/$3.48 per M),
+    `deepseek-v4-flash` (1M context, $0.14/$0.28 per M)
+  - Aliases: `dsv4-pro`, `ds-v4-pro`, `dsv4-flash`, `ds-v4-flash`
+  - Reads `${DEEPSEEK_API_KEY}`; base URL `https://api.deepseek.com`
+  - Native tool calling and structured output (no prompt-based JSON fallback)
+  - **Naming cleanup**: NVIDIA's `deepseek-v4-pro-nvidia` lost aliases
+    `deepseek-v4`, `deepseek-v4-pro`, `dsv4` (now claimed by direct API as
+    canonical owner); kept as `ds-v4-nvidia`, `dsv4-nvidia`,
+    `deepseek-v4-nvidia`. Azure entry's collision comment also updated.
+- **Z.AI (Zhipu international)** — 5th provider, via OpenAI-compatible adapter
+  (`ChatOpenAI` + custom `base_url`, no langchain-community heavy dep)
+  - Model: `zhipuai/glm-5.1` (203K context, $1.40/$4.40 per M, function calling)
+  - Aliases: `zai-glm`, `glm-zai`, `glm5.1-zai`
+  - Reads `${ZAI_API_KEY}`; base URL `https://api.z.ai/api/paas/v4/`
+- **Moonshot AI (Kimi)** — 7th provider, via dedicated `langchain-moonshot`
+  package (extends `BaseChatOpenAI`)
+  - Model: `kimi-k2.6` (1T MoE, 32B active, 256K context, $0.60/$2.50 per M)
+  - Aliases: `kimi`, `kimi26`, `kimi-moonshot`
+  - Reads `${KIMI_API_KEY}`; base URL `https://api.moonshot.cn/v1` (Chinese
+    platform; override to `https://api.moonshot.ai/v1` for international keys)
+  - **Naming cleanup**: NVIDIA's `kimi-k2.6-nvidia` lost aliases `kimi-k2.6`
+    and `kimi26` (claimed by direct provider); kept as `kimi-nvidia-26`,
+    `kimi26-nvidia`. Bedrock's `kimi-k2.5-bedrock` lost the bare `kimi`
+    alias (now routes to canonical Moonshot K2.6); kept as `kimi-bedrock`,
+    `kimi25-bedrock`.
+
+#### CLI Features
+- **`--tool-timeout`** — override the static-analysis subprocess timeout
+  (default 120s, range 1–3600). Useful for `cppcheck --enable=all` on
+  large C++ repos and `mypy` strict on big Python codebases.
+- **`--include-hidden`** — opt-in scanning of `.github/scripts`, `.config/`,
+  and other dotfile directories. Default behavior (skip hidden) is unchanged.
+- **Python version check at package import** — `RuntimeError` raised for
+  Python < 3.14 before sub-modules parse. Avoids confusing `SyntaxError`
+  from PEP 758 leaf modules when run under a wrong venv.
+
+#### Reliability and reproducibility
+- **Deterministic file truncation** — when `MAX_FILES_PER_TOOL` (500)
+  triggers, file lists are sorted before slicing. Previously the analyzed
+  subset depended on filesystem walk order; now CI runs are reproducible.
+  Locked in by a regression test that was confirmed to fail without the sort.
+- **Worker-thread traceback context** — `_render_batch_error` now uses
+  `traceback.format_exception(type(e), e, e.__traceback__)` instead of
+  `format_exc()`. Inside the `ThreadPoolExecutor.future.result()` re-raise
+  path the latter only shows the re-raise frame, hiding the real failure.
+- **`StaticAnalyzer` fail-fast directory validation** — invalid paths
+  raise `ValueError` at construction instead of returning per-tool errors
+  on every `run_tool` call.
+- **`run_all` systemic-failure log** — when every tool errors with no
+  output, log an `ERROR` distinguishing infrastructure failure from
+  code-quality findings (CI pipelines reading `passed` can now tell the
+  difference).
+- **`skipped_oversized` accumulation fix** — `FileBatcher.create_batches`
+  now resets the list at the top of each call. Reusing a batcher
+  instance no longer conflates skip lists across runs.
+- **Markdown export now includes batcher-skipped files** — files dropped
+  for exceeding the per-batch token budget are surfaced in the report's
+  `skipped_files` section alongside scanner and analyzer skips. Previously
+  they were only printed to terminal.
+- **Provider validation: differentiated httpx errors** —
+  `TimeoutException`, `ConnectError`, `HTTPStatusError` get specific
+  messages (DNS / TLS / refused / status code) instead of a generic
+  catch-all. The strict-redaction guarantee for the catch-all is preserved:
+  no `str(e)` for the generic branch where the message can carry api-key
+  headers.
+
+#### Security hardening
+- **Static-analysis tool resolution** — already shipped via `shutil.which`
+  but the `gofmt` cache fallback bypassed the check. Fixed: when a tool's
+  primary executable (`gofmt`) differs from its version-check executable
+  (`go`) and can't be safely resolved on PATH, the tool is excluded from
+  `available_tools` instead of caching the bare name.
+- **AWS credential validation redaction** — three paths in `bedrock.py`
+  no longer surface raw AWS error messages or `str(e)` to users. STS and
+  Bedrock model-list errors now report only the AWS error code; generic
+  exceptions report only the class name. Mirrors prior Azure/NVIDIA work
+  to prevent IAM/SCP fragments from leaking into user terminals.
+
+#### Observability
+- **npm-audit JSON parse fallback log** — `logging.warning` with output
+  preview when JSON parsing falls through to line counting. Without this,
+  an HTML proxy error page would silently inflate "issue count" to one-
+  per-line.
+- **ValidationError retry log** — `logging.debug` when output-fixing
+  burns a retry, with attempt counter and parse error. Helps operators
+  diagnose why retries get exhausted.
+- **Renderer markdown: drop misleading hardcoded tool list** — the
+  static-analysis section previously claimed "ruff, mypy, black, isort
+  (when available)" regardless of what actually ran (the codebase now
+  supports 19+ tools across 6 languages).
+
+### Fixed
+- **DeepSeek-V4-Pro on Azure: SGLang `null` model body** — the Foundry
+  endpoint is served by SGLang, which validates `body.model` as a
+  required string. langchain-openai's `AzureChatOpenAI` defaults
+  `model_name=None` and serializes `"model": null`, which real Azure-OpenAI
+  ignores but SGLang rejects with HTTP 400. Provider now passes
+  `model=deployment_name` explicitly.
+- **Moonshot endpoint default** — initially defaulted to
+  `https://api.moonshot.ai/v1` (international); flipped to
+  `https://api.moonshot.cn/v1` (Chinese platform) since `KIMI_API_KEY`
+  almost always targets the latter. International keys can override per
+  models.yaml or via `MOONSHOT_API_BASE`.
+
+### Existing entries below ↓
 - **GPT-5.4 (Azure OpenAI)** — frontier reasoning model, 1.05M context, 128K output
   - Model ID: `gpt-5.4`, aliases: `gpt`, `gpt54`, `gpt5.4`
   - Reasoning model: no `temperature`/`top_p`; uses Responses API for reasoning summaries
@@ -144,12 +253,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added `.ruff_cache/` to `.gitignore` to match existing cache ignores
 
 ### Quality
-- Test suite: **331 passing** (up from 319; +2 scanner tests for
-  `exclude_hidden`, +3 for `_resolve_tool_binary` supply-chain checks,
-  +5 for ruff/mypy/bandit issue counters, +2 for Azure
-  `supports_tool_use=false` path); two pre-existing fixtures fixed —
-  they passed kwargs that Pydantic silently dropped
+- Test suite: **368 passing** (up from 319; +2 scanner `exclude_hidden`,
+  +3 supply-chain `_resolve_tool_binary`, +5 ruff/mypy/bandit counters,
+  +2 Azure `supports_tool_use=false`, +9 Z.AI provider, +11 DeepSeek
+  provider, +10 Moonshot provider, +5 truncation/timeout/batcher resets);
+  two pre-existing fixtures fixed — they passed kwargs that Pydantic
+  silently dropped
 - `ruff check`, `ruff format --check`, `mypy`: clean
+- New runtime dependencies: `langchain-deepseek>=1.0.1`,
+  `langchain-moonshot>=0.1.0` (both small single-purpose packages, not
+  the heavy `langchain-community`)
 
 ## [0.3.1] - 2026-04-18
 

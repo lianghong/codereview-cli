@@ -376,6 +376,11 @@ def test_supports_tool_use_false_uses_prompt_parsing(provider_config):
         call_kwargs = mock_azure.call_args[1]
         assert "temperature" not in call_kwargs
 
+        # Regression: Foundry's SGLang backend rejects null `model` field
+        # in the body with HTTP 400. Provider must populate the field with
+        # the deployment name so the JSON serializes to a real string.
+        assert call_kwargs["model"] == "DeepSeek-V4-Pro"
+
 
 def test_supports_tool_use_true_uses_structured_output(model_config, provider_config):
     """The default model_config sets supports_tool_use=True, so the provider

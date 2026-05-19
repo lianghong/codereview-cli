@@ -8,21 +8,23 @@
 
 ## 🎉 What's New (Unreleased)
 
+- ✅ **3 new providers**: DeepSeek direct API (`deepseek-v4-pro`, `deepseek-v4-flash`), Z.AI (`zhipuai/glm-5.1`), Moonshot/Kimi (`kimi-k2.6`). 7 providers total now.
 - ✅ **GPT-5.4 (Azure)** — frontier reasoning model, 1.05M context, default Azure model
-- ✅ **DeepSeek-V4-Pro (Azure)** — 1M context with prompt-based JSON parsing for tool-use-less Foundry deployments (`supports_tool_use: false` now wired into the Azure provider, mirroring Bedrock's DeepSeek-R1 / MiniMax M2.5 path)
-- ✅ **Supply-chain hardening** — static-analysis tools resolved via `shutil.which()` with absolute-path execution; binaries inside the analyzed directory are refused
-- ✅ **Hidden-directory opt-in** — `--include-hidden` to scan `.github/scripts`, `.config/`, etc.
-- ✅ **Reproducible static analysis** — file lists sorted before truncation so CI runs are deterministic
+- ✅ **DeepSeek-V4-Pro (Azure)** — 1M context with prompt-based JSON parsing for tool-use-less Foundry deployments (`supports_tool_use: false` now wired into the Azure provider)
+- ✅ **`--tool-timeout`** — override the static-analysis subprocess timeout (default 120s) for slow C++/mypy runs
+- ✅ **`--include-hidden`** — opt-in scanning of `.github/scripts`, `.config/`, etc.
+- ✅ **Reproducible static analysis** — file lists sorted before truncation so CI runs are deterministic (locked in by regression test)
 - ✅ **Accurate issue counts** — ruff/mypy/bandit summary-line parsing replaces the old substring-match heuristic
-- ✅ **Pruned model registry** — dropped GPT-5.3 Codex, Grok 4 Fast, GLM 4.7 (Bedrock + Flash), Devstral 2, MiniMax M2 (NVIDIA), DeepSeek-R1, DeepSeek V3.2 (both providers), MiniMax M2.1 (both providers)
-- ✅ **All 331 tests passing**, ruff/mypy clean
+- ✅ **Supply-chain hardening** — static-analysis tools resolved via `shutil.which()`; binaries inside the analyzed directory are refused (gofmt cache-bypass also fixed)
+- ✅ **AWS error redaction** — STS/Bedrock validation errors no longer leak SCP fragments or IAM policy details
+- ✅ **All 368 tests passing**, ruff/format/mypy clean
 
-A LangChain-based CLI tool that provides comprehensive, intelligent code reviews for Python, Go, Shell Script, C++, Java, JavaScript, and TypeScript projects using Claude, GPT-5.4, Gemini, DeepSeek-V4-Pro, and other leading models through AWS Bedrock, Azure OpenAI, NVIDIA NIM, and Google Generative AI.
+A LangChain-based CLI tool that provides comprehensive, intelligent code reviews for Python, Go, Shell Script, C++, Java, JavaScript, and TypeScript projects using Claude, GPT-5.4, Gemini, DeepSeek-V4-Pro, Kimi K2.6, GLM-5.1, and other leading models through AWS Bedrock, Azure OpenAI, NVIDIA NIM, Google Generative AI, DeepSeek, Z.AI, and Moonshot.
 
 ## Features
 
-- **Multi-Provider Support**: AWS Bedrock (Claude, Minimax, Kimi, Qwen, GLM), Azure OpenAI (GPT-5.4, GPT-5.4 Pro, DeepSeek-V4-Pro, Kimi K2.5), NVIDIA NIM (Mistral, MiniMax, Kimi, Qwen, DeepSeek-V4-Pro, GLM-5/5.1, Step), and Google GenAI (Gemini 3.1 Pro, Gemini 3 Pro, Gemini 3 Flash)
-- **AI-Powered Analysis**: Leverages Claude Opus 4.7, GPT-5.4, GPT-5.4 Pro, DeepSeek-V4-Pro, Gemini 3.1 Pro, and other leading models for deep code understanding
+- **Multi-Provider Support** (7 providers): AWS Bedrock (Claude, Minimax, Kimi, Qwen), Azure OpenAI (GPT-5.4, GPT-5.4 Pro, DeepSeek-V4-Pro, Kimi K2.5), NVIDIA NIM (Mistral, MiniMax, Kimi, Qwen, DeepSeek-V4-Pro, GLM-5/5.1, Step), Google GenAI (Gemini 3.1 Pro / 3 Pro / 3 Flash), DeepSeek direct (V4-Pro, V4-Flash), Z.AI (GLM-5.1), and Moonshot direct (Kimi K2.6)
+- **AI-Powered Analysis**: Leverages Claude Opus 4.7, GPT-5.4, DeepSeek-V4-Pro, Kimi K2.6, GLM-5.1, Gemini 3.1 Pro, and other leading models for deep code understanding
 - **Multi-Language Support**: Reviews Python, Go, Shell Script, C++, Java, JavaScript, and TypeScript codebases
 - **Smart Batching**: Automatically groups files for efficient token usage
 - **Structured Output**: Get categorized issues with severity levels and actionable suggestions
@@ -40,11 +42,14 @@ A LangChain-based CLI tool that provides comprehensive, intelligent code reviews
 ### Prerequisites
 
 - Python 3.14+
-- **One of the following:**
-  - AWS account with Bedrock access (for Claude, Minimax, Kimi, Qwen models)
-  - Azure OpenAI resource with model deployment (for GPT-5.4, GPT-5.4 Pro, DeepSeek-V4-Pro, Kimi K2.5)
-  - NVIDIA API key from [build.nvidia.com](https://build.nvidia.com) (for Mistral, MiniMax, Kimi, Qwen, DeepSeek-V4-Pro, GLM-5/5.1, Step, free tier available)
-  - Google API key from [AI Studio](https://aistudio.google.com/apikey) (for Gemini 3.1 Pro, Gemini 3 Pro, Gemini 3 Flash)
+- **At least one of the following:**
+  - AWS account with Bedrock access (Claude, Minimax, Kimi, Qwen models)
+  - Azure OpenAI resource with model deployment (GPT-5.4, GPT-5.4 Pro, DeepSeek-V4-Pro, Kimi K2.5) — `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`
+  - NVIDIA API key from [build.nvidia.com](https://build.nvidia.com) — `NVIDIA_API_KEY` (Mistral, MiniMax, Kimi, Qwen, DeepSeek-V4-Pro, GLM-5/5.1, Step; free tier available)
+  - Google API key from [AI Studio](https://aistudio.google.com/apikey) — `GOOGLE_API_KEY` (Gemini 3.1 Pro / 3 Pro / 3 Flash)
+  - DeepSeek API key from [platform.deepseek.com](https://platform.deepseek.com/api_keys) — `DEEPSEEK_API_KEY` (V4-Pro, V4-Flash)
+  - Z.AI API key from [z.ai](https://z.ai) — `ZAI_API_KEY` (GLM-5.1, international)
+  - Moonshot/Kimi API key from [platform.moonshot.cn](https://platform.moonshot.cn) — `KIMI_API_KEY` (Kimi K2.6; international keys from `platform.moonshot.ai` work too — override `base_url`)
 
 ### Install with uv (recommended)
 
@@ -243,6 +248,84 @@ codereview /path/to/code --model gemini-3-pro
 codereview /path/to/code --model gemini-3-flash
 ```
 
+## DeepSeek Direct API Configuration (Alternative Provider)
+
+DeepSeek's direct API exposes V4-Pro and V4-Flash via an OpenAI-compatible endpoint. Both models support tool calling and structured output natively.
+
+### 1. Get API Key
+
+Sign up at [platform.deepseek.com](https://platform.deepseek.com/api_keys) and create an API key.
+
+### 2. Set Environment Variable
+
+```bash
+export DEEPSEEK_API_KEY="your-deepseek-key"
+```
+
+### 3. Use DeepSeek Models
+
+```bash
+# DeepSeek V4-Pro - flagship, 1M context
+codereview /path/to/code --model deepseek-v4-pro
+
+# DeepSeek V4-Flash - cost-efficient, 1M context, 12x cheaper input
+codereview /path/to/code --model deepseek-v4-flash
+```
+
+## Z.AI (Zhipu) Configuration (Alternative Provider)
+
+Z.AI is Zhipu's international platform exposing GLM-5.1 (long-horizon coding model, 203K context) via an OpenAI-compatible endpoint. The CLI integrates via `langchain-openai`'s `ChatOpenAI` with a custom base URL — no langchain-community dependency.
+
+### 1. Get API Key
+
+Sign up at [z.ai](https://z.ai) and create an API key.
+
+### 2. Set Environment Variable
+
+```bash
+export ZAI_API_KEY="your-zai-key"
+```
+
+### 3. Use Z.AI Models
+
+```bash
+# GLM-5.1 - long-horizon coding, 203K context
+codereview /path/to/code --model zhipuai/glm-5.1
+codereview /path/to/code --model zai-glm  # short alias
+```
+
+## Moonshot AI (Kimi) Configuration (Alternative Provider)
+
+Moonshot's direct API exposes Kimi K2.6 (1T MoE, 32B active, 256K context, agentic-coding optimized) via the dedicated `langchain-moonshot` package.
+
+**Two separate platforms with separate accounts/keys:**
+- `platform.moonshot.cn` — Chinese platform, default in this CLI (matches `KIMI_API_KEY` naming convention)
+- `platform.moonshot.ai` — International platform; override `base_url` if your key is from here
+
+### 1. Get API Key
+
+Sign up at [platform.moonshot.cn](https://platform.moonshot.cn) (or `.ai` for international) and create an API key.
+
+### 2. Set Environment Variable
+
+```bash
+export KIMI_API_KEY="your-moonshot-key"
+```
+
+### 3. Use Moonshot Models
+
+```bash
+# Kimi K2.6 - 1T MoE, 256K context
+codereview /path/to/code --model kimi-k2.6
+codereview /path/to/code --model kimi  # short alias (canonical)
+```
+
+If your key is from the international platform (`platform.moonshot.ai`), override the endpoint in `codereview/config/models.yaml`:
+```yaml
+moonshot:
+  base_url: "https://api.moonshot.ai/v1"
+```
+
 ## Usage
 
 ### Basic Usage
@@ -280,24 +363,36 @@ codereview /path/to/code --model kimi-azure       # Kimi K2.5 (256K context)
 # NVIDIA NIM Models (free tier)
 codereview /path/to/code --model mistral-small      # Mistral Small 4 119B
 codereview /path/to/code --model mistral-medium     # Mistral Medium 3.5 128B (77.6% SWE-Bench)
-codereview /path/to/code --model minimax-m2.7       # MiniMax M2.7 (thinking mode, agent-native)
-codereview /path/to/code --model minimax-m2.5       # MiniMax M2.5 (thinking mode, 80.2% SWE-bench)
-codereview /path/to/code --model deepseek-v4-pro    # DeepSeek-V4-Pro (1M context, three reasoning modes)
-codereview /path/to/code --model qwen-nvidia        # Qwen3 Coder 480B (thinking mode)
-codereview /path/to/code --model qwen3.5            # Qwen3.5 397B (thinking mode, 262K context)
-codereview /path/to/code --model glm51              # GLM-5.1 (744B MoE, thinking)
-codereview /path/to/code --model kimi-k2.5          # Kimi K2.5 (256K context)
-codereview /path/to/code --model kimi-k2.6          # Kimi K2.6 (262K context, agentic)
-codereview /path/to/code --model step-3.5-flash     # Step 3.5 Flash (cost-efficient)
+codereview /path/to/code --model minimax-m2.7       # MiniMax M2.7 (thinking, agent-native)
+codereview /path/to/code --model minimax-m2.5       # MiniMax M2.5 (80.2% SWE-bench)
+codereview /path/to/code --model dsv4-nvidia        # DeepSeek-V4-Pro on NVIDIA (free)
+codereview /path/to/code --model qwen-nvidia        # Qwen3 Coder 480B (thinking)
+codereview /path/to/code --model qwen3.5            # Qwen3.5 397B (262K context)
+codereview /path/to/code --model glm51              # GLM-5.1 (744B MoE)
+codereview /path/to/code --model kimi-nvidia-26     # Kimi K2.6 on NVIDIA (free)
+codereview /path/to/code --model step-3.5-flash     # Step 3.5 Flash
 
 # Google Generative AI Models
-codereview /path/to/code --model gemini-3.1-pro     # Gemini 3.1 Pro (1M context, best reasoning)
+codereview /path/to/code --model gemini-3.1-pro     # Gemini 3.1 Pro (1M context)
 codereview /path/to/code --model gemini-3-pro       # Gemini 3 Pro (1M context)
 codereview /path/to/code --model gemini-3-flash     # Gemini 3 Flash (fast, cheap)
+
+# DeepSeek Direct API
+codereview /path/to/code --model deepseek-v4-pro    # Flagship, 1M context
+codereview /path/to/code --model deepseek-v4-flash  # 12x cheaper input, 1M context
+
+# Z.AI (Zhipu international)
+codereview /path/to/code --model zhipuai/glm-5.1    # Long-horizon coding, 203K context
+codereview /path/to/code --model zai-glm            # Short alias
+
+# Moonshot direct API (Kimi)
+codereview /path/to/code --model kimi-k2.6          # Canonical, 256K context, 1T MoE
+codereview /path/to/code --model kimi               # Short alias
 
 # Short aliases work too
 codereview /path/to/code -m haiku
 codereview /path/to/code -m gpt
+codereview /path/to/code -m kimi
 ```
 
 **Model Comparison:**
@@ -323,12 +418,15 @@ codereview /path/to/code -m gpt
 | Qwen3 Coder (NIM) | NVIDIA NIM | Ultra-large coding, thinking mode | Free* | Free* |
 | Qwen3.5 397B | NVIDIA NIM | Next-gen Qwen, thinking mode, 262K context | Free* | Free* |
 | GLM-5 / GLM-5.1 | NVIDIA NIM | 744B MoE, 131K context, thinking (GLM-5 deprecated 2026-04-20) | Free* | Free* |
-| Kimi K2.5 | NVIDIA NIM | 256K context, instant/thinking modes | Free* | Free* |
-| Kimi K2.6 | NVIDIA NIM | 262K context, 1T MoE, agentic thinking | Free* | Free* |
+| Kimi K2.5 / K2.6 | NVIDIA NIM | 256K-262K context, instant/thinking modes | Free* | Free* |
 | Step 3.5 Flash | NVIDIA NIM | Cost-efficient reasoning | Free* | Free* |
 | Gemini 3.1 Pro | Google GenAI | Most advanced reasoning, 1M context | $2.00 | $12.00 |
 | Gemini 3 Pro | Google GenAI | Flagship reasoning, 1M context | $2.00 | $12.00 |
 | Gemini 3 Flash | Google GenAI | Fast and cheap, 1M context | $0.50 | $3.00 |
+| **DeepSeek-V4-Pro** | **DeepSeek direct** | **1M context, three reasoning modes, tool calling** | **$1.74** | **$3.48** |
+| **DeepSeek-V4-Flash** | **DeepSeek direct** | **1M context, 12x cheaper input than V4-Pro** | **$0.14** | **$0.28** |
+| **GLM-5.1 (Z.AI)** | **Z.AI direct** | **Long-horizon coding, 203K context, function calling** | **$1.40** | **$4.40** |
+| **Kimi K2.6** | **Moonshot direct** | **1T MoE, 32B active, 256K context, agentic** | **$0.60** | **$2.50** |
 | Qwen3 Coder (Bedrock) | AWS Bedrock | Ultra-large model, deep analysis | $0.22 | $1.40 |
 | Qwen3 Coder Next (Bedrock) | AWS Bedrock | Ultra-sparse MoE, 70%+ SWE-bench | $0.50 | $1.20 |
 | GLM 5 (Bedrock) | AWS Bedrock | Zhipu next-gen reasoning | TBD | TBD |
@@ -386,20 +484,38 @@ codereview /path/to/code --model sonnet --static-analysis --output comprehensive
 ```
 
 **Supported Static Analysis Tools:**
-- **Python:** ruff (linter), mypy (type checker), black (formatter), isort (import sorter), vulture (dead code finder)
-- **Go:** golangci-lint (meta-linter), go vet (static analyzer), gofmt (formatter)
-- **Shell:** shellcheck (static analyzer for shell scripts)
-- **C++:** clang-tidy (linter), cppcheck (static analysis), clang-format (formatter)
-- **Java:** checkstyle (style checker)
-- **JavaScript/TypeScript:** eslint (linter), prettier (formatter), tsc (TypeScript type checker)
+- **Python:** ruff (linter + format check), mypy (type checker), black (formatter), isort (import sorter), vulture (dead code finder), bandit (security scanner)
+- **Go:** golangci-lint (meta-linter), go vet (static analyzer), gofmt (formatter), gosec (security)
+- **Shell:** shellcheck, bashate
+- **C++:** clang-tidy, cppcheck, clang-format
+- **Java:** checkstyle
+- **JavaScript/TypeScript:** eslint, prettier, tsc, npm-audit
 
 **Output includes:**
 - Tool pass/fail status
-- Issue counts per tool
+- Accurate issue counts (ruff/mypy/bandit parsed from summary lines, not substring guessing)
 - Detailed output for failed checks
 - Integrated into Markdown reports
 
-**Note:** Only installed tools are run. Tools run in parallel using ThreadPoolExecutor for faster execution.
+**Notes:**
+- Only installed tools are run; resolved via `shutil.which()` and rejected if they resolve inside the analyzed directory (supply-chain defense).
+- Tools run in parallel via `ThreadPoolExecutor` (≤8 workers).
+- File lists for tools that need explicit paths are sorted before truncating to `MAX_FILES_PER_TOOL=500`, so CI runs are reproducible.
+
+**Override the per-tool subprocess timeout** (default 120s) for slow runs:
+```bash
+codereview /path/to/code --static-analysis --tool-timeout 600
+```
+Useful for `cppcheck --enable=all` on large C++ repos and `mypy` strict mode on big Python codebases.
+
+### Scan Hidden Directories
+
+By default, directories starting with `.` (`.git`, `.venv`, `.github`, `.config`, etc.) are skipped. Opt in to scan them:
+
+```bash
+codereview /path/to/code --include-hidden
+```
+Useful for reviewing CI scripts under `.github/scripts/` or config under `.config/`.
 
 ### Verbose Mode
 

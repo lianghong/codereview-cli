@@ -608,3 +608,99 @@ def test_validate_directory_is_file(tmp_path):
     file_path.write_text("test")
     with pytest.raises(ValueError, match="not a directory"):
         StaticAnalyzer(file_path)
+
+
+# ---------------------------------------------------------------------------
+# Reproducibility: when MAX_FILES_PER_TOOL truncation triggers, the analyzed
+# subset must be deterministic across runs. Filesystem rglob order is not
+# guaranteed, so we sort before slicing. This test pins that contract; if
+# anyone replaces `sorted(files)[:N]` with `files[:N]` it should fail.
+# ---------------------------------------------------------------------------
+
+
+def test_tool_timeout_default(tmp_path):
+    """Default per-tool timeout is the documented constant."""
+    analyzer = StaticAnalyzer(tmp_path)
+    assert analyzer.tool_timeout == StaticAnalyzer.DEFAULT_TOOL_TIMEOUT_SECONDS
+
+
+def test_tool_timeout_override(tmp_path):
+    """Caller-provided tool_timeout overrides the default."""
+    analyzer = StaticAnalyzer(tmp_path, tool_timeout=600)
+    assert analyzer.tool_timeout == 600
+
+
+def test_tool_timeout_rejects_non_positive(tmp_path):
+    """tool_timeout must be > 0; zero or negative raises at construction."""
+    with pytest.raises(ValueError, match="positive"):
+        StaticAnalyzer(tmp_path, tool_timeout=0)
+    with pytest.raises(ValueError, match="positive"):
+        StaticAnalyzer(tmp_path, tool_timeout=-30)
+
+
+@patch("subprocess.run")
+def test_tool_timeout_passed_to_subprocess(mock_subprocess, sample_directory):
+    """The configured timeout is forwarded to subprocess.run, not hardcoded."""
+    mock_subprocess.return_value = Mock(returncode=0, stdout="ok", stderr="")
+
+    analyzer = StaticAnalyzer(sample_directory, tool_timeout=900)
+    analyzer.available_tools = ["ruff"]
+    analyzer._tool_paths = {"ruff": "/usr/bin/ruff"}
+
+    analyzer.run_tool("ruff")
+
+    # subprocess.run is called several times during init/check + once per
+    # tool. The last call is the actual tool execution; verify its timeout.
+    last_call_kwargs = mock_subprocess.call_args.kwargs
+    assert last_call_kwargs["timeout"] == 900
+
+
+@patch("subprocess.run")
+def test_truncation_is_deterministic(mock_subprocess, tmp_path):
+    """File-list truncation must select the same subset regardless of walk order."""
+    from codereview.static_analysis import MAX_FILES_PER_TOOL
+
+    mock_subprocess.return_value = Mock(returncode=0, stdout="", stderr="")
+
+    # Two analyzers, identical filesystem content, mocked rglob returning
+    # the same paths in *different* orders. Truncation should still pick
+    # the same 500 files.
+    files = [tmp_path / f"script_{i:04d}.sh" for i in range(MAX_FILES_PER_TOOL + 50)]
+    for f in files:
+        f.write_text("#!/bin/sh\necho hi\n")
+
+    analyzer = StaticAnalyzer(tmp_path)
+    analyzer.available_tools = ["shellcheck"]
+    analyzer._tool_paths = {"shellcheck": "/usr/bin/shellcheck"}
+
+    forward = list(files)
+    reverse = list(reversed(files))
+
+    # Run with rglob walk in reverse order
+    with patch.object(
+        StaticAnalyzer, "_safe_rglob", side_effect=lambda pattern: reverse
+    ):
+        analyzer.run_tool("shellcheck")
+    cmd_reverse = mock_subprocess.call_args[0][0]
+
+    # Run with rglob walk in forward order
+    with patch.object(
+        StaticAnalyzer, "_safe_rglob", side_effect=lambda pattern: forward
+    ):
+        analyzer.run_tool("shellcheck")
+    cmd_forward = mock_subprocess.call_args[0][0]
+
+    # Both runs must analyze the same files (the lexicographically-first
+    # MAX_FILES_PER_TOOL of them — in this case, script_0000..script_0499).
+    # _safe_rglob was patched twice (once for *.sh, once for *.bash) so the
+    # combined list is the doubled file count; we just need order parity.
+    assert cmd_reverse[1:] == cmd_forward[1:], (
+        "Truncation produced different file lists for forward vs reverse "
+        "filesystem walk order — sort-before-truncate guarantee broken."
+    )
+
+    # And the chosen files must be the lexicographic prefix, not a tail
+    # or arbitrary slice.
+    files_in_cmd = [Path(arg).name for arg in cmd_forward[1:]]
+    expected_prefix = sorted([f.name for f in files] * 2)[:MAX_FILES_PER_TOOL]
+    assert files_in_cmd == expected_prefix

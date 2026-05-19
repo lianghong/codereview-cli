@@ -625,14 +625,20 @@ class MarkdownExporter:
         lines.append("| Tool | Status | Issues |")
         lines.append("|------|--------|--------|")
 
-        # We don't have individual tool results in metrics, so just show summary
+        # ReviewMetrics aggregates static-analysis results into a single
+        # tools_passed/tools_failed/issues_found triple; per-tool detail is
+        # not stored on the report object yet. We deliberately don't list
+        # specific tool names here because the actual set varies with what
+        # the user has installed (ruff, mypy, black, isort, vulture, bandit,
+        # eslint, prettier, tsc, npm-audit, shellcheck, bashate, clang-tidy,
+        # cppcheck, clang-format, checkstyle, golangci-lint, go-vet, gosec,
+        # gofmt) and which language fixtures are present in the repo.
         lines.append(
             f"| All Tools | {tools_passed} passed, {tools_failed} failed | {issues_found} |"
         )
 
-        lines.append("\n**Tools run:** ruff, mypy, black, isort (when available)")
         lines.append(
-            "\n*Run with `--static-analysis` flag to see detailed output in terminal.*"
+            "\n*Run with `--static-analysis` flag to see per-tool output in the terminal.*"
         )
 
         return "\n".join(lines)

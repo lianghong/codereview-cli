@@ -251,13 +251,18 @@ class BedrockProvider(TokenTrackingMixin, ModelProvider):
             )
 
         except ClientError as e:
+            # Surface only the AWS error code, never the raw `Message`.
+            # Bedrock error messages can include SCP fragments, ARNs, and
+            # explicit-deny details that reveal IAM policy structure to
+            # whoever runs `--validate`. The error code alone is enough
+            # for troubleshooting; the suggestions below cover the common
+            # codes.
             error_code = e.response.get("Error", {}).get("Code", "")
-            error_msg = e.response.get("Error", {}).get("Message", "")
             result.valid = False
             result.add_check(
                 "AWS Identity",
                 False,
-                f"STS error ({error_code}): {error_msg}",
+                f"STS error ({error_code})",
             )
             if error_code == "ExpiredToken":
                 result.add_suggestion("Your AWS session token has expired. Refresh it.")
@@ -266,8 +271,9 @@ class BedrockProvider(TokenTrackingMixin, ModelProvider):
             return result
 
         except Exception as e:
+            # Same redaction reasoning as the ClientError branch above.
             result.valid = False
-            result.add_check("AWS Identity", False, f"Error: {e}")
+            result.add_check("AWS Identity", False, f"Error: {type(e).__name__}")
             return result
 
         # Check 3: Bedrock model access
@@ -320,12 +326,13 @@ class BedrockProvider(TokenTrackingMixin, ModelProvider):
                 )
 
         except ClientError as e:
+            # AWS error messages can leak SCP details / ARNs; surface only
+            # the error code (same reasoning as STS branch above).
             error_code = e.response.get("Error", {}).get("Code", "")
-            error_msg = e.response.get("Error", {}).get("Message", "")
 
             if error_code == "AccessDeniedException":
                 result.add_warning(
-                    f"Cannot list Bedrock models: {error_msg}. "
+                    "Cannot list Bedrock models (AccessDeniedException). "
                     "Model may still work if you have InvokeModel permission."
                 )
                 result.add_suggestion(
@@ -333,9 +340,9 @@ class BedrockProvider(TokenTrackingMixin, ModelProvider):
                     "for pre-flight validation"
                 )
             else:
-                result.add_warning(f"Bedrock check warning ({error_code}): {error_msg}")
+                result.add_warning(f"Bedrock check warning ({error_code})")
 
         except Exception as e:
-            result.add_warning(f"Could not verify Bedrock access: {e}")
+            result.add_warning(f"Could not verify Bedrock access: {type(e).__name__}")
 
         return result

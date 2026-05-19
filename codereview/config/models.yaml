@@ -152,8 +152,9 @@ providers:
       - id: kimi-k2.5-bedrock
         full_id: moonshotai.kimi-k2.5
         name: Kimi K2.5 (Bedrock)
+        # Bedrock-suffixed aliases only — `kimi` is claimed by the
+        # Moonshot direct provider (canonical owner of the model family).
         aliases:
-          - kimi
           - kimi-bedrock
           - kimi25-bedrock
         pricing:
@@ -414,8 +415,8 @@ providers:
         deployment_name: DeepSeek-V4-Pro
         name: DeepSeek-V4-Pro (Azure)
         # Azure-suffixed aliases only — base names like
-        # `deepseek-v4`, `deepseek-v4-pro`, `dsv4` are already
-        # claimed by the NVIDIA entry above.
+        # `deepseek-v4`, `deepseek-v4-pro`, `dsv4` are claimed by
+        # the direct DeepSeek API provider (canonical owner).
         aliases:
           - dsv4-azure
           - deepseek-v4-azure
@@ -707,11 +708,13 @@ providers:
       - id: deepseek-v4-pro-nvidia
         full_id: deepseek-ai/deepseek-v4-pro
         name: DeepSeek-V4-Pro (NVIDIA)
+        # NVIDIA-suffixed aliases only — the bare names `deepseek-v4`,
+        # `deepseek-v4-pro`, `dsv4` are now claimed by the direct DeepSeek
+        # API provider (canonical owner of the model).
         aliases:
-          - deepseek-v4
-          - deepseek-v4-pro
           - ds-v4-nvidia
-          - dsv4
+          - dsv4-nvidia
+          - deepseek-v4-nvidia
         pricing:
           # Free endpoint on build.nvidia.com
           input_per_million: 0.00
@@ -774,10 +777,11 @@ providers:
       - id: kimi-k2.6-nvidia
         full_id: moonshotai/kimi-k2.6
         name: Kimi K2.6 (NVIDIA)
+        # NVIDIA-suffixed aliases only — `kimi-k2.6`, `kimi26` are
+        # claimed by the Moonshot direct provider (canonical owner).
         aliases:
-          - kimi-k2.6
-          - kimi26
           - kimi-nvidia-26
+          - kimi26-nvidia
         pricing:
           input_per_million: 0.00
           output_per_million: 0.00
@@ -974,11 +978,186 @@ providers:
           - reasoning
           - multimodal
 
+  # DeepSeek Direct API Provider
+  # Uses langchain-deepseek's ChatDeepSeek (purpose-built single-purpose
+  # package, not the heavy langchain-community).
+  # OpenAI-format compatible at https://api.deepseek.com.
+  # Both V4-Pro and V4-Flash support tool calling and structured output
+  # natively (unlike DeepSeek-V4-Pro on Azure Foundry, which requires
+  # prompt-based JSON parsing because SGLang doesn't expose tools).
+  deepseek:
+    api_key: "${DEEPSEEK_API_KEY}"
+    api_base: "https://api.deepseek.com"
+    request_timeout: 300
+    models:
+      # DeepSeek V4 Pro - flagship reasoning + agentic model
+      # 1M context, 384K max output, three reasoning modes
+      # 75% promo discount runs through 2026-05-31; pricing below is
+      # the post-promo list rate.
+      - id: deepseek-v4-pro
+        full_id: deepseek-v4-pro
+        name: DeepSeek-V4-Pro
+        aliases:
+          - dsv4-pro
+          - ds-v4-pro
+          - dsv4pro
+        pricing:
+          # DeepSeek list price (https://api-docs.deepseek.com/quick_start/pricing)
+          input_per_million: 1.74
+          output_per_million: 3.48
+          # Cache hit at 1/10 of cache miss
+          cached_input_per_million: 0.174
+        inference_params:
+          # Lower temp for code review determinism (model default 1.0)
+          default_temperature: 0.3
+          default_top_p: 0.95
+          max_output_tokens: 16384
+        context_window: 1000000
+        capabilities:
+          - reasoning
+          - code_review
+          - code_generation
+          - structured_output
+          - tool_use
+          - thinking
+        notes: >-
+          Flagship V4 model: chain-of-thought reasoning, JSON mode,
+          tool calling, 1M context. Direct API supports thinking mode
+          toggle (unlike Azure Foundry deployment).
+
+      # DeepSeek V4 Flash - cost-efficient instant model
+      # Same 1M context, much cheaper, faster
+      - id: deepseek-v4-flash
+        full_id: deepseek-v4-flash
+        name: DeepSeek-V4-Flash
+        aliases:
+          - dsv4-flash
+          - ds-v4-flash
+          - dsv4f
+        pricing:
+          input_per_million: 0.14
+          output_per_million: 0.28
+          cached_input_per_million: 0.014
+        inference_params:
+          default_temperature: 0.3
+          default_top_p: 0.95
+          max_output_tokens: 16384
+        context_window: 1000000
+        capabilities:
+          - code_review
+          - code_generation
+          - structured_output
+          - tool_use
+        notes: >-
+          Cost-efficient flash variant. 12x cheaper input than V4-Pro,
+          same context window. Best for high-volume reviews and CI.
+
+  # Moonshot AI (Kimi) Direct API Provider
+  # Uses langchain-moonshot's ChatMoonshot, which extends BaseChatOpenAI
+  # and handles Kimi-specific quirks (kimi-k2.5 thinking-mode parameter
+  # constraints; kimi-k2.6 has no such restrictions).
+  #
+  # Two separate platforms with separate accounts/keys:
+  #   - .cn (Chinese): https://api.moonshot.cn/v1   (platform.moonshot.cn)
+  #   - .ai (international): https://api.moonshot.ai/v1  (platform.moonshot.ai)
+  # KIMI_API_KEY usually maps to the .cn console. Override base_url here
+  # if your key is from platform.moonshot.ai instead.
+  moonshot:
+    api_key: "${KIMI_API_KEY}"
+    base_url: "https://api.moonshot.cn/v1"
+    request_timeout: 300
+    models:
+      # Kimi K2.6 - flagship long-horizon agentic coding model
+      # 1T MoE, 32B active, 384 experts, 256K context
+      - id: kimi-k2.6
+        full_id: kimi-k2.6
+        name: Kimi K2.6 (Moonshot)
+        aliases:
+          - kimi
+          - kimi26
+          - kimi-moonshot
+        pricing:
+          # Moonshot list price (https://platform.moonshot.ai/pricing)
+          # Update if upstream changes; treat as a starting estimate
+          # since the docs page wasn't directly fetchable at config time.
+          input_per_million: 0.60
+          output_per_million: 2.50
+        inference_params:
+          # Moonshot's K2.6 server-side enforces temperature=1.0 and
+          # top_p=0.95 (same constraint as K2.5 with thinking enabled).
+          # Sending any other value yields HTTP 400:
+          #   "invalid temperature: only 1 is allowed for this model".
+          # K2.6 is trained for sufficient determinism at fixed t=1.0;
+          # do NOT lower for code review here.
+          default_temperature: 1.0
+          default_top_p: 0.95
+          max_output_tokens: 16384
+        context_window: 262144
+        architecture: "MoE (1T total, 32B active, 384 experts)"
+        capabilities:
+          - reasoning
+          - code_review
+          - code_generation
+          - long_horizon_agentic
+          - tool_use
+          - structured_output
+          - thinking
+        notes: >-
+          Long-horizon agentic coding with thinking mode. Direct
+          Moonshot API supports tool calling and structured output;
+          no prompt-based JSON fallback required.
+
+  # Z.AI (Zhipu International) Provider
+  # OpenAI-compatible endpoint at https://api.z.ai/api/paas/v4/
+  # Models exposed via langchain-openai's ChatOpenAI with custom base_url
+  # — no langchain-community dependency.
+  zai:
+    api_key: "${ZAI_API_KEY}"
+    base_url: "https://api.z.ai/api/paas/v4/"
+    request_timeout: 300
+    models:
+      # GLM-5.1 (Z.AI)
+      # Long-horizon coding model: can plan/execute on a single task
+      # autonomously for hours. 203K context, function calling supported.
+      - id: zhipuai/glm-5.1
+        full_id: glm-5.1
+        name: GLM-5.1 (Z.AI)
+        aliases:
+          - zai-glm
+          - glm-zai
+          - glm5.1-zai
+        pricing:
+          # Z.AI direct list price (per third-party aggregators; the
+          # official docs.z.ai pricing page wasn't fetchable at config
+          # time — update if you have the canonical rate).
+          input_per_million: 1.40
+          output_per_million: 4.40
+        inference_params:
+          # Lower temperature for deterministic code review
+          default_temperature: 0.3
+          default_top_p: 0.95
+          max_output_tokens: 16384
+        context_window: 202752
+        capabilities:
+          - reasoning
+          - code_review
+          - code_generation
+          - long_horizon_agentic
+          - tool_use
+          - structured_output
+        notes: >-
+          Long-horizon coding model with sustained autonomous
+          execution. OpenAI-compatible endpoint, supports function
+          calling and structured output natively.
+
 # Default model configuration
 defaults:
   bedrock_default: opus4.7
   azure_default: gpt-5.4
   nvidia_default: mistral-medium-nvidia
+  zai_default: zhipuai/glm-5.1
+  deepseek_default: deepseek-v4-pro
+  moonshot_default: kimi-k2.6
   aws_region: us-west-2
   max_tokens: 16000
 

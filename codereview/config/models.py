@@ -248,6 +248,109 @@ class GoogleGenAIConfig(ProviderConfig):
     )
 
 
+class MoonshotConfig(ProviderConfig):
+    """Configuration for Moonshot AI (Kimi) direct API.
+
+    Uses the dedicated ``langchain-moonshot`` package's ``ChatMoonshot``
+    client. The package itself reads ``MOONSHOT_API_KEY`` by default; this
+    config plumbs the ``KIMI_API_KEY`` env var through explicitly so the
+    naming matches the existing CLI conventions (KIMI_API_KEY).
+
+    Attributes:
+        api_key: Moonshot API key, read from KIMI_API_KEY env var.
+        base_url: Base URL for Moonshot's API.
+        request_timeout: Request timeout in seconds for API calls.
+        models: List of model configurations.
+    """
+
+    model_config = {"frozen": True}
+
+    api_key: str = Field(
+        ...,
+        min_length=1,
+        description="Moonshot API key (read from KIMI_API_KEY env var)",
+    )
+    base_url: str = Field(
+        default="https://api.moonshot.cn/v1",
+        description=(
+            "Base URL for Moonshot's API. Defaults to the Chinese platform "
+            "(platform.moonshot.cn) which is what KIMI_API_KEY usually targets. "
+            "Set to https://api.moonshot.ai/v1 for the international platform."
+        ),
+    )
+    request_timeout: int = Field(
+        default=300,
+        gt=0,
+        description="Request timeout in seconds for API calls (default: 5 minutes)",
+    )
+
+
+class DeepSeekConfig(ProviderConfig):
+    """Configuration for DeepSeek's direct API.
+
+    Uses the dedicated ``langchain-deepseek`` package's ``ChatDeepSeek``
+    client (small single-purpose dep, not the heavy langchain-community).
+    DeepSeek's API is OpenAI-format compatible at https://api.deepseek.com.
+
+    Attributes:
+        api_key: DeepSeek API key, read from DEEPSEEK_API_KEY env var.
+        api_base: Base URL for DeepSeek's API.
+        request_timeout: Request timeout in seconds for API calls.
+        models: List of model configurations.
+    """
+
+    model_config = {"frozen": True}
+
+    api_key: str = Field(
+        ...,
+        min_length=1,
+        description="DeepSeek API key (read from DEEPSEEK_API_KEY env var)",
+    )
+    api_base: str = Field(
+        default="https://api.deepseek.com",
+        description="Base URL for DeepSeek's OpenAI-compatible API",
+    )
+    request_timeout: int = Field(
+        default=300,
+        gt=0,
+        description="Request timeout in seconds for API calls (default: 5 minutes)",
+    )
+
+
+class ZAIConfig(ProviderConfig):
+    """Configuration for Z.AI (Zhipu international) provider.
+
+    Z.AI exposes an OpenAI-compatible API; this config is reused by the
+    ChatOpenAI client wired with a custom base_url. The Chinese Zhipu
+    endpoint (open.bigmodel.cn) is intentionally NOT configured here
+    because it has different pricing, region constraints, and uses a
+    different env var (ZHIPUAI_API_KEY).
+
+    Attributes:
+        api_key: Z.AI API key (from z.ai), read from ZAI_API_KEY env var.
+        base_url: OpenAI-compatible base URL. Defaults to Z.AI international.
+        request_timeout: Request timeout in seconds for API calls.
+        models: List of model configurations for Z.AI.
+    """
+
+    model_config = {"frozen": True}
+
+    api_key: str = Field(
+        ...,
+        min_length=1,
+        description="Z.AI API key (read from ZAI_API_KEY env var)",
+    )
+    base_url: str = Field(
+        default="https://api.z.ai/api/paas/v4/",
+        description="OpenAI-compatible base URL (defaults to Z.AI international)",
+    )
+    request_timeout: int = Field(
+        default=300,
+        gt=0,
+        description="Request timeout in seconds for API calls (default: 5 minutes)",
+    )
+
+
 class ScanningConfig(BaseModel):
     """Configuration for file scanning.
 

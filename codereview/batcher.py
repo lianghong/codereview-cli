@@ -75,6 +75,10 @@ class FileBatcher:
         Returns:
             List of FileBatch objects
         """
+        # Per-run state: clear stale skips from any earlier create_batches()
+        # call on the same instance so reports don't conflate runs.
+        self.skipped_oversized = []
+
         if not files:
             return []
 

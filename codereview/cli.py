@@ -199,7 +199,14 @@ def _render_batch_error(
             )
 
     if verbose:
-        con.print(traceback.format_exc())
+        # Worker threads (ThreadPoolExecutor) re-raise the original exception
+        # at future.result(); traceback.format_exc() would only show that
+        # re-raise frame. Format from the exception's own __traceback__ so we
+        # surface where the failure actually happened inside the worker.
+        tb = "".join(
+            traceback.format_exception(type(error), error, error.__traceback__)
+        )
+        con.print(tb)
 
 
 def _is_pricing_tbd(input_price: float, output_price: float) -> bool:
@@ -270,6 +277,21 @@ def display_available_models(console: Console) -> None:
         "nvidia",
         "NVIDIA_API_KEY",
         "https://build.nvidia.com",
+    )
+    setup_table.add_row(
+        "zai",
+        "ZAI_API_KEY",
+        "https://z.ai (Zhipu international)",
+    )
+    setup_table.add_row(
+        "deepseek",
+        "DEEPSEEK_API_KEY",
+        "https://platform.deepseek.com/api_keys",
+    )
+    setup_table.add_row(
+        "moonshot",
+        "KIMI_API_KEY",
+        "platform.moonshot.cn (Kimi); .ai for international",
     )
 
     console.print(setup_table)
@@ -391,6 +413,16 @@ def validate_provider_credentials(
     help="Run static analysis tools for all supported languages",
 )
 @click.option(
+    "--tool-timeout",
+    type=click.IntRange(min=1, max=3600),
+    default=None,
+    help=(
+        "Per-tool subprocess timeout in seconds (default: 120). "
+        "Raise this for slow runs like cppcheck --enable=all on large "
+        "C++ repos or mypy strict on big Python codebases."
+    ),
+)
+@click.option(
     "--temperature",
     type=float,
     default=None,
@@ -453,6 +485,7 @@ def main(
     aws_profile: str | None,
     model_name: str,
     static_analysis: bool,
+    tool_timeout: int | None,
     temperature: float | None,
     dry_run: bool,
     verbose: bool,
@@ -616,7 +649,7 @@ def main(
         static_results = None
         if static_analysis:
             con.print("[cyan]Running static analysis tools...[/cyan]\n")
-            analyzer_static = StaticAnalyzer(directory)
+            analyzer_static = StaticAnalyzer(directory, tool_timeout=tool_timeout)
 
             if not analyzer_static.available_tools:
                 con.print(
@@ -937,14 +970,25 @@ def main(
                     con.print(f"\n[green]✓ JSON report exported to: {output}[/green]\n")
                 else:
                     # Export as Markdown (default)
-                    # Collect all skipped files for the report
+                    # Collect all skipped files for the report.
+                    # Three sources of skips, all surfaced so reports are
+                    # honest about what was *not* analyzed:
+                    #   - scanner: extension/pattern/size filters
+                    #   - batcher: token budget exceeded by single file
+                    #   - analyzer: read failure mid-batch
                     all_skipped_files: list[tuple[str, str]] = []
 
-                    # Add scanner skipped files (convert Path to str)
                     for skipped_path, reason in scanner.skipped_files:
                         all_skipped_files.append((str(skipped_path), reason))
 
-                    # Add analyzer skipped files (already strings)
+                    for skipped_path, est_tokens in batcher.skipped_oversized:
+                        all_skipped_files.append(
+                            (
+                                str(skipped_path),
+                                f"Exceeds per-batch token budget (~{est_tokens:,} tokens)",
+                            )
+                        )
+
                     all_skipped_files.extend(analyzer.skipped_files)
 
                     exporter = MarkdownExporter()

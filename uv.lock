@@ -258,7 +258,9 @@ dependencies = [
     { name = "google-api-core" },
     { name = "langchain" },
     { name = "langchain-aws" },
+    { name = "langchain-deepseek" },
     { name = "langchain-google-genai" },
+    { name = "langchain-moonshot" },
     { name = "langchain-nvidia-ai-endpoints" },
     { name = "langchain-openai" },
     { name = "pydantic" },
@@ -293,7 +295,9 @@ requires-dist = [
     { name = "isort", marker = "extra == 'static-analysis'", specifier = ">=8.0.1" },
     { name = "langchain", specifier = ">=1.2.17" },
     { name = "langchain-aws", specifier = ">=1.4.7" },
+    { name = "langchain-deepseek", specifier = ">=1.0.1" },
     { name = "langchain-google-genai", specifier = ">=4.2.2" },
+    { name = "langchain-moonshot", specifier = ">=0.1.0" },
     { name = "langchain-nvidia-ai-endpoints", specifier = ">=1.3.0" },
     { name = "langchain-openai", specifier = ">=1.2.0" },
     { name = "mypy", marker = "extra == 'static-analysis'", specifier = ">=1.20.1" },
@@ -678,6 +682,19 @@ wheels = [
 ]
 
 [[package]]
+name = "langchain-deepseek"
+version = "1.0.1"
+source = { registry = "https://mirrors.aliyun.com/pypi/simple/" }
+dependencies = [
+    { name = "langchain-core" },
+    { name = "langchain-openai" },
+]
+sdist = { url = "https://mirrors.aliyun.com/pypi/packages/4e/c4/de579ea21e22777959f214af165761c6cd101248222bcc0886d020d67185/langchain_deepseek-1.0.1.tar.gz", hash = "sha256:e7a0238f2c14e928e1562641b2df639c19cdf867287a7f2293ffb1372daf83ae" }
+wheels = [
+    { url = "https://mirrors.aliyun.com/pypi/packages/cd/dd/a803dfbf64273232f3fc82f859487331abb717671bbcdf266fd80de6ef78/langchain_deepseek-1.0.1-py3-none-any.whl", hash = "sha256:0a9862f335f1873370bb0fe1928ac19b8b9292b014ef5412da462ded8bb82c5a" },
+]
+
+[[package]]
 name = "langchain-google-genai"
 version = "4.2.2"
 source = { registry = "https://mirrors.aliyun.com/pypi/simple/" }
@@ -690,6 +707,19 @@ dependencies = [
 sdist = { url = "https://mirrors.aliyun.com/pypi/packages/29/78/dfe068937338727b0dee637d971d59fe2fa275f9d0f0edee3fa80e811846/langchain_google_genai-4.2.2.tar.gz", hash = "sha256:5fc774bf41d1dc1c1a5ba8d7b9f2017dfa77e30653c9b44d2dfbaf0e877e7388" }
 wheels = [
     { url = "https://mirrors.aliyun.com/pypi/packages/3c/5c/adf81d68ab89b4cf505e690f8c1956d11b5969c831c951c7b4b1b1818080/langchain_google_genai-4.2.2-py3-none-any.whl", hash = "sha256:c8d09aac0304d26f1c2483e41a350f15587af1fbe034c39a304e1e17a3b743f3" },
+]
+
+[[package]]
+name = "langchain-moonshot"
+version = "0.1.0"
+source = { registry = "https://mirrors.aliyun.com/pypi/simple/" }
+dependencies = [
+    { name = "langchain-core" },
+    { name = "langchain-openai" },
+]
+sdist = { url = "https://mirrors.aliyun.com/pypi/packages/7e/dc/4fbcb89c06259a18eb04f9d9229e6fc938011c060b82791e6e45d85f60e1/langchain_moonshot-0.1.0.tar.gz", hash = "sha256:0d98b5ca0f707b631a138008087815990b8fc7e2cbc369205724ed5d322d056a" }
+wheels = [
+    { url = "https://mirrors.aliyun.com/pypi/packages/f0/2f/cfab3472126a3532ddd3f68bf37205971d3fce1a7ec5aec2194b19bf3a40/langchain_moonshot-0.1.0-py3-none-any.whl", hash = "sha256:1f62d84ae7b0dcdd544c643778149437a632acd034c7f0e9e148f55285bf5796" },
 ]
 
 [[package]]

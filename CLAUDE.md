@@ -4,9 +4,9 @@ Guidance for Claude Code working in this repository.
 
 ## Project
 
-LangChain-based CLI for AI code review across AWS Bedrock, Azure OpenAI, NVIDIA NIM, and Google GenAI. Reviews **Python, Go, Shell, C++, Java, JS, TS** with structured output (severity, line numbers, suggested fixes).
+LangChain-based CLI for AI code review across **7 providers**: AWS Bedrock, Azure OpenAI, NVIDIA NIM, Google GenAI, DeepSeek direct, Z.AI (Zhipu international), and Moonshot (Kimi). Reviews **Python, Go, Shell, C++, Java, JS, TS** with structured output (severity, line numbers, suggested fixes).
 
-**Stack:** Python 3.14, LangChain (1.3+), Pydantic V2, Click, Rich, AWS Bedrock, Azure OpenAI, NVIDIA NIM, Google GenAI.
+**Stack:** Python 3.14, LangChain (1.3+), Pydantic V2, Click, Rich, AWS Bedrock, Azure OpenAI, NVIDIA NIM, Google GenAI, DeepSeek (`langchain-deepseek`), Z.AI (`langchain-openai` + custom base_url), Moonshot (`langchain-moonshot`).
 
 For the live model list with pricing/aliases run `uv run codereview --list-models` — that output is authoritative; the YAML in `codereview/config/models.yaml` is the source of truth. Default model: **Claude Opus 4.7**.
 
@@ -98,7 +98,7 @@ codereview/config/
 
 **Configurable via `models.yaml` (no code changes):** model registration, pricing, inference params (`temperature`, `top_p`, `top_k`, `max_output_tokens`), `context_window`, `supports_tool_use`, `use_responses_api`, AWS region, scanning patterns/extensions, max file size.
 
-**Secrets via env vars** (expanded with `${VAR}` syntax in YAML): `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_ENDPOINT`, `NVIDIA_API_KEY`, `GOOGLE_API_KEY`. AWS uses standard credential chain.
+**Secrets via env vars** (expanded with `${VAR}` syntax in YAML): `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_ENDPOINT`, `NVIDIA_API_KEY`, `GOOGLE_API_KEY`, `DEEPSEEK_API_KEY`, `ZAI_API_KEY`, `KIMI_API_KEY`. AWS uses standard credential chain.
 
 ## Provider credentials
 
@@ -108,14 +108,23 @@ codereview/config/
 | Azure OpenAI | `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_ENDPOINT` | portal.azure.com |
 | NVIDIA NIM | `NVIDIA_API_KEY` (`nvapi-...`); free tier available | build.nvidia.com |
 | Google GenAI | `GOOGLE_API_KEY` | aistudio.google.com/apikey |
+| DeepSeek direct | `DEEPSEEK_API_KEY`; via `langchain-deepseek` | platform.deepseek.com/api_keys |
+| Z.AI (Zhipu) | `ZAI_API_KEY`; via OpenAI-compat (`ChatOpenAI` + `base_url`) | z.ai |
+| Moonshot (Kimi) | `KIMI_API_KEY`; default endpoint is `.cn` (Chinese platform). Override `base_url` to `https://api.moonshot.ai/v1` for international keys | platform.moonshot.cn |
 
 Tests mock at the provider level — no credentials needed for `pytest`.
+
+**Canonical-owner convention** for the model registry: when the same model is exposed by both a vendor's direct API and a re-hoster (Bedrock/NVIDIA/Azure), the **direct API owns the canonical aliases**. E.g. `deepseek-v4-pro` routes to DeepSeek direct, not NVIDIA's free re-host (`dsv4-nvidia`); `kimi` and `kimi-k2.6` route to Moonshot direct, not Bedrock's K2.5 (`kimi-bedrock`) or NVIDIA's K2.6 (`kimi-nvidia-26`). Re-host entries keep provider-suffixed aliases only.
 
 ## Adding things
 
 **New model:** add an entry under the matching provider in `codereview/config/models.yaml`. Fields: `id`, `full_id` (provider's identifier), `name`, `aliases`, `pricing.input_per_million`/`output_per_million`, `inference_params`, `context_window`. Use immediately: `codereview ./src --model <id-or-alias>`. Existing entries in `models.yaml` are the best reference.
 
-**New provider:** subclass `ModelProvider` in `codereview/providers/`, implement `analyze_batch`, `get_model_display_name`, `get_pricing`. Register in `ProviderFactory.create_provider`. Add config section to `models.yaml`. Mirror an existing provider for retry hooks and token extraction.
+**New provider:** subclass `ModelProvider` in `codereview/providers/`, implement `analyze_batch`, `_create_model`, `_create_chain`, `_extract_token_usage`, `_is_retryable_error`, `_calculate_backoff`, `validate_credentials`. Register in `ProviderFactory.create_provider` (and add the `<Name>Config` Pydantic class to `config/models.py`, plus a parsing branch in `config/loader.py`). Add the env-var to `cli.py`'s Provider Setup table. **Reference implementations**:
+- OpenAI-compatible vendor with dedicated langchain package → mirror `providers/deepseek.py` (uses `ChatDeepSeek`, `api_base` parameter)
+- OpenAI-compatible vendor without dedicated package → mirror `providers/zai.py` (uses `ChatOpenAI` with custom `base_url`)
+- BaseChatOpenAI subclass with vendor-specific quirks → mirror `providers/moonshot.py` (uses `ChatMoonshot`, accepts `base_url` alias)
+- Tool-use-less endpoints → mirror Bedrock's prompt-based JSON path (set `_use_prompt_parsing=True`, append `PydanticOutputParser` to the chain, inject format instructions via `_system_prompt_with_format_instructions`).
 
 **New review category:** add to `ReviewIssue.category` Literal + `VALID_CATEGORIES` + `CATEGORY_MAPPING` in `models.py`, then mention it in `SYSTEM_PROMPT` (`config/prompts.py`).
 
@@ -159,3 +168,7 @@ Fixtures live in `tests/fixtures/sample_code/` (verifies inclusion + exclusion l
 - **`use_responses_api: true`** for GPT-5.x in `models.yaml` — ChatCompletion API does not support reasoning summaries for these.
 - **Concurrent batches:** `TokenTrackingMixin._track_tokens` and `CodeAnalyzer.skipped_files` are lock-guarded. Don't add other shared mutable state to providers without a lock.
 - **`--list-models`** shows everything regardless of credentials; credentials are only validated when a model is actually used.
+- **DeepSeek-V4-Pro on Azure / SGLang null-model bug**: the Foundry endpoint validates `body.model` strictly. langchain-openai's `AzureChatOpenAI` defaults `model_name=None` and serializes `"model": null`, which real Azure-OpenAI ignores but SGLang rejects with HTTP 400. The Azure provider explicitly sets `model=deployment_name` to satisfy both backends.
+- **Moonshot has two platforms**: `platform.moonshot.cn` (Chinese, default in our YAML) and `platform.moonshot.ai` (international). Keys are NOT interchangeable. `KIMI_API_KEY` typically maps to `.cn`; users with `.ai` keys must override `base_url` in the moonshot section.
+- **Determinism for static analysis**: when `MAX_FILES_PER_TOOL=500` truncation triggers, file lists must be `sorted(...)[:N]`. Locked in by `tests/test_static_analysis.py::test_truncation_is_deterministic`. `MAX_FILES_PER_TOOL`'s docstring documents this as a design guarantee.
+- **`--tool-timeout`** plumbs through to `subprocess.run(timeout=...)` for static-analysis tools (default 120s). `--include-hidden` opts into `.github/scripts/` etc. Both are off the FileScanner / StaticAnalyzer constructors as well, not just the CLI.

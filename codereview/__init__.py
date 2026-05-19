@@ -12,7 +12,21 @@ Main classes:
     FileScanner: Discovers and filters code files for analysis
 """
 
+import sys
 import warnings
+
+# Fail fast with a clear message before sub-module imports trigger
+# `SyntaxError` from PEP 758 unparenthesized `except` clauses on older
+# interpreters. pyproject.toml already enforces this at install time, but
+# users running from source against a wrong venv would otherwise get a
+# confusing parse error from a leaf module.
+if sys.version_info < (3, 14):
+    raise RuntimeError(
+        f"codereview requires Python 3.14+, got "
+        f"{sys.version_info.major}.{sys.version_info.minor}. "
+        "The package uses PEP 758 (unparenthesized multi-exception except "
+        "clauses) which earlier interpreters reject at parse time."
+    )
 
 # Suppress Pydantic V1 compatibility warning from LangChain (Python 3.14+)
 warnings.filterwarnings("ignore", message="Core Pydantic V1 functionality")

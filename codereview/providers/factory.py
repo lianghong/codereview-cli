@@ -6,8 +6,11 @@ from codereview.config import ConfigLoader, get_config_loader
 from codereview.config.models import (
     AzureOpenAIConfig,
     BedrockConfig,
+    DeepSeekConfig,
     GoogleGenAIConfig,
+    MoonshotConfig,
     NVIDIAConfig,
+    ZAIConfig,
 )
 from codereview.providers.base import ModelProvider
 
@@ -119,10 +122,59 @@ class ProviderFactory:
                 project_context=project_context,
             )
 
+        elif provider_name == "zai":
+            if not isinstance(provider_config, ZAIConfig):
+                raise ValueError(
+                    f"Expected ZAIConfig for zai provider, "
+                    f"got {type(provider_config).__name__}"
+                )
+            from codereview.providers.zai import ZAIProvider
+
+            return ZAIProvider(
+                model_config,
+                provider_config,
+                temperature,
+                callbacks=callbacks,
+                project_context=project_context,
+            )
+
+        elif provider_name == "deepseek":
+            if not isinstance(provider_config, DeepSeekConfig):
+                raise ValueError(
+                    f"Expected DeepSeekConfig for deepseek provider, "
+                    f"got {type(provider_config).__name__}"
+                )
+            from codereview.providers.deepseek import DeepSeekProvider
+
+            return DeepSeekProvider(
+                model_config,
+                provider_config,
+                temperature,
+                callbacks=callbacks,
+                project_context=project_context,
+            )
+
+        elif provider_name == "moonshot":
+            if not isinstance(provider_config, MoonshotConfig):
+                raise ValueError(
+                    f"Expected MoonshotConfig for moonshot provider, "
+                    f"got {type(provider_config).__name__}"
+                )
+            from codereview.providers.moonshot import MoonshotProvider
+
+            return MoonshotProvider(
+                model_config,
+                provider_config,
+                temperature,
+                callbacks=callbacks,
+                project_context=project_context,
+            )
+
         else:
             raise ValueError(
                 f"Unknown provider: {provider_name}. "
-                f"Supported providers: bedrock, azure_openai, nvidia, google_genai"
+                f"Supported providers: bedrock, azure_openai, nvidia, "
+                f"google_genai, zai, deepseek, moonshot"
             )
 
     def list_available_models(self) -> dict[str, list[dict[str, str]]]:

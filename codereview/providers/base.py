@@ -1,5 +1,6 @@
 """Abstract base class for LLM providers."""
 
+import logging
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -495,6 +496,15 @@ class ModelProvider(ABC):
 
                 enable_fixing = getattr(self, "enable_output_fixing", False)
                 if enable_fixing and attempt < retry_config.max_retries:
+                    # Log so operators can see *why* output fixing burned
+                    # all retries when it does. Debug-level keeps normal
+                    # runs quiet; --verbose surfaces the parse error.
+                    logging.debug(
+                        "Output validation failed on attempt %d/%d: %s",
+                        attempt + 1,
+                        retry_config.max_retries + 1,
+                        e,
+                    )
                     time.sleep(retry_config.validation_retry_sleep)
                     continue
 

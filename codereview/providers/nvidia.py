@@ -390,8 +390,21 @@ class NVIDIAProvider(TokenTrackingMixin, ModelProvider):
 
             except httpx.TimeoutException:
                 result.add_warning("Connection test timed out. API may be slow.")
+            except httpx.ConnectError:
+                # DNS / TCP / TLS failure — naming the failure mode is
+                # safe; no request bodies are involved.
+                result.add_warning(
+                    "Connection test failed: cannot reach NVIDIA API "
+                    "(DNS, TLS, or refused connection)"
+                )
+                result.add_suggestion("Verify network connectivity and DNS")
+            except httpx.HTTPStatusError as e:
+                # Status code only — response.text can echo request fragments.
+                result.add_warning(
+                    f"Connection test failed: HTTP {e.response.status_code}"
+                )
             except Exception as e:
-                # Surface only the exception type — the message can include
+                # Catch-all keeps strict redaction. The message can include
                 # request URLs / headers that may carry the API key.
                 result.add_warning(f"Connection test failed: {type(e).__name__}")
                 result.add_suggestion("Verify network connectivity to NVIDIA API")

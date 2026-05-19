@@ -96,6 +96,13 @@ class AzureOpenAIProvider(TokenTrackingMixin, ModelProvider):
             "azure_endpoint": str(self.provider_config.endpoint),
             "api_key": SecretStr(str(self.provider_config.api_key)),
             "api_version": self.provider_config.api_version,
+            # Set `model` (alias of model_name) explicitly. Real Azure-OpenAI
+            # ignores this field and routes by deployment URL, but Foundry
+            # models served via SGLang (e.g. DeepSeek-V4-Pro) validate the
+            # request body strictly and reject `"model": null` with a 400.
+            # Default-None from langchain-openai serializes to JSON null, so
+            # populate it with the deployment name to satisfy both backends.
+            "model": self.model_config.deployment_name,
             "max_tokens": self.max_tokens,
             "rate_limiter": self.rate_limiter,
             "callbacks": self.callbacks if self.callbacks else None,
@@ -332,7 +339,11 @@ class AzureOpenAIProvider(TokenTrackingMixin, ModelProvider):
         if env_skip_test not in ("1", "true", "yes"):
             try:
                 import httpx
+            except ImportError:
+                result.add_warning("Could not test connection (httpx not installed)")
+                return result
 
+            try:
                 # Normalize endpoint: remove common suffixes that users might add
                 base_endpoint = endpoint.rstrip("/")
                 for suffix in ["/openai/v1", "/openai", "/v1"]:
@@ -372,14 +383,31 @@ class AzureOpenAIProvider(TokenTrackingMixin, ModelProvider):
                             f"Endpoint responded (status: {response.status_code})",
                         )
 
-            except ImportError:
-                # httpx not available, skip connection test
-                result.add_warning("Could not test connection (httpx not installed)")
+            except httpx.TimeoutException:
+                result.add_warning(
+                    "Connection test timed out (endpoint slow or unreachable)"
+                )
+                result.add_suggestion("Verify network connectivity and DNS")
+            except httpx.ConnectError:
+                # DNS resolution / TCP refusal / TLS handshake failure.
+                # Naming the failure mode is safe; the underlying message
+                # is just a network-layer description.
+                result.add_warning(
+                    "Connection test failed: cannot reach endpoint "
+                    "(DNS, TLS, or refused connection)"
+                )
+                result.add_suggestion("Verify endpoint URL and that it is reachable")
+            except httpx.HTTPStatusError as e:
+                # We don't raise_for_status above, so this is forward-compat
+                # only. Status code is fine to surface; response.text can
+                # echo request fragments, so omit it.
+                result.add_warning(
+                    f"Connection test failed: HTTP {e.response.status_code}"
+                )
             except Exception as e:
-                # Surface only the exception type, never str(e). Lower layers
-                # (httpx, urllib3) may include the Authorization header or
-                # URL-encoded variants of the API key in the message; partial
-                # prefix scrubbing was fragile and could still leak.
+                # Catch-all keeps strict redaction. Lower layers can include
+                # the api-key header in error messages, so we surface only
+                # the exception class name.
                 result.add_warning(f"Connection test failed: {type(e).__name__}")
                 result.add_suggestion("Verify endpoint URL and network connectivity")
 

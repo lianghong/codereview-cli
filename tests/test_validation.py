@@ -790,10 +790,15 @@ class TestAzureValidation:
             with patch("httpx.Client", return_value=mock_client):
                 result = provider.validate_credentials()
 
-            # Should still be valid but with warning
+            # Should still be valid but with warning. ConnectError has a
+            # dedicated branch that mentions DNS/TLS/refused connection
+            # explicitly and suggests verifying the endpoint is reachable.
             assert result.valid is True
             assert any("Connection test failed" in w for w in result.warnings)
-            assert any("network connectivity" in s.lower() for s in result.suggestions)
+            assert any(
+                "reachable" in s.lower() or "network" in s.lower()
+                for s in result.suggestions
+            )
 
 
 class TestNVIDIAValidation:

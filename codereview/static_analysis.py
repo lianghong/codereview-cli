@@ -27,8 +27,14 @@ _MYPY_DIAGNOSTIC = re.compile(
     r"^[^:\n]+:\d+(?::\d+)?:\s+(error|warning|note):", re.MULTILINE
 )
 
-# Maximum number of files to pass to command line tools
-# Prevents "Argument list too long" errors on large repos
+# Maximum number of files to pass to command line tools.
+# Prevents "Argument list too long" errors on large repos.
+#
+# DESIGN GUARANTEE: when truncation triggers, the file list MUST be sorted
+# before slicing. Filesystem walk order is non-deterministic across runs
+# (and across hosts), so an unsorted [:N] would silently change the
+# analyzed subset between runs and break CI reproducibility. Test:
+# tests/test_static_analysis.py::test_truncation_is_deterministic.
 MAX_FILES_PER_TOOL = 500
 
 # Issue detection indicators for counting problems in tool output
@@ -303,19 +309,34 @@ class StaticAnalyzer:
         },
     }
 
-    def __init__(self, directory: Path):
+    # Default per-tool subprocess timeout in seconds. Caller can override via
+    # the constructor; CLI exposes this as --tool-timeout. 120s covers most
+    # repos but slow runs (cppcheck --enable=all, mypy strict on large
+    # codebases) need more.
+    DEFAULT_TOOL_TIMEOUT_SECONDS = 120
+
+    def __init__(self, directory: Path, tool_timeout: int | None = None):
         """
         Initialize static analyzer.
 
         Args:
             directory: Directory to analyze.
+            tool_timeout: Per-tool subprocess timeout in seconds. Defaults to
+                ``DEFAULT_TOOL_TIMEOUT_SECONDS`` (120). Raise this for slow
+                cppcheck/mypy runs on large repos.
 
         Raises:
             ValueError: If ``directory`` does not exist, is not a directory,
-                or contains null bytes. Failing fast here surfaces config
-                errors before any tool runs and lets callers handle them in
-                one place rather than per-tool.
+                or contains null bytes; or if ``tool_timeout`` is non-positive.
+                Failing fast here surfaces config errors before any tool runs
+                and lets callers handle them in one place rather than per-tool.
         """
+        if tool_timeout is not None and tool_timeout <= 0:
+            raise ValueError(
+                f"tool_timeout must be a positive integer, got {tool_timeout}"
+            )
+        self.tool_timeout = tool_timeout or self.DEFAULT_TOOL_TIMEOUT_SECONDS
+
         # Resolve path immediately to handle symlinks and normalize
         self.directory = directory.resolve()
         self._validate_directory()
@@ -478,15 +499,29 @@ class StaticAnalyzer:
                     shell=False,
                 )
                 if result.returncode == 0:
-                    available.append(tool_name)
                     # Cache the resolved exe so run_tool doesn't re-resolve.
                     # The first command token is the tool's primary executable.
+                    # When the version probe uses a *different* binary (gofmt
+                    # uses `go version`), we must validate the primary
+                    # separately — caching the bare name would let
+                    # subprocess.run search PATH again at run time, defeating
+                    # the in-repo-binary check in _resolve_tool_binary.
                     primary = config["command"][0]
-                    self._tool_paths[primary] = (
-                        resolved
-                        if primary == version_cmd[0]
-                        else self._resolve_tool_binary(primary) or primary
-                    )
+                    if primary == version_cmd[0]:
+                        primary_resolved: str | None = resolved
+                    else:
+                        primary_resolved = self._resolve_tool_binary(primary)
+                    if primary_resolved is None:
+                        logging.debug(
+                            "Tool %s passed version check via %s but primary "
+                            "executable %s could not be safely resolved on PATH",
+                            tool_name,
+                            version_cmd[0],
+                            primary,
+                        )
+                        continue
+                    available.append(tool_name)
+                    self._tool_paths[primary] = primary_resolved
             except subprocess.TimeoutExpired:
                 logging.debug(
                     "Tool %s version check timed out, marking as unavailable",
@@ -784,7 +819,7 @@ class StaticAnalyzer:
                 command,
                 capture_output=True,
                 text=True,
-                timeout=120,  # 2 minute timeout
+                timeout=self.tool_timeout,
                 cwd=cwd,
                 shell=False,  # Security: prevent command injection
             )
@@ -833,7 +868,10 @@ class StaticAnalyzer:
                 passed=False,
                 issues_count=0,
                 output="",
-                errors=["Tool timed out after 120 seconds"],
+                errors=[
+                    f"Tool timed out after {self.tool_timeout} seconds "
+                    "(raise --tool-timeout for slow runs)"
+                ],
             )
         except (OSError, subprocess.SubprocessError) as e:
             return StaticAnalysisResult(
@@ -913,7 +951,15 @@ class StaticAnalyzer:
                 )
         # PEP 758 syntax (Python 3.14+): unparenthesized multi-exception catch
         except json.JSONDecodeError, TypeError, AttributeError:
-            # Fallback: count non-empty lines as a rough estimate
+            # Without this log, an HTML error page from a corporate proxy
+            # would silently inflate "issue count" to one-per-line. Operators
+            # debugging phantom vulnerability counts need to see that JSON
+            # parsing failed so they can investigate the raw output.
+            logging.warning(
+                "npm audit JSON parsing failed; falling back to non-empty "
+                "line count. Output preview: %s",
+                output[:200].replace("\n", " "),
+            )
             return len([line for line in output.split("\n") if line.strip()])
         return 0
 
@@ -957,6 +1003,18 @@ class StaticAnalyzer:
                         output="",
                         errors=[f"Execution error: {type(e).__name__}: {e}"],
                     )
+
+        # Distinguish "lots of code-quality issues" from "every tool blew up
+        # on infrastructure problems" (deadlock, disk full, ulimit, etc.).
+        # CI pipelines reading `passed` would otherwise treat both the same.
+        if results and all(not r.output and r.errors for r in results.values()):
+            logging.error(
+                "All %d static analysis tool(s) failed without producing output. "
+                "This usually indicates an infrastructure problem (resource limits, "
+                "missing system dependencies, or sandbox restrictions) rather than "
+                "code-quality issues. Run a single tool with --verbose to debug.",
+                len(results),
+            )
         return results
 
     @staticmethod
