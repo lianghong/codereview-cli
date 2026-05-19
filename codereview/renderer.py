@@ -577,18 +577,30 @@ class MarkdownExporter:
                 and input_price is not None
                 and output_price is not None
             ):
-                input_cost = (token_metrics["input_tokens"] / 1_000_000) * input_price
-                output_cost = (
-                    token_metrics["output_tokens"] / 1_000_000
-                ) * output_price
-                total_cost = input_cost + output_cost
-                lines.append(f"- **Estimated Cost:** ${total_cost:.4f} USD")
-                lines.append(
-                    f"  - Input cost: ${input_cost:.4f} (${input_price:.2f}/M tokens)"
-                )
-                lines.append(
-                    f"  - Output cost: ${output_cost:.4f} (${output_price:.2f}/M tokens)"
-                )
+                # Placeholder pricing (0.00/0.00) means provider hasn't published rates;
+                # render TBD instead of misleading $0.0000.
+                if input_price == 0.0 and output_price == 0.0:
+                    lines.append(
+                        "- **Estimated Cost:** TBD "
+                        "(provider has not published pricing yet)"
+                    )
+                else:
+                    input_cost = (
+                        token_metrics["input_tokens"] / 1_000_000
+                    ) * input_price
+                    output_cost = (
+                        token_metrics["output_tokens"] / 1_000_000
+                    ) * output_price
+                    total_cost = input_cost + output_cost
+                    lines.append(f"- **Estimated Cost:** ${total_cost:.4f} USD")
+                    lines.append(
+                        f"  - Input cost: ${input_cost:.4f} "
+                        f"(${input_price:.2f}/M tokens)"
+                    )
+                    lines.append(
+                        f"  - Output cost: ${output_cost:.4f} "
+                        f"(${output_price:.2f}/M tokens)"
+                    )
 
         return "\n".join(lines)
 

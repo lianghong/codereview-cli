@@ -127,6 +127,16 @@ def _create_console(quiet: bool = False, no_color: bool = False) -> Console:
     return Console()
 
 
+def _is_pricing_tbd(input_price: float, output_price: float) -> bool:
+    """Check if model pricing is a placeholder (provider hasn't published rates).
+
+    Many free-tier or preview models in models.yaml use 0.00 placeholders.
+    Treating these as $0 in cost output misleads users into thinking the
+    model is permanently free; surface them as TBD instead.
+    """
+    return input_price == 0.0 and output_price == 0.0
+
+
 def display_available_models(console: Console) -> None:
     """Display all available models in a formatted table.
 
@@ -851,10 +861,20 @@ def main(
         # Calculate cost using model's pricing
         input_price = float(pricing["input_price_per_million"])
         output_price = float(pricing["output_price_per_million"])
-        input_cost = (analyzer.provider.total_input_tokens / 1_000_000) * input_price
-        output_cost = (analyzer.provider.total_output_tokens / 1_000_000) * output_price
-        total_cost = input_cost + output_cost
-        con.print(f"   [bold]Estimated cost: ${total_cost:.4f}[/bold]")
+        if _is_pricing_tbd(input_price, output_price):
+            con.print(
+                "   [bold]Estimated cost: TBD[/bold] "
+                "[dim](provider has not published pricing yet)[/dim]"
+            )
+        else:
+            input_cost = (
+                analyzer.provider.total_input_tokens / 1_000_000
+            ) * input_price
+            output_cost = (
+                analyzer.provider.total_output_tokens / 1_000_000
+            ) * output_price
+            total_cost = input_cost + output_cost
+            con.print(f"   [bold]Estimated cost: ${total_cost:.4f}[/bold]")
         con.print()
 
         # Warn if any files were skipped
@@ -1064,9 +1084,7 @@ def _render_dry_run(
     # Calculate cost
     input_price = float(pricing["input_price_per_million"])
     output_price = float(pricing["output_price_per_million"])
-    input_cost = (total_input_tokens / 1_000_000) * input_price
-    output_cost = (estimated_output_tokens / 1_000_000) * output_price
-    total_cost = input_cost + output_cost
+    pricing_tbd = _is_pricing_tbd(input_price, output_price)
 
     # Summary
     console.print("[bold]💰 Estimated Cost Summary[/bold]")
@@ -1075,9 +1093,18 @@ def _render_dry_run(
     console.print(f"   Batches: {len(batches)}")
     console.print(f"   Est. input tokens: ~{total_input_tokens:,}")
     console.print(f"   Est. output tokens: ~{estimated_output_tokens:,}")
-    console.print(f"   [bold]Est. cost: ${total_cost:.4f}[/bold]")
-    console.print(f"      (Input: ${input_cost:.4f} @ ${input_price}/M)")
-    console.print(f"      (Output: ${output_cost:.4f} @ ${output_price}/M)")
+    if pricing_tbd:
+        console.print(
+            "   [bold]Est. cost: TBD[/bold] "
+            "[dim](provider has not published pricing yet)[/dim]"
+        )
+    else:
+        input_cost = (total_input_tokens / 1_000_000) * input_price
+        output_cost = (estimated_output_tokens / 1_000_000) * output_price
+        total_cost = input_cost + output_cost
+        console.print(f"   [bold]Est. cost: ${total_cost:.4f}[/bold]")
+        console.print(f"      (Input: ${input_cost:.4f} @ ${input_price}/M)")
+        console.print(f"      (Output: ${output_cost:.4f} @ ${output_price}/M)")
     console.print()
     console.print("[dim]Run without --dry-run to perform the actual analysis.[/dim]")
 
