@@ -391,7 +391,9 @@ class NVIDIAProvider(TokenTrackingMixin, ModelProvider):
             except httpx.TimeoutException:
                 result.add_warning("Connection test timed out. API may be slow.")
             except Exception as e:
-                result.add_warning(f"Connection test failed: {e}")
+                # Surface only the exception type — the message can include
+                # request URLs / headers that may carry the API key.
+                result.add_warning(f"Connection test failed: {type(e).__name__}")
                 result.add_suggestion("Verify network connectivity to NVIDIA API")
 
         return result

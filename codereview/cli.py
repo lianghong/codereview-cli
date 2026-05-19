@@ -354,6 +354,12 @@ def validate_provider_credentials(
 )
 @click.option("--exclude", "-e", multiple=True, help="Additional exclusion patterns")
 @click.option(
+    "--include-hidden",
+    is_flag=True,
+    help="Scan inside hidden directories (e.g. .github/scripts). "
+    "By default, directories starting with '.' are skipped.",
+)
+@click.option(
     "--max-files",
     type=click.IntRange(min=1, max=10000),
     help="Maximum number of files to analyze (1-10000)",
@@ -440,6 +446,7 @@ def main(
     output_format: str,
     severity: str,
     exclude: tuple[str, ...],
+    include_hidden: bool,
     max_files: int | None,
     max_file_size: int,
     batch_size: int,
@@ -560,6 +567,7 @@ def main(
                 directory,
                 exclude_patterns=exclude_patterns,
                 max_file_size_kb=max_file_size,
+                exclude_hidden=not include_hidden,
             )
             files = scanner.scan()
 

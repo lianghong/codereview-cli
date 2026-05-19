@@ -4,6 +4,7 @@ from typing import Any
 
 from langchain_core.callbacks import BaseCallbackHandler
 from langchain_google_genai import ChatGoogleGenerativeAI
+from pydantic import SecretStr
 
 # Import system prompt from config
 from codereview.config import SYSTEM_PROMPT
@@ -85,11 +86,12 @@ class GoogleGenAIProvider(TokenTrackingMixin, ModelProvider):
         # Build model parameters
         model_params: dict[str, Any] = {
             "model": self.model_config.full_id,
-            "google_api_key": self.provider_config.api_key,
+            "google_api_key": SecretStr(str(self.provider_config.api_key)),
             "temperature": self.temperature,
             "max_output_tokens": self.max_tokens,
             "timeout": self.provider_config.request_timeout,
             "callbacks": self.callbacks if self.callbacks else None,
+            "rate_limiter": self.rate_limiter,
         }
 
         # Add optional parameters

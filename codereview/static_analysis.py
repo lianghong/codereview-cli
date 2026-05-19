@@ -2,11 +2,30 @@
 
 import json
 import logging
+import re
+import shutil
 import subprocess  # nosec B404 - required for running static analysis tools
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TypedDict
+
+# Per-tool regexes that pull an authoritative issue count from the tool's
+# own summary line. Falling back to substring counting (BASE_INDICATORS
+# below) double-counts: ruff prints both per-issue lines and a "Found N
+# errors" summary; mypy prints "error:" on each diagnostic *and* a
+# trailing "Found N errors in M files".
+_TOOL_COUNT_PATTERNS: dict[str, re.Pattern[str]] = {
+    "ruff": re.compile(r"^Found (\d+) errors?\.?$", re.MULTILINE),
+    "ruff-format": re.compile(r"^(\d+) files? would be reformatted", re.MULTILINE),
+    "mypy": re.compile(r"^Found (\d+) errors? in \d+ files?", re.MULTILINE),
+}
+
+# mypy emits one diagnostic per line as ``path:line: severity: message``
+# (the column is optional); use this when the summary line is absent.
+_MYPY_DIAGNOSTIC = re.compile(
+    r"^[^:\n]+:\d+(?::\d+)?:\s+(error|warning|note):", re.MULTILINE
+)
 
 # Maximum number of files to pass to command line tools
 # Prevents "Argument list too long" errors on large repos
@@ -289,31 +308,36 @@ class StaticAnalyzer:
         Initialize static analyzer.
 
         Args:
-            directory: Directory to analyze
+            directory: Directory to analyze.
+
+        Raises:
+            ValueError: If ``directory`` does not exist, is not a directory,
+                or contains null bytes. Failing fast here surfaces config
+                errors before any tool runs and lets callers handle them in
+                one place rather than per-tool.
         """
         # Resolve path immediately to handle symlinks and normalize
         self.directory = directory.resolve()
+        self._validate_directory()
+        # Maps tool executable name → absolute resolved path on PATH.
+        # Populated by _check_available_tools so run_tool doesn't have to
+        # re-resolve (and re-validate) on every invocation.
+        self._tool_paths: dict[str, str] = {}
         self.available_tools = self._check_available_tools()
 
-    def _validate_directory(self) -> tuple[bool, str]:
-        """
-        Validate directory is safe to use.
+    def _validate_directory(self) -> None:
+        """Validate that ``self.directory`` is safe to use, or raise.
 
-        Returns:
-            Tuple of (is_valid, error_message)
+        Raises:
+            ValueError: with a human-readable reason when the path is
+                missing, not a directory, or contains a null byte.
         """
         if not self.directory.exists():
-            return False, "Directory does not exist"
-
+            raise ValueError(f"Directory does not exist: {self.directory}")
         if not self.directory.is_dir():
-            return False, "Path is not a directory"
-
-        # Check for null bytes or other suspicious characters in path
-        dir_str = str(self.directory)
-        if "\x00" in dir_str:
-            return False, "Invalid characters in path"
-
-        return True, ""
+            raise ValueError(f"Path is not a directory: {self.directory}")
+        if "\x00" in str(self.directory):
+            raise ValueError(f"Invalid characters in path: {self.directory!r}")
 
     def _validate_file_path(self, file_path: Path) -> bool:
         """
@@ -399,31 +423,71 @@ class StaticAnalyzer:
             logging.warning("Error scanning tree for %s: %s", sorted(suffixes), e)
             return []
 
+    def _resolve_tool_binary(self, executable: str) -> str | None:
+        """Resolve a tool name to an absolute path on PATH.
+
+        Rejects binaries that resolve inside the analyzed directory: a repo
+        could otherwise ship its own ``ruff``/``eslint``/``npm`` (e.g. via
+        ``node_modules/.bin``) and have it run with the user's privileges.
+
+        Args:
+            executable: Tool name as it appears on PATH (e.g. ``"ruff"``).
+
+        Returns:
+            Absolute path to the binary, or None if not found / inside the
+            analyzed directory.
+        """
+        path = shutil.which(executable)
+        if path is None:
+            return None
+        try:
+            resolved = Path(path).resolve()
+        except OSError:
+            return None
+        if resolved.is_relative_to(self.directory):
+            logging.warning(
+                "Refusing to run %s resolved inside analyzed directory: %s",
+                executable,
+                resolved,
+            )
+            return None
+        return str(resolved)
+
     def _check_available_tools(self) -> list[str]:
         """Check which static analysis tools are installed and available.
 
-        Runs version check for each configured tool. Tools that pass version
-        check or timeout (may still work with longer timeout) are considered
-        available. Tools not found or lacking permissions are excluded.
+        Resolves each tool via PATH (rejecting binaries inside the analyzed
+        directory) and runs its version check. Tools whose version check
+        succeeds are considered available; the rest are skipped.
 
         Returns:
             List of available tool names from TOOLS configuration.
         """
         available = []
         for tool_name, config in self.TOOLS.items():
+            version_cmd = list(config.get("version_command", [tool_name, "--version"]))
+            resolved = self._resolve_tool_binary(version_cmd[0])
+            if resolved is None:
+                logging.debug("Tool %s not available on PATH", tool_name)
+                continue
             try:
-                # Use custom version command if specified, otherwise default to --version
-                version_cmd = config.get("version_command", [tool_name, "--version"])
-                result = subprocess.run(  # nosec B603 - commands from hardcoded config
-                    version_cmd, capture_output=True, timeout=5, shell=False
+                result = subprocess.run(  # nosec B603 - resolved absolute path
+                    [resolved, *version_cmd[1:]],
+                    capture_output=True,
+                    timeout=5,
+                    shell=False,
                 )
-                # Only mark as available if the command succeeds
                 if result.returncode == 0:
                     available.append(tool_name)
-            except FileNotFoundError:
-                logging.debug("Tool %s not installed", tool_name)
+                    # Cache the resolved exe so run_tool doesn't re-resolve.
+                    # The first command token is the tool's primary executable.
+                    primary = config["command"][0]
+                    self._tool_paths[primary] = (
+                        resolved
+                        if primary == version_cmd[0]
+                        else self._resolve_tool_binary(primary) or primary
+                    )
             except subprocess.TimeoutExpired:
-                # Version check timed out — tool is likely not functional; skip it
                 logging.debug(
                     "Tool %s version check timed out, marking as unavailable",
                     tool_name,
@@ -460,17 +524,7 @@ class StaticAnalyzer:
                 errors=[f"Tool not installed: {tool_name}"],
             )
 
-        # Validate directory before use (security measure)
-        is_valid, error_msg = self._validate_directory()
-        if not is_valid:
-            return StaticAnalysisResult(
-                tool=tool_name,
-                passed=False,
-                issues_count=0,
-                output="",
-                errors=[f"Invalid directory: {error_msg}"],
-            )
-
+        # Directory was validated in __init__; no per-call check needed.
         tool_config = self.TOOLS[tool_name]
         language = str(tool_config.get("language", "python"))
         dir_path = str(self.directory)  # Already resolved in __init__
@@ -542,7 +596,10 @@ class StaticAnalyzer:
                     MAX_FILES_PER_TOOL,
                     len(shell_files),
                 )
-                shell_files = shell_files[:MAX_FILES_PER_TOOL]
+                # Sort before truncating: rglob order is filesystem-dependent
+                # and would otherwise make the analyzed subset non-reproducible
+                # across runs (problematic for CI quality gates).
+                shell_files = sorted(shell_files)[:MAX_FILES_PER_TOOL]
             command = base_command + [str(f) for f in shell_files]
             cwd = self.directory
         elif tool_name in ("clang-tidy", "clang-format"):
@@ -565,7 +622,7 @@ class StaticAnalyzer:
                     MAX_FILES_PER_TOOL,
                     len(cpp_files),
                 )
-                cpp_files = cpp_files[:MAX_FILES_PER_TOOL]
+                cpp_files = sorted(cpp_files)[:MAX_FILES_PER_TOOL]
             command = base_command + [str(f) for f in cpp_files]
             cwd = self.directory
         elif tool_name == "cppcheck":
@@ -592,23 +649,15 @@ class StaticAnalyzer:
                     MAX_FILES_PER_TOOL,
                     len(java_files),
                 )
-                java_files = java_files[:MAX_FILES_PER_TOOL]
+                java_files = sorted(java_files)[:MAX_FILES_PER_TOOL]
             command = base_command + [str(f) for f in java_files]
             cwd = self.directory
         elif tool_name == "eslint":
-            # ESLint accepts directory, looks for JS/TS files.
-            # Use next(gen, None) sentinel to avoid catching StopIteration.
-            has_js_files = False
-            for ext in ("*.js", "*.jsx", "*.ts", "*.tsx"):
-                try:
-                    if next(self.directory.rglob(ext), None) is not None:
-                        has_js_files = True
-                        break
-                except OSError as e:
-                    # rglob may raise lazily during iteration (permissions, etc.)
-                    logging.debug("OSError scanning for %s: %s", ext, e)
-                    continue
-            if not has_js_files:
+            # ESLint accepts the directory itself, but we still need to
+            # confirm at least one JS/TS source exists; otherwise eslint
+            # exits non-zero and we'd report a spurious failure.
+            # Use the single-pass walk for consistency with prettier/clang-tidy.
+            if not self._safe_rglob_suffixes({".js", ".jsx", ".ts", ".tsx"}):
                 return StaticAnalysisResult(
                     tool=tool_name,
                     passed=True,
@@ -641,7 +690,7 @@ class StaticAnalyzer:
                     MAX_FILES_PER_TOOL,
                     len(prettier_files),
                 )
-                prettier_files = prettier_files[:MAX_FILES_PER_TOOL]
+                prettier_files = sorted(prettier_files)[:MAX_FILES_PER_TOOL]
             command = base_command + [str(f) for f in prettier_files]
             cwd = self.directory
         elif tool_name == "tsc":
@@ -670,7 +719,7 @@ class StaticAnalyzer:
                         MAX_FILES_PER_TOOL,
                         len(ts_files),
                     )
-                    ts_files = ts_files[:MAX_FILES_PER_TOOL]
+                    ts_files = sorted(ts_files)[:MAX_FILES_PER_TOOL]
                 command = base_command + [str(f) for f in ts_files]
             else:
                 # tsconfig.json exists, tsc will use it
@@ -723,8 +772,15 @@ class StaticAnalyzer:
             command = base_command + [dir_path]
             cwd = self.directory
 
+        # Substitute the cached, validated absolute path for the executable.
+        # Cache is populated by _check_available_tools, which rejects binaries
+        # inside the analyzed directory (supply-chain defense).
+        resolved_exe = self._tool_paths.get(command[0])
+        if resolved_exe is not None:
+            command = [resolved_exe, *command[1:]]
+
         try:
-            result = subprocess.run(  # nosec B603 - commands from hardcoded config
+            result = subprocess.run(  # nosec B603 - resolved absolute path
                 command,
                 capture_output=True,
                 text=True,
@@ -761,14 +817,7 @@ class StaticAnalyzer:
                     # to get accurate vulnerability counts
                     issues_count = self._count_npm_audit_issues(output)
                 else:
-                    # Count error/warning lines using base + language-specific indicators
-                    indicators = list(BASE_INDICATORS)
-                    indicators.extend(LANGUAGE_INDICATORS.get(language, []))
-
-                    for line in output.split("\n"):
-                        line_lower = line.lower()
-                        if any(indicator in line_lower for indicator in indicators):
-                            issues_count += 1
+                    issues_count = self._count_issues(tool_name, language, output)
 
             return StaticAnalysisResult(
                 tool=tool_name,
@@ -794,6 +843,46 @@ class StaticAnalyzer:
                 output="",
                 errors=[f"Error running tool: {e}"],
             )
+
+    @staticmethod
+    def _count_issues(tool_name: str, language: str, output: str) -> int:
+        """Count issues from a tool's text output.
+
+        Strategy: prefer an authoritative summary-line regex when the tool
+        emits one (ruff/mypy/bandit do); otherwise fall back to counting
+        lines that contain a known indicator. The substring fallback is
+        crude — a single error line containing both ``error`` and ``warning``
+        counts once, and tool summary lines like ``Found 12 errors`` would
+        otherwise double-count alongside the per-issue lines.
+        """
+        pattern = _TOOL_COUNT_PATTERNS.get(tool_name)
+        if pattern is not None:
+            match = pattern.search(output)
+            if match is not None:
+                try:
+                    return int(match.group(1))
+                except ValueError:
+                    pass
+
+        # mypy without the summary line (e.g. --no-error-summary or
+        # partial output): count diagnostic lines directly.
+        if tool_name == "mypy":
+            return len(_MYPY_DIAGNOSTIC.findall(output))
+
+        # bandit text output: each finding is introduced by ">> Issue:".
+        if tool_name == "bandit":
+            return output.count(">> Issue:")
+
+        # Fallback: per-line indicator scan. Imprecise but better than nothing
+        # for tools whose output format we haven't characterized.
+        indicators = list(BASE_INDICATORS)
+        indicators.extend(LANGUAGE_INDICATORS.get(language, []))
+        count = 0
+        for line in output.split("\n"):
+            line_lower = line.lower()
+            if any(indicator in line_lower for indicator in indicators):
+                count += 1
+        return count
 
     @staticmethod
     def _count_npm_audit_issues(output: str) -> int:

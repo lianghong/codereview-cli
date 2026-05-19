@@ -357,19 +357,24 @@ codereview ./src --model sonnet
 codereview ./src --model haiku --max-files 500
 ```
 
-**GPT-5.3 Codex** - Code-specialized (Azure OpenAI):
+**GPT-5.4** - Frontier reasoning, 1.05M context (Azure OpenAI):
 ```bash
 codereview ./src --model gpt
 ```
 
-**Grok 4 Fast** - Cost-efficient reasoning, 128K context (Azure) (Azure OpenAI):
+**GPT-5.4 Pro** - Deeper reasoning variant (Azure OpenAI):
 ```bash
-codereview ./src --model grok
+codereview ./src --model gpt-pro
 ```
 
-**Devstral 2** - Free tier, code-focused (NVIDIA NIM):
+**DeepSeek-V4-Pro (Azure)** - 1M context, prompt-based JSON parsing (Azure OpenAI):
 ```bash
-codereview ./src --model devstral
+codereview ./src --model dsv4-azure
+```
+
+**Mistral Medium 3.5 128B** - Free tier, 77.6% SWE-Bench, reasoning_effort (NVIDIA NIM):
+```bash
+codereview ./src --model mistral-medium
 ```
 
 **Mistral Small 4** - Free tier, MoE architecture, 256K context (NVIDIA NIM):
@@ -392,9 +397,9 @@ codereview ./src --model gemini-3-pro
 codereview ./src --model gemini-3-flash
 ```
 
-**DeepSeek-R1** - Reasoning model (AWS Bedrock):
+**MiniMax M2.5 (Bedrock)** - 196K context, agent-native:
 ```bash
-codereview ./src --model deepseek-r1-bedrock
+codereview ./src --model minimax-m2.5-bedrock
 ```
 
 ### 10. Monitor Token Usage and Costs
@@ -402,15 +407,16 @@ codereview ./src --model deepseek-r1-bedrock
 Be aware of costs and choose models accordingly:
 
 **AWS Bedrock:**
+- **Opus 4.7**: Latest reasoning, default model (TBD pricing)
 - **Opus 4.6**: Highest quality ($5/M input, $25/M output)
 - **Sonnet 4.6**: Balanced option for daily use ($3/M input, $15/M output)
 - **Haiku 4.5**: Economical for large codebases ($1/M input, $5/M output)
-- **DeepSeek-R1**: Reasoning model ($1.35/M input, $5.40/M output)
 
 **Azure OpenAI:**
-- **GPT-5.3 Codex**: Code-specialized ($1.75/M input, $14/M output)
+- **GPT-5.4**: Frontier reasoning, 1.05M context, default Azure ($2.50/M input, $15/M output)
+- **GPT-5.4 Pro**: Deeper reasoning ($30/M input, $180/M output)
+- **DeepSeek-V4-Pro (Azure)**: 1M context, no tool calling ($1.74/M input, $3.48/M output)
 - **Kimi K2.5 (Azure)**: Multimodal MoE, 256K context ($0.60/M input, $3/M output)
-- **Grok 4 Fast (Azure)**: 128K context (Azure), cost-efficient ($0.20/M input, $0.50/M output)
 
 **Google Generative AI:**
 - **Gemini 3.1 Pro**: Most advanced reasoning ($2/M input, $12/M output)
@@ -418,7 +424,7 @@ Be aware of costs and choose models accordingly:
 - **Gemini 3 Flash**: Cost-efficient ($0.50/M input, $3/M output)
 
 **NVIDIA NIM (Free Tier):**
-- **Devstral 2, MiniMax M2.5, MiniMax M2.1, DeepSeek V3.2, Qwen3 Coder, GLM 4.7, Kimi K2.5**: Currently free
+- **Mistral Small 4, Mistral Medium 3.5, MiniMax M2.5/M2.7, Kimi K2.5/K2.6, Qwen3 Coder, Qwen3.5, DeepSeek-V4-Pro, GLM-5/5.1, Step 3.5 Flash**: Currently free
 
 **Cost optimization tips:**
 - Use `--max-files` to limit scope
@@ -549,21 +555,26 @@ codereview ./src --model sonnet   # Claude Sonnet 4.6 (balanced)
 codereview ./src --model haiku    # Claude Haiku 4.5 (fastest)
 
 # AWS Bedrock - Other models
-codereview ./src --model deepseek-r1-bedrock  # DeepSeek-R1 (reasoning)
-codereview ./src --model qwen-bedrock         # Qwen3 Coder 480B
+codereview ./src --model minimax-m2.5-bedrock  # MiniMax M2.5 (196K context, agent-native)
+codereview ./src --model qwen-bedrock          # Qwen3 Coder 480B
+codereview ./src --model kimi-k2.5-bedrock     # Kimi K2.5 (262K context)
+
 # Azure OpenAI
-codereview ./src --model gpt      # GPT-5.3 Codex
-codereview ./src --model kimi-azure  # Kimi K2.5 (256K context)
-codereview ./src --model grok     # Grok 4 Fast Reasoning (128K context (Azure))
+codereview ./src --model gpt           # GPT-5.4 (frontier reasoning, default Azure)
+codereview ./src --model gpt-pro       # GPT-5.4 Pro (deeper reasoning variant)
+codereview ./src --model dsv4-azure    # DeepSeek-V4-Pro (1M context, prompt-based JSON)
+codereview ./src --model kimi-azure    # Kimi K2.5 (256K context)
 
 # NVIDIA NIM (free tier)
-codereview ./src --model devstral           # Devstral 2 123B
+codereview ./src --model mistral-medium     # Mistral Medium 3.5 128B (77.6% SWE-Bench)
 codereview ./src --model mistral-small      # Mistral Small 4 119B
 codereview ./src --model minimax-m2.5       # MiniMax M2.5 (thinking mode, SOTA)
-codereview ./src --model minimax-m2.1       # MiniMax M2.1 (thinking mode)
-codereview ./src --model deepseek-v3.2-nvidia # DeepSeek V3.2
-codereview ./src --model glm47              # GLM 4.7
+codereview ./src --model minimax-m2.7       # MiniMax M2.7 (agent-native)
+codereview ./src --model deepseek-v4-pro    # DeepSeek-V4-Pro (1M context, three reasoning modes)
+codereview ./src --model glm51              # GLM-5.1 (744B MoE, agentic)
 codereview ./src --model kimi-k2.5          # Kimi K2.5 (256K context)
+codereview ./src --model kimi-k2.6          # Kimi K2.6 (262K context)
+codereview ./src --model step-3.5-flash     # Step 3.5 Flash (cost-efficient)
 
 # Google Generative AI
 codereview ./src --model gemini-3.1-pro     # Gemini 3.1 Pro (1M context, best reasoning)
@@ -575,19 +586,21 @@ codereview ./src --model gemini-3-flash     # Gemini 3 Flash (fast, cheap)
 
 | Model | Provider | Use Case | Pricing |
 |-------|----------|----------|---------|
-| **Opus 4.6** (default) | AWS Bedrock | Critical code reviews, security audits | $5/M input, $25/M output |
+| **Opus 4.7** (default) | AWS Bedrock | Latest reasoning, critical reviews | TBD |
+| **Opus 4.6** | AWS Bedrock | Critical code reviews, security audits | $5/M input, $25/M output |
 | **Sonnet 4.6** | AWS Bedrock | Daily development, PR reviews | $3/M input, $15/M output |
 | **Haiku 4.5** | AWS Bedrock | Large codebases, CI/CD integration | $1/M input, $5/M output |
-| **GPT-5.3 Codex** | Azure OpenAI | Code-specialized, Microsoft ecosystem | $1.75/M input, $14/M output |
+| **GPT-5.4** | Azure OpenAI | Frontier reasoning, default Azure, 1.05M context | $2.50/M input, $15/M output |
+| **GPT-5.4 Pro** | Azure OpenAI | Deeper reasoning, hardest problems | $30/M input, $180/M output |
+| **DeepSeek-V4-Pro (Azure)** | Azure OpenAI | 1M context, no tool calling on Foundry | $1.74/M input, $3.48/M output |
 | **Kimi K2.5 (Azure)** | Azure OpenAI | Multimodal MoE, 256K context | $0.60/M input, $3/M output |
-| **Grok 4 Fast (Azure)** | Azure OpenAI | 128K context (Azure), cost-efficient reasoning | $0.20/M input, $0.50/M output |
-| **DeepSeek-R1** | AWS Bedrock | Reasoning-focused reviews | $1.35/M input, $5.40/M output |
-| **Devstral 2** | NVIDIA NIM | Free tier, code-focused | Free* |
 | **Mistral Small 4** | NVIDIA NIM | Free tier, MoE architecture, 256K context | Free* |
+| **Mistral Medium 3.5** | NVIDIA NIM | Free tier, 128B dense, 77.6% SWE-Bench | Free* |
 | **MiniMax M2.5** | NVIDIA NIM | Free tier, thinking mode, 192K context, SOTA coding | Free* |
-| **MiniMax M2.1** | NVIDIA NIM | Free tier, thinking mode, 200K context | Free* |
-| **GLM 4.7** | NVIDIA NIM | Free tier, thinking mode | Free* |
-| **Kimi K2.5** | NVIDIA NIM | Free tier, 256K context | Free* |
+| **MiniMax M2.7** | NVIDIA NIM | Free tier, agent-native, 204K context | Free* |
+| **DeepSeek-V4-Pro (NVIDIA)** | NVIDIA NIM | Free tier, 1M context, three reasoning modes | Free* |
+| **GLM-5 / GLM-5.1** | NVIDIA NIM | Free tier, thinking mode (GLM-5 deprecated 2026-04-20) | Free* |
+| **Kimi K2.5 / K2.6** | NVIDIA NIM | Free tier, 256K-262K context | Free* |
 | **Gemini 3.1 Pro** | Google GenAI | Most advanced reasoning, 1M context | $2/M input, $12/M output |
 | **Gemini 3 Pro** | Google GenAI | Flagship reasoning, 1M context | $2/M input, $12/M output |
 | **Gemini 3 Flash** | Google GenAI | Fast and cheap, 1M context | $0.50/M input, $3/M output |
@@ -597,20 +610,20 @@ codereview ./src --model gemini-3-flash     # Gemini 3 Flash (fast, cheap)
 **Model Selection Strategy:**
 
 ```bash
-# Production-critical code → Opus
-codereview ./src/auth --model opus
+# Production-critical code → Opus 4.7
+codereview ./src/auth --model opus4.7
 
-# Daily development → Sonnet, GPT, or Grok
+# Daily development → Sonnet or GPT-5.4
 codereview ./src --model sonnet
 
-# Cost-efficient reasoning → Grok 4 Fast ($0.20/$0.50 per M)
-codereview ./src --model grok
+# Cost-efficient reasoning on Azure → GPT-5.4 ($2.50/$15.00 per M)
+codereview ./src --model gpt
 
 # Large codebase scanning → Haiku or free models
 codereview ./monorepo --model haiku --max-files 500
 
 # Development/testing → Free NVIDIA NIM models
-codereview ./src --model devstral
+codereview ./src --model mistral-medium
 ```
 
 ## Understanding Results
@@ -731,7 +744,7 @@ For projects with 1000+ files:
 | 100 files, critical review | Opus 4.6 | AWS Bedrock | $0.30-$1.50 |
 | 100 files, daily review | Sonnet 4.6 | AWS Bedrock | $0.10-$0.40 |
 | 1000 files, bulk scan | Haiku 4.5 | AWS Bedrock | $0.10-$0.50 |
-| Development/testing | Devstral 2 | NVIDIA NIM | Free |
+| Development/testing | Mistral Medium 3.5 | NVIDIA NIM | Free |
 | Advanced reasoning (1M) | Gemini 3.1 Pro | Google GenAI | $2.00-$12.00/M |
 | Large context (1M) | Gemini 3 Flash | Google GenAI | $0.50-$3.00/M |
 | Large context needed | Kimi K2.5 | NVIDIA NIM | Free |
@@ -751,7 +764,7 @@ Example cost-conscious workflows:
 
 ```bash
 # Free development workflow with NVIDIA NIM
-codereview ./src --model devstral --severity high
+codereview ./src --model mistral-medium --severity high
 
 # Daily development with Sonnet (balanced cost/quality)
 codereview ./src --model sonnet --severity high --max-files 50
@@ -913,7 +926,7 @@ If you encounter issues:
 
 5. **Try a different provider** (NVIDIA NIM is free):
    ```bash
-   codereview ./src --model devstral --verbose
+   codereview ./src --model mistral-medium --verbose
    ```
 
 6. **Review troubleshooting guide** in README.md

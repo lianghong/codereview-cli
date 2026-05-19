@@ -25,9 +25,13 @@ def model_config():
             input_per_million=2.0,
             output_per_million=10.0,
         ),
+        # Field names match InferenceParams: `temperature`/`top_p`,
+        # not the YAML-side `default_temperature`/`default_top_p`.
+        # Older versions of this fixture used the wrong kwargs and were
+        # silently ignored by Pydantic, leaking a None temperature.
         inference_params=InferenceParams(
-            default_temperature=0.0,
-            default_top_p=0.95,
+            temperature=0.0,
+            top_p=0.95,
             max_output_tokens=4096,
         ),
     )
@@ -284,18 +288,18 @@ def test_responses_api_enabled(provider_config):
     as these parameters are not supported by the Responses API.
     """
     model_config_with_responses_api = ModelConfig(
-        id="gpt-5.3-codex",
-        name="GPT-5.3 Codex",
+        id="gpt-5.4",
+        name="GPT-5.4",
         aliases=["gpt"],
-        deployment_name="gpt-5.3-codex",
+        deployment_name="gpt-5.4",
         pricing=PricingConfig(
-            input_per_million=1.75,
-            output_per_million=14.0,
+            input_per_million=2.50,
+            output_per_million=15.00,
         ),
+        # Reasoning model: no temperature/top_p — same shape as the
+        # real gpt-5.4 entry in models.yaml.
         inference_params=InferenceParams(
-            default_temperature=0.0,
-            default_top_p=0.95,
-            max_output_tokens=16000,
+            max_output_tokens=128000,
         ),
         use_responses_api=True,  # Enable Responses API
     )
@@ -337,3 +341,51 @@ def test_responses_api_disabled_by_default(model_config, provider_config):
         assert "use_responses_api" not in call_kwargs
         # Verify temperature IS passed when not using Responses API
         assert "temperature" in call_kwargs
+
+
+def test_supports_tool_use_false_uses_prompt_parsing(provider_config):
+    """Models with supports_tool_use=False (e.g. DeepSeek-V4-Pro on Azure)
+    must skip with_structured_output and parse JSON via prompt instructions.
+
+    Regression: previously the Azure provider always called
+    with_structured_output, which crashes against models that don't expose
+    tool calling on Foundry.
+    """
+    no_tool_use_config = ModelConfig(
+        id="deepseek-v4-pro-azure",
+        name="DeepSeek-V4-Pro (Azure)",
+        aliases=["dsv4-azure"],
+        deployment_name="DeepSeek-V4-Pro",
+        pricing=PricingConfig(input_per_million=1.74, output_per_million=3.48),
+        inference_params=InferenceParams(max_output_tokens=32000),
+        supports_tool_use=False,
+    )
+
+    with patch("codereview.providers.azure_openai.AzureChatOpenAI") as mock_azure:
+        mock_instance = Mock()
+        mock_azure.return_value = mock_instance
+
+        provider = AzureOpenAIProvider(no_tool_use_config, provider_config)
+
+        # The model returned by _create_model is the raw chat model — never
+        # wrapped via with_structured_output for tool-use-less deployments.
+        mock_instance.with_structured_output.assert_not_called()
+        assert provider._use_prompt_parsing is True
+
+        # Reasoning model: temperature must NOT be passed.
+        call_kwargs = mock_azure.call_args[1]
+        assert "temperature" not in call_kwargs
+
+
+def test_supports_tool_use_true_uses_structured_output(model_config, provider_config):
+    """The default model_config sets supports_tool_use=True, so the provider
+    keeps the existing with_structured_output path."""
+    with patch("codereview.providers.azure_openai.AzureChatOpenAI") as mock_azure:
+        mock_instance = Mock()
+        mock_instance.with_structured_output.return_value = Mock()
+        mock_azure.return_value = mock_instance
+
+        provider = AzureOpenAIProvider(model_config, provider_config)
+
+        mock_instance.with_structured_output.assert_called_once()
+        assert provider._use_prompt_parsing is False

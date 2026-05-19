@@ -5,6 +5,7 @@ import os
 from typing import Any
 
 from langchain_core.callbacks import BaseCallbackHandler
+from langchain_core.output_parsers import PydanticOutputParser
 from langchain_openai import AzureChatOpenAI
 from openai import RateLimitError
 from pydantic import SecretStr
@@ -48,14 +49,19 @@ class AzureOpenAIProvider(TokenTrackingMixin, ModelProvider):
         """
         self.callbacks = callbacks or []
         self.enable_output_fixing = enable_output_fixing
+        self._output_parser = PydanticOutputParser(pydantic_object=CodeReviewReport)
         self.model_config = model_config
         self.provider_config = provider_config
         self.project_context = project_context
 
+        # allow_none: reasoning models on Azure (e.g. DeepSeek-V4-Pro,
+        # GPT-5.4 series) reject `temperature` entirely; preserve an
+        # explicit None from inference_params instead of coercing to 0.0.
         self.temperature = self._resolve_temperature(
             override=temperature,
             model_config=model_config,
             provider_default=0.0,
+            allow_none=True,
         )
 
         # Get model-specific inference parameters
@@ -69,6 +75,11 @@ class AzureOpenAIProvider(TokenTrackingMixin, ModelProvider):
 
         # Token tracking (from mixin)
         self._init_token_tracking()
+
+        # Set in _create_model when the deployed model lacks tool-calling
+        # support (e.g. DeepSeek-V4-Pro on Azure Foundry). Mirrors the
+        # Bedrock provider's prompt-based JSON parsing path.
+        self._use_prompt_parsing = False
 
         # Rate limiter for API calls
         self.rate_limiter = self._build_rate_limiter(requests_per_second)
@@ -97,20 +108,34 @@ class AzureOpenAIProvider(TokenTrackingMixin, ModelProvider):
         if self.model_config.use_responses_api:
             model_params["use_responses_api"] = True
         else:
-            # Only add temperature/top_p for models that support them
-            model_params["temperature"] = self.temperature
+            # Only add temperature/top_p for models that support them.
+            # Reasoning models (DeepSeek-V4-Pro, GPT-5.4 family) keep
+            # self.temperature == None and skip both params.
+            if self.temperature is not None:
+                model_params["temperature"] = self.temperature
             if self.top_p is not None:
                 model_params["top_p"] = self.top_p
 
         base_model = AzureChatOpenAI(**model_params)
 
-        # Configure for structured output
-        # include_raw=True returns {"raw": AIMessage, "parsed": CodeReviewReport}
-        # so we can extract actual token counts from the raw AIMessage
-        return base_model.with_structured_output(CodeReviewReport, include_raw=True)
+        # Some Azure-hosted models (e.g. DeepSeek-V4-Pro on Foundry) don't
+        # support tool calling, which `with_structured_output` relies on.
+        # For those, return the raw chat model and parse JSON via prompt
+        # instructions in `_create_chain` — same pattern as Bedrock's
+        # DeepSeek-R1 / MiniMax M2.5 path.
+        if self.model_config.supports_tool_use:
+            # include_raw=True returns {"raw": AIMessage, "parsed": CodeReviewReport}
+            # so we can extract actual token counts from the raw AIMessage
+            return base_model.with_structured_output(CodeReviewReport, include_raw=True)
+        self._use_prompt_parsing = True
+        return base_model
 
     def _create_chain(self) -> Any:
         """Create LangChain chain with prompt template."""
+        if self._use_prompt_parsing:
+            # Append the Pydantic output parser so the raw chat response
+            # is coerced into a CodeReviewReport for tool-use-less models.
+            return BATCH_PROMPT_TEMPLATE | self.model | self._output_parser
         return BATCH_PROMPT_TEMPLATE | self.model
 
     def _is_retryable_error(self, error: Exception) -> bool:
@@ -179,7 +204,9 @@ class AzureOpenAIProvider(TokenTrackingMixin, ModelProvider):
         )
 
         chain_input = {
-            "system_prompt": SYSTEM_PROMPT,
+            "system_prompt": self._system_prompt_with_format_instructions(
+                SYSTEM_PROMPT
+            ),
             "batch_context": batch_context,
         }
 
@@ -349,16 +376,11 @@ class AzureOpenAIProvider(TokenTrackingMixin, ModelProvider):
                 # httpx not available, skip connection test
                 result.add_warning("Could not test connection (httpx not installed)")
             except Exception as e:
-                error_msg = str(e)
-                # Redact the API key aggressively: full-string match is
-                # insufficient because intermediate layers may log only a
-                # prefix or URL-encode special chars. We scrub both the full
-                # key and any 16-char prefix if the key is long enough.
-                if api_key:
-                    error_msg = error_msg.replace(api_key, "***")
-                    if len(api_key) >= 16:
-                        error_msg = error_msg.replace(api_key[:16], "***")
-                result.add_warning(f"Connection test failed: {error_msg}")
+                # Surface only the exception type, never str(e). Lower layers
+                # (httpx, urllib3) may include the Authorization header or
+                # URL-encoded variants of the API key in the message; partial
+                # prefix scrubbing was fragile and could still leak.
+                result.add_warning(f"Connection test failed: {type(e).__name__}")
                 result.add_suggestion("Verify endpoint URL and network connectivity")
 
         return result

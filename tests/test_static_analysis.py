@@ -37,6 +37,40 @@ def test_check_available_tools():
     assert isinstance(analyzer.available_tools, list)
 
 
+def test_resolve_tool_binary_rejects_in_repo_executable(tmp_path):
+    """Binaries that resolve inside the analyzed directory must be refused.
+
+    A repo could ship its own ``ruff``/``eslint`` (e.g. via node_modules/.bin)
+    and have it run with the user's privileges. Defend against that.
+    """
+    # Plant a fake "evil-tool" inside the analyzed directory.
+    fake_bin = tmp_path / "node_modules" / ".bin"
+    fake_bin.mkdir(parents=True)
+    evil = fake_bin / "evil-tool"
+    evil.write_text("#!/bin/sh\necho pwned\n")
+    evil.chmod(0o755)
+
+    analyzer = StaticAnalyzer(tmp_path)
+
+    with patch("shutil.which", return_value=str(evil)):
+        assert analyzer._resolve_tool_binary("evil-tool") is None
+
+
+def test_resolve_tool_binary_accepts_system_executable(tmp_path):
+    """Binaries on the system PATH (outside the repo) are returned resolved."""
+    # /bin/sh is on every POSIX system and is outside any tmp_path.
+    analyzer = StaticAnalyzer(tmp_path)
+    resolved = analyzer._resolve_tool_binary("sh")
+    assert resolved is not None
+    assert Path(resolved).is_absolute()
+
+
+def test_resolve_tool_binary_returns_none_when_missing(tmp_path):
+    """Tools not on PATH should resolve to None, not raise."""
+    analyzer = StaticAnalyzer(tmp_path)
+    assert analyzer._resolve_tool_binary("definitely-not-a-real-binary-xyz123") is None
+
+
 def test_static_analysis_result_creation():
     """Test creating StaticAnalysisResult."""
     result = StaticAnalysisResult(
@@ -94,6 +128,54 @@ def test_run_tool_with_issues(mock_subprocess, sample_directory):
     assert result.tool == "ruff"
     assert result.passed is False
     assert result.issues_count > 0
+
+
+def test_count_issues_ruff_summary_line():
+    """ruff prints `Found N errors.` — extract N exactly, don't double-count.
+
+    Without the summary regex, the substring fallback would count both each
+    diagnostic line AND the "Found 3 errors" summary line as 4 hits.
+    """
+    output = (
+        "bad.py:1:8: F401 [*] `os` imported but unused\n"
+        "bad.py:2:1: E302 expected 2 blank lines, found 1\n"
+        "bad.py:3:5: E501 line too long\n"
+        "Found 3 errors.\n"
+    )
+    assert StaticAnalyzer._count_issues("ruff", "python", output) == 3
+
+
+def test_count_issues_mypy_summary_line():
+    """mypy prints `Found N errors in M files`."""
+    output = (
+        "foo.py:2: error: Incompatible return value type  [return-value]\n"
+        "Found 1 error in 1 file (checked 1 source file)\n"
+    )
+    assert StaticAnalyzer._count_issues("mypy", "python", output) == 1
+
+
+def test_count_issues_mypy_no_summary_falls_back_to_regex():
+    """When the summary is absent, count diagnostic lines via regex."""
+    output = "foo.py:2: error: A\nfoo.py:5:8: error: B\nbar.py:10: warning: C\n"
+    assert StaticAnalyzer._count_issues("mypy", "python", output) == 3
+
+
+def test_count_issues_bandit_uses_issue_markers():
+    """bandit counts >> Issue: markers, one per finding."""
+    output = (
+        ">> Issue: [B602:subprocess_popen_with_shell_equals_true] ...\n"
+        "   Severity: High   Confidence: High\n"
+        ">> Issue: [B608:hardcoded_sql_expressions] ...\n"
+        "   Severity: Medium Confidence: Low\n"
+    )
+    assert StaticAnalyzer._count_issues("bandit", "python", output) == 2
+
+
+def test_count_issues_unknown_tool_falls_back_to_substring():
+    """For tools without a known summary format, substring counting is the floor."""
+    output = "error: x\nwarning: y\nclean line\n"
+    # Two indicator-bearing lines.
+    assert StaticAnalyzer._count_issues("unknown-tool", "python", output) == 2
 
 
 def test_run_tool_not_available(sample_directory):
@@ -514,22 +596,15 @@ def test_filter_safe_files(sample_directory, tmp_path):
 
 
 def test_validate_directory_exists(tmp_path):
-    """Test validation fails for non-existent directory."""
+    """Construction must fail fast for a non-existent directory."""
     non_existent = tmp_path / "does_not_exist"
-    analyzer = StaticAnalyzer(non_existent)
-
-    is_valid, error = analyzer._validate_directory()
-    assert is_valid is False
-    assert "does not exist" in error
+    with pytest.raises(ValueError, match="does not exist"):
+        StaticAnalyzer(non_existent)
 
 
 def test_validate_directory_is_file(tmp_path):
-    """Test validation fails when path is a file, not directory."""
+    """Construction must fail fast when the path is a file, not a directory."""
     file_path = tmp_path / "file.txt"
     file_path.write_text("test")
-
-    analyzer = StaticAnalyzer(file_path)
-
-    is_valid, error = analyzer._validate_directory()
-    assert is_valid is False
-    assert "not a directory" in error
+    with pytest.raises(ValueError, match="not a directory"):
+        StaticAnalyzer(file_path)

@@ -44,7 +44,7 @@ def test_model_aliases_exist():
     assert "opus" in MODEL_ALIASES
     assert "sonnet" in MODEL_ALIASES
     assert "haiku" in MODEL_ALIASES
-    assert "minimax-nvidia" in MODEL_ALIASES
+    assert "mistral-medium-nvidia" in MODEL_ALIASES
     assert "kimi" in MODEL_ALIASES
     assert "qwen" in MODEL_ALIASES
 

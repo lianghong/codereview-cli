@@ -8,6 +8,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **GPT-5.4 (Azure OpenAI)** — frontier reasoning model, 1.05M context, 128K output
+  - Model ID: `gpt-5.4`, aliases: `gpt`, `gpt54`, `gpt5.4`
+  - Reasoning model: no `temperature`/`top_p`; uses Responses API for reasoning summaries
+  - Pricing: $2.50/M input, $0.25/M cached, $15.00/M output (Azure standard tier ≤272K)
+  - Now the default Azure model (replaces retired GPT-5.3 Codex)
+- **DeepSeek-V4-Pro (Azure OpenAI Foundry)** — 1M context, chain-of-thought reasoning
+  - Model ID: `deepseek-v4-pro-azure`, aliases: `dsv4-azure`, `deepseek-v4-azure`, `ds-v4-azure`
+  - `supports_tool_use: false` — Foundry doesn't expose tool calling; provider routes
+    to prompt-based JSON parsing via `PydanticOutputParser` (matches Bedrock pattern)
+  - Pricing: $1.74/M input, $0.174/M cached, $3.48/M output (DeepSeek list price)
+- **Azure provider: `supports_tool_use: false` support** — mirrors the Bedrock implementation
+  - New `_use_prompt_parsing` flag; `_create_chain` appends `PydanticOutputParser`
+  - `analyze_batch` injects format instructions into the system prompt
+  - `_resolve_temperature(allow_none=True)` so reasoning models (DeepSeek-V4-Pro,
+    GPT-5.4 family) skip `temperature`/`top_p` cleanly
+- **Supply-chain hardening for static analysis** — `shutil.which()` resolves tool
+  binaries to absolute paths and rejects any binary that resolves inside the
+  analyzed directory (defends against `node_modules/.bin/eslint` shadowing)
+- **`--include-hidden` CLI flag** — opt-in scanning of `.github/scripts`,
+  `.config/`, etc. New `FileScanner.exclude_hidden: bool = True` parameter;
+  default behavior unchanged
+- **Deterministic file truncation** — `MAX_FILES_PER_TOOL` slicing now sorts
+  before `[:N]` for shellcheck/cpp/java/prettier/tsc, so the analyzed subset
+  is reproducible across runs (CI quality gates can rely on it)
+- **Accurate static-analysis issue counts** — per-tool summary-line regex for
+  ruff (`Found N errors.`), mypy (`Found N errors in M files`), and bandit
+  (`>> Issue:` markers); falls back to substring counting only for unknown
+  tools. Previously the substring scan double-counted: each per-issue line
+  AND the summary line both tripped indicators
+- **`_safe_rglob_suffixes()` helper** — eslint branch consolidated from 4
+  separate rglob loops into one single-pass call (consistent with prettier
+  and clang-tidy)
+- **Fail-fast directory validation** — `StaticAnalyzer.__init__` now raises
+  `ValueError` when the directory is missing/not-a-dir/contains null bytes,
+  instead of returning per-tool errors at every `run_tool` call
 - **Kimi K2.6 (NVIDIA NIM)** — 1T MoE, 32B active, 262K context, thinking mode
   - Model ID: `kimi-k2.6-nvidia`, aliases: `kimi-k2.6`, `kimi26`, `kimi-nvidia-26`
   - Fixed temperature=1.0 and top_p=0.95 required by Moonshot serving backend
@@ -27,6 +62,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   across multiple extensions (C++ went from 5 rglobs to 1, prettier from 8 to 1)
 
 ### Changed
+- **Default Azure model** is now `gpt-5.4` (was `gpt-5.3-codex`, now removed).
+  `defaults.azure_default` updated in `models.yaml`. The `gpt` short alias
+  routes to GPT-5.4.
+- **API-key redaction in connection-test paths** — Azure and NVIDIA providers
+  now surface `type(e).__name__` only (never `str(e)`), since lower layers
+  (httpx, urllib3) can include the `Authorization` header or URL-encoded key
+  variants in error messages. The earlier prefix-scrub heuristic was fragile.
+- **Thread-safe warning dedup** in `models.py` — `_warn_once` wraps the
+  check-then-add in a `threading.Lock`. Validators run inside provider
+  threads (`ThreadPoolExecutor` in `cli.py`); without the lock two threads
+  could both pass the membership test and emit the same warning twice.
+- **Google GenAI provider wiring** — `rate_limiter` is now actually passed
+  to `ChatGoogleGenerativeAI` (was constructed in `__init__` but unused),
+  and `google_api_key` is wrapped in `pydantic.SecretStr` to match Azure
+  and NVIDIA providers.
+- **Exception chaining** in `ConfigLoader._load_config` — `raise ValueError(...)
+  from e` for `FileNotFoundError`, `yaml.YAMLError`, and `PermissionError`
+  (preserves traceback chain per PEP 3134).
 - **GLM-5 (NVIDIA)** marked deprecated in YAML and docs; NVIDIA deprecated
   the `z-ai/glm5` endpoint on 2026-04-20. Entry kept until NVIDIA fully
   removes the endpoint so existing `--model glm5` invocations keep working.
@@ -59,6 +112,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with `next(gen, None)` sentinel form.
 
 ### Removed
+- **12 model entries** pruned from `models.yaml`:
+  - **AWS Bedrock**: DeepSeek-R1, DeepSeek V3.2, MiniMax M2.1, GLM 4.7,
+    GLM 4.7 Flash
+  - **Azure OpenAI**: GPT-5.3 Codex, Grok 4 Fast Reasoning
+  - **NVIDIA NIM**: DeepSeek V3.2, GLM 4.7, MiniMax M2.1, MiniMax M2,
+    Devstral 2 123B
+  - Doc references in `README.md`, `docs/usage.md`, `docs/examples.md`,
+    and `CLAUDE.md` updated to point at surviving equivalents
+  - `tests/test_config.py` aliases assertion updated from `minimax-nvidia`
+    (deleted) to `mistral-medium-nvidia`
 - **Dead duplicate severity-count fields** (`critical`, `high`, `medium`,
   `low`, `info`) from `ReviewMetrics`. They were populated by `cli.py` but
   never read anywhere in the codebase or tests. Canonical `*_issues` fields
@@ -81,10 +144,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added `.ruff_cache/` to `.gitignore` to match existing cache ignores
 
 ### Quality
-- Test suite: **319 passing** (up from 311; +5 for Pydantic-fallback logging,
-  +3 for `reasoning_effort` wiring)
-- `ruff check`, `ruff format --check`, `isort`, `mypy`, `vulture`: clean
-- Zero security regressions
+- Test suite: **331 passing** (up from 319; +2 scanner tests for
+  `exclude_hidden`, +3 for `_resolve_tool_binary` supply-chain checks,
+  +5 for ruff/mypy/bandit issue counters, +2 for Azure
+  `supports_tool_use=false` path); two pre-existing fixtures fixed —
+  they passed kwargs that Pydantic silently dropped
+- `ruff check`, `ruff format --check`, `mypy`: clean
 
 ## [0.3.1] - 2026-04-18
 

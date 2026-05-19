@@ -11,6 +11,7 @@ The models include validators to normalize LLM output variations (e.g., mapping
 """
 
 import logging
+import threading
 from typing import Any, Literal
 
 from pydantic import (  # type: ignore[attr-defined]
@@ -25,14 +26,20 @@ logger = logging.getLogger(__name__)
 
 # Track values we've already warned about so we don't spam the log when the
 # same unknown severity/category shows up on every issue in a batch.
+# Validators run inside provider threads (ThreadPoolExecutor in cli.py), so
+# the check-then-add must be guarded; otherwise two threads can both pass the
+# membership test and emit the same warning twice. The lock is uncontended in
+# the common path (already-warned values short-circuit before locking).
 _warned_unknown_severities: set[str] = set()
 _warned_unknown_categories: set[str] = set()
+_warned_lock = threading.Lock()
 
 
 def _warn_once(bucket: set[str], value: str, kind: str, default: str) -> None:
-    if value in bucket:
-        return
-    bucket.add(value)
+    with _warned_lock:
+        if value in bucket:
+            return
+        bucket.add(value)
     logger.warning(
         "Unknown %s %r from model output; coerced to %r. "
         "This may indicate a model prompt/schema drift.",

@@ -37,7 +37,7 @@ class ProviderFactory:
         """Create provider based on model name.
 
         Args:
-            model_name: Model ID or alias (e.g., "opus", "gpt-5.3-codex")
+            model_name: Model ID or alias (e.g., "opus", "gpt-5.4")
             temperature: Optional temperature override
             callbacks: Optional list of callback handlers for streaming/progress
             project_context: Optional project README/documentation content

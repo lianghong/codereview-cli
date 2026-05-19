@@ -151,10 +151,17 @@ def test_google_genai_model_params(model_config, provider_config):
         mock_google.assert_called_once()
         call_kwargs = mock_google.call_args[1]
         assert call_kwargs["model"] == "gemini-3-pro-preview"
-        assert call_kwargs["google_api_key"] == "test-google-api-key-12345"
+        # API key is wrapped in SecretStr to prevent accidental exposure
+        # in repr/logs (matches Azure and NVIDIA providers).
+        assert call_kwargs["google_api_key"].get_secret_value() == (
+            "test-google-api-key-12345"
+        )
         assert call_kwargs["temperature"] == 0.1
         assert call_kwargs["max_output_tokens"] == 65536
         assert call_kwargs["top_p"] == 0.95
+        # rate_limiter must be wired so requests_per_second is honored
+        # (was missing previously, defeating the purpose of self.rate_limiter).
+        assert call_kwargs["rate_limiter"] is not None
 
         # Verify structured output method with include_raw for token tracking
         mock_instance.with_structured_output.assert_called_once_with(

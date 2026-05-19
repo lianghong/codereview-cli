@@ -6,18 +6,23 @@
 
 > AI-powered code review tool with multiple LLM providers (AWS Bedrock, Azure OpenAI, NVIDIA NIM, Google Generative AI)
 
-## 🎉 What's New in v0.3.1
+## 🎉 What's New (Unreleased)
 
-- ✅ **Claude Opus 4.7** - Latest reasoning model with adaptive thinking now supported
-- ✅ **Bug Fixes** - Fixed `--no-color` flag consistency and improved error handling
-- ✅ **Enhanced Stability** - All 319 tests passing, zero security vulnerabilities
+- ✅ **GPT-5.4 (Azure)** — frontier reasoning model, 1.05M context, default Azure model
+- ✅ **DeepSeek-V4-Pro (Azure)** — 1M context with prompt-based JSON parsing for tool-use-less Foundry deployments (`supports_tool_use: false` now wired into the Azure provider, mirroring Bedrock's DeepSeek-R1 / MiniMax M2.5 path)
+- ✅ **Supply-chain hardening** — static-analysis tools resolved via `shutil.which()` with absolute-path execution; binaries inside the analyzed directory are refused
+- ✅ **Hidden-directory opt-in** — `--include-hidden` to scan `.github/scripts`, `.config/`, etc.
+- ✅ **Reproducible static analysis** — file lists sorted before truncation so CI runs are deterministic
+- ✅ **Accurate issue counts** — ruff/mypy/bandit summary-line parsing replaces the old substring-match heuristic
+- ✅ **Pruned model registry** — dropped GPT-5.3 Codex, Grok 4 Fast, GLM 4.7 (Bedrock + Flash), Devstral 2, MiniMax M2 (NVIDIA), DeepSeek-R1, DeepSeek V3.2 (both providers), MiniMax M2.1 (both providers)
+- ✅ **All 331 tests passing**, ruff/mypy clean
 
-A LangChain-based CLI tool that provides comprehensive, intelligent code reviews for Python, Go, Shell Script, C++, Java, JavaScript, and TypeScript projects using Claude, GPT, Gemini, Devstral, and other leading models through AWS Bedrock, Azure OpenAI, NVIDIA NIM, and Google Generative AI.
+A LangChain-based CLI tool that provides comprehensive, intelligent code reviews for Python, Go, Shell Script, C++, Java, JavaScript, and TypeScript projects using Claude, GPT-5.4, Gemini, DeepSeek-V4-Pro, and other leading models through AWS Bedrock, Azure OpenAI, NVIDIA NIM, and Google Generative AI.
 
 ## Features
 
-- **Multi-Provider Support**: AWS Bedrock (Claude, Mistral, Minimax, Kimi, Qwen, DeepSeek, GLM), Azure OpenAI (GPT-5.4 Pro, GPT-5.3 Codex, Kimi K2.5, Grok 4), NVIDIA NIM (Devstral, MiniMax M2.7, MiniMax M2.5, MiniMax M2.1, Qwen3.5, DeepSeek, GLM 4.7), and Google GenAI (Gemini 3.1 Pro, Gemini 3 Pro, Gemini 3 Flash)
-- **AI-Powered Analysis**: Leverages Claude Opus 4.7, GPT-5.4 Pro, GPT-5.3 Codex, Grok 4 Fast Reasoning, Gemini 3.1 Pro, Devstral 2, and other leading models for deep code understanding
+- **Multi-Provider Support**: AWS Bedrock (Claude, Minimax, Kimi, Qwen, GLM), Azure OpenAI (GPT-5.4, GPT-5.4 Pro, DeepSeek-V4-Pro, Kimi K2.5), NVIDIA NIM (Mistral, MiniMax, Kimi, Qwen, DeepSeek-V4-Pro, GLM-5/5.1, Step), and Google GenAI (Gemini 3.1 Pro, Gemini 3 Pro, Gemini 3 Flash)
+- **AI-Powered Analysis**: Leverages Claude Opus 4.7, GPT-5.4, GPT-5.4 Pro, DeepSeek-V4-Pro, Gemini 3.1 Pro, and other leading models for deep code understanding
 - **Multi-Language Support**: Reviews Python, Go, Shell Script, C++, Java, JavaScript, and TypeScript codebases
 - **Smart Batching**: Automatically groups files for efficient token usage
 - **Structured Output**: Get categorized issues with severity levels and actionable suggestions
@@ -36,9 +41,9 @@ A LangChain-based CLI tool that provides comprehensive, intelligent code reviews
 
 - Python 3.14+
 - **One of the following:**
-  - AWS account with Bedrock access (for Claude, Mistral, Minimax, Kimi, Qwen models)
-  - Azure OpenAI resource with model deployment (for GPT, Kimi K2.5, Grok 4 models)
-  - NVIDIA API key from [build.nvidia.com](https://build.nvidia.com) (for Devstral, MiniMax M2.7, MiniMax M2.5, MiniMax M2.1, Qwen3.5, DeepSeek, free tier available)
+  - AWS account with Bedrock access (for Claude, Minimax, Kimi, Qwen models)
+  - Azure OpenAI resource with model deployment (for GPT-5.4, GPT-5.4 Pro, DeepSeek-V4-Pro, Kimi K2.5)
+  - NVIDIA API key from [build.nvidia.com](https://build.nvidia.com) (for Mistral, MiniMax, Kimi, Qwen, DeepSeek-V4-Pro, GLM-5/5.1, Step, free tier available)
   - Google API key from [AI Studio](https://aistudio.google.com/apikey) (for Gemini 3.1 Pro, Gemini 3 Pro, Gemini 3 Flash)
 
 ### Install with uv (recommended)
@@ -113,7 +118,7 @@ Ensure your IAM user/role has the following permissions:
 
 ## Azure OpenAI Configuration (Alternative to AWS)
 
-Azure OpenAI provides access to GPT-5.4 Pro, GPT-5.3 Codex, Kimi K2.5, and Grok 4 Fast Reasoning via Microsoft Azure AI Foundry.
+Azure OpenAI provides access to GPT-5.4, GPT-5.4 Pro, DeepSeek-V4-Pro, and Kimi K2.5 via Microsoft Azure AI Foundry.
 
 ### 1. Set Environment Variables
 
@@ -126,26 +131,26 @@ export AZURE_OPENAI_API_KEY="your-api-key"
 
 1. Create an Azure OpenAI resource in Azure Portal
 2. Deploy models from Azure AI Foundry catalog:
+   - **GPT-5.4** (deployment name: `gpt-5.4`) - Frontier reasoning model, 1.05M context, 128K output
    - **GPT-5.4 Pro** (deployment name: `gpt-5.4-pro`) - Deeper reasoning variant, 1.05M context
-   - **GPT-5.3 Codex** (deployment name: `gpt-5.3-codex`)
+   - **DeepSeek-V4-Pro** (deployment name: `DeepSeek-V4-Pro`) - 1M context, chain-of-thought reasoning (no tool calling on Foundry)
    - **Kimi K2.5** (deployment name: `Kimi-K2.5`) - Moonshot AI's multimodal MoE model
-   - **Grok 4 Fast Reasoning** (deployment name: `grok-4-fast-reasoning`) - xAI's cost-efficient reasoning model
 3. Note your deployment name, endpoint, and API key
 
 ### 3. Use Azure Models
 
 ```bash
-# GPT-5.4 Pro - Deeper reasoning, 1.05M context
+# GPT-5.4 - Flagship reasoning model, 1.05M context (default Azure model)
+codereview /path/to/code --model gpt
+
+# GPT-5.4 Pro - Deeper reasoning variant, 1.05M context
 codereview /path/to/code --model gpt-pro
 
-# GPT-5.3 Codex - Code-specialized
-codereview /path/to/code --model gpt
+# DeepSeek-V4-Pro - 1M context, prompt-based JSON parsing
+codereview /path/to/code --model dsv4-azure
 
 # Kimi K2.5 - Multimodal MoE, 256K context
 codereview /path/to/code --model kimi-azure
-
-# Grok 4 Fast Reasoning - 128K context (Azure), cost-efficient
-codereview /path/to/code --model grok
 ```
 
 ### 4. Test Connection
@@ -154,11 +159,11 @@ codereview /path/to/code --model grok
 codereview --list-models  # Should show Azure models
 ```
 
-**Note:** Azure OpenAI models require you to deploy them in your Azure resource first. The deployment names in your configuration must match your actual Azure deployments. Kimi K2.5 and Grok 4 Fast Reasoning are available as "Direct from Azure" models in the Azure AI Foundry catalog.
+**Note:** Azure OpenAI models require you to deploy them in your Azure resource first. The deployment names in your configuration must match your actual Azure deployments. Kimi K2.5 and DeepSeek-V4-Pro are available as "Direct from Azure" models in the Azure AI Foundry catalog. DeepSeek-V4-Pro on Foundry doesn't support tool calling, so the provider falls back to prompt-based JSON parsing automatically (`supports_tool_use: false` in `models.yaml`).
 
 ## NVIDIA NIM Configuration (Alternative Provider)
 
-NVIDIA NIM provides access to models like Devstral 2, MiniMax M2.7, MiniMax M2.5, MiniMax M2.1, Qwen3.5, DeepSeek V3.2, Qwen3 Coder, and more with a free tier for development.
+NVIDIA NIM provides access to Mistral Small 4, Mistral Medium 3.5, MiniMax M2.5/M2.7, Kimi K2.5/K2.6, Qwen3 Coder, Qwen3.5, DeepSeek-V4-Pro, GLM-5/5.1, Step 3.5 Flash, and more — with a free tier for development.
 
 ### 1. Get API Key
 
@@ -175,14 +180,14 @@ export NVIDIA_API_KEY="nvapi-your-key-here"
 ### 3. Use NVIDIA Models
 
 ```bash
-# Devstral 2 - Code-specialized model
-codereview /path/to/code --model devstral
-
 # Mistral Small 4 - MoE model with 256K context
 codereview /path/to/code --model mistral-small
 
-# DeepSeek V3.2 - Large reasoning model with thinking mode
-codereview /path/to/code --model deepseek-nvidia
+# Mistral Medium 3.5 128B - 77.6% SWE-Bench, per-request reasoning_effort
+codereview /path/to/code --model mistral-medium
+
+# DeepSeek-V4-Pro - 1M context, three reasoning modes
+codereview /path/to/code --model deepseek-v4-pro
 
 # Qwen3 Coder - Ultra-large coding model with thinking mode
 codereview /path/to/code --model qwen-nvidia
@@ -190,23 +195,24 @@ codereview /path/to/code --model qwen-nvidia
 # Qwen3.5 - Next-gen Qwen reasoning model with thinking mode (262K context)
 codereview /path/to/code --model qwen3.5
 
-# GLM 4.7 - Reasoning model with interleaved thinking (73.8% SWE-bench)
-codereview /path/to/code --model glm47
-
 # MiniMax M2.7 - Agent-native model with thinking mode (56.22% SWE-Pro, 204K context)
 codereview /path/to/code --model minimax-m2.7
 
 # MiniMax M2.5 - SOTA coding model with thinking mode (80.2% SWE-bench)
 codereview /path/to/code --model minimax-m2.5
 
-# MiniMax M2.1 - Enhanced reasoning model with thinking mode
-codereview /path/to/code --model minimax-m2.1
-
-# Kimi K2.5 - Latest Kimi model with 256K context
+# Kimi K2.5 / K2.6 - 256K-262K context, thinking mode
 codereview /path/to/code --model kimi-k2.5
+codereview /path/to/code --model kimi-k2.6
+
+# GLM-5 / GLM-5.1 - Zhipu reasoning models (GLM-5 deprecated by NVIDIA 2026-04-20)
+codereview /path/to/code --model glm51
+
+# Step 3.5 Flash - Cost-efficient reasoning, fast
+codereview /path/to/code --model step-3.5-flash
 ```
 
-**Note:** NVIDIA NIM models are currently in free tier. No charges apply during the preview period. Models with thinking mode enabled (MiniMax M2.7, MiniMax M2.5, MiniMax M2.1, Qwen3.5, DeepSeek, Qwen3 Coder, GLM 4.7) provide deeper reasoning for complex code analysis.
+**Note:** NVIDIA NIM models are currently in free tier. No charges apply during the preview period. Models with thinking mode enabled (MiniMax M2.5/M2.7, Qwen3.5, DeepSeek-V4-Pro, Qwen3 Coder, GLM-5.1, Kimi K2.6) provide deeper reasoning for complex code analysis.
 
 ## Google Generative AI Configuration (Alternative Provider)
 
@@ -262,28 +268,27 @@ codereview /path/to/code --model haiku     # Claude Haiku 4.5 (fastest)
 codereview /path/to/code --model kimi-k2.5-bedrock  # Kimi K2.5 (262K context)
 codereview /path/to/code --model qwen-bedrock       # Qwen3 Coder 480B
 codereview /path/to/code --model qwen-next-bedrock  # Qwen3 Coder Next (80B MoE)
-codereview /path/to/code --model deepseek-r1-bedrock  # DeepSeek-R1 (reasoning)
-codereview /path/to/code --model deepseek-v3.2-bedrock # DeepSeek V3.2 (agentic)
-codereview /path/to/code --model glm47-bedrock      # GLM 4.7 (thinking mode)
-codereview /path/to/code --model glm47-flash-bedrock # GLM 4.7 Flash (cost-efficient)
+codereview /path/to/code --model minimax-m2.5-bedrock  # MiniMax M2.5 (196K context)
+codereview /path/to/code --model glm5-bedrock       # GLM 5 (Bedrock)
 
 # Azure OpenAI Models
-codereview /path/to/code --model gpt-pro         # GPT-5.4 Pro (1.05M context, deep reasoning)
-codereview /path/to/code --model gpt-5.3-codex   # GPT-5.3 Codex
+codereview /path/to/code --model gpt              # GPT-5.4 (1.05M context, frontier reasoning)
+codereview /path/to/code --model gpt-pro          # GPT-5.4 Pro (deeper reasoning variant)
+codereview /path/to/code --model dsv4-azure       # DeepSeek-V4-Pro (1M context, no tool use)
 codereview /path/to/code --model kimi-azure       # Kimi K2.5 (256K context)
-codereview /path/to/code --model grok             # Grok 4 Fast Reasoning (128K context)
 
 # NVIDIA NIM Models (free tier)
-codereview /path/to/code --model devstral           # Devstral 2 123B
 codereview /path/to/code --model mistral-small      # Mistral Small 4 119B
-codereview /path/to/code --model minimax-m2.7           # MiniMax M2.7 (thinking mode, agent-native)
-codereview /path/to/code --model minimax-m2.5           # MiniMax M2.5 (thinking mode, 80.2% SWE-bench)
-codereview /path/to/code --model minimax-m2.1           # MiniMax M2.1 (thinking mode)
-codereview /path/to/code --model deepseek-v3.2-nvidia # DeepSeek V3.2 (thinking mode)
+codereview /path/to/code --model mistral-medium     # Mistral Medium 3.5 128B (77.6% SWE-Bench)
+codereview /path/to/code --model minimax-m2.7       # MiniMax M2.7 (thinking mode, agent-native)
+codereview /path/to/code --model minimax-m2.5       # MiniMax M2.5 (thinking mode, 80.2% SWE-bench)
+codereview /path/to/code --model deepseek-v4-pro    # DeepSeek-V4-Pro (1M context, three reasoning modes)
 codereview /path/to/code --model qwen-nvidia        # Qwen3 Coder 480B (thinking mode)
 codereview /path/to/code --model qwen3.5            # Qwen3.5 397B (thinking mode, 262K context)
-codereview /path/to/code --model glm47              # GLM 4.7 (thinking mode)
+codereview /path/to/code --model glm51              # GLM-5.1 (744B MoE, thinking)
 codereview /path/to/code --model kimi-k2.5          # Kimi K2.5 (256K context)
+codereview /path/to/code --model kimi-k2.6          # Kimi K2.6 (262K context, agentic)
+codereview /path/to/code --model step-3.5-flash     # Step 3.5 Flash (cost-efficient)
 
 # Google Generative AI Models
 codereview /path/to/code --model gemini-3.1-pro     # Gemini 3.1 Pro (1M context, best reasoning)
@@ -292,46 +297,43 @@ codereview /path/to/code --model gemini-3-flash     # Gemini 3 Flash (fast, chea
 
 # Short aliases work too
 codereview /path/to/code -m haiku
-codereview /path/to/code -m devstral
+codereview /path/to/code -m gpt
 ```
 
 **Model Comparison:**
 
 | Model | Provider | Use Case | Input $/M | Output $/M |
 |-------|----------|----------|-----------|------------|
+| Opus 4.7 | AWS Bedrock | Latest reasoning, default model | TBD | TBD |
 | Opus 4.6 | AWS Bedrock | Highest quality, critical reviews | $5.00 | $25.00 |
 | Sonnet 4.6 | AWS Bedrock | Balanced performance and cost | $3.00 | $15.00 |
 | Haiku 4.5 | AWS Bedrock | Fast, economical, large codebases | $1.00 | $5.00 |
-| GPT-5.4 Pro | Azure OpenAI | Deep reasoning, 1.05M context, hardest problems | $30.00 | $180.00 |
-| GPT-5.3 Codex | Azure OpenAI | Code-specialized, Microsoft ecosystem | $1.75 | $14.00 |
+| Kimi K2.5 (Bedrock) | AWS Bedrock | 262K context, MoE | TBD | TBD |
+| MiniMax M2.5 (Bedrock) | AWS Bedrock | 196K context, agent-native | TBD | TBD |
+| Qwen3 Coder 480B | AWS Bedrock | Ultra-large coding model | TBD | TBD |
+| GPT-5.4 | Azure OpenAI | Frontier reasoning, 1.05M context, default Azure | $2.50 | $15.00 |
+| GPT-5.4 Pro | Azure OpenAI | Deeper reasoning, hardest problems | $30.00 | $180.00 |
+| DeepSeek-V4-Pro (Azure) | Azure OpenAI | 1M context, prompt-based JSON (no tool use on Foundry) | $1.74 | $3.48 |
 | Kimi K2.5 (Azure) | Azure OpenAI | Multimodal MoE, 256K context | $0.60 | $3.00 |
-| Grok 4 Fast (Azure) | Azure OpenAI | 128K context (Azure), cost-efficient reasoning | $0.20 | $0.50 |
-| Devstral 2 | NVIDIA NIM | Code-specialized, free tier | Free* | Free* |
 | Mistral Small 4 | NVIDIA NIM | 256K context, MoE architecture | Free* | Free* |
 | Mistral Medium 3.5 | NVIDIA NIM | 128B dense, 256K context, reasoning_effort, 77.6% SWE-Bench | Free* | Free* |
 | MiniMax M2.7 | NVIDIA NIM | 204K context, 128K output, thinking mode, agent-native | Free* | Free* |
 | MiniMax M2.5 | NVIDIA NIM | 192K context, 128K output, thinking mode, SOTA coding | Free* | Free* |
-| MiniMax M2.1 | NVIDIA NIM | 200K context, 128K output, thinking mode | Free* | Free* |
-| DeepSeek V3.2 | NVIDIA NIM | Large reasoning model, thinking mode | Free* | Free* |
+| DeepSeek-V4-Pro (NVIDIA) | NVIDIA NIM | 1M context, three reasoning modes | Free* | Free* |
 | Qwen3 Coder (NIM) | NVIDIA NIM | Ultra-large coding, thinking mode | Free* | Free* |
 | Qwen3.5 397B | NVIDIA NIM | Next-gen Qwen, thinking mode, 262K context | Free* | Free* |
-| GLM 4.7 | NVIDIA NIM | 73.8% SWE-bench, thinking mode | Free* | Free* |
-| GLM-5.1 | NVIDIA NIM | 744B MoE, 131K context, agentic coding, thinking | Free* | Free* |
+| GLM-5 / GLM-5.1 | NVIDIA NIM | 744B MoE, 131K context, thinking (GLM-5 deprecated 2026-04-20) | Free* | Free* |
 | Kimi K2.5 | NVIDIA NIM | 256K context, instant/thinking modes | Free* | Free* |
 | Kimi K2.6 | NVIDIA NIM | 262K context, 1T MoE, agentic thinking | Free* | Free* |
+| Step 3.5 Flash | NVIDIA NIM | Cost-efficient reasoning | Free* | Free* |
 | Gemini 3.1 Pro | Google GenAI | Most advanced reasoning, 1M context | $2.00 | $12.00 |
 | Gemini 3 Pro | Google GenAI | Flagship reasoning, 1M context | $2.00 | $12.00 |
 | Gemini 3 Flash | Google GenAI | Fast and cheap, 1M context | $0.50 | $3.00 |
-| DeepSeek-R1 | AWS Bedrock | Reasoning model, 128K context | $1.35 | $5.40 |
-| DeepSeek V3.2 (Bedrock) | AWS Bedrock | Agentic workflows, tool calling | $0.62 | $1.85 |
-| MiniMax M2.1 (Bedrock) | AWS Bedrock | Multilingual coding, 128K output | $0.30 | $1.20 |
-| Kimi K2.5 (Bedrock) | AWS Bedrock | Multimodal MoE, 262K context | $0.60 | $3.00 |
 | Qwen3 Coder (Bedrock) | AWS Bedrock | Ultra-large model, deep analysis | $0.22 | $1.40 |
 | Qwen3 Coder Next (Bedrock) | AWS Bedrock | Ultra-sparse MoE, 70%+ SWE-bench | $0.50 | $1.20 |
-| GLM 4.7 (Bedrock) | AWS Bedrock | 73.8% SWE-bench, thinking mode | TBD* | TBD* |
-| GLM 4.7 Flash (Bedrock) | AWS Bedrock | Lightweight MoE, cost-efficient | TBD* | TBD* |
+| GLM 5 (Bedrock) | AWS Bedrock | Zhipu next-gen reasoning | TBD | TBD |
 
-*NVIDIA NIM models are currently in free preview tier. Models with thinking mode use interleaved reasoning for deeper code analysis. GLM Bedrock pricing TBD - update when AWS publishes official pricing.
+*NVIDIA NIM models are currently in free preview tier. Models with thinking mode use interleaved reasoning for deeper code analysis. Several Bedrock models display "TBD" until AWS publishes official pricing — the CLI renders unpriced models as `Estimated cost: TBD` instead of `$0.0000`.
 
 ### Export Reports
 

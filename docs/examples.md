@@ -97,11 +97,11 @@ codereview ./src --model sonnet
 codereview ./monorepo --model haiku --max-files 1000
 
 # Free tier models for development/testing (NVIDIA NIM)
-codereview ./src --model devstral         # Devstral 2 123B
+codereview ./src --model mistral-medium   # Mistral Medium 3.5 128B (77.6% SWE-Bench)
 codereview ./src --model mistral-small    # Mistral Small 4 119B
 
-# Grok 4 Fast - Cost-efficient reasoning, 128K context (Azure)
-codereview ./src --model grok
+# GPT-5.4 - Frontier reasoning, 1.05M context (Azure default)
+codereview ./src --model gpt
 
 # Kimi K2.5 - Multimodal MoE, 256K context (Azure)
 codereview ./src --model kimi-azure
@@ -203,14 +203,16 @@ codereview ./src \
 ```
 
 **Cost Comparison**:
-- Opus (100 files): ~$1.50
+- Opus 4.6 (100 files): ~$1.50
+- GPT-5.4 (100 files): ~$0.75
 - Gemini 3.1 Pro (100 files): ~$0.50
 - Gemini 3 Pro (100 files): ~$0.50
 - Sonnet (100 files): ~$0.30
+- DeepSeek-V4-Pro Azure (100 files): ~$0.18
 - Kimi K2.5 Azure (100 files): ~$0.12
 - Gemini 3 Flash (100 files): ~$0.10
-- Grok 4 Fast (100 files): ~$0.03
 - Haiku (500 files): ~$0.20
+- NVIDIA NIM models: free during preview
 
 ### Example 10: Region-Specific Configuration
 
@@ -799,12 +801,14 @@ diff before.md after.md
    ```
 
 2. **Choose Cost-Effective Models**:
-   - **Grok 4 Fast** for CI/CD quality gates ($0.20/$0.50 per M, 128K context)
+   - **NVIDIA NIM free tier** (Mistral Medium 3.5, MiniMax M2.5, etc.) for development and CI experimentation
+   - **DeepSeek-V4-Pro Azure** for budget-conscious production reviews ($1.74/$3.48 per M, 1M context)
    - **Haiku** for CI/CD quality gates (fastest, cheapest Bedrock option)
    - **Gemini 3 Flash** for large-context reviews (1M context, low cost)
    - **Gemini 3.1 Pro** for advanced reasoning reviews (1M context)
    - **Sonnet** for PR reviews (balanced)
-   - **Opus** for production releases only (highest quality)
+   - **GPT-5.4** for Azure-hosted reviews ($2.50/$15 per M, 1.05M context)
+   - **Opus 4.7** for production releases only (latest reasoning model)
 
 3. **Use Artifacts**: Always save review reports as build artifacts
 

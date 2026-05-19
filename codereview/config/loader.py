@@ -75,14 +75,14 @@ class ConfigLoader:
 
             # Parse scanning config
             self._parse_scanning_config()
-        except FileNotFoundError:
-            raise ValueError(f"Configuration file not found: {self.config_path}")
+        except FileNotFoundError as e:
+            raise ValueError(f"Configuration file not found: {self.config_path}") from e
         except yaml.YAMLError as e:
-            raise ValueError(f"Invalid YAML in configuration file: {e}")
-        except PermissionError:
+            raise ValueError(f"Invalid YAML in configuration file: {e}") from e
+        except PermissionError as e:
             raise ValueError(
                 f"Permission denied reading configuration: {self.config_path}"
-            )
+            ) from e
 
     def _expand_env_var_string(self, text: str) -> str:
         """Expand ${VAR_NAME} placeholders in a single string value.

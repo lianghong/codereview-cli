@@ -47,6 +47,7 @@ class FileScanner:
         root_dir: Path | str,
         exclude_patterns: list[str] | None = None,
         max_file_size_kb: int = MAX_FILE_SIZE_KB,
+        exclude_hidden: bool = True,
     ) -> None:
         """
         Initialize file scanner.
@@ -55,12 +56,15 @@ class FileScanner:
             root_dir: Root directory to scan for code files
             exclude_patterns: Glob patterns to exclude (defaults to DEFAULT_EXCLUDE_PATTERNS)
             max_file_size_kb: Maximum file size in KB to include (larger files are skipped)
+            exclude_hidden: Skip directories whose name starts with '.' (e.g. ``.git``,
+                ``.venv``). Set to False to scan inside ``.github/scripts`` etc.
         """
         self.root_dir = Path(root_dir)
         self.exclude_patterns = (
             DEFAULT_EXCLUDE_PATTERNS if exclude_patterns is None else exclude_patterns
         )
         self.max_file_size_kb = max_file_size_kb
+        self.exclude_hidden = exclude_hidden
         self.skipped_files: list[
             tuple[Path, str]
         ] = []  # Track skipped files with reasons
@@ -87,7 +91,8 @@ class FileScanner:
             dirnames[:] = [
                 d
                 for d in dirnames
-                if d not in excluded_dir_names and not d.startswith(".")
+                if d not in excluded_dir_names
+                and not (self.exclude_hidden and d.startswith("."))
             ]
 
             for filename in filenames:

@@ -110,3 +110,28 @@ def test_scanner_finds_typescript_files(sample_dir):
     ts_files = [f for f in files if f.suffix in ts_extensions]
     assert len(ts_files) > 0
     assert any("example.ts" in str(f) for f in ts_files)
+
+
+def test_scanner_excludes_hidden_dirs_by_default(tmp_path):
+    """Hidden directories like .github/ are skipped by default."""
+    hidden = tmp_path / ".github" / "scripts"
+    hidden.mkdir(parents=True)
+    (hidden / "release.py").write_text("x = 1\n")
+
+    scanner = FileScanner(tmp_path)
+    files = scanner.scan()
+
+    assert all(".github" not in p.parts for p in files)
+
+
+def test_scanner_includes_hidden_dirs_when_opted_in(tmp_path):
+    """exclude_hidden=False lets users scan inside .github/, .config/, etc."""
+    hidden = tmp_path / ".github" / "scripts"
+    hidden.mkdir(parents=True)
+    target = hidden / "release.py"
+    target.write_text("x = 1\n")
+
+    scanner = FileScanner(tmp_path, exclude_hidden=False)
+    files = scanner.scan()
+
+    assert target.resolve() in [f.resolve() for f in files]
