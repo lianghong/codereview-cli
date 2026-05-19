@@ -478,9 +478,9 @@ class TestErrorHandlingIntegration:
             # not during initialization. All batches fail so it shows error message.
             assert result.exit_code == 0, "CLI should not crash on batch errors"
             assert (
-                "All" in result.output and "failed" in result.output
-            ) or "AccessDeniedException" in result.output or (
-                "error" in result.output.lower()
+                ("All" in result.output and "failed" in result.output)
+                or "AccessDeniedException" in result.output
+                or ("error" in result.output.lower())
             ), f"Expected error message, got: {result.output}"
 
 

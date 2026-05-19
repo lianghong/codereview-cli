@@ -239,7 +239,9 @@ def test_token_tracking_estimates_when_usage_metadata_missing(
         # langchain-google-genai >=4.x always sets usage_metadata; this test
         # covers the defensive estimation path when an upstream change drops it.
         mock_report_with_metadata.usage_metadata = None
-        mock_report_with_metadata.model_dump_json.return_value = '{"summary": "x" * 200}'
+        mock_report_with_metadata.model_dump_json.return_value = (
+            '{"summary": "x" * 200}'
+        )
 
         for attr in [
             "summary",

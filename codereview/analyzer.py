@@ -1,5 +1,6 @@
 """LLM-based code analyzer using provider abstraction."""
 
+import threading
 import warnings
 
 from langchain_core.callbacks import BaseCallbackHandler
@@ -61,8 +62,10 @@ class CodeAnalyzer:
             project_context=project_context,
         )
 
-        # Tracking state (analyzer-level, not delegated to provider)
+        # Tracking state (analyzer-level, not delegated to provider).
+        # Lock guards skipped_files so concurrent batch workers can append safely.
         self.skipped_files: list[tuple[str, str]] = []
+        self._skipped_files_lock = threading.Lock()
 
     @staticmethod
     def _map_legacy_model_id(model_id: str) -> str:
@@ -87,7 +90,8 @@ class CodeAnalyzer:
     def reset_state(self) -> None:
         """Reset analysis state for a fresh run."""
         self.provider.reset_state()
-        self.skipped_files = []
+        with self._skipped_files_lock:
+            self.skipped_files = []
 
     def analyze_batch(
         self,
@@ -116,10 +120,14 @@ class CodeAnalyzer:
                     content = file_path.read_text(encoding="utf-8", errors="replace")
                     files_content[str(file_path)] = content
                 except OSError as e:
-                    self.skipped_files.append((str(file_path), f"Encoding error: {e}"))
+                    with self._skipped_files_lock:
+                        self.skipped_files.append(
+                            (str(file_path), f"Encoding error: {e}")
+                        )
             except OSError as e:
                 # Track skipped file for reporting
-                self.skipped_files.append((str(file_path), str(e)))
+                with self._skipped_files_lock:
+                    self.skipped_files.append((str(file_path), str(e)))
 
         # Skip provider call if no files were readable
         if not files_content:

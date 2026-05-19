@@ -1,5 +1,7 @@
 """Provider mixins for shared functionality."""
 
+import threading
+
 from codereview.config.models import ModelConfig
 
 
@@ -7,7 +9,8 @@ class TokenTrackingMixin:
     """Mixin providing token tracking and cost estimation.
 
     Provides standardized token counting, state management, and cost
-    calculation for LLM providers.
+    calculation for LLM providers. Token counter mutations are guarded
+    by a lock so concurrent batch workers can safely increment totals.
 
     Requirements:
         Classes using this mixin must have:
@@ -26,12 +29,14 @@ class TokenTrackingMixin:
 
     _total_input_tokens: int
     _total_output_tokens: int
+    _token_lock: threading.Lock
     model_config: ModelConfig
 
     def _init_token_tracking(self) -> None:
         """Initialize token counters. Call in __init__."""
         self._total_input_tokens = 0
         self._total_output_tokens = 0
+        self._token_lock = threading.Lock()
 
     def _track_tokens(self, input_tokens: int, output_tokens: int) -> None:
         """Add tokens to running totals.
@@ -40,13 +45,15 @@ class TokenTrackingMixin:
             input_tokens: Number of input tokens to add
             output_tokens: Number of output tokens to add
         """
-        self._total_input_tokens += input_tokens
-        self._total_output_tokens += output_tokens
+        with self._token_lock:
+            self._total_input_tokens += input_tokens
+            self._total_output_tokens += output_tokens
 
     def reset_state(self) -> None:
         """Reset token counters for fresh run."""
-        self._total_input_tokens = 0
-        self._total_output_tokens = 0
+        with self._token_lock:
+            self._total_input_tokens = 0
+            self._total_output_tokens = 0
 
     @property
     def total_input_tokens(self) -> int:
