@@ -360,6 +360,8 @@ class StaticAnalyzer:
 
         Wraps Path.rglob() to catch OSError (including PermissionError) that
         can occur when encountering directories with restricted permissions.
+        Symlinks are skipped to prevent following links that point outside
+        the analysis directory (defense-in-depth alongside _validate_file_path).
 
         Args:
             pattern: Glob pattern (e.g., "*.go", "*.py")
@@ -368,7 +370,7 @@ class StaticAnalyzer:
             List of matching paths, or empty list if scanning fails
         """
         try:
-            return list(self.directory.rglob(pattern))
+            return [p for p in self.directory.rglob(pattern) if not p.is_symlink()]
         except OSError as e:
             logging.warning("Error scanning for %s files: %s", pattern, e)
             return []
@@ -378,7 +380,8 @@ class StaticAnalyzer:
 
         Equivalent to calling _safe_rglob once per suffix, but walks the
         tree a single time — useful when a tool accepts many extensions
-        (e.g. prettier covers 8 suffixes, C++ covers 5).
+        (e.g. prettier covers 8 suffixes, C++ covers 5). Symlinks are
+        skipped (see _safe_rglob).
 
         Args:
             suffixes: Set of extensions including the dot (e.g. {".js", ".tsx"}).
@@ -390,7 +393,7 @@ class StaticAnalyzer:
             return [
                 p
                 for p in self.directory.rglob("*")
-                if p.is_file() and p.suffix in suffixes
+                if p.is_file() and not p.is_symlink() and p.suffix in suffixes
             ]
         except OSError as e:
             logging.warning("Error scanning tree for %s: %s", sorted(suffixes), e)

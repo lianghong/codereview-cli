@@ -228,23 +228,18 @@ def test_token_tracking_usage_metadata(model_config, provider_config, mock_repor
         assert provider.total_output_tokens == 100
 
 
-def test_token_tracking_response_metadata_fallback(
+def test_token_tracking_estimates_when_usage_metadata_missing(
     model_config, provider_config, mock_report
 ):
-    """Test token tracking falls back to response_metadata."""
+    """When usage_metadata is absent, fall back to character-based estimation."""
     with patch(
         "codereview.providers.google_genai.ChatGoogleGenerativeAI"
     ) as mock_google:
         mock_report_with_metadata = Mock(spec=CodeReviewReport)
-        # No usage_metadata, but has response_metadata
+        # langchain-google-genai >=4.x always sets usage_metadata; this test
+        # covers the defensive estimation path when an upstream change drops it.
         mock_report_with_metadata.usage_metadata = None
-        mock_report_with_metadata.response_metadata = {
-            "usage_metadata": {
-                "prompt_token_count": 150,
-                "candidates_token_count": 75,
-            }
-        }
-        mock_report_with_metadata.model_dump_json.return_value = "{}"
+        mock_report_with_metadata.model_dump_json.return_value = '{"summary": "x" * 200}'
 
         for attr in [
             "summary",
@@ -265,8 +260,9 @@ def test_token_tracking_response_metadata_fallback(
         provider.chain.invoke.return_value = mock_report_with_metadata
 
         provider.analyze_batch(1, 1, {"test.py": "code"})
-        assert provider.total_input_tokens == 150
-        assert provider.total_output_tokens == 75
+        # Estimation produces non-zero positive token counts
+        assert provider.total_input_tokens > 0
+        assert provider.total_output_tokens > 0
 
 
 def test_cost_estimation(model_config, provider_config, mock_report):

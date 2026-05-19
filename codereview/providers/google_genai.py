@@ -128,24 +128,14 @@ class GoogleGenAIProvider(TokenTrackingMixin, ModelProvider):
         return min(config.base_wait * (2**attempt), config.max_wait)
 
     def _extract_token_usage(self, result: Any) -> tuple[int, int]:
-        """Extract token usage from Google GenAI response metadata."""
-        # Google GenAI uses usage_metadata attribute
-        if hasattr(result, "usage_metadata"):
-            usage = result.usage_metadata
-            if isinstance(usage, dict):
-                input_tokens = usage.get("input_tokens", 0)
-                output_tokens = usage.get("output_tokens", 0)
-                return (input_tokens, output_tokens)
-        # Fallback to response_metadata (older versions)
-        if hasattr(result, "response_metadata"):
-            usage = result.response_metadata.get("usage_metadata", {})
-            input_tokens = usage.get("prompt_token_count", 0) or usage.get(
-                "input_tokens", 0
-            )
-            output_tokens = usage.get("candidates_token_count", 0) or usage.get(
-                "output_tokens", 0
-            )
-            return (input_tokens, output_tokens)
+        """Extract token usage from Google GenAI response metadata.
+
+        langchain-google-genai >=4.x populates AIMessage.usage_metadata as
+        a UsageMetadata dict with input_tokens/output_tokens keys.
+        """
+        usage = getattr(result, "usage_metadata", None)
+        if isinstance(usage, dict):
+            return (usage.get("input_tokens", 0), usage.get("output_tokens", 0))
         return (0, 0)
 
     def analyze_batch(
