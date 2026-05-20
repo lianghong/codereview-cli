@@ -704,3 +704,123 @@ def test_truncation_is_deterministic(mock_subprocess, tmp_path):
     files_in_cmd = [Path(arg).name for arg in cmd_forward[1:]]
     expected_prefix = sorted([f.name for f in files] * 2)[:MAX_FILES_PER_TOOL]
     assert files_in_cmd == expected_prefix
+
+
+def test_condense_for_prompt_skips_passing_tools():
+    """Tools with passed=True and 0 issues produce no block."""
+    results = {
+        "ruff": StaticAnalysisResult(
+            tool="ruff", passed=True, issues_count=0, output="", errors=[]
+        ),
+    }
+    assert StaticAnalyzer.condense_for_prompt(results) == ""
+
+
+def test_condense_for_prompt_includes_failing_tool_output():
+    """A failing tool with output gets a labeled section."""
+    results = {
+        "ruff": StaticAnalysisResult(
+            tool="ruff",
+            passed=False,
+            issues_count=2,
+            output="app.py:1:1 E501 line too long\napp.py:5:1 F401 unused import",
+            errors=[],
+        )
+    }
+    block = StaticAnalyzer.condense_for_prompt(results)
+    assert "ruff" in block and "2 issue" in block
+    assert "E501" in block and "F401" in block
+
+
+def test_condense_for_prompt_truncates_long_output():
+    """Per-tool line cap kicks in and adds an elision marker."""
+    output = "\n".join(f"app.py:{i}:1 E001 issue" for i in range(100))
+    results = {
+        "ruff": StaticAnalysisResult(
+            tool="ruff", passed=False, issues_count=100, output=output, errors=[]
+        )
+    }
+    block = StaticAnalyzer.condense_for_prompt(results, max_lines_per_tool=10)
+    assert "more line(s) elided" in block
+
+
+def test_condense_for_prompt_caps_total_chars():
+    """Total output is capped at max_chars."""
+    huge_output = "x" * 50_000
+    results = {
+        "ruff": StaticAnalysisResult(
+            tool="ruff", passed=False, issues_count=1, output=huge_output, errors=[]
+        )
+    }
+    block = StaticAnalyzer.condense_for_prompt(
+        results, max_chars=500, max_lines_per_tool=99
+    )
+    assert len(block) <= 500 + len("\n... (linter output truncated)")
+    assert "linter output truncated" in block
+
+
+def test_condense_for_prompt_filters_to_batch_paths():
+    """only_paths slices linter output to lines mentioning the batch's files."""
+    output = (
+        "src/foo.py:1:1 E501 line too long\n"
+        "src/foo.py:5:1 F401 unused import\n"
+        "src/bar.py:2:1 E302 expected 2 blank lines\n"
+        "src/baz.go:10:1 unused variable\n"
+    )
+    results = {
+        "ruff": StaticAnalysisResult(
+            tool="ruff",
+            passed=False,
+            issues_count=4,
+            output=output,
+            errors=[],
+        )
+    }
+    block = StaticAnalyzer.condense_for_prompt(
+        results, only_paths=["src/foo.py", "src/bar.py"]
+    )
+    assert "foo.py" in block and "bar.py" in block
+    assert "baz.go" not in block
+
+
+def test_condense_for_prompt_filter_empty_for_unrelated_batch():
+    """A batch with no files matching any tool output yields empty block."""
+    output = "src/foo.py:1:1 E501 line too long"
+    results = {
+        "ruff": StaticAnalysisResult(
+            tool="ruff",
+            passed=False,
+            issues_count=1,
+            output=output,
+            errors=[],
+        )
+    }
+    block = StaticAnalyzer.condense_for_prompt(
+        results, only_paths=["src/main.go", "src/util.go"]
+    )
+    assert block == ""
+
+
+def test_condense_for_prompt_filter_uses_basename():
+    """Path mismatch (relative vs absolute) still matches on basename."""
+    output = "/abs/path/to/foo.py:1:1 E501 line too long"
+    results = {
+        "ruff": StaticAnalysisResult(
+            tool="ruff",
+            passed=False,
+            issues_count=1,
+            output=output,
+            errors=[],
+        )
+    }
+    # Caller passes a relative path; basename match still finds it.
+    block = StaticAnalyzer.condense_for_prompt(results, only_paths=["src/foo.py"])
+    assert "foo.py" in block and "E501" in block
+
+
+def test_filter_lines_for_paths_drops_summary_banners():
+    """Lines without any allowed basename are dropped (e.g. 'Found 3 errors')."""
+    output = "src/foo.py:1: error\nFound 1 error in 1 file\nSome unrelated line\n"
+    kept, dropped = StaticAnalyzer._filter_lines_for_paths(output, {"foo.py"})
+    assert kept == ["src/foo.py:1: error"]
+    assert dropped == 2

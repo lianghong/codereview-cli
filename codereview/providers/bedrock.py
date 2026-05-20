@@ -9,7 +9,6 @@ from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.output_parsers import PydanticOutputParser
 
 # Import system prompt from config
-from codereview.config import SYSTEM_PROMPT
 from codereview.config.models import BedrockConfig, ModelConfig
 from codereview.models import CodeReviewReport
 from codereview.providers.base import (
@@ -187,9 +186,7 @@ class BedrockProvider(TokenTrackingMixin, ModelProvider):
         )
 
         chain_input = {
-            "system_prompt": self._system_prompt_with_format_instructions(
-                SYSTEM_PROMPT
-            ),
+            "system_prompt": self._build_batch_system_prompt(files_content),
             "batch_context": batch_context,
         }
 

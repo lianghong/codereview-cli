@@ -93,6 +93,21 @@ class CodeAnalyzer:
         with self._skipped_files_lock:
             self.skipped_files = []
 
+    def set_linter_findings(self, results: object) -> None:
+        """Attach the raw static-analysis results for per-batch filtering.
+
+        When the CLI runs --static-analysis before the AI review, the raw
+        results dict (keyed by tool name) is stashed on the provider so each
+        batch's _prepare_batch_context can slice the output down to just the
+        files in that batch. Stored as a provider attribute so it threads in
+        without touching all 7 provider constructor signatures.
+
+        The parameter is typed `object` to keep this module free of a
+        static_analysis import; the provider treats it opaquely and passes
+        it back to StaticAnalyzer.condense_for_prompt at use time.
+        """
+        self.provider.linter_findings = results  # type: ignore[attr-defined]
+
     def analyze_batch(
         self,
         batch: FileBatch,

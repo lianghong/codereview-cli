@@ -19,7 +19,6 @@ from langchain_moonshot import ChatMoonshot
 from openai import RateLimitError
 from pydantic import SecretStr
 
-from codereview.config import SYSTEM_PROMPT
 from codereview.config.models import ModelConfig, MoonshotConfig
 from codereview.models import CodeReviewReport
 from codereview.providers.base import (
@@ -171,7 +170,7 @@ class MoonshotProvider(TokenTrackingMixin, ModelProvider):
         )
 
         chain_input = {
-            "system_prompt": SYSTEM_PROMPT,
+            "system_prompt": self._build_batch_system_prompt(files_content),
             "batch_context": batch_context,
         }
 

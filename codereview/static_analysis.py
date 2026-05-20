@@ -1018,6 +1018,108 @@ class StaticAnalyzer:
         return results
 
     @staticmethod
+    def _filter_lines_for_paths(
+        output: str, allowed_basenames: set[str]
+    ) -> tuple[list[str], int]:
+        """Keep only output lines that mention at least one allowed basename.
+
+        Most linters emit one diagnostic per line as ``<path>:<line>:<col>: ...``
+        so filename-substring matching is a good-enough, tool-agnostic filter.
+        We match on basename rather than full path because tools vary on
+        whether they print absolute or relative paths.
+
+        Returns the filtered non-empty lines plus the count of dropped lines.
+        Empty lines and lines without any path token are dropped (they're
+        usually summary banners that get re-emitted by the section header).
+        """
+        kept: list[str] = []
+        dropped = 0
+        for ln in output.splitlines():
+            if not ln.strip():
+                continue
+            if any(name in ln for name in allowed_basenames):
+                kept.append(ln)
+            else:
+                dropped += 1
+        return kept, dropped
+
+    @staticmethod
+    def condense_for_prompt(
+        results: dict[str, "StaticAnalysisResult"],
+        max_chars: int = 4000,
+        max_lines_per_tool: int = 25,
+        only_paths: list[str] | None = None,
+    ) -> str:
+        """Condense linter results into a short block to inject into LLM prompts.
+
+        The goal is to tell the model what's already been caught so it doesn't
+        re-report the same findings. We keep the head of each non-passing
+        tool's output (where modern linters emit per-issue lines) and cap the
+        total size — passing too much linter detail eats into the file token
+        budget and rarely helps the LLM more than a representative sample.
+
+        Args:
+            results: Mapping from tool name to its StaticAnalysisResult
+            max_chars: Hard cap on the returned string length
+            max_lines_per_tool: Truncate each tool's output to this many lines
+            only_paths: When set, keep only lines mentioning one of these
+                file paths' basenames. Used to slice global linter output
+                down to the files in a single batch.
+
+        Returns:
+            A formatted block ready to splice into batch context, or an empty
+            string if there's nothing useful to inject.
+        """
+        if not results:
+            return ""
+
+        problem_tools = [
+            (name, res)
+            for name, res in results.items()
+            if not res.passed or res.issues_count > 0
+        ]
+        if not problem_tools:
+            return ""
+
+        allowed_basenames: set[str] | None = None
+        if only_paths is not None:
+            from pathlib import PurePath
+
+            allowed_basenames = {PurePath(p).name for p in only_paths}
+            allowed_basenames.discard("")
+
+        sections: list[str] = []
+        for name, res in problem_tools:
+            if allowed_basenames is not None:
+                lines, _ = StaticAnalyzer._filter_lines_for_paths(
+                    res.output, allowed_basenames
+                )
+            else:
+                lines = [ln for ln in res.output.splitlines() if ln.strip()]
+            if not lines:
+                continue
+            head = lines[:max_lines_per_tool]
+            truncated = len(lines) - len(head)
+            count_label = (
+                f"{len(lines)} matching line(s)"
+                if allowed_basenames is not None
+                else f"{res.issues_count} issue(s)"
+            )
+            section = [f"-- {name} ({count_label}) --"]
+            section.extend(head)
+            if truncated > 0:
+                section.append(f"... {truncated} more line(s) elided")
+            sections.append("\n".join(section))
+
+        if not sections:
+            return ""
+
+        block = "\n\n".join(sections)
+        if len(block) > max_chars:
+            block = block[:max_chars] + "\n... (linter output truncated)"
+        return block
+
+    @staticmethod
     def get_summary(results: dict[str, StaticAnalysisResult]) -> StaticAnalysisSummary:
         """
         Generate summary of static analysis results.

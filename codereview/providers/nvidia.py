@@ -13,7 +13,6 @@ from langchain_nvidia_ai_endpoints import ChatNVIDIA
 from pydantic import SecretStr
 
 # Import system prompt from config
-from codereview.config import SYSTEM_PROMPT
 from codereview.config.models import ModelConfig, NVIDIAConfig
 from codereview.models import CodeReviewReport
 from codereview.providers.base import (
@@ -277,9 +276,7 @@ class NVIDIAProvider(TokenTrackingMixin, ModelProvider):
         )
 
         chain_input = {
-            "system_prompt": self._system_prompt_with_format_instructions(
-                SYSTEM_PROMPT
-            ),
+            "system_prompt": self._build_batch_system_prompt(files_content),
             "batch_context": batch_context,
         }
 

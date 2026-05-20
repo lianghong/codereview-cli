@@ -6,8 +6,6 @@ from langchain_core.callbacks import BaseCallbackHandler
 from langchain_google_genai import ChatGoogleGenerativeAI
 from pydantic import SecretStr
 
-# Import system prompt from config
-from codereview.config import SYSTEM_PROMPT
 from codereview.config.models import GoogleGenAIConfig, ModelConfig
 from codereview.models import CodeReviewReport
 from codereview.providers.base import (
@@ -166,7 +164,7 @@ class GoogleGenAIProvider(TokenTrackingMixin, ModelProvider):
         )
 
         chain_input = {
-            "system_prompt": SYSTEM_PROMPT,
+            "system_prompt": self._build_batch_system_prompt(files_content),
             "batch_context": batch_context,
         }
 
