@@ -79,6 +79,15 @@ class ValidationResult:
 class ModelProvider(ABC):
     """Abstract interface for LLM providers."""
 
+    # Optional per-run linter findings (raw StaticAnalyzer results dict).
+    # The CLI sets this via CodeAnalyzer.set_linter_findings; _prepare_batch_-
+    # context reads it to inject a per-batch "ALREADY-FLAGGED-BY-LINTERS"
+    # block. Declared here as a class attribute so concrete providers don't
+    # need to thread it through their constructors and callers don't need
+    # `type: ignore[attr-defined]`. Subclasses that adopt __slots__ must
+    # include "linter_findings" in their slot tuple.
+    linter_findings: object | None = None
+
     @abstractmethod
     def analyze_batch(
         self,
@@ -515,9 +524,7 @@ class ModelProvider(ABC):
                     if input_tokens == 0:
                         input_tokens = self._estimate_tokens(batch_context)
                     if output_tokens == 0:
-                        output_tokens = self._estimate_tokens(
-                            str(parsed.model_dump_json())
-                        )
+                        output_tokens = self._estimate_tokens(parsed.model_dump_json())
 
                     self._track_tokens(input_tokens, output_tokens)
                     return parsed
@@ -535,7 +542,7 @@ class ModelProvider(ABC):
                 if input_tokens == 0:
                     input_tokens = self._estimate_tokens(batch_context)
                 if output_tokens == 0:
-                    output_tokens = self._estimate_tokens(str(result.model_dump_json()))
+                    output_tokens = self._estimate_tokens(result.model_dump_json())
 
                 self._track_tokens(input_tokens, output_tokens)
 

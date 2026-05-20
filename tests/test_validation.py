@@ -596,8 +596,14 @@ class TestAzureValidation:
             assert result.valid is False
             assert any("Invalid endpoint URL" in e for e in result.errors)
 
-    def test_azure_validation_http_endpoint_warning(self):
-        """Test validation warns when endpoint uses HTTP instead of HTTPS."""
+    def test_azure_validation_http_endpoint_fails_closed(self):
+        """HTTP (non-HTTPS) endpoint must hard-fail validation, not warn.
+
+        The connection test sends the api-key in a request header, so a
+        misconfigured plaintext endpoint would leak the credential
+        (CWE-319). validate_credentials must return valid=False and refuse
+        to proceed rather than emit a passable warning.
+        """
         from codereview.config.models import (
             AzureOpenAIConfig,
             ModelConfig,
@@ -634,8 +640,8 @@ class TestAzureValidation:
 
                 result = provider.validate_credentials()
 
-                assert result.valid is True
-                assert any("HTTPS" in w for w in result.warnings)
+                assert result.valid is False
+                assert any("HTTPS" in e for e in result.errors)
         finally:
             os.environ.pop("CODEREVIEW_SKIP_CONNECTION_TEST", None)
 

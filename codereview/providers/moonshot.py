@@ -132,7 +132,7 @@ class MoonshotProvider(TokenTrackingMixin, ModelProvider):
                 try:
                     wait = min(float(retry_after), config.max_wait)
                     logging.info(
-                        "Moonshot rate limit: waiting %ds (Retry-After header)",
+                        "Moonshot rate limit: waiting %.1fs (Retry-After header)",
                         wait,
                     )
                     return wait

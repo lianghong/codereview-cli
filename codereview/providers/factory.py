@@ -46,7 +46,9 @@ class ProviderFactory:
             project_context: Optional project README/documentation content
 
         Returns:
-            Instantiated provider (BedrockProvider, AzureOpenAIProvider, NVIDIAProvider, or GoogleGenAIProvider)
+            Instantiated provider — one of BedrockProvider, AzureOpenAIProvider,
+            NVIDIAProvider, GoogleGenAIProvider, ZAIProvider, DeepSeekProvider,
+            or MoonshotProvider.
 
         Raises:
             ValueError: If model name not found or provider unknown

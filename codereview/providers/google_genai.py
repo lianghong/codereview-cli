@@ -113,7 +113,7 @@ class GoogleGenAIProvider(TokenTrackingMixin, ModelProvider):
         """Check if error is a retryable Google API error."""
         from google.api_core.exceptions import ResourceExhausted, ServiceUnavailable
 
-        return isinstance(error, (ResourceExhausted, ServiceUnavailable))
+        return isinstance(error, ResourceExhausted | ServiceUnavailable)
 
     def _calculate_backoff(
         self, error: Exception, attempt: int, config: RetryConfig

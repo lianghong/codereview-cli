@@ -164,7 +164,7 @@ class AzureOpenAIProvider(TokenTrackingMixin, ModelProvider):
                 try:
                     wait = min(float(retry_after), config.max_wait)
                     logging.info(
-                        "Azure rate limit: waiting %ds (Retry-After header)", wait
+                        "Azure rate limit: waiting %.1fs (Retry-After header)", wait
                     )
                     return wait
                 # PEP 758 syntax (Python 3.14+): unparenthesized multi-exception catch
@@ -297,8 +297,19 @@ class AzureOpenAIProvider(TokenTrackingMixin, ModelProvider):
                 )
                 return result
 
+            # Fail-closed on plaintext endpoints — the connection test below
+            # sends the api-key in a header, so a misconfigured `http://`
+            # URL would leak the credential to whatever resolves the host
+            # (CWE-319). Warning + continue is not appropriate for credentials.
             if not endpoint.startswith("https://"):
-                result.add_warning("Endpoint should use HTTPS for security")
+                result.valid = False
+                result.add_check(
+                    "Endpoint",
+                    False,
+                    "Endpoint must use HTTPS — refusing to send API key in cleartext",
+                )
+                result.add_suggestion("Set AZURE_OPENAI_ENDPOINT to an https:// URL")
+                return result
 
             result.add_check("Endpoint", True, f"Endpoint: {endpoint}")
 

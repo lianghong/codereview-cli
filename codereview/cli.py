@@ -25,7 +25,7 @@ from rich.progress import (
 from rich.table import Table
 
 from codereview.analyzer import CodeAnalyzer
-from codereview.batcher import BYTES_PER_TOKEN, FileBatch, FileBatcher, count_tokens
+from codereview.batcher import FileBatch, FileBatcher, count_tokens
 from codereview.callbacks import (
     BaseCallbackHandler,
     ProgressCallbackHandler,
@@ -175,14 +175,14 @@ def _render_batch_error(
                 f"\n[red]✗ AWS Error on batch {batch_num} "
                 f"({escape(error_code)}): {escape(error_msg)}[/red]"
             )
-    elif isinstance(error, (ValueError, KeyError)):
+    elif isinstance(error, ValueError | KeyError | RuntimeError | OSError):
+        # Don't pre-label these as "Parse error" — ValueError/KeyError can
+        # surface from anywhere (config lookup, dict access, validation),
+        # not just from response parsing. Surface the exception type and
+        # let the user follow the message rather than be steered toward
+        # the wrong subsystem.
         con.print(
-            f"\n[red]✗ Parse error in batch {batch_num}: "
-            f"{type(error).__name__}: {escape(str(error))}[/red]"
-        )
-    elif isinstance(error, (RuntimeError, OSError)):
-        con.print(
-            f"\n[red]✗ Error analyzing batch {batch_num}: "
+            f"\n[red]✗ Error on batch {batch_num}: "
             f"{type(error).__name__}: {escape(str(error))}[/red]"
         )
     else:
@@ -692,8 +692,10 @@ def main(
             system_prompt_tokens = count_tokens(SYSTEM_PROMPT)
             readme_tokens = count_tokens(readme_content) if readme_content else 0
             # Reserve an upper bound for the linter findings block when static
-            # analysis ran. condense_for_prompt enforces the same 4 KB cap.
-            linter_tokens = (4000 // BYTES_PER_TOKEN) if static_results else 0
+            # analysis ran. condense_for_prompt enforces a 4000-char cap, so
+            # estimate that as tokens via the same tokenizer used for the
+            # other budget components.
+            linter_tokens = count_tokens("x" * 4000) if static_results else 0
             safety_margin = max(1000, min(model_config.context_window // 10, 20000))
             computed_budget = (
                 model_config.context_window
@@ -1277,8 +1279,10 @@ def _render_dry_run(
     console.print(table)
     console.print()
 
-    # Add system prompt tokens estimate (~500 tokens per batch)
-    system_prompt_tokens = len(batches) * 500
+    # System prompt is sent once per batch. Use the actual tokenizer rather
+    # than a hardcoded 500-token guess — the prompt is currently ~5K tokens,
+    # so the old estimate undercounted dry-run cost by ~10x.
+    system_prompt_tokens = len(batches) * count_tokens(SYSTEM_PROMPT)
     total_input_tokens = total_tokens + system_prompt_tokens
 
     # Estimate output tokens (roughly 20% of input for code review)

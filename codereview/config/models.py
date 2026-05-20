@@ -392,5 +392,8 @@ class ModelsConfigFile(BaseModel):
         | BedrockConfig
         | AzureOpenAIConfig
         | NVIDIAConfig
-        | GoogleGenAIConfig,
+        | GoogleGenAIConfig
+        | DeepSeekConfig
+        | MoonshotConfig
+        | ZAIConfig,
     ] = Field(default_factory=dict, description="Provider configurations")

@@ -28,4 +28,16 @@ def __getattr__(name: str) -> type:
         from codereview.providers.google_genai import GoogleGenAIProvider
 
         return GoogleGenAIProvider
+    if name == "ZAIProvider":
+        from codereview.providers.zai import ZAIProvider
+
+        return ZAIProvider
+    if name == "DeepSeekProvider":
+        from codereview.providers.deepseek import DeepSeekProvider
+
+        return DeepSeekProvider
+    if name == "MoonshotProvider":
+        from codereview.providers.moonshot import MoonshotProvider
+
+        return MoonshotProvider
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

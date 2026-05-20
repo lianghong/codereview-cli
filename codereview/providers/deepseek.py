@@ -160,7 +160,7 @@ class DeepSeekProvider(TokenTrackingMixin, ModelProvider):
                 try:
                     wait = min(float(retry_after), config.max_wait)
                     logging.info(
-                        "DeepSeek rate limit: waiting %ds (Retry-After header)",
+                        "DeepSeek rate limit: waiting %.1fs (Retry-After header)",
                         wait,
                     )
                     return wait

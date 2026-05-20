@@ -607,8 +607,12 @@ class MarkdownExporter:
         return "\n".join(lines)
 
     def _header(self) -> str:
-        """Generate header section."""
-        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        """Generate header section.
+
+        Uses an offset-aware local timestamp so reports archived from CI
+        runners in different regions stay comparable.
+        """
+        now = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %z")
         return f"# Code Review Report\n\n**Generated:** {now}"
 
     def _summary(self, report: CodeReviewReport) -> str:
