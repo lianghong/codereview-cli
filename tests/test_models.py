@@ -223,3 +223,79 @@ def test_unknown_severity_warning_is_deduped(caplog):
             ReviewIssue(severity="BogusLevel")
     matching = [r for r in caplog.records if "BogusLevel" in r.message]
     assert len(matching) == 1
+
+
+# ---------------------------------------------------------------------------
+# References URL filtering + drift counters
+# ---------------------------------------------------------------------------
+
+
+def test_references_keeps_authoritative_urls():
+    """CWE/OWASP/MDN/language-doc URLs survive the filter."""
+    issue = ReviewIssue(
+        references=[
+            "https://cwe.mitre.org/data/definitions/89.html",
+            "https://owasp.org/www-project-top-ten/",
+            "https://developer.mozilla.org/en-US/docs/Web/API",
+            "https://docs.python.org/3/library/sqlite3.html",
+            "https://go.dev/doc/effective_go",
+        ]
+    )
+    assert len(issue.references) == 5
+
+
+def test_references_drops_non_authoritative_urls():
+    """Search results, blogspam, SO links, ftp:// — all dropped."""
+    models.reset_drift_counters()
+    issue = ReviewIssue(
+        references=[
+            "https://stackoverflow.com/questions/12345",
+            "https://medium.com/some-blog-post",
+            "https://random-blog.example.com/",
+            "ftp://example.com/file",
+            "not-a-url",
+            "https://cwe.mitre.org/data/definitions/79.html",  # this one survives
+        ]
+    )
+    assert issue.references == ["https://cwe.mitre.org/data/definitions/79.html"]
+    assert models.get_drift_counters()["reference_dropped"] == 5
+
+
+def test_references_handles_subdomain_authoritative_hosts():
+    """Subdomains of authoritative hosts (e.g. peps.python.org) are accepted."""
+    issue = ReviewIssue(
+        references=[
+            "https://peps.python.org/pep-0008/",
+            "https://cheatsheetseries.owasp.org/cheatsheets/SQL_Injection_Prevention_Cheat_Sheet.html",
+        ]
+    )
+    assert len(issue.references) == 2
+
+
+def test_drift_counter_tracks_severity_coercion():
+    """Coerced severities bump severity_coerced; valid ones don't."""
+    models.reset_drift_counters()
+    ReviewIssue(severity="bogus_level_1")
+    ReviewIssue(severity="another_bogus")
+    ReviewIssue(severity="Critical")
+    assert models.get_drift_counters()["severity_coerced"] == 2
+
+
+def test_drift_counter_tracks_category_coercion():
+    """Coerced categories bump category_coerced; valid ones don't."""
+    models.reset_drift_counters()
+    ReviewIssue(category="QuantumEntanglement")
+    ReviewIssue(category="HelloWorld")
+    ReviewIssue(category="Security")
+    assert models.get_drift_counters()["category_coerced"] == 2
+
+
+def test_drift_counter_reset_zeroes_all():
+    """reset_drift_counters() clears everything."""
+    ReviewIssue(
+        severity="bogus_a", category="bogus_b", references=["http://blog.example.com"]
+    )
+    counters = models.get_drift_counters()
+    assert sum(counters.values()) > 0
+    models.reset_drift_counters()
+    assert all(v == 0 for v in models.get_drift_counters().values())

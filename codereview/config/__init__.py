@@ -17,7 +17,12 @@ from codereview.config.models import (
 )
 
 # Import system prompt
-from codereview.config.prompts import SYSTEM_PROMPT
+from codereview.config.prompts import (
+    LANGUAGE_RULES,
+    SYSTEM_PROMPT,
+    build_system_prompt,
+    detect_languages_from_paths,
+)
 
 
 @lru_cache(maxsize=1)
@@ -80,6 +85,9 @@ __all__ = [
     "get_config_loader",
     # System prompt
     "SYSTEM_PROMPT",
+    "LANGUAGE_RULES",
+    "build_system_prompt",
+    "detect_languages_from_paths",
     # Convenience accessors
     "get_default_exclude_patterns",
     "get_default_exclude_extensions",

@@ -34,6 +34,83 @@ _warned_unknown_severities: set[str] = set()
 _warned_unknown_categories: set[str] = set()
 _warned_lock = threading.Lock()
 
+# Process-wide counters surfaced in the final CLI report so prompt drift is
+# visible to users, not just hidden in logs. Reset by reset_drift_counters()
+# at the start of each run.
+_drift_counters: dict[str, int] = {
+    "severity_coerced": 0,
+    "category_coerced": 0,
+    "reference_dropped": 0,
+}
+_drift_lock = threading.Lock()
+
+
+def _bump_drift(key: str) -> None:
+    """Thread-safe increment of a drift counter. See _drift_counters."""
+    with _drift_lock:
+        _drift_counters[key] = _drift_counters.get(key, 0) + 1
+
+
+def get_drift_counters() -> dict[str, int]:
+    """Snapshot the drift counters (thread-safe copy)."""
+    with _drift_lock:
+        return dict(_drift_counters)
+
+
+def reset_drift_counters() -> None:
+    """Zero the drift counters at the start of a new analysis run."""
+    with _drift_lock:
+        for k in _drift_counters:
+            _drift_counters[k] = 0
+
+
+# Hosts considered authoritative for review-issue references. Anything else
+# gets silently dropped to keep the report free of search-result blogspam.
+# Match is on lowercased hostname with leading "www." stripped, suffix-aware
+# (so docs.python.org matches "python.org").
+_AUTHORITATIVE_REFERENCE_HOSTS = (
+    "cwe.mitre.org",
+    "cve.mitre.org",
+    "nvd.nist.gov",
+    "csrc.nist.gov",
+    "owasp.org",
+    "cheatsheetseries.owasp.org",
+    "developer.mozilla.org",
+    "docs.python.org",
+    "peps.python.org",
+    "go.dev",
+    "pkg.go.dev",
+    "kernel.org",
+    "rust-lang.org",
+    "doc.rust-lang.org",
+    "ecma-international.org",
+    "tc39.es",
+    "typescriptlang.org",
+    "openjdk.org",
+    "docs.oracle.com",
+    "isocpp.org",
+    "en.cppreference.com",
+    "pubs.opengroup.org",
+)
+
+
+def _is_authoritative_url(url: str) -> bool:
+    """Return True if url's host matches an entry in _AUTHORITATIVE_REFERENCE_HOSTS."""
+    from urllib.parse import urlparse
+
+    try:
+        parsed = urlparse(url.strip())
+    except (ValueError, AttributeError):
+        return False
+    if parsed.scheme not in ("http", "https"):
+        return False
+    host = (parsed.hostname or "").lower()
+    if host.startswith("www."):
+        host = host[4:]
+    return any(
+        host == h or host.endswith("." + h) for h in _AUTHORITATIVE_REFERENCE_HOSTS
+    )
+
 
 def _warn_once(bucket: set[str], value: str, kind: str, default: str) -> None:
     with _warned_lock:
@@ -266,6 +343,7 @@ class ReviewIssue(BaseModel):
                 "category type",
                 "Code Quality",
             )
+            _bump_drift("category_coerced")
             return "Code Quality"
         if v in VALID_CATEGORIES:
             return v
@@ -273,6 +351,7 @@ class ReviewIssue(BaseModel):
         if normalized:
             return normalized
         _warn_once(_warned_unknown_categories, v, "category", "Code Quality")
+        _bump_drift("category_coerced")
         return "Code Quality"
 
     severity: Literal["Critical", "High", "Medium", "Low", "Info"] = Field(
@@ -293,6 +372,7 @@ class ReviewIssue(BaseModel):
                 "severity type",
                 "Medium",
             )
+            _bump_drift("severity_coerced")
             return "Medium"
         if v in VALID_SEVERITIES:
             return v
@@ -300,19 +380,99 @@ class ReviewIssue(BaseModel):
         if normalized:
             return normalized
         _warn_once(_warned_unknown_severities, v, "severity", "Medium")
+        _bump_drift("severity_coerced")
         return "Medium"
 
-    file_path: str = Field(default="unknown", description="Relative path to file")
-    line_start: int = Field(default=1, description="Starting line number", ge=1)
-    line_end: int | None = Field(default=None, description="Ending line number", ge=1)
-
-    title: str = Field(default="Issue", description="Brief issue summary")
-    description: str = Field(
-        default="No description provided", description="Detailed explanation"
+    file_path: str = Field(
+        default="unknown",
+        description=(
+            "Relative path to the file as it appears in the batch header "
+            "(e.g. 'app/api/views.py'). Must be a real path from the batch — "
+            "do NOT invent paths or use 'unknown'."
+        ),
     )
-    suggested_code: str | None = Field(default=None, description="Suggested fix")
-    rationale: str = Field(default="Review recommended", description="Why this matters")
-    references: list[str] = Field(default_factory=list, description="Reference links")
+    line_start: int = Field(
+        default=1,
+        description=(
+            "Starting line number where the issue actually appears. Must point "
+            "to a real line in the provided code. NEVER use 1 as a placeholder "
+            "when the issue is not actually on line 1."
+        ),
+        ge=1,
+    )
+    line_end: int | None = Field(
+        default=None,
+        description="Ending line number, if the issue spans multiple lines. Omit for single-line issues.",
+        ge=1,
+    )
+
+    title: str = Field(
+        default="Issue",
+        description=(
+            "Specific, concrete problem in 5-12 words. "
+            "GOOD: 'SQL injection via f-string in user lookup query'. "
+            "BAD: 'Issue', 'Problem found', 'Code quality concern', 'Bug'."
+        ),
+    )
+    description: str = Field(
+        default="No description provided",
+        description=(
+            "What is wrong AND the concrete consequence. Reference the actual "
+            "code (variable/function names) shown in the batch. Do NOT emit "
+            "'No description provided' — omit the issue if you cannot describe it."
+        ),
+    )
+    suggested_code: str | None = Field(
+        default=None,
+        description=(
+            "A concrete code fix in the SAME LANGUAGE as the file. Omit (null) "
+            "if a code-level fix is not applicable; never output a description "
+            "of the fix in this field — put that in `description`."
+        ),
+    )
+    rationale: str = Field(
+        default="Review recommended",
+        description=(
+            "Why this matters — the security, reliability, correctness, or "
+            "maintainability impact. Tie to a concrete consequence, not a "
+            "generic 'best practice'. Do NOT emit 'Review recommended'."
+        ),
+    )
+    references: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Optional list of authoritative URLs (CWE, CVE, OWASP, official "
+            "language docs). Omit search engine links, blog posts, and "
+            "Stack Overflow."
+        ),
+    )
+
+    @field_validator("references", mode="before")
+    @classmethod
+    def filter_references(cls, v: Any) -> list[str]:
+        """Drop reference URLs that aren't from authoritative sources.
+
+        Models given a free-text URL field reliably mix in search-result
+        blogspam, Stack Overflow links, and made-up URLs. We keep only
+        well-known authoritative hosts (CWE, OWASP, language docs, MDN,
+        NIST). Dropped URLs are counted in the drift counter so the CLI
+        can surface "N references dropped" if it spikes.
+        """
+        if v is None:
+            return []
+        if not isinstance(v, list):
+            return []
+        kept: list[str] = []
+        for item in v:
+            if not isinstance(item, str):
+                _bump_drift("reference_dropped")
+                continue
+            if _is_authoritative_url(item):
+                kept.append(item)
+            else:
+                _bump_drift("reference_dropped")
+                logger.debug("Dropped non-authoritative reference URL: %r", item)
+        return kept
 
     @model_validator(mode="after")
     def validate_line_range(self) -> "ReviewIssue":
