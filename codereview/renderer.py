@@ -446,6 +446,7 @@ class MarkdownExporter:
         report: CodeReviewReport,
         output_path: Path | str,
         skipped_files: list[tuple[str, str]] | None = None,
+        audit: dict[str, Any] | None = None,
     ) -> None:
         """
         Export report to Markdown file.
@@ -455,12 +456,16 @@ class MarkdownExporter:
             output_path: Path to output Markdown file
             skipped_files: Optional list of (file_path, reason) tuples for files
                 that were skipped during scanning or analysis
+            audit: Optional run-time signals (dedupe counts, drift counters,
+                linter-injection state). When set, the report includes an
+                "Audit Trail" section so reviewers can verify what
+                post-processing the run applied.
 
         Raises:
             RuntimeError: If file write fails
         """
         output_path = Path(output_path)
-        content = self._generate_markdown(report, skipped_files)
+        content = self._generate_markdown(report, skipped_files, audit)
         try:
             output_path.parent.mkdir(parents=True, exist_ok=True)
             output_path.write_text(content, encoding="utf-8")
@@ -471,6 +476,7 @@ class MarkdownExporter:
         self,
         report: CodeReviewReport,
         skipped_files: list[tuple[str, str]] | None = None,
+        audit: dict[str, Any] | None = None,
     ) -> str:
         """Generate Markdown content."""
         sections = [
@@ -498,7 +504,80 @@ class MarkdownExporter:
         if skipped_files:
             sections.append(self._skipped_files(skipped_files))
 
+        # Add audit-trail section if the CLI passed one
+        if audit:
+            sections.append(self._audit_trail(audit))
+
         return "\n\n".join(sections)
+
+    def _audit_trail(self, audit: dict[str, Any]) -> str:
+        """Generate the audit-trail section.
+
+        Surfaces the post-processing signals that the run applied, so a
+        reader of the markdown report can verify (a) whether linter findings
+        were folded in, (b) how many duplicates were collapsed, (c) whether
+        prompt drift coerced any model output, and (d) whether the system
+        prompt was sliced per-batch by language.
+        """
+        lines = ["## Audit Trail", ""]
+
+        if "linter_tools_injected" in audit:
+            n = audit["linter_tools_injected"]
+            if n:
+                lines.append(
+                    f"- **Linter findings injected:** {n} tool(s); each batch saw "
+                    "only diagnostics for files in that batch."
+                )
+            else:
+                lines.append(
+                    "- **Linter findings injected:** none "
+                    "(no static-analysis tools ran or none reported issues)."
+                )
+
+        if "issues_deduplicated" in audit:
+            n = audit["issues_deduplicated"]
+            if n:
+                lines.append(
+                    f"- **Cross-batch issues deduplicated:** {n} duplicate(s) "
+                    "collapsed (fingerprinted on file path, line, and "
+                    "normalized title)."
+                )
+
+        if "design_insights_deduplicated" in audit:
+            n = audit["design_insights_deduplicated"]
+            if n:
+                lines.append(
+                    f"- **Design insights deduplicated:** {n} paraphrase(s) "
+                    "collapsed across batches."
+                )
+
+        drift = audit.get("drift") or {}
+        total = sum(drift.values()) if drift else 0
+        if total:
+            lines.append(
+                "- **Schema drift:** "
+                f"{drift.get('severity_coerced', 0)} severity, "
+                f"{drift.get('category_coerced', 0)} category, "
+                f"{drift.get('reference_dropped', 0)} reference URL(s) "
+                "coerced or dropped during validation. May indicate "
+                "prompt drift; see logs with --verbose for details."
+            )
+
+        if "languages_in_batches" in audit:
+            langs = audit["languages_in_batches"]
+            if langs:
+                rendered = ", ".join(sorted(langs)) if langs else "none detected"
+                lines.append(
+                    f"- **Per-batch language slicing:** prompt rules limited to "
+                    f"{rendered}."
+                )
+
+        # If everything was zero/empty we still emit a header — keeps the
+        # report shape stable across runs and signals "we checked".
+        if len(lines) == 2:
+            lines.append("- No audit signals reported for this run.")
+
+        return "\n".join(lines)
 
     def _skipped_files(self, skipped_files: list[tuple[str, str]]) -> str:
         """Generate skipped files section.

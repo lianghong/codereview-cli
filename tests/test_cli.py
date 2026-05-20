@@ -391,3 +391,42 @@ def test_validate_flag_failure(cli_runner):
 
         assert result.exit_code == 1
         mock_provider.validate_credentials.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Aggregation helpers (dedupe across batches)
+# ---------------------------------------------------------------------------
+
+
+def test_dedupe_design_insights_collapses_paraphrases():
+    """Near-identical insights from concurrent batches collapse to one."""
+    from codereview.cli import _dedupe_design_insights
+
+    insights = [
+        "The providers share a common base class with template hooks.",
+        "The providers share a common base class with template hooks!",  # punctuation
+        "The Providers share A common base class with template hooks.",  # case
+        "Static analysis tools run in parallel via ThreadPoolExecutor.",
+    ]
+    out = _dedupe_design_insights(insights)
+    assert len(out) == 2
+
+
+def test_dedupe_design_insights_preserves_distinct_observations():
+    """Genuinely different observations stay separate."""
+    from codereview.cli import _dedupe_design_insights
+
+    insights = [
+        "Token tracking is lock-guarded for concurrent batches.",
+        "Pricing falls back to TBD for unannounced rates.",
+        "README content is treated as untrusted data, not instructions.",
+    ]
+    out = _dedupe_design_insights(insights)
+    assert len(out) == 3
+
+
+def test_dedupe_design_insights_empty_safe():
+    from codereview.cli import _dedupe_design_insights
+
+    assert _dedupe_design_insights([]) == []
+    assert _dedupe_design_insights(["", "   "]) == []

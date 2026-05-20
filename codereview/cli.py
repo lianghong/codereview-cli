@@ -25,7 +25,7 @@ from rich.progress import (
 from rich.table import Table
 
 from codereview.analyzer import CodeAnalyzer
-from codereview.batcher import FileBatch, FileBatcher
+from codereview.batcher import BYTES_PER_TOKEN, FileBatch, FileBatcher, count_tokens
 from codereview.callbacks import (
     BaseCallbackHandler,
     ProgressCallbackHandler,
@@ -36,9 +36,16 @@ from codereview.config import (
     MAX_FILE_SIZE_KB,
     MODEL_ALIASES,
     SYSTEM_PROMPT,
+    detect_languages_from_paths,
     get_config_loader,
 )
-from codereview.models import CodeReviewReport, ReviewIssue, ReviewMetrics
+from codereview.models import (
+    CodeReviewReport,
+    ReviewIssue,
+    ReviewMetrics,
+    get_drift_counters,
+    reset_drift_counters,
+)
 from codereview.providers.base import ModelProvider
 from codereview.providers.factory import ProviderFactory
 from codereview.readme_finder import (
@@ -680,14 +687,20 @@ def main(
                 and model_config.inference_params.max_output_tokens
                 else 16000
             )
-            system_prompt_tokens = len(SYSTEM_PROMPT) // 4
-            readme_tokens = len(readme_content) // 4 if readme_content else 0
+            # Use the real tokenizer (tiktoken cl100k_base) for fixed prompt
+            # blocks too — they're constant strings, encoded once per run.
+            system_prompt_tokens = count_tokens(SYSTEM_PROMPT)
+            readme_tokens = count_tokens(readme_content) if readme_content else 0
+            # Reserve an upper bound for the linter findings block when static
+            # analysis ran. condense_for_prompt enforces the same 4 KB cap.
+            linter_tokens = (4000 // BYTES_PER_TOKEN) if static_results else 0
             safety_margin = max(1000, min(model_config.context_window // 10, 20000))
             computed_budget = (
                 model_config.context_window
                 - max_output
                 - system_prompt_tokens
                 - readme_tokens
+                - linter_tokens
                 - safety_margin
             )
             if computed_budget > 0:
@@ -700,6 +713,8 @@ def main(
                     con.print(f"   Max output:        {max_output:>10,}")
                     con.print(f"   System prompt:     {system_prompt_tokens:>10,}")
                     con.print(f"   README context:    {readme_tokens:>10,}")
+                    if linter_tokens:
+                        con.print(f"   Linter findings:   {linter_tokens:>10,}")
                     con.print(f"   Safety margin:     {safety_margin:>10,}")
                     con.print(f"   [bold]Token budget:      {token_budget:>10,}[/bold]")
                     con.print()
@@ -749,12 +764,32 @@ def main(
             progress_handler = ProgressCallbackHandler(console=con)
             callbacks = [progress_handler]
 
+        # Drift counters are process-wide; zero them at the top of each run so
+        # the post-run report only reflects this invocation.
+        reset_drift_counters()
+
         analyzer = CodeAnalyzer(
             model_name=model_name,
             temperature=temperature,
             callbacks=callbacks,
             project_context=readme_content,
         )
+
+        # Hand the LLM the raw linter results so each batch can be sliced
+        # down to just its own files at prompt-prep time. Pre-condensing
+        # would force every batch to see every other batch's diagnostics.
+        if static_results:
+            analyzer.set_linter_findings(static_results)
+            if verbose:
+                tools_with_issues = sum(
+                    1
+                    for r in static_results.values()
+                    if not r.passed or r.issues_count > 0
+                )
+                con.print(
+                    f"[dim]Linter findings from {tools_with_issues} tool(s) "
+                    "will be sliced per-batch into review prompts.[/dim]"
+                )
         all_issues = []
         all_suggestions = []
         all_design_insights = []
@@ -845,6 +880,29 @@ def main(
         # Get pricing from provider
         pricing = analyzer.provider.get_pricing()
 
+        # Collapse near-duplicates that concurrent batches reported independently.
+        before_dedupe = len(all_issues)
+        all_issues = _dedupe_issues(all_issues)
+        if verbose and before_dedupe > len(all_issues):
+            con.print(
+                f"[dim]Deduplicated {before_dedupe - len(all_issues)} "
+                f"cross-batch duplicate issue(s).[/dim]"
+            )
+
+        # Surface schema-coercion drift so prompt drift doesn't stay hidden in
+        # logs. A high coercion rate means the model is emitting categories,
+        # severities, or reference URLs that don't match our schema — usually
+        # a signal that the prompt or the model has drifted.
+        drift = get_drift_counters()
+        total_drift = sum(drift.values())
+        if total_drift > 0 and (verbose or total_drift >= 5):
+            con.print(
+                f"[yellow]⚠ Schema drift: {drift['severity_coerced']} severity, "
+                f"{drift['category_coerced']} category, "
+                f"{drift['reference_dropped']} reference URL(s) coerced/dropped. "
+                "May indicate prompt drift; rerun with --verbose for log details.[/yellow]"
+            )
+
         # Build metrics object
         severity_counts = Counter(i.severity for i in all_issues)
         metrics = ReviewMetrics(
@@ -888,12 +946,16 @@ def main(
                 static_issues_found=static_summary["total_issues"],
             )
 
-        # Aggregate system design insights from all batches,
-        # filtering out the default "no concerns" message to avoid repetition
+        # Aggregate system design insights from all batches:
+        # 1. drop the default "no concerns" placeholder
+        # 2. collapse near-duplicate paraphrases that concurrent batches emit
         default_insight = "No architectural concerns identified"
         meaningful_insights = [
             insight for insight in all_design_insights if insight != default_insight
         ]
+        before_insight_dedupe = len(meaningful_insights)
+        meaningful_insights = _dedupe_design_insights(meaningful_insights)
+        insights_collapsed = before_insight_dedupe - len(meaningful_insights)
         aggregated_insights = (
             "\n\n".join(meaningful_insights)
             if meaningful_insights
@@ -991,11 +1053,33 @@ def main(
 
                     all_skipped_files.extend(analyzer.skipped_files)
 
+                    # Bundle the run's post-processing signals so the markdown
+                    # report is self-documenting beyond the terminal session.
+                    linter_tools_with_issues = (
+                        sum(
+                            1
+                            for r in static_results.values()
+                            if not r.passed or r.issues_count > 0
+                        )
+                        if static_results
+                        else 0
+                    )
+                    audit = {
+                        "linter_tools_injected": linter_tools_with_issues,
+                        "issues_deduplicated": before_dedupe - len(all_issues),
+                        "design_insights_deduplicated": insights_collapsed,
+                        "drift": drift,
+                        "languages_in_batches": sorted(
+                            detect_languages_from_paths(str(p) for p in files)
+                        ),
+                    }
+
                     exporter = MarkdownExporter()
                     exporter.export(
                         final_report,
                         output,
                         skipped_files=all_skipped_files if all_skipped_files else None,
+                        audit=audit,
                     )
                     con.print(f"\n[green]✓ Report exported to: {output}[/green]\n")
             except OSError as e:
@@ -1052,6 +1136,55 @@ def main(
             streaming_handler.cleanup()
         if progress_handler:
             progress_handler.cleanup()
+
+
+def _dedupe_issues(issues: list[ReviewIssue]) -> list[ReviewIssue]:
+    """Drop near-duplicate issues across batches.
+
+    Concurrent batches can independently surface the same architectural concern
+    (same bare except, same missing timeout) for the same file. The prompt's
+    "report once" rule only applies within a batch, so we collapse duplicates
+    at aggregation time, keyed on (file_path, line_start, normalized title).
+
+    Title normalization is deliberately coarse — lowercased, alphanumerics only —
+    so "Bare except clause" and "Bare `except:` clause" collapse together.
+    Highest-severity issue wins on tie.
+    """
+    severity_rank = {"Critical": 0, "High": 1, "Medium": 2, "Low": 3, "Info": 4}
+
+    def fingerprint(issue: ReviewIssue) -> tuple[str, int, str]:
+        normalized = "".join(c for c in issue.title.lower() if c.isalnum())
+        return (issue.file_path, issue.line_start, normalized)
+
+    best: dict[tuple[str, int, str], ReviewIssue] = {}
+    for issue in issues:
+        key = fingerprint(issue)
+        existing = best.get(key)
+        if existing is None or severity_rank.get(
+            issue.severity, 99
+        ) < severity_rank.get(existing.severity, 99):
+            best[key] = issue
+    return list(best.values())
+
+
+def _dedupe_design_insights(insights: list[str]) -> list[str]:
+    """Drop near-duplicate architectural insights from concurrent batches.
+
+    Each batch independently emits `system_design_insights`, so on a 5-batch
+    run you can see the same observation ("no centralized error handling",
+    "providers share a base class but ...") repeated five times. Collapse on
+    the first 120 alphanumeric chars — coarse enough to fuse paraphrases,
+    fine enough to keep genuinely different observations apart.
+    """
+    seen: set[str] = set()
+    out: list[str] = []
+    for text in insights:
+        normalized = "".join(c.lower() for c in text if c.isalnum())[:120]
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        out.append(text)
+    return out
 
 
 def _generate_recommendations(issues: list[ReviewIssue]) -> list[str]:
