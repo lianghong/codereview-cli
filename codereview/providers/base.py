@@ -459,11 +459,47 @@ class ModelProvider(ABC):
     def _invoke_chain(self, chain_input: dict[str, str]) -> Any:
         """Invoke the LLM chain. Override for provider-specific wrappers.
 
+        Two return shapes are valid; ``_execute_with_retry`` branches on
+        ``isinstance(result, dict)`` and dispatches accordingly.
+
+        1. ``include_raw=True`` shape (tool-using models, default path):
+           A dict with the keys::
+
+               {
+                   "raw": AIMessage,           # for token-usage extraction
+                   "parsed": CodeReviewReport, # the structured result
+                   "parsing_error": Exception | None,
+               }
+
+           Produced by ``base_model.with_structured_output(
+           CodeReviewReport, include_raw=True)`` in providers that use
+           tool-calling for structured output (Bedrock, Azure, NVIDIA,
+           Google, Z.AI, DeepSeek, Moonshot tool-use cases).
+
+        2. Direct ``CodeReviewReport`` shape (prompt-parsing fallback):
+           The ``CodeReviewReport`` instance itself, produced by chaining
+           a ``PydanticOutputParser`` onto the model. Used by tool-use-less
+           endpoints — currently DeepSeek-V4-Pro on Azure and MiniMax M2.5
+           on Bedrock — where the model emits JSON via prompt format
+           instructions instead of via tool-calling.
+
+        Anything else (a string, a raw AIMessage, a list, etc.) is a
+        contract violation. ``_execute_with_retry`` raises ``ValueError``
+        with a descriptive message rather than letting downstream token
+        estimation fail with a confusing AttributeError.
+
+        Override this method only when you need to wrap invocation
+        (e.g. to suppress provider warnings, polling/202 handling,
+        provider-specific exception translation). The wrapped call must
+        still return one of the two shapes above.
+
         Args:
-            chain_input: Input dictionary for the chain
+            chain_input: Input dictionary for the chain. Always contains
+                "system_prompt" and "batch_context" keys.
 
         Returns:
-            Chain invocation result
+            Either an ``include_raw=True`` dict or a ``CodeReviewReport``.
+            See above for the exact shapes.
         """
         return self.chain.invoke(chain_input)  # type: ignore[attr-defined]
 

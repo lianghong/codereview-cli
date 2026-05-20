@@ -180,3 +180,101 @@ class TestPrepareContextWithReadme:
         # Verify normal batch context is still present
         assert "Analyzing Batch 1/2" in result
         assert "File: test.py" in result
+
+
+# ---------------------------------------------------------------------------
+# _execute_with_retry contract: result-shape validation
+# ---------------------------------------------------------------------------
+
+
+class _StubChainProvider(ConcreteProvider):
+    """ConcreteProvider variant that lets tests inject _invoke_chain results.
+
+    The base ConcreteProvider's analyze_batch returns a fixed
+    CodeReviewReport without going through _execute_with_retry, which
+    bypasses the retry framework entirely. To exercise the result-shape
+    branching in _execute_with_retry we need a provider where
+    _invoke_chain is the seam under test.
+    """
+
+    def __init__(self, stub_result):
+        super().__init__()
+        self._stub_result = stub_result
+
+    def _invoke_chain(self, chain_input):
+        return self._stub_result
+
+
+def test_execute_with_retry_rejects_string_result():
+    """A provider that returns a plain string surfaces a clear ValueError.
+
+    Locks in the High #1 fix from f40121a: without the isinstance check
+    in _execute_with_retry, this case would AttributeError on
+    `result.model_dump_json()` during token estimation, which masks the
+    real contract violation.
+    """
+    from codereview.providers.base import RetryConfig
+
+    provider = _StubChainProvider(stub_result="this is not a CodeReviewReport")
+    cfg = RetryConfig(max_retries=0)
+
+    with pytest.raises(ValueError, match="unexpected result type"):
+        provider._execute_with_retry(
+            chain_input={"system_prompt": "x", "batch_context": "y"},
+            retry_config=cfg,
+            batch_context="y",
+        )
+
+
+def test_execute_with_retry_rejects_list_result():
+    """Non-dict, non-CodeReviewReport, non-None — all rejected the same way."""
+    from codereview.providers.base import RetryConfig
+
+    provider = _StubChainProvider(stub_result=[1, 2, 3])
+    cfg = RetryConfig(max_retries=0)
+
+    with pytest.raises(ValueError, match="unexpected result type"):
+        provider._execute_with_retry(
+            chain_input={"system_prompt": "x", "batch_context": "y"},
+            retry_config=cfg,
+            batch_context="y",
+        )
+
+
+def test_execute_with_retry_accepts_codereviewreport():
+    """The contract's direct-CodeReviewReport shape is the success path."""
+    from codereview.providers.base import RetryConfig
+
+    expected = CodeReviewReport(
+        summary="ok",
+        metrics=ReviewMetrics(files_analyzed=1),
+        issues=[],
+        system_design_insights="No design issues found",
+        recommendations=[],
+        improvement_suggestions=[],
+    )
+    provider = _StubChainProvider(stub_result=expected)
+    cfg = RetryConfig(max_retries=0)
+
+    result = provider._execute_with_retry(
+        chain_input={"system_prompt": "x", "batch_context": "y"},
+        retry_config=cfg,
+        batch_context="y",
+    )
+    assert result is expected
+
+
+def test_execute_with_retry_rejects_none_result():
+    """None remains its own error case (parse failure), distinct from
+    'unexpected type', so the message points at the right cause."""
+    from codereview.providers.base import RetryConfig
+
+    provider = _StubChainProvider(stub_result=None)
+    cfg = RetryConfig(max_retries=0)
+
+    with pytest.raises(ValueError, match="None"):
+        provider._execute_with_retry(
+            chain_input={"system_prompt": "x", "batch_context": "y"},
+            retry_config=cfg,
+            batch_context="y",
+        )
