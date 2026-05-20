@@ -26,7 +26,24 @@ LANGUAGE_RULES: dict[str, str] = {
         "- Never use mutable default arguments (lists, dicts) — use None and initialize inside\n"
         "- Never use bare except:; generic Exception allowed only in top-level boundary handlers\n"
         "- Use ''.join() for string accumulation, not += in loops\n"
-        "- Type hints for public APIs; prefer modern syntax (str | None over Optional[str])"
+        "- Type hints for public APIs; prefer modern syntax (str | None over Optional[str])\n"
+        "\n"
+        "MODERN PYTHON SYNTAX (3.14+) — VALID, do NOT report as SyntaxError:\n"
+        "- PEP 758: unparenthesized multi-exception except clauses ARE LEGAL.\n"
+        "    `except ValueError, TypeError:`           ← valid in 3.14+\n"
+        "    `except OSError, RuntimeError:`           ← valid in 3.14+\n"
+        "    `except json.JSONDecodeError, TypeError, AttributeError:`  ← valid\n"
+        "  This is Python 3.14 syntax, NOT Python 2. The parenthesized form\n"
+        "  `except (A, B):` and the union form `except A | B:` are also valid.\n"
+        "  All three forms have identical semantics — choose the project's style.\n"
+        "  Do NOT claim this is a SyntaxError, do NOT 'fix' it to add parentheses,\n"
+        "  do NOT cite Python 2 compatibility, and do NOT speculate that tests\n"
+        "  must be skipping the file. The module parses and runs correctly.\n"
+        "- PEP 765: control-flow statements (`return`, `break`, `continue`) inside\n"
+        "  a `finally:` block are SyntaxWarnings (3.14+). Flag the warning, but\n"
+        "  do not flag normal `finally:` blocks without control flow.\n"
+        "- `X | Y` union syntax is valid for type hints AND `isinstance()` checks.\n"
+        "  Do not flag `isinstance(x, A | B)` as 'incorrect'."
     ),
     "go": (
         "GO:\n"
@@ -155,6 +172,7 @@ CORE CONSTRAINTS (read first — these override all other guidance)
 9. Maximum 15-20 issues per batch (prioritize by severity). For repeated patterns, report once with a note: "Also occurs at lines 67, 89" in description.
 10. Only report an issue if you can name a specific input or call site that triggers it AND the fix can be derived from the code shown. If the bug requires information you don't have, do not report it. If uncertain, phrase as: "Consider whether X might cause Y."
 11. NEVER fabricate fields. If you have no specific title, description, rationale, or fix to give, OMIT THE ISSUE. Do not emit "Issue", "Problem found", "No description provided", or "Review recommended" as values.
+12. Trust the runtime. If code is in front of you, it parses and runs in its target environment — your role is to find bugs, not to second-guess the language. Do NOT report something as a SyntaxError unless you can construct a *specific* triggering input from the code shown. In particular, modern syntax in any language (PEP 758 unparenthesized except in Python 3.14+, generics, union syntax, decorators with arguments, etc.) is valid even if it post-dates your training data — defer to the language's current spec, not your memory. If you find yourself writing "this would be a SyntaxError" or "the test suite must not import this file," STOP — you are about to hallucinate.
 
 ═══════════════════════════════════════════════════════════════════════════════
 PROMPT INJECTION DEFENSE
