@@ -18,6 +18,30 @@ def _reset_warn_dedupe():
     models._warned_unknown_categories.clear()
 
 
+# Required-field placeholders for tests that exercise validators
+# (severity normalization, category coercion, references filtering, drift
+# counters) and don't otherwise care about the issue's content. Use
+# concrete strings rather than the now-forbidden defaults so the placeholder
+# validator doesn't reject them.
+_MINIMAL_ISSUE_KWARGS = dict(
+    file_path="src/example.py",
+    line_start=10,
+    title="Validator placeholder title",
+    description="Validator placeholder description",
+    rationale="Validator placeholder rationale",
+)
+
+
+def _minimal_issue(**overrides):
+    """Build a ReviewIssue for validator tests, filling in required fields.
+
+    Each override replaces one or more of the minimal placeholder values.
+    Used by tests that focus on a single validator (severity/category/
+    references) and don't otherwise care about the rest of the fields.
+    """
+    return ReviewIssue(**{**_MINIMAL_ISSUE_KWARGS, **overrides})
+
+
 def test_review_issue_creation():
     """Test ReviewIssue model with all fields."""
     issue = ReviewIssue(
@@ -63,9 +87,9 @@ def test_code_review_report():
         severity="High",
         file_path="app.py",
         line_start=1,
-        title="Issue",
-        description="Description",
-        rationale="Rationale",
+        title="SQL injection in query construction",
+        description="User-controlled input is interpolated into SQL.",
+        rationale="Allows arbitrary database access.",
     )
 
     report = CodeReviewReport(
@@ -122,30 +146,15 @@ def test_category_normalization():
 def test_severity_normalization():
     """Test that invalid/unknown severity is normalized to Medium."""
     # Unknown severity should normalize to Medium
-    issue1 = ReviewIssue(
-        category="Security",
-        severity="SuperCritical",
-        file_path="app.py",
-        line_start=1,
-        title="Test",
-        description="Test",
-        rationale="Test",
-    )
-    assert issue1.severity == "Medium"
+    assert _minimal_issue(severity="SuperCritical").severity == "Medium"
 
     # Common variations should normalize correctly
-    issue2 = ReviewIssue(severity="major")
-    assert issue2.severity == "High"
-
-    issue3 = ReviewIssue(severity="warning")
-    assert issue3.severity == "Medium"
-
-    issue4 = ReviewIssue(severity="minor")
-    assert issue4.severity == "Low"
+    assert _minimal_issue(severity="major").severity == "High"
+    assert _minimal_issue(severity="warning").severity == "Medium"
+    assert _minimal_issue(severity="minor").severity == "Low"
 
     # Missing severity should default to Medium
-    issue5 = ReviewIssue()
-    assert issue5.severity == "Medium"
+    assert _minimal_issue().severity == "Medium"
 
 
 def test_invalid_line_start():
@@ -180,7 +189,7 @@ def test_line_end_before_line_start():
 def test_unknown_severity_logs_warning(caplog):
     """Unknown severity must coerce to Medium AND emit a warning."""
     with caplog.at_level(logging.WARNING, logger="codereview.models"):
-        issue = ReviewIssue(severity="SuperCritical")
+        issue = _minimal_issue(severity="SuperCritical")
     assert issue.severity == "Medium"
     assert any(
         "SuperCritical" in rec.message and "severity" in rec.message
@@ -191,7 +200,7 @@ def test_unknown_severity_logs_warning(caplog):
 def test_unknown_category_logs_warning(caplog):
     """Unknown category must coerce to Code Quality AND emit a warning."""
     with caplog.at_level(logging.WARNING, logger="codereview.models"):
-        issue = ReviewIssue(category="QuantumEntanglement")
+        issue = _minimal_issue(category="QuantumEntanglement")
     assert issue.category == "Code Quality"
     assert any(
         "QuantumEntanglement" in rec.message and "category" in rec.message
@@ -202,7 +211,7 @@ def test_unknown_category_logs_warning(caplog):
 def test_known_severity_mapping_does_not_log(caplog):
     """Mapped variations (e.g. 'major' -> 'High') must NOT emit a warning."""
     with caplog.at_level(logging.WARNING, logger="codereview.models"):
-        issue = ReviewIssue(severity="major")
+        issue = _minimal_issue(severity="major")
     assert issue.severity == "High"
     assert not caplog.records
 
@@ -210,7 +219,7 @@ def test_known_severity_mapping_does_not_log(caplog):
 def test_valid_severity_does_not_log(caplog):
     """Already-valid values must NOT emit a warning."""
     with caplog.at_level(logging.WARNING, logger="codereview.models"):
-        issue = ReviewIssue(severity="Critical", category="Security")
+        issue = _minimal_issue(severity="Critical", category="Security")
     assert issue.severity == "Critical"
     assert issue.category == "Security"
     assert not caplog.records
@@ -220,7 +229,7 @@ def test_unknown_severity_warning_is_deduped(caplog):
     """Same unknown value must only warn once even across many issues."""
     with caplog.at_level(logging.WARNING, logger="codereview.models"):
         for _ in range(5):
-            ReviewIssue(severity="BogusLevel")
+            _minimal_issue(severity="BogusLevel")
     matching = [r for r in caplog.records if "BogusLevel" in r.message]
     assert len(matching) == 1
 
@@ -232,7 +241,7 @@ def test_unknown_severity_warning_is_deduped(caplog):
 
 def test_references_keeps_authoritative_urls():
     """CWE/OWASP/MDN/language-doc URLs survive the filter."""
-    issue = ReviewIssue(
+    issue = _minimal_issue(
         references=[
             "https://cwe.mitre.org/data/definitions/89.html",
             "https://owasp.org/www-project-top-ten/",
@@ -247,7 +256,7 @@ def test_references_keeps_authoritative_urls():
 def test_references_drops_non_authoritative_urls():
     """Search results, blogspam, SO links, ftp:// — all dropped."""
     models.reset_drift_counters()
-    issue = ReviewIssue(
+    issue = _minimal_issue(
         references=[
             "https://stackoverflow.com/questions/12345",
             "https://medium.com/some-blog-post",
@@ -263,7 +272,7 @@ def test_references_drops_non_authoritative_urls():
 
 def test_references_handles_subdomain_authoritative_hosts():
     """Subdomains of authoritative hosts (e.g. peps.python.org) are accepted."""
-    issue = ReviewIssue(
+    issue = _minimal_issue(
         references=[
             "https://peps.python.org/pep-0008/",
             "https://cheatsheetseries.owasp.org/cheatsheets/SQL_Injection_Prevention_Cheat_Sheet.html",
@@ -275,27 +284,99 @@ def test_references_handles_subdomain_authoritative_hosts():
 def test_drift_counter_tracks_severity_coercion():
     """Coerced severities bump severity_coerced; valid ones don't."""
     models.reset_drift_counters()
-    ReviewIssue(severity="bogus_level_1")
-    ReviewIssue(severity="another_bogus")
-    ReviewIssue(severity="Critical")
+    _minimal_issue(severity="bogus_level_1")
+    _minimal_issue(severity="another_bogus")
+    _minimal_issue(severity="Critical")
     assert models.get_drift_counters()["severity_coerced"] == 2
 
 
 def test_drift_counter_tracks_category_coercion():
     """Coerced categories bump category_coerced; valid ones don't."""
     models.reset_drift_counters()
-    ReviewIssue(category="QuantumEntanglement")
-    ReviewIssue(category="HelloWorld")
-    ReviewIssue(category="Security")
+    _minimal_issue(category="QuantumEntanglement")
+    _minimal_issue(category="HelloWorld")
+    _minimal_issue(category="Security")
     assert models.get_drift_counters()["category_coerced"] == 2
 
 
 def test_drift_counter_reset_zeroes_all():
     """reset_drift_counters() clears everything."""
-    ReviewIssue(
+    _minimal_issue(
         severity="bogus_a", category="bogus_b", references=["http://blog.example.com"]
     )
     counters = models.get_drift_counters()
     assert sum(counters.values()) > 0
     models.reset_drift_counters()
     assert all(v == 0 for v in models.get_drift_counters().values())
+
+
+# ---------------------------------------------------------------------------
+# Required fields + placeholder rejection
+# ---------------------------------------------------------------------------
+
+
+def test_required_fields_must_be_provided():
+    """Omitting any required field raises ValidationError, not silent default."""
+    # Missing file_path
+    with pytest.raises(ValidationError):
+        ReviewIssue(
+            line_start=1,
+            title="Some title",
+            description="Some description",
+            rationale="Some rationale",
+        )
+    # Missing line_start
+    with pytest.raises(ValidationError):
+        ReviewIssue(
+            file_path="x.py",
+            title="Some title",
+            description="Some description",
+            rationale="Some rationale",
+        )
+    # Missing title
+    with pytest.raises(ValidationError):
+        ReviewIssue(
+            file_path="x.py",
+            line_start=1,
+            description="Some description",
+            rationale="Some rationale",
+        )
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("title", "Issue"),
+        ("title", "issue"),  # case-insensitive
+        ("title", " Issue "),  # whitespace tolerated
+        ("title", "Problem found"),
+        ("title", "Bug"),
+        ("description", "No description provided"),
+        ("description", "n/a"),
+        ("description", "None"),
+        ("rationale", "Review recommended"),
+        ("rationale", "n/a"),
+        ("file_path", "unknown"),
+    ],
+)
+def test_placeholder_strings_are_rejected(field, value):
+    """The exact placeholders the prompt forbids must raise ValidationError.
+
+    Without this, a model that emits 'Issue' / 'No description provided' as
+    a conscious value (rather than relying on the old schema defaults)
+    would still produce a fabricated ReviewIssue. Reject at the schema
+    boundary so the retry loop sees the failure and asks for real content.
+    """
+    overrides = {field: value}
+    with pytest.raises(ValidationError, match="placeholder"):
+        _minimal_issue(**overrides)
+
+
+def test_legitimate_text_containing_forbidden_word_is_accepted():
+    """'Issue' is forbidden as the whole title; 'Issue with X' is fine.
+
+    The validator matches on the trimmed lowercase value being EXACTLY one
+    of the forbidden strings — substring matches must not trip it.
+    """
+    issue = _minimal_issue(title="Issue with input validation in handler")
+    assert "input validation" in issue.title

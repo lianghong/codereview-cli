@@ -534,6 +534,16 @@ class ModelProvider(ABC):
                     raise ValueError(
                         "Model returned None - structured output parsing failed"
                     )
+                # The chain contract guarantees CodeReviewReport here (the
+                # PydanticOutputParser raises on its own otherwise), but a
+                # future provider override of _invoke_chain could violate
+                # that. Fail with a clear message rather than letting
+                # model_dump_json AttributeError out of token estimation.
+                if not isinstance(result, CodeReviewReport):
+                    raise ValueError(
+                        "Provider returned unexpected result type "
+                        f"{type(result).__name__}; expected CodeReviewReport"
+                    )
 
                 # Extract token usage from response metadata
                 input_tokens, output_tokens = self._extract_token_usage(result)
