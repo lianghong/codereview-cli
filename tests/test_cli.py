@@ -430,3 +430,60 @@ def test_dedupe_design_insights_empty_safe():
 
     assert _dedupe_design_insights([]) == []
     assert _dedupe_design_insights(["", "   "]) == []
+
+
+# ---------------------------------------------------------------------------
+# Smoke test: full import graph + model registry resolution
+# ---------------------------------------------------------------------------
+
+
+def test_smoke_list_models_exercises_full_import_graph(cli_runner):
+    """`--list-models` must exit 0 with a populated table — no mocks.
+
+    Catches regressions in the CLI / config / factory layer that the
+    mocked --list-models tests above cannot, because those mock
+    ``ProviderFactory`` itself.
+
+    Note this does NOT catch a SyntaxError in an individual provider
+    module — ``factory.list_available_models`` only walks YAML configs;
+    individual provider modules are imported lazily inside
+    ``factory.create_provider``. The companion test
+    ``test_smoke_every_provider_module_imports`` covers that gap.
+
+    Runs in <1s, no network.
+    """
+    result = cli_runner.invoke(main, ["--list-models"])
+
+    assert result.exit_code == 0, (
+        f"--list-models failed (likely import-graph regression): "
+        f"{result.output}\n"
+        f"Exception: {result.exception!r}"
+    )
+    # Output must include the table header and at least one provider
+    # section heading — empty output would mean the loader silently
+    # skipped every provider.
+    assert "Available Models" in result.output
+    assert "Provider Setup" in result.output
+
+
+def test_smoke_every_provider_module_imports():
+    """Every provider module must be importable on its own.
+
+    Catches the case where, e.g., providers/zai.py has a SyntaxError
+    that codereview.providers.__init__ would normally hide via lazy
+    __getattr__. If --list-models is broken in CI this test gives a
+    much shorter, file-level fingerprint of which provider broke.
+    """
+    import importlib
+
+    provider_modules = [
+        "codereview.providers.bedrock",
+        "codereview.providers.azure_openai",
+        "codereview.providers.nvidia",
+        "codereview.providers.google_genai",
+        "codereview.providers.zai",
+        "codereview.providers.deepseek",
+        "codereview.providers.moonshot",
+    ]
+    for name in provider_modules:
+        importlib.import_module(name)
