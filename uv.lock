@@ -266,6 +266,7 @@ dependencies = [
     { name = "pydantic" },
     { name = "pyyaml" },
     { name = "rich" },
+    { name = "tiktoken" },
 ]
 
 [package.optional-dependencies]
@@ -305,6 +306,7 @@ requires-dist = [
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "rich", specifier = ">=15.0.0" },
     { name = "ruff", marker = "extra == 'static-analysis'", specifier = ">=0.15.11" },
+    { name = "tiktoken", specifier = ">=0.12.0" },
     { name = "types-pyyaml", marker = "extra == 'static-analysis'", specifier = ">=6.0.12.20260408" },
     { name = "vulture", marker = "extra == 'static-analysis'", specifier = ">=2.16" },
 ]

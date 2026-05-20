@@ -2,7 +2,11 @@ from pathlib import Path
 
 import pytest
 
-from codereview.batcher import PER_FILE_OVERHEAD_TOKENS, FileBatch, FileBatcher
+from codereview.batcher import (
+    PER_FILE_OVERHEAD_TOKENS,
+    FileBatch,
+    FileBatcher,
+)
 
 # ---------------------------------------------------------------------------
 # Existing tests (count-only batching)
@@ -77,9 +81,18 @@ def _create_file(tmp_path: Path, name: str, size_bytes: int) -> Path:
 
 
 def test_estimate_file_tokens(tmp_path: Path):
-    """estimate_file_tokens returns file_size//4 + overhead."""
+    """estimate_file_tokens scales with file content and includes overhead."""
     fp = _create_file(tmp_path, "a.py", 4000)
-    assert FileBatcher.estimate_file_tokens(fp) == 4000 // 4 + PER_FILE_OVERHEAD_TOKENS
+    estimate = FileBatcher.estimate_file_tokens(fp)
+    # We don't pin an exact value — tiktoken and the byte fallback differ —
+    # but the result must include the per-file overhead and be a positive
+    # token count proportional to file size.
+    assert estimate >= PER_FILE_OVERHEAD_TOKENS
+    assert estimate > PER_FILE_OVERHEAD_TOKENS  # 4 KB > 0 token content
+    # Sanity bound: even pathological compression shouldn't claim a 4 KB
+    # file is fewer than 5 tokens, and even pathological tokenization
+    # shouldn't exceed 1 token per byte.
+    assert PER_FILE_OVERHEAD_TOKENS + 5 <= estimate <= PER_FILE_OVERHEAD_TOKENS + 4000
 
 
 def test_estimate_file_tokens_missing_file():
@@ -106,11 +119,16 @@ def test_token_budget_none_gives_count_only_behavior():
 
 def test_token_budget_splits_correctly(tmp_path: Path):
     """Files are packed into batches that respect the token budget."""
-    # Each file: 4000 bytes -> 1000 tokens + 50 overhead = 1050 tokens
     files = [_create_file(tmp_path, f"f{i}.py", 4000) for i in range(10)]
+    # Source the per-file estimate from the function itself rather than
+    # pinning the formula — the math depends on whether tiktoken is
+    # installed and how it tokenizes the file's bytes.
+    per_file = FileBatcher.estimate_file_tokens(files[0])
 
-    # Budget of 2500 should fit 2 files (2*1050 = 2100 < 2500) but not 3 (3150 > 2500)
-    batcher = FileBatcher(max_files_per_batch=50, token_budget=2500)
+    # Budget should fit exactly 2 files but not 3.
+    budget = per_file * 2 + per_file // 2  # halfway between 2x and 3x
+    assert per_file * 2 <= budget < per_file * 3
+    batcher = FileBatcher(max_files_per_batch=50, token_budget=budget)
     batches = batcher.create_batches(files)
 
     assert len(batches) == 5
@@ -227,3 +245,50 @@ def test_skipped_oversized_reset_when_no_skips(tmp_path: Path):
     # Subsequent run with only small files clears the previous skip.
     batcher.create_batches([small])
     assert batcher.skipped_oversized == []
+
+
+# ---------------------------------------------------------------------------
+# count_tokens — tiktoken-backed estimator with byte fallback
+# ---------------------------------------------------------------------------
+
+
+def test_count_tokens_empty_string():
+    from codereview.batcher import count_tokens
+
+    assert count_tokens("") == 0
+
+
+def test_count_tokens_ascii_is_close_to_word_count():
+    """ASCII English: ~1 token per ~4 chars under cl100k_base."""
+    from codereview.batcher import count_tokens
+
+    text = "the quick brown fox jumps over the lazy dog " * 10
+    n = count_tokens(text)
+    # Sanity: result is positive, far below char count, and far above 1.
+    assert 0 < n < len(text)
+    assert n > 10
+
+
+def test_count_tokens_cjk_does_not_underestimate():
+    """CJK content: tiktoken (or the byte fallback) should not underestimate.
+
+    The old `bytes // 4` heuristic returned ~3 tokens for 12 chars of CJK
+    that actually need ~12 tokens. We just guard against severe
+    underestimation, not exact match (tokenizers vary).
+    """
+    from codereview.batcher import count_tokens
+
+    text = "中文注释" * 25  # 100 CJK chars, ~300 UTF-8 bytes
+    n = count_tokens(text)
+    assert n >= 50  # would be ~75 with old bytes // 4; we want >> that
+
+
+def test_count_tokens_uses_byte_fallback_when_tiktoken_unavailable(monkeypatch):
+    """If the encoder fails to load, count_tokens falls back to bytes // 3."""
+    from codereview import batcher
+
+    # monkeypatch.setattr auto-restores the real (lru_cached) function on
+    # teardown, so callers afterwards still get the cached encoder.
+    monkeypatch.setattr(batcher, "_get_encoder", lambda: None)
+    text = "x" * 99
+    assert batcher.count_tokens(text) == 99 // batcher.BYTES_PER_TOKEN

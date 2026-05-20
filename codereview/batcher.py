@@ -2,12 +2,73 @@
 
 import logging
 import math
+from functools import lru_cache
 from pathlib import Path
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 
 # Estimated token overhead per file for headers/separators in batch context
 PER_FILE_OVERHEAD_TOKENS = 50
+
+# Fallback bytes-per-token divisor used when tiktoken is unavailable. Modern
+# BPE tokenizers average ~4 bytes/token on ASCII English but ~2-3 bytes/token
+# on UTF-8 multi-byte content (CJK, emoji). A divisor of 3 is the conservative
+# single-knob choice: overestimates ASCII slightly (safe — extra headroom)
+# and roughly matches CJK (avoids the silent context-window overflows the
+# original //4 heuristic produced). Only used as a fallback now — see
+# count_tokens() for the real path.
+BYTES_PER_TOKEN = 3
+
+# Maximum file size we'll feed to tiktoken's encoder. Above this, the file is
+# almost certainly going to be skipped or oversized anyway, so we save the
+# encode pass and use the byte heuristic. 2 MB ≈ ~700K tokens, well past
+# any provider's context window today.
+_TIKTOKEN_MAX_BYTES = 2 * 1024 * 1024
+
+
+@lru_cache(maxsize=1)
+def _get_encoder() -> Any | None:
+    """Return a cached tiktoken encoder, or None if tiktoken is unavailable.
+
+    Uses ``cl100k_base`` as a universal-enough encoding: it's exact for
+    GPT-3.5/4/4o, within a few percent for Claude/Gemini/DeepSeek/Kimi for
+    typical code, and always offline. Bedrock's Anthropic models would prefer
+    the official Anthropic tokenizer, but that requires a network round-trip
+    per file which would dominate batching cost. The estimate doesn't need
+    to be exact — it just needs to be *much* better than bytes // 3, which
+    misjudges by 30-60% on non-ASCII source.
+    """
+    try:
+        import tiktoken
+    except ImportError:
+        logging.debug("tiktoken not installed; falling back to byte-based estimator")
+        return None
+    try:
+        return tiktoken.get_encoding("cl100k_base")
+    except (
+        Exception
+    ) as exc:  # pragma: no cover — only triggers if tiktoken's data files are missing
+        logging.warning(
+            "tiktoken encoder failed to load (%s); using byte fallback", exc
+        )
+        return None
+
+
+def count_tokens(text: str) -> int:
+    """Count tokens in *text* using tiktoken when available, byte heuristic otherwise.
+
+    The result is an estimate, not a guarantee — different providers use
+    different tokenizers and can disagree by ~10% on identical text. Used
+    for batching decisions (where over-estimation is safe) and for cost
+    fallback when the provider's response metadata lacks token counts.
+    """
+    if not text:
+        return 0
+    enc = _get_encoder()
+    if enc is None:
+        return len(text.encode("utf-8")) // BYTES_PER_TOKEN
+    return len(enc.encode(text))
 
 
 class FileBatch(BaseModel):
@@ -49,7 +110,12 @@ class FileBatcher:
 
     @staticmethod
     def estimate_file_tokens(file_path: Path) -> int:
-        """Estimate token count from file size (~4 bytes per token heuristic).
+        """Estimate token count for a file.
+
+        Uses tiktoken (cl100k_base) for accuracy when available and the file
+        is small enough to be worth encoding. Falls back to a UTF-8
+        byte-based heuristic for huge files (avoids reading 2 MB+ files that
+        would be skipped anyway) and when tiktoken is unavailable.
 
         Args:
             file_path: Path to the file
@@ -58,9 +124,19 @@ class FileBatcher:
             Estimated token count (includes per-file overhead)
         """
         try:
-            return file_path.stat().st_size // 4 + PER_FILE_OVERHEAD_TOKENS
+            size = file_path.stat().st_size
         except OSError:
             return PER_FILE_OVERHEAD_TOKENS
+
+        encoder = _get_encoder()
+        if encoder is not None and size <= _TIKTOKEN_MAX_BYTES:
+            try:
+                text = file_path.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                return size // BYTES_PER_TOKEN + PER_FILE_OVERHEAD_TOKENS
+            return len(encoder.encode(text)) + PER_FILE_OVERHEAD_TOKENS
+
+        return size // BYTES_PER_TOKEN + PER_FILE_OVERHEAD_TOKENS
 
     def create_batches(self, files: list[Path]) -> list[FileBatch]:
         """
