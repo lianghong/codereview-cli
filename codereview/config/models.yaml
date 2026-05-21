@@ -1054,8 +1054,11 @@ providers:
 
   # Moonshot AI (Kimi) Direct API Provider
   # Uses langchain-moonshot's ChatMoonshot, which extends BaseChatOpenAI
-  # and handles Kimi-specific quirks (kimi-k2.5 thinking-mode parameter
-  # constraints; kimi-k2.6 has no such restrictions).
+  # and handles Kimi-specific parameter constraints (kimi-k2.5 thinking
+  # mode requires temperature=1.0 / top_p=0.95; kimi-k2.6 server-side
+  # rejects `tool_choice='specified'` while thinking is enabled, so we
+  # route k2.6 through prompt-based JSON parsing — see supports_tool_use
+  # below).
   #
   # Two separate platforms with separate accounts/keys:
   #   - .cn (Chinese): https://api.moonshot.cn/v1   (platform.moonshot.cn)
@@ -1093,19 +1096,27 @@ providers:
           default_top_p: 0.95
           max_output_tokens: 16384
         context_window: 262144
+        # Moonshot's server rejects `tool_choice='specified'` while
+        # K2.6's implicit thinking mode is enabled (HTTP 400:
+        # "tool_choice 'specified' is incompatible with thinking
+        # enabled"). `.with_structured_output()` would set exactly
+        # that tool_choice under the hood, so we route K2.6 through
+        # prompt-based JSON parsing instead — same pattern as MiniMax
+        # M2.5 on Bedrock and DeepSeek-V4-Pro on Azure.
+        supports_tool_use: false
         architecture: "MoE (1T total, 32B active, 384 experts)"
         capabilities:
           - reasoning
           - code_review
           - code_generation
           - long_horizon_agentic
-          - tool_use
           - structured_output
           - thinking
         notes: >-
-          Long-horizon agentic coding with thinking mode. Direct
-          Moonshot API supports tool calling and structured output;
-          no prompt-based JSON fallback required.
+          Long-horizon agentic coding with thinking mode. Tool use
+          conflicts with thinking on Moonshot's server, so structured
+          output is produced via prompt-based JSON parsing
+          (PydanticOutputParser) — see supports_tool_use above.
 
   # Z.AI (Zhipu International) Provider
   # OpenAI-compatible endpoint at https://api.z.ai/api/paas/v4/

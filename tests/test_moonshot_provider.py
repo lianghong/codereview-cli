@@ -17,10 +17,16 @@ from codereview.providers.moonshot import MoonshotProvider
 
 @pytest.fixture
 def model_config():
+    """Tool-use-capable Moonshot model fixture (hypothetical future Kimi).
+
+    The real kimi-k2.6 model uses ``supports_tool_use=False`` (see
+    ``models.yaml``); this fixture exercises the tool-calling path
+    explicitly so both branches of ``_create_model`` stay covered.
+    """
     return ModelConfig(
-        id="kimi-k2.6",
-        full_id="kimi-k2.6",
-        name="Kimi K2.6 (Moonshot)",
+        id="kimi-tooluse",
+        full_id="kimi-tooluse",
+        name="Kimi (tool-use)",
         aliases=["kimi"],
         pricing=PricingConfig(input_per_million=0.60, output_per_million=2.50),
         inference_params=InferenceParams(
@@ -28,6 +34,25 @@ def model_config():
             top_p=0.95,
             max_output_tokens=16384,
         ),
+        supports_tool_use=True,
+    )
+
+
+@pytest.fixture
+def k26_model_config():
+    """Real kimi-k2.6 config: prompt-based JSON parsing path."""
+    return ModelConfig(
+        id="kimi-k2.6",
+        full_id="kimi-k2.6",
+        name="Kimi K2.6 (Moonshot)",
+        aliases=["kimi"],
+        pricing=PricingConfig(input_per_million=0.60, output_per_million=2.50),
+        inference_params=InferenceParams(
+            temperature=1.0,
+            top_p=0.95,
+            max_output_tokens=16384,
+        ),
+        supports_tool_use=False,
     )
 
 
@@ -74,7 +99,7 @@ def test_moonshot_uses_chatmoonshot_with_base_url(model_config, provider_config)
         kwargs = mock_ms.call_args.kwargs
 
         # Wire-level model name from full_id
-        assert kwargs["model"] == "kimi-k2.6"
+        assert kwargs["model"] == "kimi-tooluse"
         # ChatMoonshot accepts base_url (alias of api_base)
         assert kwargs["base_url"] == "https://api.moonshot.cn/v1"
         # api_key wrapped in SecretStr to keep it out of repr/logs
@@ -89,6 +114,24 @@ def test_moonshot_uses_chatmoonshot_with_base_url(model_config, provider_config)
         mock_instance.with_structured_output.assert_called_once_with(
             CodeReviewReport, include_raw=True
         )
+
+
+def test_moonshot_k26_uses_prompt_parsing(k26_model_config, provider_config):
+    """kimi-k2.6 (supports_tool_use=False) skips tool-calling structured
+    output and uses PydanticOutputParser instead — Moonshot's server
+    rejects tool_choice='specified' while thinking mode is enabled."""
+    with patch("codereview.providers.moonshot.ChatMoonshot") as mock_ms:
+        mock_instance = Mock()
+        mock_ms.return_value = mock_instance
+
+        provider = MoonshotProvider(k26_model_config, provider_config)
+
+        # No tool-calling structured output should have been requested.
+        mock_instance.with_structured_output.assert_not_called()
+        assert provider._use_prompt_parsing is True
+        # Chain ends with the PydanticOutputParser so the model's text
+        # response is converted into a CodeReviewReport.
+        assert provider.chain.last is provider._output_parser
 
 
 def test_moonshot_falls_back_to_id_when_full_id_missing(provider_config):

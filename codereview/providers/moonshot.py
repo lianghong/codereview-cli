@@ -7,14 +7,18 @@ convention; we plumb it through explicitly rather than relying on
 ChatMoonshot's default ``MOONSHOT_API_KEY`` lookup so the naming matches
 the rest of the CLI.
 
-Tool calling and structured output are inherited from ``BaseChatOpenAI``,
-so no prompt-based JSON fallback is required.
+Models with ``supports_tool_use: false`` (e.g. kimi-k2.6, whose thinking
+mode is incompatible with the tool_choice that ``.with_structured_output``
+would set) are routed through prompt-based JSON parsing via
+``PydanticOutputParser`` — same pattern as MiniMax M2.5 on Bedrock and
+DeepSeek-V4-Pro on Azure.
 """
 
 import logging
 from typing import Any
 
 from langchain_core.callbacks import BaseCallbackHandler
+from langchain_core.output_parsers import PydanticOutputParser
 from langchain_moonshot import ChatMoonshot
 from openai import RateLimitError
 from pydantic import SecretStr
@@ -56,9 +60,14 @@ class MoonshotProvider(TokenTrackingMixin, ModelProvider):
         """
         self.callbacks = callbacks or []
         self.enable_output_fixing = enable_output_fixing
+        self._output_parser = PydanticOutputParser(pydantic_object=CodeReviewReport)
         self.model_config = model_config
         self.provider_config = provider_config
         self.project_context = project_context
+
+        # Set in _create_model when model_config.supports_tool_use is False
+        # (kimi-k2.6 — server rejects tool_choice while thinking is enabled).
+        self._use_prompt_parsing = False
 
         # Kimi family accepts temperature; allow_none preserves opt-out for
         # any future reasoning-only variants.
@@ -109,13 +118,24 @@ class MoonshotProvider(TokenTrackingMixin, ModelProvider):
 
         base_model = ChatMoonshot(**model_params)
 
-        # Tool-calling-based structured output: ChatMoonshot extends
-        # BaseChatOpenAI so .with_structured_output works the same way.
-        # include_raw=True so we can pull real token counts from the raw
-        # AIMessage's response_metadata.
-        return base_model.with_structured_output(CodeReviewReport, include_raw=True)
+        if self.model_config.supports_tool_use:
+            # Tool-calling-based structured output: ChatMoonshot extends
+            # BaseChatOpenAI so .with_structured_output works the same way.
+            # include_raw=True so we can pull real token counts from the raw
+            # AIMessage's response_metadata.
+            return base_model.with_structured_output(CodeReviewReport, include_raw=True)
+
+        # Prompt-based JSON path for models whose tool_choice conflicts
+        # with thinking mode (kimi-k2.6). Format instructions are injected
+        # into the system prompt by `_build_batch_system_prompt` since
+        # `_use_prompt_parsing` is set; the parser turns the raw response
+        # into a CodeReviewReport.
+        self._use_prompt_parsing = True
+        return base_model
 
     def _create_chain(self) -> Any:
+        if self._use_prompt_parsing:
+            return BATCH_PROMPT_TEMPLATE | self.model | self._output_parser
         return BATCH_PROMPT_TEMPLATE | self.model
 
     def _is_retryable_error(self, error: Exception) -> bool:

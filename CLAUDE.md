@@ -79,7 +79,7 @@ FileScanner → FileBatcher → CodeAnalyzer → ProviderFactory → {Bedrock|Az
 
 ### Key patterns
 
-- **Structured output:** `.with_structured_output(CodeReviewReport, include_raw=True)` — `include_raw` is required to read real token counts from the raw `AIMessage`. MiniMax M2.5 (Bedrock) and DeepSeek-V4-Pro (Azure) set `supports_tool_use: false` and use `PydanticOutputParser` instead. Both Bedrock and Azure providers honor this flag (mirrored implementations: `_use_prompt_parsing` flag, format-instructions injection in `analyze_batch`).
+- **Structured output:** `.with_structured_output(CodeReviewReport, include_raw=True)` — `include_raw` is required to read real token counts from the raw `AIMessage`. MiniMax M2.5 (Bedrock), DeepSeek-V4-Pro (Azure), and Kimi K2.6 (Moonshot) set `supports_tool_use: false` and use `PydanticOutputParser` instead. Bedrock, Azure, and Moonshot providers all honor this flag (mirrored implementations: `_use_prompt_parsing` flag, format-instructions injection in `analyze_batch`). For K2.6 the trigger is server-side: Moonshot rejects `tool_choice='specified'` while thinking mode is enabled, which is exactly what `.with_structured_output()` would set.
 - **Category normalization** (`models.py`): non-Claude models return varying category names; `@field_validator` maps them (e.g., `"error handling" → "Code Quality"`). Unknown → `"Code Quality"`.
 - **Retry/backoff:** per-provider, exponential, capped at 60s. Azure honours `Retry-After`. NVIDIA uses 4s base for 504. Google uses 10s base for `ResourceExhausted` on preview models.
 - **Prompt injection defense:** `SYSTEM_PROMPT` instructs the model to treat code AND README content as data, never instructions. Don't add new "trusted" message paths without extending that defense.
@@ -164,7 +164,7 @@ Fixtures live in `tests/fixtures/sample_code/` (verifies inclusion + exclusion l
 
 - **Pydantic V1 compat warning** under Python 3.14 is upstream from LangChain — harmless.
 - **Reasoning models** (Claude Opus 4.7, GPT-5.4, GPT-5.4 Pro, DeepSeek-V4-Pro) don't accept `temperature`/`top_p`. Bedrock and Azure providers both pass `allow_none=True` to `_resolve_temperature`; omit `default_temperature` from `inference_params` for new reasoning models.
-- **MiniMax M2.5 on Bedrock and DeepSeek-V4-Pro on Azure** lack tool-use → use prompt-based JSON parsing via `supports_tool_use: false`. Both providers branch in `_create_model` and append a `PydanticOutputParser` to the chain.
+- **MiniMax M2.5 on Bedrock, DeepSeek-V4-Pro on Azure, and Kimi K2.6 on Moonshot** lack tool-use → use prompt-based JSON parsing via `supports_tool_use: false`. All three providers branch in `_create_model` and append a `PydanticOutputParser` to the chain. K2.6's case is unusual: the model *can* tool-call, but Moonshot's server rejects `tool_choice='specified'` (HTTP 400) whenever thinking mode is enabled — which is K2.6's whole value proposition for code review. `.with_structured_output()` would set exactly that tool_choice, so we route around it.
 - **`use_responses_api: true`** for GPT-5.x in `models.yaml` — ChatCompletion API does not support reasoning summaries for these.
 - **Concurrent batches:** `TokenTrackingMixin._track_tokens` and `CodeAnalyzer.skipped_files` are lock-guarded. Don't add other shared mutable state to providers without a lock.
 - **`--list-models`** shows everything regardless of credentials; credentials are only validated when a model is actually used.
