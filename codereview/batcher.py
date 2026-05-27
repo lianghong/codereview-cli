@@ -68,7 +68,11 @@ def count_tokens(text: str) -> int:
     enc = _get_encoder()
     if enc is None:
         return len(text.encode("utf-8")) // BYTES_PER_TOKEN
-    return len(enc.encode(text))
+    # disallowed_special=() — source files (e.g. llama.cpp, tokenizer code)
+    # legitimately contain literals like "<|endoftext|>"; tiktoken's default
+    # raises on them. We're counting, not feeding the model, so treat them
+    # as ordinary text.
+    return len(enc.encode(text, disallowed_special=()))
 
 
 class FileBatch(BaseModel):
@@ -134,7 +138,10 @@ class FileBatcher:
                 text = file_path.read_text(encoding="utf-8", errors="replace")
             except OSError:
                 return size // BYTES_PER_TOKEN + PER_FILE_OVERHEAD_TOKENS
-            return len(encoder.encode(text)) + PER_FILE_OVERHEAD_TOKENS
+            return (
+                len(encoder.encode(text, disallowed_special=()))
+                + PER_FILE_OVERHEAD_TOKENS
+            )
 
         return size // BYTES_PER_TOKEN + PER_FILE_OVERHEAD_TOKENS
 

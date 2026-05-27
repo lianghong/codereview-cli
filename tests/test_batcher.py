@@ -292,3 +292,39 @@ def test_count_tokens_uses_byte_fallback_when_tiktoken_unavailable(monkeypatch):
     monkeypatch.setattr(batcher, "_get_encoder", lambda: None)
     text = "x" * 99
     assert batcher.count_tokens(text) == 99 // batcher.BYTES_PER_TOKEN
+
+
+def test_count_tokens_handles_special_token_literals():
+    """Source files may contain literal '<|endoftext|>' etc. (e.g. llama.cpp,
+    tokenizer code). tiktoken's default disallowed_special='all' raises on
+    these; we pass disallowed_special=() so counting succeeds.
+    """
+    from codereview.batcher import _get_encoder, count_tokens
+
+    if _get_encoder() is None:
+        pytest.skip("tiktoken unavailable; byte fallback can't trigger this")
+
+    text = 'const char* eos = "<|endoftext|>";\n'
+    n = count_tokens(text)
+    assert n > 0
+
+
+def test_estimate_file_tokens_handles_special_token_literals(tmp_path):
+    """estimate_file_tokens must not raise on files containing tiktoken's
+    special-token literals (e.g. llama-cpp source). Regression for ValueError:
+    'Encountered text corresponding to disallowed special token'.
+    """
+    from codereview.batcher import _get_encoder, FileBatcher
+
+    if _get_encoder() is None:
+        pytest.skip("tiktoken unavailable; byte fallback can't trigger this")
+
+    f = tmp_path / "tokens.cpp"
+    f.write_text(
+        "#include <string>\n"
+        'const std::string EOS = "<|endoftext|>";\n'
+        'const std::string FIM_PREFIX = "<|fim_prefix|>";\n',
+        encoding="utf-8",
+    )
+    n = FileBatcher.estimate_file_tokens(f)
+    assert n > 0
