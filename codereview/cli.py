@@ -6,6 +6,7 @@ import traceback
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
+from typing import NamedTuple
 
 import click
 from botocore.exceptions import (  # type: ignore[import-untyped]
@@ -224,6 +225,60 @@ def _is_pricing_tbd(input_price: float, output_price: float) -> bool:
     model is permanently free; surface them as TBD instead.
     """
     return input_price == 0.0 and output_price == 0.0
+
+
+# Upper bound on the per-batch linter-findings block. Mirrors the max_chars
+# default of StaticAnalyzer.condense_for_prompt — every batch's prompt carries
+# at most this much condensed linter output.
+_LINTER_BLOCK_MAX_CHARS = 4000
+
+
+class PerBatchOverhead(NamedTuple):
+    """Token cost added to every batch beyond its file contents.
+
+    These three blocks are prepended to each batch's prompt: the system prompt,
+    the README/project context, and (when static analysis ran) the condensed
+    linter-findings block. Both the budget-reservation path and the dry-run
+    estimator must account for them identically, so they share this helper.
+    """
+
+    system_prompt: int
+    readme: int
+    linter: int
+
+    @property
+    def total(self) -> int:
+        return self.system_prompt + self.readme + self.linter
+
+
+def _per_batch_overhead_tokens(
+    readme_content: str | None,
+    has_linters: bool,
+    system_prompt: str = SYSTEM_PROMPT,
+) -> PerBatchOverhead:
+    """Per-batch, non-file token overhead, broken down by source.
+
+    Single source of truth so the budget-reservation path (which over-reserves
+    using the worst-case all-language ``SYSTEM_PROMPT``) and the ``--dry-run``
+    estimator cannot drift apart in *which* components they count or in the
+    linter-block size constant.
+
+    Args:
+        readme_content: README/project context sent with every batch, or None.
+        has_linters: True when static analysis ran (a condensed linter block is
+            injected per batch).
+        system_prompt: The system-prompt string to measure. Defaults to the
+            worst-case all-language ``SYSTEM_PROMPT``; callers that send a
+            language-sliced prompt may pass their own.
+
+    Returns:
+        A ``PerBatchOverhead`` with per-source token counts and a ``.total``.
+    """
+    return PerBatchOverhead(
+        system_prompt=count_tokens(system_prompt),
+        readme=count_tokens(readme_content) if readme_content else 0,
+        linter=count_tokens("x" * _LINTER_BLOCK_MAX_CHARS) if has_linters else 0,
+    )
 
 
 def display_available_models(console: Console) -> None:
@@ -687,22 +742,23 @@ def main(
                 and model_config.inference_params.max_output_tokens
                 else 16000
             )
-            # Use the real tokenizer (tiktoken cl100k_base) for fixed prompt
-            # blocks too — they're constant strings, encoded once per run.
-            system_prompt_tokens = count_tokens(SYSTEM_PROMPT)
-            readme_tokens = count_tokens(readme_content) if readme_content else 0
-            # Reserve an upper bound for the linter findings block when static
-            # analysis ran. condense_for_prompt enforces a 4000-char cap, so
-            # estimate that as tokens via the same tokenizer used for the
-            # other budget components.
-            linter_tokens = count_tokens("x" * 4000) if static_results else 0
+            # Per-batch, non-file overhead (system prompt + README + linter
+            # block). Shared with the --dry-run estimator via this helper so the
+            # two paths cannot disagree on which blocks are counted or on the
+            # linter-block size. The budget intentionally over-reserves using
+            # the worst-case all-language SYSTEM_PROMPT (the actual per-batch
+            # prompt is language-sliced and smaller).
+            overhead = _per_batch_overhead_tokens(
+                readme_content, has_linters=bool(static_results)
+            )
+            system_prompt_tokens = overhead.system_prompt
+            readme_tokens = overhead.readme
+            linter_tokens = overhead.linter
             safety_margin = max(1000, min(model_config.context_window // 10, 20000))
             computed_budget = (
                 model_config.context_window
                 - max_output
-                - system_prompt_tokens
-                - readme_tokens
-                - linter_tokens
+                - overhead.total
                 - safety_margin
             )
             if computed_budget > 0:
@@ -1296,16 +1352,13 @@ def _render_dry_run(
     console.print()
 
     # System prompt, README context, and linter findings are each sent once
-    # per batch. Mirror the real-run budget calc (see main, step 2) so the
-    # dry-run estimate — the whole point of --dry-run — isn't understated.
-    # Use the actual tokenizer; the prompt alone is ~5K tokens.
-    per_batch_overhead = count_tokens(SYSTEM_PROMPT)
-    if readme_content:
-        per_batch_overhead += count_tokens(readme_content)
-    if static_results:
-        # condense_for_prompt caps the injected linter block at 4000 chars.
-        per_batch_overhead += count_tokens("x" * 4000)
-    total_input_tokens = total_tokens + len(batches) * per_batch_overhead
+    # per batch. Use the SAME helper as the real-run budget calc (see main,
+    # step 2) so the dry-run estimate — the whole point of --dry-run — counts
+    # exactly the blocks the real run reserves and cannot drift from it.
+    overhead = _per_batch_overhead_tokens(
+        readme_content, has_linters=bool(static_results)
+    )
+    total_input_tokens = total_tokens + len(batches) * overhead.total
 
     # Estimate output tokens (roughly 20% of input for code review)
     estimated_output_tokens = int(total_input_tokens * 0.2)

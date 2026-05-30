@@ -432,6 +432,68 @@ def test_dedupe_design_insights_empty_safe():
     assert _dedupe_design_insights(["", "   "]) == []
 
 
+def _issue(title, *, file_path="app/x.py", line_start=42, severity="Medium"):
+    """Build a minimal valid ReviewIssue for dedup fingerprint tests."""
+    from codereview.models import ReviewIssue
+
+    return ReviewIssue(
+        file_path=file_path,
+        line_start=line_start,
+        title=title,
+        description="d",
+        rationale="r",
+        severity=severity,
+    )
+
+
+def test_dedupe_issues_collapses_punctuation_and_casing():
+    """#4: fingerprint is lowercased + alphanumeric-only, so titles differing
+    only in punctuation/casing/whitespace collapse to one issue."""
+    from codereview.cli import _dedupe_issues
+
+    issues = [
+        _issue("Bare except clause"),
+        _issue("Bare `except:` clause"),  # punctuation
+        _issue("BARE EXCEPT CLAUSE"),  # casing
+        _issue("bare   except   clause"),  # whitespace
+    ]
+    out = _dedupe_issues(issues)
+    assert len(out) == 1
+
+
+def test_dedupe_issues_keyed_on_file_and_line():
+    """Same title at a different file or line is a distinct finding."""
+    from codereview.cli import _dedupe_issues
+
+    issues = [
+        _issue("Missing timeout", file_path="a.py", line_start=10),
+        _issue("Missing timeout", file_path="b.py", line_start=10),  # diff file
+        _issue("Missing timeout", file_path="a.py", line_start=20),  # diff line
+    ]
+    out = _dedupe_issues(issues)
+    assert len(out) == 3
+
+
+def test_dedupe_issues_highest_severity_wins_on_tie():
+    """When fingerprints match, the highest-severity issue is kept."""
+    from codereview.cli import _dedupe_issues
+
+    issues = [
+        _issue("SQL injection", severity="Medium"),
+        _issue("SQL injection", severity="Critical"),
+        _issue("SQL injection", severity="High"),
+    ]
+    out = _dedupe_issues(issues)
+    assert len(out) == 1
+    assert out[0].severity == "Critical"
+
+
+def test_dedupe_issues_empty_safe():
+    from codereview.cli import _dedupe_issues
+
+    assert _dedupe_issues([]) == []
+
+
 # ---------------------------------------------------------------------------
 # Smoke test: full import graph + model registry resolution
 # ---------------------------------------------------------------------------
@@ -541,4 +603,92 @@ def test_dry_run_estimate_includes_readme_tokens(tmp_path):
     without_readme = render(None)
     assert with_readme > without_readme, (
         "README tokens must increase the dry-run estimate"
+    )
+
+
+def test_per_batch_overhead_shared_by_budget_and_dry_run():
+    """#1: the budget path and the dry-run estimator use one overhead formula.
+
+    Locks in that both callers count the same three components (system prompt,
+    README, linter block) so they cannot drift apart.
+    """
+    from codereview.cli import SYSTEM_PROMPT, _per_batch_overhead_tokens, count_tokens
+
+    # No README, no linters: only the system prompt.
+    base = _per_batch_overhead_tokens(None, has_linters=False)
+    assert base.readme == 0
+    assert base.linter == 0
+    assert base.system_prompt == count_tokens(SYSTEM_PROMPT)
+    assert base.total == base.system_prompt
+
+    # README and linters each add a positive, separately-tracked component.
+    full = _per_batch_overhead_tokens("# Readme\n" * 200, has_linters=True)
+    assert full.readme > 0
+    assert full.linter > 0
+    assert full.total == full.system_prompt + full.readme + full.linter
+    assert full.total > base.total
+
+
+def test_dry_run_estimate_is_upper_bound_on_actual_input(tmp_path):
+    """#2: dry-run input estimate must conservatively bound a real multi-batch run.
+
+    The real run sends, per batch, a language-SLICED system prompt (<= the
+    worst-case all-language SYSTEM_PROMPT the dry-run uses) plus the README and
+    a condensed linter block (<= the 4000-char cap the dry-run reserves), plus
+    the batch's file tokens. So dry-run-estimated input >= the sum of tokens
+    actually sent. Asserting >= (not ==) is deliberate: equality would be flaky
+    because the dry-run intentionally over-reserves.
+    """
+    from rich.console import Console
+
+    from codereview.batcher import FileBatch, count_tokens
+    from codereview.cli import _render_dry_run
+    from codereview.config import build_system_prompt, detect_languages_from_paths
+
+    # Two batches, each one Python file — a representative multi-batch run.
+    f1 = tmp_path / "a.py"
+    f1.write_text("def a():\n    return 1\n" * 20)
+    f2 = tmp_path / "b.py"
+    f2.write_text("def b():\n    return 2\n" * 20)
+    batches = [
+        FileBatch(files=[f1], batch_number=1, total_batches=2),
+        FileBatch(files=[f2], batch_number=2, total_batches=2),
+    ]
+
+    readme = "# Project\n" + ("context line\n" * 100)
+
+    provider = Mock()
+    provider.get_pricing.return_value = {
+        "input_price_per_million": 5.0,
+        "output_price_per_million": 25.0,
+    }
+    provider.validate_credentials.return_value = Mock(
+        valid=True, provider="Test", checks=[], errors=[], warnings=[], suggestions=[]
+    )
+
+    console = Console(record=True, width=100)
+    _render_dry_run(
+        [f1, f2],
+        batches,
+        "Test Model",
+        provider,
+        console,
+        readme_content=readme,
+        static_results={"ruff": object()},  # truthy → linter block reserved
+    )
+    estimated = _dry_run_input_tokens(console.export_text())
+
+    # Approximate the actual per-batch payload: sliced system prompt + README +
+    # file content. (Omit the linter block on the actual side — the dry-run
+    # reserves it, so including it here only widens the headroom.)
+    actual = 0
+    for f in (f1, f2):
+        langs = detect_languages_from_paths([str(f)])
+        sliced_prompt = build_system_prompt(langs)
+        actual += count_tokens(sliced_prompt)
+        actual += count_tokens(readme)
+        actual += count_tokens(f.read_text())
+
+    assert estimated >= actual, (
+        f"dry-run estimate {estimated} must be an upper bound on actual {actual}"
     )
