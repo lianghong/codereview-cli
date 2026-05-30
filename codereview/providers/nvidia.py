@@ -29,9 +29,10 @@ def suppress_nvidia_warnings() -> Generator[None, None, None]:
     """Context manager to suppress known NVIDIA langchain warnings.
 
     Suppresses warnings about:
-    - Non-standard parameters (timeout, chat_template_kwargs) — emitted from
+    - Non-standard parameters (chat_template_kwargs) — emitted from
       langchain_core.utils.utils with stacklevel=7, so module filter won't work;
-      we filter by message pattern only
+      we filter by message pattern only. (The legacy `timeout` filter is kept
+      defensively but `timeout` is no longer passed — see _create_model.)
     - Unknown model types
     - Structured output support
     - Reasoning <think> tags stripped from structured output
@@ -140,15 +141,21 @@ class NVIDIAProvider(TokenTrackingMixin, ModelProvider):
                 f"NVIDIA model {self.model_config.id} missing required full_id"
             )
 
-        # Build model parameters
-        # Note: ChatNVIDIA passes kwargs to _NVIDIAClient, including 'timeout' for 202 polling.
-        # The 'timeout' parameter controls how long to wait for async responses (HTTP 202).
+        # Build model parameters.
+        # NOTE: do NOT pass `timeout` here. ChatNVIDIA has no `timeout` field,
+        # so the kwarg falls into model_kwargs and is merged into the request
+        # body — NVIDIA's server rejects unknown body params with HTTP 400
+        # ("Unsupported parameter(s): `timeout`"). The 202-polling timeout
+        # lives on the underlying _NVIDIAClient, which ChatNVIDIA builds without
+        # forwarding constructor kwargs, so passing it here never controlled
+        # polling anyway. provider_config.polling_timeout is retained for
+        # documentation/future use but is not wired through this version of
+        # langchain-nvidia.
         model_params: dict[str, Any] = {
             "model": self.model_config.full_id,
             "api_key": SecretStr(str(self.provider_config.api_key)),
             "max_tokens": self.max_tokens,
             "callbacks": self.callbacks if self.callbacks else None,
-            "timeout": self.provider_config.polling_timeout,  # 202 polling timeout
         }
 
         # Omit temperature for reasoning models that opt out (temperature=None)

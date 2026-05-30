@@ -137,6 +137,31 @@ def test_nvidia_provider_with_base_url(model_config, provider_config_with_base_u
         assert call_kwargs.get("base_url") == "https://custom-nim.example.com/v1"
 
 
+def test_nvidia_provider_does_not_pass_timeout(model_config, provider_config):
+    """`timeout` must NOT be passed to ChatNVIDIA.
+
+    Regression: ChatNVIDIA has no `timeout` field, so the kwarg fell into
+    model_kwargs and was merged into the request body. NVIDIA's server now
+    rejects unknown body params with HTTP 400 ("Unsupported parameter(s):
+    `timeout`"). The 202-polling timeout lives on the underlying _NVIDIAClient,
+    which ChatNVIDIA builds without forwarding this kwarg, so passing it never
+    controlled polling anyway.
+    """
+    with patch("codereview.providers.nvidia.ChatNVIDIA") as mock_nvidia:
+        mock_instance = Mock()
+        mock_instance.with_structured_output.return_value = Mock()
+        mock_nvidia.return_value = mock_instance
+
+        NVIDIAProvider(model_config, provider_config)
+
+        mock_nvidia.assert_called_once()
+        call_kwargs = mock_nvidia.call_args[1]
+        assert "timeout" not in call_kwargs, (
+            "timeout must not be passed to ChatNVIDIA — NVIDIA rejects it as an "
+            "unsupported request-body parameter (HTTP 400)"
+        )
+
+
 def test_analyze_batch(model_config, provider_config, mock_report):
     """Test analyze_batch returns CodeReviewReport."""
     with patch("codereview.providers.nvidia.ChatNVIDIA") as mock_nvidia:
