@@ -8,7 +8,7 @@ LangChain-based CLI for AI code review across **7 providers**: AWS Bedrock, Azur
 
 **Stack:** Python 3.14, LangChain (1.3+), Pydantic V2, Click, Rich, AWS Bedrock, Azure OpenAI, NVIDIA NIM, Google GenAI, DeepSeek (`langchain-deepseek`), Z.AI (`langchain-openai` + custom base_url), Moonshot (`langchain-moonshot`).
 
-For the live model list with pricing/aliases run `uv run codereview --list-models` — that output is authoritative; the YAML in `codereview/config/models.yaml` is the source of truth. Default model: **Claude Opus 4.7**.
+For the live model list with pricing/aliases run `uv run codereview --list-models` — that output is authoritative; the YAML in `codereview/config/models.yaml` is the source of truth. Default model: **Claude Opus 4.8**.
 
 ## Development commands
 
@@ -35,7 +35,7 @@ uv run ruff format codereview/ tests/
 uv run isort codereview/ tests/
 
 # Run the tool
-uv run codereview /path/to/code                           # default: opus4.7
+uv run codereview /path/to/code                           # default: opus4.8
 uv run codereview ./src --model sonnet --output report.md
 uv run codereview ./src --static-analysis --severity high
 uv run codereview ./src --dry-run                          # preview cost/files
@@ -48,7 +48,7 @@ uv run codereview ./src --output report.json --format json # CI-friendly
 
 | Option | Description | Default |
 |---|---|---|
-| `--model, -m` | Model ID or alias (`--list-models` to see) | opus4.7 |
+| `--model, -m` | Model ID or alias (`--list-models` to see) | opus4.8 |
 | `--output, -o` | Export report (md or json) | None |
 | `--format, -f` | `markdown` or `json` | markdown |
 | `--severity, -s` | Min severity: critical/high/medium/low/info | info |
@@ -163,7 +163,7 @@ Fixtures live in `tests/fixtures/sample_code/` (verifies inclusion + exclusion l
 ## Gotchas
 
 - **Pydantic V1 compat warning** under Python 3.14 is upstream from LangChain — harmless.
-- **Reasoning models** (Claude Opus 4.7, GPT-5.4, GPT-5.4 Pro, DeepSeek-V4-Pro) don't accept `temperature`/`top_p`. Bedrock and Azure providers both pass `allow_none=True` to `_resolve_temperature`; omit `default_temperature` from `inference_params` for new reasoning models.
+- **Reasoning models** (Claude Opus 4.8, Claude Opus 4.7, GPT-5.4, GPT-5.4 Pro, DeepSeek-V4-Pro) don't accept `temperature`/`top_p`. Bedrock and Azure providers both pass `allow_none=True` to `_resolve_temperature`; omit `default_temperature` from `inference_params` for new reasoning models.
 - **MiniMax M2.5 on Bedrock, DeepSeek-V4-Pro on Azure, and Kimi K2.6 on Moonshot** lack tool-use → use prompt-based JSON parsing via `supports_tool_use: false`. All three providers branch in `_create_model` and append a `PydanticOutputParser` to the chain. K2.6's case is unusual: the model *can* tool-call, but Moonshot's server rejects `tool_choice='specified'` (HTTP 400) whenever thinking mode is enabled — which is K2.6's whole value proposition for code review. `.with_structured_output()` would set exactly that tool_choice, so we route around it.
 - **`use_responses_api: true`** for GPT-5.x in `models.yaml` — ChatCompletion API does not support reasoning summaries for these.
 - **Concurrent batches:** `TokenTrackingMixin._track_tokens` and `CodeAnalyzer.skipped_files` are lock-guarded. Don't add other shared mutable state to providers without a lock.

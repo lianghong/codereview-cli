@@ -375,11 +375,18 @@ class ModelProvider(ABC):
 
         The result still flows through ``_system_prompt_with_format_instructions``
         for tool-use-less models.
+
+        ``linters_ran`` is gated on whether static analysis actually ran this
+        run (``--static-analysis`` is opt-in). Without it, telling the model to
+        "assume ruff already ran" would silently suppress mechanical findings
+        the user has no other way to surface. ``linter_findings`` is set by the
+        CLI only when linters ran, so its presence is the signal.
         """
         from codereview.config import build_system_prompt, detect_languages_from_paths
 
         languages = detect_languages_from_paths(files_content.keys())
-        prompt = build_system_prompt(languages)
+        linters_ran = getattr(self, "linter_findings", None) is not None
+        prompt = build_system_prompt(languages, linters_ran=linters_ran)
         return self._system_prompt_with_format_instructions(prompt)
 
     def validate_credentials(self) -> ValidationResult:

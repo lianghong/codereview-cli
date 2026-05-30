@@ -411,8 +411,8 @@ def validate_provider_credentials(
     "-m",
     "model_name",
     type=ModelChoice(),
-    default="opus4.7",
-    help="Model to use (default: opus4.7). Use --list-models to see all options.",
+    default="opus4.8",
+    help="Model to use (default: opus4.8). Use --list-models to see all options.",
 )
 @click.option(
     "--static-analysis",

@@ -1,6 +1,6 @@
 [project]
 name = "codereview-cli"
-version = "0.3.1"
+version = "0.4.0"
 description = "Multi-provider code review CLI with AWS Bedrock, Azure OpenAI, NVIDIA NIM, and Google GenAI support"
 requires-python = ">=3.14"
 authors = [
@@ -19,18 +19,28 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 dependencies = [
-    "langchain>=1.2.17",
-    "langchain-aws>=1.4.7",
-    "langchain-openai>=1.2.0",
-    "langchain-nvidia-ai-endpoints>=1.3.0",
-    "langchain-google-genai>=4.2.2",
-    "langchain-deepseek>=1.0.1",
-    "langchain-moonshot>=0.1.0",
+    # LangChain 1.x is an LTS with a "no breaking changes until 2.0" commitment,
+    # so <2 caps are safe. Exceptions noted inline. langchain-core moves faster
+    # than langchain and is released independently; we depend on it explicitly
+    # because we use its primitives directly (rate_limiters, callbacks, outputs,
+    # exceptions, output_parsers, prompts).
+    "langchain>=1.3.2,<2",
+    "langchain-core>=1.4.0,<2",
+    "langchain-aws>=1.5.0,<2",
+    "langchain-openai>=1.2.2,<2",
+    "langchain-nvidia-ai-endpoints>=1.4.0,<2",
+    # langchain-google-genai is on its own 4.x major line — cap at <5, not <2.
+    "langchain-google-genai>=4.2.4,<5",
+    "langchain-deepseek>=1.0.1,<2",
+    # langchain-moonshot is a community, single-maintainer, pre-1.0 package whose
+    # 0.1.0 was already a breaking rewrite. Pin it exactly — pre-1.0 is not semver.
+    "langchain-moonshot==0.1.0",
     "google-api-core>=2.30.3",
     "boto3>=1.42.91",
     "click>=8.3.2",
     "rich>=15.0.0",
-    "pydantic>=2.13.2",
+    # Pydantic v3 is on the roadmap (deprecated-in-v2 items get removed) — cap <3.
+    "pydantic>=2.13.2,<3",
     "pyyaml>=6.0",
     "tiktoken>=0.12.0",
 ]

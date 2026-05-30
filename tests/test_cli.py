@@ -286,10 +286,10 @@ def test_cli_default_model(cli_runner, sample_code_dir):
 
         cli_runner.invoke(main, [str(sample_code_dir), "--no-readme"])
 
-        # Verify default model is "opus4.7"
+        # Verify default model is "opus4.8"
         mock_analyzer_cls.assert_called_once()
         call_kwargs = mock_analyzer_cls.call_args[1]
-        assert call_kwargs["model_name"] == "opus4.7"
+        assert call_kwargs["model_name"] == "opus4.8"
 
 
 def test_cli_model_short_name(cli_runner, sample_code_dir):

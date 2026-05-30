@@ -109,9 +109,6 @@ codereview ./src --model kimi-azure
 # Gemini 3.1 Pro - Most advanced reasoning, 1M context (Google GenAI)
 codereview ./src --model gemini-3.1-pro
 
-# Gemini 3 Pro - Large context, strong reasoning (Google GenAI)
-codereview ./src --model gemini-3-pro
-
 # Gemini 3 Flash - Fast and cost-efficient (Google GenAI)
 codereview ./src --model gemini-3-flash
 ```
@@ -808,7 +805,7 @@ diff before.md after.md
    - **Gemini 3.1 Pro** for advanced reasoning reviews (1M context)
    - **Sonnet** for PR reviews (balanced)
    - **GPT-5.4** for Azure-hosted reviews ($2.50/$15 per M, 1.05M context)
-   - **Opus 4.7** for production releases only (latest reasoning model)
+   - **Opus 4.8** for production releases only (latest reasoning model, 1M context)
 
 3. **Use Artifacts**: Always save review reports as build artifacts
 

@@ -131,7 +131,41 @@ def detect_languages_from_paths(paths: Iterable[str | PurePath]) -> set[str]:
     return found
 
 
-def build_system_prompt(languages: set[str] | None = None) -> str:
+# Linter-deference language is gated on whether static analysis actually ran
+# (the CLI's --static-analysis is opt-in, default off). When linters ran, tell
+# the model to defer to them and not duplicate their findings. When they did
+# NOT run, the model is the only thing reviewing this code — instructing it to
+# "assume ruff already ran" would silently suppress findings the user has no
+# other way to get. See _build_batch_system_prompt.
+_LINTER_GUIDANCE_RAN = (
+    "Static-analysis linters (ruff, golangci-lint, shellcheck, eslint, "
+    "clang-tidy, etc.) HAVE already run on this code; do not duplicate findings "
+    "any of those would catch (unused imports, formatting, simple type errors, "
+    "basic shell-quoting). Focus on what linters cannot find: logic bugs, "
+    "security flaws, and design problems."
+)
+_LINTER_GUIDANCE_NOT_RAN = (
+    "No linter has run on this code, so you are the only reviewer. You may "
+    "report mechanical issues (unused imports, obvious formatting, simple type "
+    "errors, shell-quoting) when they are real, but keep them Low/Info and do "
+    "not let them crowd out logic bugs, security flaws, and design problems."
+)
+_LINTER_SELFCHECK_RAN = (
+    "A linter (ruff, eslint, golangci-lint, shellcheck, clang-tidy, mypy) would "
+    "NOT already catch this — if it would, drop the issue (linters ran on this "
+    "code)."
+)
+_LINTER_SELFCHECK_NOT_RAN = (
+    "If a linter would catch this (ruff, eslint, golangci-lint, shellcheck, "
+    "clang-tidy, mypy), it is fine to report it since no linter ran — but keep "
+    "such mechanical findings at Low/Info severity."
+)
+
+
+def build_system_prompt(
+    languages: set[str] | None = None,
+    linters_ran: bool = True,
+) -> str:
     """Render the system prompt with only the requested language sections.
 
     Args:
@@ -139,6 +173,12 @@ def build_system_prompt(languages: set[str] | None = None) -> str:
             ``None`` or an empty set selects all languages — the
             backward-compatible "ship everything" behavior. Unknown keys
             are silently dropped.
+        linters_ran: Whether static-analysis linters ran before this review.
+            When True (the default, preserving prior behavior), the prompt
+            tells the model to defer to linters and not duplicate their
+            findings. When False, the model is told it is the only reviewer
+            and may report mechanical issues (kept at Low/Info) — otherwise
+            the default no-linter run would silently drop them.
 
     Returns:
         Full system-prompt string ready to send to the model.
@@ -152,7 +192,15 @@ def build_system_prompt(languages: set[str] | None = None) -> str:
         if not keys:
             keys = list(LANGUAGE_RULES.keys())
     rules_block = "\n\n".join(LANGUAGE_RULES[k] for k in keys)
-    return _SYSTEM_PROMPT_TEMPLATE.replace("{language_rules}", rules_block)
+    linter_guidance = _LINTER_GUIDANCE_RAN if linters_ran else _LINTER_GUIDANCE_NOT_RAN
+    linter_selfcheck = (
+        _LINTER_SELFCHECK_RAN if linters_ran else _LINTER_SELFCHECK_NOT_RAN
+    )
+    return (
+        _SYSTEM_PROMPT_TEMPLATE.replace("{language_rules}", rules_block)
+        .replace("{linter_guidance}", linter_guidance)
+        .replace("{linter_selfcheck}", linter_selfcheck)
+    )
 
 
 _SYSTEM_PROMPT_TEMPLATE = """You are an expert code reviewer. Analyze the provided code and return a structured review.
@@ -161,7 +209,7 @@ _SYSTEM_PROMPT_TEMPLATE = """You are an expert code reviewer. Analyze the provid
 CORE CONSTRAINTS (read first — these override all other guidance)
 ═══════════════════════════════════════════════════════════════════════════════
 
-1. Only report REAL issues — no nitpicking or style preferences covered by linters. Assume ruff, golangci-lint, shellcheck, eslint, clang-tidy, etc. have already run; do not duplicate findings any of those would catch (unused imports, formatting, simple type errors, basic shell-quoting).
+1. Only report REAL issues — no nitpicking or style preferences. {linter_guidance}
 2. Every issue MUST have specific, accurate line numbers and actionable details. NEVER use 0 or 1 as a placeholder line number — pick the line where the issue actually appears.
 3. Prefer simple solutions over complex abstractions.
 4. Priority order: security > correctness > maintainability > performance.
@@ -169,7 +217,7 @@ CORE CONSTRAINTS (read first — these override all other guidance)
 6. Acknowledge good practices alongside concerns.
 7. If context is insufficient for architecture assessment, set system_design_insights to "Insufficient context for architectural assessment" — do not speculate.
 8. Metrics must be accurate: total_issues must equal the sum of severity counts; if no issues found, return empty issues array and zero counts.
-9. Maximum 15-20 issues per batch (prioritize by severity). For repeated patterns, report once with a note: "Also occurs at lines 67, 89" in description.
+9. Soft cap of ~20 issues per batch, prioritized by severity. NEVER drop a Critical or High finding to stay under the cap — if a batch has more than ~20 issues, truncate the Low/Info tail, never a real bug. For repeated patterns, report once with a note: "Also occurs at lines 67, 89" in description.
 10. Only report an issue if you can name a specific input or call site that triggers it AND the fix can be derived from the code shown. If the bug requires information you don't have, do not report it. If uncertain, phrase as: "Consider whether X might cause Y."
 11. NEVER fabricate fields. If you have no specific title, description, rationale, or fix to give, OMIT THE ISSUE. Do not emit "Issue", "Problem found", "No description provided", or "Review recommended" as values.
 12. Trust the runtime. If code is in front of you, it parses and runs in its target environment — your role is to find bugs, not to second-guess the language. Do NOT report something as a SyntaxError unless you can construct a *specific* triggering input from the code shown. In particular, modern syntax in any language (PEP 758 unparenthesized except in Python 3.14+, generics, union syntax, decorators with arguments, etc.) is valid even if it post-dates your training data — defer to the language's current spec, not your memory. If you find yourself writing "this would be a SyntaxError" or "the test suite must not import this file," STOP — you are about to hallucinate.
@@ -424,7 +472,7 @@ Before including an issue in your response, verify:
 3. Surrounding context does not already handle the concern (guard clause, comment, try/except).
 4. The issue would still apply if the function were called with valid, well-formed inputs from a trusted caller — i.e., you are not inventing a misuse path that no caller actually exercises.
 5. `suggested_code` uses the SAME LANGUAGE as the file under review (no Python syntax in TypeScript files, etc.) and would actually compile/run.
-6. A linter (ruff, eslint, golangci-lint, shellcheck, clang-tidy, mypy) would NOT already catch this — if it would, drop the issue.
+6. {linter_selfcheck}
 
 ═══════════════════════════════════════════════════════════════════════════════
 EXAMPLES
@@ -457,7 +505,24 @@ db_password = os.environ.get("DB_PASSWORD")
 REPEATED PATTERN (report once, not N times):
 If the same bare `except Exception:` appears at lines 42, 67, 89, and 113 of the
 same file, emit ONE issue at line 42 with description ending: "Same pattern also
-at lines 67, 89, 113." Do NOT emit four near-identical issues."""
+at lines 67, 89, 113." Do NOT emit four near-identical issues.
+
+LINE NUMBERS — read them from the gutter (do this right; it is the #1 mistake):
+Each file is presented with a left-margin line-number gutter in the form
+`NNN | <code>`. The number BEFORE the `|` is the authoritative line number —
+use it verbatim for line_start/line_end. Count from the gutter, never guess.
+
+Given this batch excerpt:
+```
+  39 | def transfer(amount, to_account):
+  40 |     balance = get_balance()
+  41 |     query = "UPDATE accounts SET balance = %d" % (balance - amount)
+  42 |     db.execute(query + " WHERE id = " + to_account)
+```
+The SQL injection is the `to_account` concatenation on the line whose gutter
+reads `42`, so `line_start: 42`. The unsafe `%`-format is on gutter line `41`.
+Do NOT report `line_start: 1` or `line_start: 4` (the excerpt-relative offset) —
+the gutter value is the only correct line number."""
 
 
 # All-languages rendering, retained for backward compatibility with callers

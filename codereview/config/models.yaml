@@ -16,6 +16,35 @@ providers:
     models:
       # Claude Models (Anthropic)
       # Best for: Code review, reasoning, security
+      - id: opus4.8
+        full_id: us.anthropic.claude-opus-4-8
+        name: Claude Opus 4.8
+        aliases:
+          - claude-opus-4.8
+          - opus-4.8
+          - claude-opus-48
+        pricing:
+          input_per_million: 5.00
+          output_per_million: 25.00
+          cache_write_per_million: 6.25
+          cache_read_per_million: 0.50
+        inference_params:
+          # Opus 4.8 is a reasoning model - temperature not supported
+          # default_temperature omitted intentionally
+          max_output_tokens: 128000
+        context_window: 1000000
+        capabilities:
+          - code_review
+          - security_analysis
+          - reasoning
+          - computer_use
+          - adaptive_thinking
+        notes: >-
+          Latest Opus model (May 2026) optimized for coding, agents,
+          and deeper reasoning. 1M-token context, up to 128K output.
+          Reasoning model - temperature parameter not supported.
+          Geo-US inference profile; routes across us-east-1/us-east-2/us-west-2.
+
       - id: opus4.7
         full_id: us.anthropic.claude-opus-4-7
         name: Claude Opus 4.7
@@ -31,8 +60,8 @@ providers:
         inference_params:
           # Opus 4.7 is a reasoning model - temperature not supported
           # default_temperature omitted intentionally
-          max_output_tokens: 32000
-        context_window: 200000
+          max_output_tokens: 128000
+        context_window: 1000000
         capabilities:
           - code_review
           - security_analysis
@@ -40,10 +69,10 @@ providers:
           - computer_use
           - adaptive_thinking
         notes: >-
-          Latest Opus model with enhanced reasoning,
-          adaptive thinking, and up to 32K output tokens.
-          Reasoning model - temperature parameter not supported.
-          Available in US East (N. Virginia) and Asia Pacific (Tokyo)
+          Opus model with enhanced reasoning and adaptive thinking.
+          1M-token context, up to 128K output (verified against the AWS
+          Bedrock model card). Reasoning model - temperature not supported.
+          Geo-US inference profile; routes across us-east-1/us-east-2/us-west-2.
 
       - id: opus
         full_id: global.anthropic.claude-opus-4-6-v1
@@ -533,60 +562,6 @@ providers:
           SWE-Bench Verified. Per-request reasoning_effort
           toggles instant vs deep reasoning.
 
-      # MiniMax M2.5 (via NVIDIA)
-      # MoE: 230B total, 10B active parameters
-      # 192K shared context (input+output combined)
-      # 80.2% SWE-Bench Verified, 37% faster than M2.1
-      # Best for: Code review, agentic coding
-      - id: minimax-m2.5-nvidia
-        full_id: minimaxai/minimax-m2.5
-        name: MiniMax M2.5 (NVIDIA)
-        aliases:
-          - mm2.5-nvidia
-          - minimax-m2.5
-          - mm25
-        pricing:
-          input_per_million: 0.00
-          output_per_million: 0.00
-        inference_params:
-          # IMPORTANT: Keep at 1.0 — M2.5 was RL-trained
-          # assuming temp=1.0 (logits pass unscaled).
-          # Lowering DEGRADES quality by distorting the
-          # trained distribution. API rejects 0.0; valid
-          # range is (0.0, 1.0]. Consistency is controlled
-          # via top_p, not temperature.
-          default_temperature: 1.0
-          default_top_p: 0.95
-          # top_k: stored for documentation but NOT passed
-          # to NVIDIA NIM API (provider ignores it)
-          default_top_k: 40
-          # M2.5 supports up to 128K output natively.
-          # NVIDIA NIM may cap lower (M2 had 16K limit);
-          # reserves output space in token budget calc.
-          max_output_tokens: 128000
-          # Interleaved thinking (<think> tags) enables
-          # deeper code analysis. Adds ~27-50% token
-          # overhead to output but improves review quality.
-          # Single-turn review — clear_thinking irrelevant.
-          enable_thinking: true
-          clear_thinking: false
-        # Shared input+output window.  NVIDIA API enforces
-        # 196 608 (192 K); our config must match to keep
-        # token-budget calculations accurate.
-        context_window: 196608
-        architecture: "MoE (230B total, 10B active)"
-        capabilities:
-          - coding
-          - reasoning
-          - agentic_tasks
-          - code_review
-          - thinking
-          - tool_use
-        notes: >-
-          80.2% SWE-Bench Verified, SOTA coding
-          and agentic tool use, 37% faster than
-          M2.1, cost-efficient MoE
-
       # MiniMax M2.7 (via NVIDIA)
       # MoE: 230B total, 10B active (62 layers,
       # 256 experts, 8 activated per token)
@@ -600,6 +575,12 @@ providers:
           - mm2.7-nvidia
           - minimax-m2.7
           - mm27
+          # Absorbed from minimax-m2.5-nvidia (NVIDIA deprecated the M2.5
+          # endpoint 2026-05-12). Old invocations now resolve to M2.7.
+          - minimax-m2.5-nvidia
+          - mm2.5-nvidia
+          - minimax-m2.5
+          - mm25
         pricing:
           input_per_million: 0.00
           output_per_million: 0.00
@@ -741,35 +722,46 @@ providers:
           Heavily Compressed Attention, 27% of V3.2 FLOPs
           at 1M context, three reasoning modes
 
-      # Kimi K2.5 (via NVIDIA)
-      # MoE: 1T total, multimodal
-      # Best for: Reasoning, multimodal analysis
-      - id: kimi-k2.5-nvidia
-        full_id: moonshotai/kimi-k2.5
-        name: Kimi K2.5 (NVIDIA)
+      # DeepSeek-V4-Flash (via NVIDIA) - DeepSeek AI
+      # MoE: 284B total, 13B active parameters, 1M token context
+      # Best for: Fast, high-volume code review; cheap CI runs
+      # Note: Same three reasoning modes as V4-Pro — Non-think (fast),
+      #   Think High, Think Max. Uses Non-think for deterministic review.
+      - id: deepseek-v4-flash-nvidia
+        full_id: deepseek-ai/deepseek-v4-flash
+        name: DeepSeek-V4-Flash (NVIDIA)
+        # NVIDIA-suffixed aliases only — the bare names `deepseek-v4-flash`,
+        # `dsv4-flash`, `dsv4f` are claimed by the direct DeepSeek API
+        # provider (canonical owner of the model).
         aliases:
-          - kimi-k2.5
-          - kimi25
+          - dsv4-flash-nvidia
+          - ds-v4-flash-nvidia
+          - deepseek-v4-flash-nvidia
         pricing:
+          # Free endpoint on build.nvidia.com
           input_per_million: 0.00
           output_per_million: 0.00
         inference_params:
-          # Lowered from 0.6 for code review
-          default_temperature: 0.5
+          # Mirror V4-Pro NVIDIA: model card recommends temp=1.0, top_p=0.95
+          default_temperature: 1.0
           default_top_p: 0.95
-          default_top_k: 40
-          # Up to 32K supported
-          max_output_tokens: 32768
-        context_window: 256000
-        architecture: "MoE (1T total, multimodal)"
+          max_output_tokens: 16384
+          # Non-think mode for deterministic code review
+          # (Think High/Max would add reasoning overhead;
+          # reviewer prompt is sufficiently constrained)
+          thinking: false
+        context_window: 1000000
+        architecture: "MoE (284B total, 13B active)"
         capabilities:
-          - reasoning
-          - multimodal
           - code_review
+          - code_generation
+          - reasoning
+          - agentic_tasks
           - tool_use
         notes: >-
-          1T multimodal MoE for video and
-          image understanding, efficient
+          1M-token context, fast/cheap sibling of V4-Pro for
+          high-volume review and CI. MIT-licensed, three
+          reasoning modes, native tool calling on NVIDIA NIM.
 
       # Kimi K2.6 (via NVIDIA)
       # MoE: 1T total, 32B active, 384 experts
@@ -782,6 +774,11 @@ providers:
         aliases:
           - kimi-nvidia-26
           - kimi26-nvidia
+          # Absorbed from kimi-k2.5-nvidia (NVIDIA fully shut down the K2.5
+          # endpoint 2026-05-20). Old invocations now resolve to K2.6.
+          - kimi-k2.5-nvidia
+          - kimi-k2.5
+          - kimi25
         pricing:
           input_per_million: 0.00
           output_per_million: 0.00
@@ -804,37 +801,6 @@ providers:
           thinking. Fixed temperature=1.0, top_p=0.95
           required by Moonshot serving backend.
 
-      # GLM-5 (via NVIDIA) - Zhipu AI next-gen
-      # DEPRECATED 2026-04-20 by NVIDIA — endpoint returns a deprecation
-      # notice pointing users to z-ai/glm-5.1. Entry kept so existing
-      # --model glm5 invocations don't break until NVIDIA removes it.
-      # 200K context window, 128K max output
-      # Best for: Complex reasoning, general AI
-      - id: glm5
-        full_id: z-ai/glm5
-        name: GLM-5 (NVIDIA)
-        aliases:
-          - glm-5
-          - glm5-nvidia
-        pricing:
-          input_per_million: 0.00
-          output_per_million: 0.00
-        inference_params:
-          # Lowered from 1.0 per model docs:
-          # use 0.5-0.7 for non-creative prompts
-          default_temperature: 0.5
-          default_top_p: 0.95
-          max_output_tokens: 128000
-        context_window: 200000
-        capabilities:
-          - reasoning
-          - code_review
-          - code_generation
-          - general_intelligence
-        notes: >-
-          DEPRECATED 2026-04-20: migrate to glm51.
-          Next-gen GLM, 200K context, 128K output.
-
       # GLM-5.1 (via NVIDIA) - Zhipu AI flagship
       # Post-training update of GLM-5 for agentic coding
       # 744B total / 40B active MoE (same arch as GLM-5)
@@ -847,6 +813,11 @@ providers:
           - glm-5.1
           - glm51-nvidia
           - glm5.1
+          # Absorbed from glm5 (NVIDIA deprecated z-ai/glm5 2026-04-20 and
+          # points users to z-ai/glm-5.1). Old invocations now resolve here.
+          - glm5
+          - glm-5
+          - glm5-nvidia
         pricing:
           input_per_million: 0.00
           output_per_million: 0.00
@@ -900,34 +871,44 @@ providers:
           Cost-efficient 256K context model,
           good coherence at temperature 0.6
 
+      # Step-3.7-Flash (via NVIDIA) - StepFun
+      # MoE: 198B total, ~11B active, 256K context, multimodal
+      # Newer (2026-05-28) sibling of Step 3.5 Flash with reasoning levels
+      # Best for: Coding agents, frontend generation, agentic workflows
+      - id: step-3.7-flash
+        full_id: stepfun-ai/step-3.7-flash
+        name: Step 3.7 Flash (NVIDIA)
+        aliases:
+          - step-3.7
+          - step37
+          - step37-nvidia
+        pricing:
+          input_per_million: 0.00
+          output_per_million: 0.00
+        inference_params:
+          # Lowered for deterministic code review (mirrors Step 3.5 Flash)
+          default_temperature: 0.3
+          default_top_p: 0.95
+          default_top_k: 40
+          max_output_tokens: 16384
+        context_window: 256000
+        architecture: "MoE (198B total, ~11B active, multimodal)"
+        capabilities:
+          - code_review
+          - code_generation
+          - reasoning
+          - multimodal
+          - tool_use
+        notes: >-
+          Newer 256K multimodal sibling of Step 3.5 Flash
+          (released 2026-05-28) with reasoning levels, tuned
+          for coding agents and frontend-generation workflows.
+
   # Google Generative AI Provider
   # Models via Google AI Studio / Gemini API
   google_genai:
     api_key: "${GOOGLE_API_KEY}"
     models:
-      # Gemini 3 Pro Preview - Google flagship
-      # 1M token context, strong reasoning
-      - id: gemini-3-pro
-        full_id: gemini-3-pro-preview
-        name: Gemini 3 Pro Preview
-        aliases:
-          - gemini-pro
-          - gemini3-pro
-          - g3pro
-        pricing:
-          input_per_million: 2.00
-          output_per_million: 12.00
-        inference_params:
-          default_temperature: 0.1
-          default_top_p: 0.95
-          max_output_tokens: 65536
-        context_window: 1000000
-        capabilities:
-          - code_review
-          - reasoning
-          - multimodal
-          - tool_use
-
       # Gemini 3.1 Pro Preview - Most advanced reasoning
       # 1M token context, Deep Think with 3 levels
       # 77.1% ARC-AGI-2, 94.3% GPQA Diamond
@@ -937,6 +918,13 @@ providers:
         aliases:
           - gemini31-pro
           - g31pro
+          # Absorbed from gemini-3-pro (Google shut down gemini-3-pro-preview
+          # 2026-03-09; that id now soft-aliases to gemini-3.1-pro-preview
+          # upstream). Old invocations now resolve here.
+          - gemini-3-pro
+          - gemini-pro
+          - gemini3-pro
+          - g3pro
         pricing:
           input_per_million: 2.00
           output_per_million: 12.00
@@ -992,8 +980,6 @@ providers:
     models:
       # DeepSeek V4 Pro - flagship reasoning + agentic model
       # 1M context, 384K max output, three reasoning modes
-      # 75% promo discount runs through 2026-05-31; pricing below is
-      # the post-promo list rate.
       - id: deepseek-v4-pro
         full_id: deepseek-v4-pro
         name: DeepSeek-V4-Pro
@@ -1002,11 +988,15 @@ providers:
           - ds-v4-pro
           - dsv4pro
         pricing:
-          # DeepSeek list price (https://api-docs.deepseek.com/quick_start/pricing)
-          input_per_million: 1.74
-          output_per_million: 3.48
+          # DeepSeek list price (https://api-docs.deepseek.com/quick_start/pricing).
+          # Per DeepSeek docs, the 75% launch promo ends 2026-05-31 15:59 UTC,
+          # after which the steady-state rate is 1/4 of the original list
+          # ($1.74/$3.48) → $0.435/$0.87. Values below reflect that post-promo
+          # steady-state rate.
+          input_per_million: 0.435
+          output_per_million: 0.87
           # Cache hit at 1/10 of cache miss
-          cached_input_per_million: 0.174
+          cached_input_per_million: 0.0435
         inference_params:
           # Lower temp for code review determinism (model default 1.0)
           default_temperature: 0.3
@@ -1163,7 +1153,7 @@ providers:
 
 # Default model configuration
 defaults:
-  bedrock_default: opus4.7
+  bedrock_default: opus4.8
   azure_default: gpt-5.4
   nvidia_default: mistral-medium-nvidia
   zai_default: zhipuai/glm-5.1

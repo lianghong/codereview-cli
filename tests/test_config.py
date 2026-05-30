@@ -124,6 +124,70 @@ def test_model_id_conflict_detection(caplog):
 
 
 # ---------------------------------------------------------------------------
+# Upstream-currency guards
+# ---------------------------------------------------------------------------
+
+# Upstream endpoints that were retired/shut down by their providers. Audited
+# 2026-05-30; removing the registry entries that pointed here, with their
+# aliases redirected to the live successors. This guard fails if any of these
+# dead full_ids is ever reintroduced (e.g. by copy-paste from an old entry).
+#   minimaxai/minimax-m2.5  — NVIDIA NIM deprecated 2026-05-12 → minimax-m2.7
+#   moonshotai/kimi-k2.5    — NVIDIA NIM shut down 2026-05-20 → kimi-k2.6
+#   z-ai/glm5               — NVIDIA NIM deprecated 2026-04-20 → z-ai/glm-5.1
+#   gemini-3-pro-preview    — Google shut down 2026-03-09  → gemini-3.1-pro-preview
+DEAD_UPSTREAM_FULL_IDS = {
+    "minimaxai/minimax-m2.5",
+    "moonshotai/kimi-k2.5",
+    "z-ai/glm5",
+    "gemini-3-pro-preview",
+}
+
+
+def test_no_model_points_at_dead_upstream_endpoint():
+    """No registry entry may target a known-retired upstream endpoint."""
+    loader = ConfigLoader()
+    offenders = {
+        model_id: config.full_id
+        for model_id, (_, config) in loader._models_by_id.items()
+        if config.full_id in DEAD_UPSTREAM_FULL_IDS
+    }
+    assert not offenders, f"Entries point at retired endpoints: {offenders}"
+
+
+def test_retired_model_aliases_redirect_to_live_successors():
+    """Aliases inherited from retired entries resolve to the live successor."""
+    loader = ConfigLoader()
+    expected = {
+        "minimax-m2.5": "minimaxai/minimax-m2.7",
+        "mm25": "minimaxai/minimax-m2.7",
+        "kimi-k2.5": "moonshotai/kimi-k2.6",
+        "kimi25": "moonshotai/kimi-k2.6",
+        "glm5": "z-ai/glm-5.1",
+        "glm-5": "z-ai/glm-5.1",
+        "gemini-3-pro": "gemini-3.1-pro-preview",
+        "g3pro": "gemini-3.1-pro-preview",
+    }
+    for alias, live_full_id in expected.items():
+        _, config = loader.resolve_model(alias)
+        assert config.full_id == live_full_id, (
+            f"alias {alias!r} resolved to {config.full_id!r}, expected {live_full_id!r}"
+        )
+
+
+def test_opus_4_7_context_and_output_match_bedrock_card():
+    """Opus 4.7 advertises 1M context / 128K output on the AWS model card.
+
+    Regression guard: an earlier registry value of 200K/32K under-batched
+    inputs 5x and truncated long reports.
+    """
+    loader = ConfigLoader()
+    _, config = loader.resolve_model("opus4.7")
+    assert config.context_window == 1_000_000
+    assert config.inference_params is not None
+    assert config.inference_params.max_output_tokens == 128_000
+
+
+# ---------------------------------------------------------------------------
 # Per-language prompt slicing
 # ---------------------------------------------------------------------------
 
@@ -163,6 +227,66 @@ def test_build_system_prompt_preserves_canonical_order():
     a = build_system_prompt({"go", "python"})
     b = build_system_prompt({"python", "go"})
     assert a == b
+
+
+def test_build_system_prompt_has_no_unsubstituted_placeholders():
+    """Every {placeholder} in the template must be filled for both gatings.
+
+    Guards against a new template token being added without a substitution
+    (which would otherwise ship a literal ``{token}`` to the model). The
+    shell rule's ``"${var}"`` example is the one legitimate brace sequence.
+    """
+    import re
+
+    from codereview.config import build_system_prompt
+
+    for linters_ran in (True, False):
+        prompt = build_system_prompt({"python"}, linters_ran=linters_ran)
+        leftover = [m for m in re.findall(r"\{[a-z_]+\}", prompt) if m != "{var}"]
+        assert not leftover, f"unsubstituted placeholders: {leftover}"
+
+
+def test_build_system_prompt_linter_guidance_is_gated():
+    """R4: the 'linters already ran' framing only ships when linters ran.
+
+    When static analysis did NOT run (the default), telling the model to
+    defer to linters would silently suppress findings the user can't get
+    any other way.
+    """
+    from codereview.config import build_system_prompt
+
+    ran = build_system_prompt({"python"}, linters_ran=True)
+    not_ran = build_system_prompt({"python"}, linters_ran=False)
+
+    assert "HAVE already run" in ran
+    assert "No linter has run" not in ran
+    assert "No linter has run" in not_ran
+    assert "HAVE already run" not in not_ran
+
+
+def test_build_system_prompt_defaults_to_linters_ran():
+    """Default (no arg) preserves the prior 'linters ran' behavior."""
+    from codereview.config import build_system_prompt
+
+    assert build_system_prompt({"python"}) == build_system_prompt(
+        {"python"}, linters_ran=True
+    )
+
+
+def test_build_system_prompt_protects_critical_high_from_issue_cap():
+    """R1: the issue cap must never drop a Critical/High finding."""
+    from codereview.config import build_system_prompt
+
+    prompt = build_system_prompt({"python"})
+    assert "NEVER drop a Critical or High" in prompt
+
+
+def test_build_system_prompt_includes_line_number_gutter_example():
+    """R2: a worked example teaches reading the NNN | gutter for line numbers."""
+    from codereview.config import build_system_prompt
+
+    prompt = build_system_prompt({"python"})
+    assert "read them from the gutter" in prompt
 
 
 def test_detect_languages_from_paths_basic():

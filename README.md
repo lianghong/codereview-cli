@@ -24,7 +24,7 @@ A LangChain-based CLI tool that provides comprehensive, intelligent code reviews
 ## Features
 
 - **Multi-Provider Support** (7 providers): AWS Bedrock (Claude, Minimax, Kimi, Qwen), Azure OpenAI (GPT-5.4, GPT-5.4 Pro, DeepSeek-V4-Pro, Kimi K2.5), NVIDIA NIM (Mistral, MiniMax, Kimi, Qwen, DeepSeek-V4-Pro, GLM-5/5.1, Step), Google GenAI (Gemini 3.1 Pro / 3 Pro / 3 Flash), DeepSeek direct (V4-Pro, V4-Flash), Z.AI (GLM-5.1), and Moonshot direct (Kimi K2.6)
-- **AI-Powered Analysis**: Leverages Claude Opus 4.7, GPT-5.4, DeepSeek-V4-Pro, Kimi K2.6, GLM-5.1, Gemini 3.1 Pro, and other leading models for deep code understanding
+- **AI-Powered Analysis**: Leverages Claude Opus 4.8, GPT-5.4, DeepSeek-V4-Pro, Kimi K2.6, GLM-5.1, Gemini 3.1 Pro, and other leading models for deep code understanding
 - **Multi-Language Support**: Reviews Python, Go, Shell Script, C++, Java, JavaScript, and TypeScript codebases
 - **Smart Batching**: Automatically groups files for efficient token usage
 - **Structured Output**: Get categorized issues with severity levels and actionable suggestions
@@ -168,7 +168,7 @@ codereview --list-models  # Should show Azure models
 
 ## NVIDIA NIM Configuration (Alternative Provider)
 
-NVIDIA NIM provides access to Mistral Small 4, Mistral Medium 3.5, MiniMax M2.5/M2.7, Kimi K2.5/K2.6, Qwen3 Coder, Qwen3.5, DeepSeek-V4-Pro, GLM-5/5.1, Step 3.5 Flash, and more — with a free tier for development.
+NVIDIA NIM provides access to Mistral Small 4, Mistral Medium 3.5, MiniMax M2.7, Kimi K2.6, Qwen3 Coder, Qwen3.5, DeepSeek-V4-Pro/Flash, GLM-5.1, Step 3.5/3.7 Flash, and more — with a free tier for development.
 
 ### 1. Get API Key
 
@@ -191,8 +191,11 @@ codereview /path/to/code --model mistral-small
 # Mistral Medium 3.5 128B - 77.6% SWE-Bench, per-request reasoning_effort
 codereview /path/to/code --model mistral-medium
 
-# DeepSeek-V4-Pro - 1M context, three reasoning modes
-codereview /path/to/code --model deepseek-v4-pro
+# DeepSeek-V4-Pro - 1M context, three reasoning modes (free on NVIDIA)
+codereview /path/to/code --model dsv4-nvidia
+
+# DeepSeek-V4-Flash - 1M context, fast/cheap sibling of V4-Pro (free on NVIDIA)
+codereview /path/to/code --model dsv4-flash-nvidia
 
 # Qwen3 Coder - Ultra-large coding model with thinking mode
 codereview /path/to/code --model qwen-nvidia
@@ -201,23 +204,25 @@ codereview /path/to/code --model qwen-nvidia
 codereview /path/to/code --model qwen3.5
 
 # MiniMax M2.7 - Agent-native model with thinking mode (56.22% SWE-Pro, 204K context)
+# (NVIDIA retired the M2.5 endpoint 2026-05-12; minimax-m2.5/mm25 now route here)
 codereview /path/to/code --model minimax-m2.7
 
-# MiniMax M2.5 - SOTA coding model with thinking mode (80.2% SWE-bench)
-codereview /path/to/code --model minimax-m2.5
-
-# Kimi K2.5 / K2.6 - 256K-262K context, thinking mode
-codereview /path/to/code --model kimi-k2.5
+# Kimi K2.6 - 262K context, thinking mode
+# (NVIDIA shut down the K2.5 endpoint 2026-05-20; kimi-k2.5/kimi25 now route here)
 codereview /path/to/code --model kimi-k2.6
 
-# GLM-5 / GLM-5.1 - Zhipu reasoning models (GLM-5 deprecated by NVIDIA 2026-04-20)
+# GLM-5.1 - Zhipu reasoning model
+# (NVIDIA deprecated glm5 2026-04-20; glm5/glm-5 now route to GLM-5.1)
 codereview /path/to/code --model glm51
 
 # Step 3.5 Flash - Cost-efficient reasoning, fast
 codereview /path/to/code --model step-3.5-flash
+
+# Step 3.7 Flash - Newer 256K multimodal sibling with reasoning levels
+codereview /path/to/code --model step-3.7-flash
 ```
 
-**Note:** NVIDIA NIM models are currently in free tier. No charges apply during the preview period. Models with thinking mode enabled (MiniMax M2.5/M2.7, Qwen3.5, DeepSeek-V4-Pro, Qwen3 Coder, GLM-5.1, Kimi K2.6) provide deeper reasoning for complex code analysis.
+**Note:** NVIDIA NIM models are currently in free tier. No charges apply during the preview period. Models with thinking mode enabled (MiniMax M2.7, Qwen3.5, DeepSeek-V4-Pro/Flash, Qwen3 Coder, GLM-5.1, Kimi K2.6) provide deeper reasoning for complex code analysis.
 
 ## Google Generative AI Configuration (Alternative Provider)
 
@@ -239,10 +244,8 @@ export GOOGLE_API_KEY="your-api-key-here"
 
 ```bash
 # Gemini 3.1 Pro - Most advanced reasoning model (1M context)
+# (Google shut down gemini-3-pro 2026-03-09; gemini-3-pro now routes here)
 codereview /path/to/code --model gemini-3.1-pro
-
-# Gemini 3 Pro - Flagship reasoning model (1M context)
-codereview /path/to/code --model gemini-3-pro
 
 # Gemini 3 Flash - Fast and cost-efficient (1M context)
 codereview /path/to/code --model gemini-3-flash
@@ -331,7 +334,7 @@ moonshot:
 ### Basic Usage
 
 ```bash
-# Uses Claude Opus 4.7 by default
+# Uses Claude Opus 4.8 by default
 codereview /path/to/your/codebase
 ```
 
@@ -342,7 +345,8 @@ codereview /path/to/your/codebase
 codereview --list-models
 
 # AWS Bedrock Models (Claude family)
-codereview /path/to/code --model opus4.7   # Claude Opus 4.7 (latest, highest quality)
+codereview /path/to/code --model opus4.8   # Claude Opus 4.8 (latest, default, 1M context)
+codereview /path/to/code --model opus4.7   # Claude Opus 4.7 (reasoning, 200K context)
 codereview /path/to/code --model opus      # Claude Opus 4.6
 codereview /path/to/code --model sonnet    # Claude Sonnet 4.6 (balanced)
 codereview /path/to/code --model haiku     # Claude Haiku 4.5 (fastest)
@@ -364,17 +368,17 @@ codereview /path/to/code --model kimi-azure       # Kimi K2.5 (256K context)
 codereview /path/to/code --model mistral-small      # Mistral Small 4 119B
 codereview /path/to/code --model mistral-medium     # Mistral Medium 3.5 128B (77.6% SWE-Bench)
 codereview /path/to/code --model minimax-m2.7       # MiniMax M2.7 (thinking, agent-native)
-codereview /path/to/code --model minimax-m2.5       # MiniMax M2.5 (80.2% SWE-bench)
 codereview /path/to/code --model dsv4-nvidia        # DeepSeek-V4-Pro on NVIDIA (free)
+codereview /path/to/code --model dsv4-flash-nvidia  # DeepSeek-V4-Flash on NVIDIA (free, 1M context, fast)
 codereview /path/to/code --model qwen-nvidia        # Qwen3 Coder 480B (thinking)
 codereview /path/to/code --model qwen3.5            # Qwen3.5 397B (262K context)
-codereview /path/to/code --model glm51              # GLM-5.1 (744B MoE)
-codereview /path/to/code --model kimi-nvidia-26     # Kimi K2.6 on NVIDIA (free)
+codereview /path/to/code --model glm51              # GLM-5.1 (744B MoE; supersedes deprecated glm5)
+codereview /path/to/code --model kimi-nvidia-26     # Kimi K2.6 on NVIDIA (free; supersedes K2.5)
 codereview /path/to/code --model step-3.5-flash     # Step 3.5 Flash
+codereview /path/to/code --model step-3.7-flash     # Step 3.7 Flash (256K, multimodal, newer)
 
 # Google Generative AI Models
 codereview /path/to/code --model gemini-3.1-pro     # Gemini 3.1 Pro (1M context)
-codereview /path/to/code --model gemini-3-pro       # Gemini 3 Pro (1M context)
 codereview /path/to/code --model gemini-3-flash     # Gemini 3 Flash (fast, cheap)
 
 # DeepSeek Direct API
@@ -399,7 +403,8 @@ codereview /path/to/code -m kimi
 
 | Model | Provider | Use Case | Input $/M | Output $/M |
 |-------|----------|----------|-----------|------------|
-| Opus 4.7 | AWS Bedrock | Latest reasoning, default model | TBD | TBD |
+| Opus 4.8 | AWS Bedrock | Latest reasoning, default model, 1M context | $5.00 | $25.00 |
+| Opus 4.7 | AWS Bedrock | Reasoning, 200K context | $5.00 | $25.00 |
 | Opus 4.6 | AWS Bedrock | Highest quality, critical reviews | $5.00 | $25.00 |
 | Sonnet 4.6 | AWS Bedrock | Balanced performance and cost | $3.00 | $15.00 |
 | Haiku 4.5 | AWS Bedrock | Fast, economical, large codebases | $1.00 | $5.00 |
@@ -412,16 +417,16 @@ codereview /path/to/code -m kimi
 | Kimi K2.5 (Azure) | Azure OpenAI | Multimodal MoE, 256K context | $0.60 | $3.00 |
 | Mistral Small 4 | NVIDIA NIM | 256K context, MoE architecture | Free* | Free* |
 | Mistral Medium 3.5 | NVIDIA NIM | 128B dense, 256K context, reasoning_effort, 77.6% SWE-Bench | Free* | Free* |
-| MiniMax M2.7 | NVIDIA NIM | 204K context, 128K output, thinking mode, agent-native | Free* | Free* |
-| MiniMax M2.5 | NVIDIA NIM | 192K context, 128K output, thinking mode, SOTA coding | Free* | Free* |
+| MiniMax M2.7 | NVIDIA NIM | 204K context, 128K output, thinking mode, agent-native (supersedes retired M2.5) | Free* | Free* |
 | DeepSeek-V4-Pro (NVIDIA) | NVIDIA NIM | 1M context, three reasoning modes | Free* | Free* |
+| DeepSeek-V4-Flash (NVIDIA) | NVIDIA NIM | 1M context, fast/cheap sibling of V4-Pro | Free* | Free* |
 | Qwen3 Coder (NIM) | NVIDIA NIM | Ultra-large coding, thinking mode | Free* | Free* |
 | Qwen3.5 397B | NVIDIA NIM | Next-gen Qwen, thinking mode, 262K context | Free* | Free* |
-| GLM-5 / GLM-5.1 | NVIDIA NIM | 744B MoE, 131K context, thinking (GLM-5 deprecated 2026-04-20) | Free* | Free* |
-| Kimi K2.5 / K2.6 | NVIDIA NIM | 256K-262K context, instant/thinking modes | Free* | Free* |
+| GLM-5.1 | NVIDIA NIM | 744B MoE, 131K context, thinking (supersedes deprecated GLM-5) | Free* | Free* |
+| Kimi K2.6 | NVIDIA NIM | 262K context, thinking mode (supersedes retired K2.5) | Free* | Free* |
 | Step 3.5 Flash | NVIDIA NIM | Cost-efficient reasoning | Free* | Free* |
-| Gemini 3.1 Pro | Google GenAI | Most advanced reasoning, 1M context | $2.00 | $12.00 |
-| Gemini 3 Pro | Google GenAI | Flagship reasoning, 1M context | $2.00 | $12.00 |
+| Step 3.7 Flash | NVIDIA NIM | 256K multimodal, reasoning levels (newer) | Free* | Free* |
+| Gemini 3.1 Pro | Google GenAI | Most advanced reasoning, 1M context (supersedes retired 3 Pro) | $2.00 | $12.00 |
 | Gemini 3 Flash | Google GenAI | Fast and cheap, 1M context | $0.50 | $3.00 |
 | **DeepSeek-V4-Pro** | **DeepSeek direct** | **1M context, three reasoning modes, tool calling** | **$1.74** | **$3.48** |
 | **DeepSeek-V4-Flash** | **DeepSeek direct** | **1M context, 12x cheaper input than V4-Pro** | **$0.14** | **$0.28** |
@@ -817,7 +822,7 @@ For issues, questions, or contributions:
 
 ## Version History
 
-Current release: **v0.3.1** — Claude Opus 4.7 integration, `--no-color` fixes, PEP 758 compliance.
+Current release: **v0.4.0** — Claude Opus 4.8 integration (new default, 1M context); model-registry audit (retired dead NVIDIA/Google endpoints with aliases redirected to live successors, fixed Opus 4.7 context/output, refreshed DeepSeek-V4-Pro pricing); added DeepSeek-V4-Flash and Step 3.7 Flash on NVIDIA; LangChain dependency hardening (version caps + pinned community packages); review-prompt improvements (linter-deference gating, Critical/High protected from issue cap, line-number guidance).
 
 Full history is maintained in [CHANGELOG.md](CHANGELOG.md).
 

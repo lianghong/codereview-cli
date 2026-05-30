@@ -387,9 +387,9 @@ codereview ./src --model mistral-small
 codereview ./src --model gemini-3.1-pro
 ```
 
-**Gemini 3 Pro** - Large context, strong reasoning (Google GenAI):
+**Gemini 3.1 Pro** - Large context, strong reasoning (Google GenAI; `gemini-3-pro` now routes here after Google retired 3 Pro 2026-03-09):
 ```bash
-codereview ./src --model gemini-3-pro
+codereview ./src --model gemini-3.1-pro
 ```
 
 **Gemini 3 Flash** - Fast and cost-efficient (Google GenAI):
@@ -425,7 +425,8 @@ codereview ./src --model kimi   # canonical short alias
 Be aware of costs and choose models accordingly:
 
 **AWS Bedrock:**
-- **Opus 4.7**: Latest reasoning, default model (TBD pricing)
+- **Opus 4.8**: Latest reasoning, default model, 1M context ($5/M input, $25/M output)
+- **Opus 4.7**: Reasoning, 200K context ($5/M input, $25/M output)
 - **Opus 4.6**: Highest quality ($5/M input, $25/M output)
 - **Sonnet 4.6**: Balanced option for daily use ($3/M input, $15/M output)
 - **Haiku 4.5**: Economical for large codebases ($1/M input, $5/M output)
@@ -452,7 +453,7 @@ Be aware of costs and choose models accordingly:
 - **Kimi K2.6**: 1T MoE, 32B active, 256K context, agentic ($0.60/M input, $2.50/M output)
 
 **NVIDIA NIM (Free Tier):**
-- **Mistral Small 4, Mistral Medium 3.5, MiniMax M2.5/M2.7, Kimi K2.5/K2.6, Qwen3 Coder, Qwen3.5, DeepSeek-V4-Pro, GLM-5/5.1, Step 3.5 Flash**: Currently free
+- **Mistral Small 4, Mistral Medium 3.5, MiniMax M2.7, Kimi K2.6, Qwen3 Coder, Qwen3.5, DeepSeek-V4-Pro/Flash, GLM-5.1, Step 3.5/3.7 Flash**: Currently free
 
 **Cost optimization tips:**
 - Use `--max-files` to limit scope
@@ -578,7 +579,8 @@ Choose the right model for your needs. Use short model names (aliases supported)
 codereview --list-models
 
 # AWS Bedrock - Claude models
-codereview ./src --model opus4.7  # Claude Opus 4.7 (default, reasoning model)
+codereview ./src --model opus4.8  # Claude Opus 4.8 (default, reasoning model, 1M context)
+codereview ./src --model opus4.7  # Claude Opus 4.7 (reasoning model, 200K context)
 codereview ./src --model opus     # Claude Opus 4.6 (highest quality, temperature control)
 codereview ./src --model sonnet   # Claude Sonnet 4.6 (balanced)
 codereview ./src --model haiku    # Claude Haiku 4.5 (fastest)
@@ -597,17 +599,16 @@ codereview ./src --model kimi-azure    # Kimi K2.5 (256K context)
 # NVIDIA NIM (free tier)
 codereview ./src --model mistral-medium     # Mistral Medium 3.5 128B (77.6% SWE-Bench)
 codereview ./src --model mistral-small      # Mistral Small 4 119B
-codereview ./src --model minimax-m2.5       # MiniMax M2.5 (SOTA coding)
-codereview ./src --model minimax-m2.7       # MiniMax M2.7 (agent-native)
+codereview ./src --model minimax-m2.7       # MiniMax M2.7 (agent-native; supersedes retired M2.5)
 codereview ./src --model dsv4-nvidia        # DeepSeek-V4-Pro on NVIDIA (free)
-codereview ./src --model glm51              # GLM-5.1 (744B MoE)
-codereview ./src --model kimi-nvidia-26     # Kimi K2.6 on NVIDIA (free)
-codereview ./src --model kimi-k2.5          # Kimi K2.5 (256K context)
+codereview ./src --model dsv4-flash-nvidia  # DeepSeek-V4-Flash on NVIDIA (free, 1M context, fast)
+codereview ./src --model glm51              # GLM-5.1 (744B MoE; supersedes deprecated glm5)
+codereview ./src --model kimi-nvidia-26     # Kimi K2.6 on NVIDIA (free; supersedes retired K2.5)
 codereview ./src --model step-3.5-flash     # Step 3.5 Flash
+codereview ./src --model step-3.7-flash     # Step 3.7 Flash (256K, multimodal, newer)
 
 # Google Generative AI
-codereview ./src --model gemini-3.1-pro     # Gemini 3.1 Pro (1M context, best reasoning)
-codereview ./src --model gemini-3-pro       # Gemini 3 Pro (1M context)
+codereview ./src --model gemini-3.1-pro     # Gemini 3.1 Pro (1M context; supersedes retired 3 Pro)
 codereview ./src --model gemini-3-flash     # Gemini 3 Flash (fast, cheap)
 
 # DeepSeek direct API (paid, native tool calling)
@@ -626,7 +627,8 @@ codereview ./src --model kimi               # Short alias
 
 | Model | Provider | Use Case | Pricing |
 |-------|----------|----------|---------|
-| **Opus 4.7** (default) | AWS Bedrock | Latest reasoning, critical reviews | TBD |
+| **Opus 4.8** (default) | AWS Bedrock | Latest reasoning, critical reviews, 1M context | $5/M input, $25/M output |
+| **Opus 4.7** | AWS Bedrock | Reasoning, 200K context | $5/M input, $25/M output |
 | **Opus 4.6** | AWS Bedrock | Critical code reviews, security audits | $5/M input, $25/M output |
 | **Sonnet 4.6** | AWS Bedrock | Daily development, PR reviews | $3/M input, $15/M output |
 | **Haiku 4.5** | AWS Bedrock | Large codebases, CI/CD integration | $1/M input, $5/M output |
@@ -636,13 +638,12 @@ codereview ./src --model kimi               # Short alias
 | **Kimi K2.5 (Azure)** | Azure OpenAI | Multimodal MoE, 256K context | $0.60/M input, $3/M output |
 | **Mistral Small 4** | NVIDIA NIM | Free tier, MoE architecture, 256K context | Free* |
 | **Mistral Medium 3.5** | NVIDIA NIM | Free tier, 128B dense, 77.6% SWE-Bench | Free* |
-| **MiniMax M2.5** | NVIDIA NIM | Free tier, thinking mode, 192K context, SOTA coding | Free* |
-| **MiniMax M2.7** | NVIDIA NIM | Free tier, agent-native, 204K context | Free* |
+| **MiniMax M2.7** | NVIDIA NIM | Free tier, agent-native, 204K context (M2.5 retired 2026-05-12) | Free* |
 | **DeepSeek-V4-Pro (NVIDIA)** | NVIDIA NIM | Free tier, 1M context, three reasoning modes | Free* |
-| **GLM-5 / GLM-5.1** | NVIDIA NIM | Free tier, thinking mode (GLM-5 deprecated 2026-04-20) | Free* |
-| **Kimi K2.5 / K2.6** | NVIDIA NIM | Free tier, 256K-262K context | Free* |
-| **Gemini 3.1 Pro** | Google GenAI | Most advanced reasoning, 1M context | $2/M input, $12/M output |
-| **Gemini 3 Pro** | Google GenAI | Flagship reasoning, 1M context | $2/M input, $12/M output |
+| **DeepSeek-V4-Flash (NVIDIA)** | NVIDIA NIM | Free tier, 1M context, fast/cheap sibling of V4-Pro | Free* |
+| **GLM-5.1** | NVIDIA NIM | Free tier, thinking mode (GLM-5 deprecated 2026-04-20) | Free* |
+| **Kimi K2.6** | NVIDIA NIM | Free tier, 262K context (K2.5 retired 2026-05-20) | Free* |
+| **Gemini 3.1 Pro** | Google GenAI | Most advanced reasoning, 1M context (3 Pro retired 2026-03-09) | $2/M input, $12/M output |
 | **Gemini 3 Flash** | Google GenAI | Fast and cheap, 1M context | $0.50/M input, $3/M output |
 | **DeepSeek-V4-Pro** | DeepSeek direct | 1M context, three reasoning modes, native tool calling | $1.74/M input, $3.48/M output |
 | **DeepSeek-V4-Flash** | DeepSeek direct | 1M context, cheapest paid option with tool calling | $0.14/M input, $0.28/M output |
@@ -654,8 +655,8 @@ codereview ./src --model kimi               # Short alias
 **Model Selection Strategy:**
 
 ```bash
-# Production-critical code → Opus 4.7
-codereview ./src/auth --model opus4.7
+# Production-critical code → Opus 4.8
+codereview ./src/auth --model opus4.8
 
 # Daily development → Sonnet or GPT-5.4
 codereview ./src --model sonnet
