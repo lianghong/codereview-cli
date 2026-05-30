@@ -158,8 +158,9 @@ class AzureOpenAIProvider(TokenTrackingMixin, ModelProvider):
         value instead of short exponential backoff prevents wasting all
         retries within the same rate limit window.
         """
-        if isinstance(error, RateLimitError) and hasattr(error, "response"):
-            retry_after = error.response.headers.get("retry-after")
+        response = getattr(error, "response", None)
+        if isinstance(error, RateLimitError) and response is not None:
+            retry_after = response.headers.get("retry-after")
             if retry_after:
                 try:
                     wait = min(float(retry_after), config.max_wait)

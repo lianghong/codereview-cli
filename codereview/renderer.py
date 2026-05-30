@@ -81,11 +81,18 @@ class TerminalRenderer:
     def _format_summary(self, report: CodeReviewReport) -> str:
         """Format summary text."""
         metrics_dict = self._metrics_to_dict(report)
+        # total_lines may be a non-int when metrics come from a raw dict (the
+        # model_dump fallback in _metrics_to_dict) rather than the Pydantic
+        # model; guard the ',' format spec the same way _metrics does.
+        total_lines = metrics_dict.get("total_lines", 0)
+        total_lines_str = (
+            f"{total_lines:,}" if isinstance(total_lines, int) else str(total_lines)
+        )
         lines = [
             f"[bold]{report.summary}[/bold]",
             "",
             f"📊 Files analyzed: {metrics_dict.get('files_analyzed', 0)}",
-            f"📝 Total lines of code: {metrics_dict.get('total_lines', 0):,}",
+            f"📝 Total lines of code: {total_lines_str}",
             f"🐛 Total issues: {metrics_dict.get('total_issues', 0)}",
         ]
         return "\n".join(lines)

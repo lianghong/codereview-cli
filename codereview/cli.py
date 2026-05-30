@@ -753,7 +753,15 @@ def main(
         if dry_run:
             factory = ProviderFactory(config_loader=config_loader)
             dry_run_provider = factory.create_provider(model_name, temperature)
-            _render_dry_run(files, batches, model_display_name, dry_run_provider, con)
+            _render_dry_run(
+                files,
+                batches,
+                model_display_name,
+                dry_run_provider,
+                con,
+                readme_content=readme_content,
+                static_results=static_results,
+            )
             return
 
         # Step 3: Analyze batches
@@ -1235,6 +1243,8 @@ def _render_dry_run(
     model_display_name: str,
     provider: ModelProvider,
     console: Console,
+    readme_content: str | None = None,
+    static_results: object | None = None,
 ) -> None:
     """Render dry-run output showing files, validation, and estimated costs.
 
@@ -1244,6 +1254,12 @@ def _render_dry_run(
         model_display_name: Human-readable model name for display
         provider: Model provider instance
         console: Rich console for output
+        readme_content: README/project context sent with every batch, if any.
+            Included in the token estimate so the dry-run cost matches the real
+            run (which sends it per batch as project_context).
+        static_results: Truthy when static analysis ran; the per-batch
+            linter-findings block (capped at 4000 chars by
+            condense_for_prompt) is then reserved per batch.
     """
     # Get pricing from provider
     pricing = provider.get_pricing()
@@ -1279,11 +1295,17 @@ def _render_dry_run(
     console.print(table)
     console.print()
 
-    # System prompt is sent once per batch. Use the actual tokenizer rather
-    # than a hardcoded 500-token guess — the prompt is currently ~5K tokens,
-    # so the old estimate undercounted dry-run cost by ~10x.
-    system_prompt_tokens = len(batches) * count_tokens(SYSTEM_PROMPT)
-    total_input_tokens = total_tokens + system_prompt_tokens
+    # System prompt, README context, and linter findings are each sent once
+    # per batch. Mirror the real-run budget calc (see main, step 2) so the
+    # dry-run estimate — the whole point of --dry-run — isn't understated.
+    # Use the actual tokenizer; the prompt alone is ~5K tokens.
+    per_batch_overhead = count_tokens(SYSTEM_PROMPT)
+    if readme_content:
+        per_batch_overhead += count_tokens(readme_content)
+    if static_results:
+        # condense_for_prompt caps the injected linter block at 4000 chars.
+        per_batch_overhead += count_tokens("x" * 4000)
+    total_input_tokens = total_tokens + len(batches) * per_batch_overhead
 
     # Estimate output tokens (roughly 20% of input for code review)
     estimated_output_tokens = int(total_input_tokens * 0.2)

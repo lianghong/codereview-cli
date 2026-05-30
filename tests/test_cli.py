@@ -487,3 +487,58 @@ def test_smoke_every_provider_module_imports():
     ]
     for name in provider_modules:
         importlib.import_module(name)
+
+
+def _dry_run_input_tokens(console_text: str) -> int:
+    """Pull the 'Est. input tokens: ~N,NNN' integer out of dry-run output."""
+    import re
+
+    m = re.search(r"input tokens:\s*~([\d,]+)", console_text)
+    assert m, f"no input-token line in:\n{console_text}"
+    return int(m.group(1).replace(",", ""))
+
+
+def test_dry_run_estimate_includes_readme_tokens(tmp_path):
+    """Dry-run cost must account for README context sent per batch.
+
+    Regression: _render_dry_run previously counted only file + system-prompt
+    tokens, understating the estimate whenever --readme supplied a large
+    README — exactly the metric --dry-run exists to provide.
+    """
+    from rich.console import Console
+
+    from codereview.batcher import FileBatch
+    from codereview.cli import _render_dry_run
+
+    code_file = tmp_path / "mod.py"
+    code_file.write_text("def f():\n    return 1\n")
+    batch = FileBatch(files=[code_file], batch_number=1, total_batches=1)
+
+    provider = Mock()
+    provider.get_pricing.return_value = {
+        "input_price_per_million": 5.0,
+        "output_price_per_million": 25.0,
+    }
+    provider.validate_credentials.return_value = Mock(
+        valid=True, provider="Test", checks=[], errors=[], warnings=[], suggestions=[]
+    )
+
+    readme = "# Project\n" + ("context line\n" * 500)
+
+    def render(readme_content):
+        console = Console(record=True, width=100)
+        _render_dry_run(
+            [code_file],
+            [batch],
+            "Test Model",
+            provider,
+            console,
+            readme_content=readme_content,
+        )
+        return _dry_run_input_tokens(console.export_text())
+
+    with_readme = render(readme)
+    without_readme = render(None)
+    assert with_readme > without_readme, (
+        "README tokens must increase the dry-run estimate"
+    )

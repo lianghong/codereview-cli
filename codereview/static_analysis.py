@@ -939,8 +939,15 @@ class StaticAnalyzer:
             if "metadata" in data and isinstance(data.get("metadata"), dict):
                 vuln_counts = data["metadata"].get("vulnerabilities", {})
                 if isinstance(vuln_counts, dict):
+                    # npm's metadata.vulnerabilities is
+                    # {info, low, moderate, high, critical, total}. Sum only the
+                    # per-severity buckets — `total` is their sum, so including
+                    # it would double-count.
+                    severity_keys = ("info", "low", "moderate", "high", "critical")
                     return sum(
-                        v for v in vuln_counts.values() if isinstance(v, int) and v > 0
+                        v
+                        for k, v in vuln_counts.items()
+                        if k in severity_keys and isinstance(v, int) and v > 0
                     )
             # Fallback: v2+ package map when metadata is unavailable
             if "vulnerabilities" in data and isinstance(data["vulnerabilities"], dict):

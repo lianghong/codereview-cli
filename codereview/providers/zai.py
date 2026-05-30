@@ -134,13 +134,14 @@ class ZAIProvider(TokenTrackingMixin, ModelProvider):
         self, error: Exception, attempt: int, config: RetryConfig
     ) -> float:
         """Exponential backoff for Z.AI rate-limit responses."""
-        if isinstance(error, RateLimitError) and hasattr(error, "response"):
-            retry_after = error.response.headers.get("retry-after")
+        response = getattr(error, "response", None)
+        if isinstance(error, RateLimitError) and response is not None:
+            retry_after = response.headers.get("retry-after")
             if retry_after:
                 try:
                     wait = min(float(retry_after), config.max_wait)
                     logging.info(
-                        "Z.AI rate limit: waiting %ds (Retry-After header)", wait
+                        "Z.AI rate limit: waiting %.1fs (Retry-After header)", wait
                     )
                     return wait
                 # PEP 758 syntax (Python 3.14+): unparenthesized multi-exception catch
@@ -203,7 +204,9 @@ class ZAIProvider(TokenTrackingMixin, ModelProvider):
             )
             return result
 
-        result.add_check("API Key", True, f"Key set ({len(api_key)} chars)")
+        if len(api_key) < 20:
+            result.add_warning("API key seems unusually short. Verify it's correct.")
+        result.add_check("API Key", True, "API key configured")
 
         if not self.provider_config.base_url.startswith("https://"):
             result.valid = False

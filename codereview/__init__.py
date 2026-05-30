@@ -1,7 +1,8 @@
 """LangChain-based CLI tool for AI-powered code reviews.
 
 This package provides automated code review capabilities using multiple LLM
-backends (AWS Bedrock, Azure OpenAI, NVIDIA NIM). It supports Python, Go,
+backends (AWS Bedrock, Azure OpenAI, NVIDIA NIM, Google GenAI, DeepSeek, Z.AI,
+and Moonshot). It supports Python, Go,
 Shell, C++, Java, JavaScript, and TypeScript codebases with structured output
 including issue categories, severity levels, line numbers, and suggested fixes.
 

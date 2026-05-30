@@ -121,8 +121,13 @@ class FileScanner:
                 if file_path.suffix not in self.TARGET_EXTENSIONS:
                     continue
 
-                # Skip excluded patterns (for fine-grained glob matching)
-                relative_path = file_path.relative_to(self.root_dir)
+                # Skip excluded patterns (for fine-grained glob matching).
+                # Use resolved_path/resolved_root — the same bases the
+                # traversal check above used. Mixing self.root_dir (unresolved)
+                # here can raise ValueError when root_dir is a symlink or
+                # relative path that resolves elsewhere, aborting the scan on a
+                # file that legitimately lives under the resolved root.
+                relative_path = resolved_path.relative_to(resolved_root)
                 if self._is_excluded(str(relative_path)):
                     continue
 

@@ -99,10 +99,14 @@ class NVIDIAProvider(TokenTrackingMixin, ModelProvider):
         self.provider_config = provider_config
         self.project_context = project_context
 
+        # allow_none lets an NVIDIA-hosted reasoning model opt out of
+        # temperature (inference_params.temperature = None), matching the
+        # other providers' contract.
         self.temperature = self._resolve_temperature(
             override=temperature,
             model_config=model_config,
             provider_default=0.15,
+            allow_none=True,
         )
 
         # Get model-specific inference parameters
@@ -142,11 +146,14 @@ class NVIDIAProvider(TokenTrackingMixin, ModelProvider):
         model_params: dict[str, Any] = {
             "model": self.model_config.full_id,
             "api_key": SecretStr(str(self.provider_config.api_key)),
-            "temperature": self.temperature,
             "max_tokens": self.max_tokens,
             "callbacks": self.callbacks if self.callbacks else None,
             "timeout": self.provider_config.polling_timeout,  # 202 polling timeout
         }
+
+        # Omit temperature for reasoning models that opt out (temperature=None)
+        if self.temperature is not None:
+            model_params["temperature"] = self.temperature
 
         # Add optional parameters
         if self.top_p is not None:

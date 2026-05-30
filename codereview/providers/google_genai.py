@@ -47,10 +47,13 @@ class GoogleGenAIProvider(TokenTrackingMixin, ModelProvider):
         self.provider_config = provider_config
         self.project_context = project_context
 
+        # allow_none lets a Gemini reasoning model opt out of temperature
+        # (inference_params.temperature = None), matching the other providers.
         self.temperature = self._resolve_temperature(
             override=temperature,
             model_config=model_config,
             provider_default=0.15,
+            allow_none=True,
         )
 
         # Get model-specific inference parameters
@@ -85,12 +88,15 @@ class GoogleGenAIProvider(TokenTrackingMixin, ModelProvider):
         model_params: dict[str, Any] = {
             "model": self.model_config.full_id,
             "google_api_key": SecretStr(str(self.provider_config.api_key)),
-            "temperature": self.temperature,
             "max_output_tokens": self.max_tokens,
             "timeout": self.provider_config.request_timeout,
             "callbacks": self.callbacks if self.callbacks else None,
             "rate_limiter": self.rate_limiter,
         }
+
+        # Omit temperature for reasoning models that opt out (temperature=None)
+        if self.temperature is not None:
+            model_params["temperature"] = self.temperature
 
         # Add optional parameters
         if self.top_p is not None:

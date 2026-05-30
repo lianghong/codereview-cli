@@ -189,13 +189,24 @@ def prompt_readme_confirmation(
             elif response_lower == "n":
                 return None
             else:
-                # User specified a custom path - preserve original case
+                # User specified a custom path - preserve original case.
+                # Validate it is actually readable as text (not just present),
+                # so this return path offers the same guarantee as the
+                # found-README branch above; otherwise a binary/undecodable
+                # file would fail later at read time, far from this prompt.
                 custom_path = Path(response_stripped).expanduser().resolve()
-                if custom_path.is_file():
+                if (
+                    custom_path.is_file()
+                    and read_readme_content(custom_path) is not None
+                ):
                     return custom_path
+                if custom_path.is_file():
+                    console.print(
+                        f"[red]File not readable as text: {response_stripped}[/red]"
+                    )
                 else:
                     console.print(f"[red]File not found: {response_stripped}[/red]")
-                    return None
+                return None
 
     # No README found (either initially or after read failure)
     if readme_path is None:

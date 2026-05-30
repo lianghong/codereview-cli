@@ -11,6 +11,7 @@ from codereview.config.models import (
 )
 from codereview.models import CodeReviewReport, ReviewMetrics
 from codereview.providers.azure_openai import AzureOpenAIProvider
+from codereview.providers.base import RetryConfig
 
 
 @pytest.fixture
@@ -279,6 +280,31 @@ def test_retry_logic_fallback_backoff(model_config, provider_config, mock_report
         # Fallback: 10.0 * 2^0 = 10s for first retry
         assert mock_sleep.call_count == 1
         mock_sleep.assert_called_with(10.0)
+
+
+def test_calculate_backoff_handles_none_response(model_config, provider_config):
+    """_calculate_backoff must not crash when error.response is None.
+
+    Some wrappers set the `response` attribute to None on a RateLimitError.
+    Accessing `.headers` on it would raise AttributeError and escape the retry
+    loop, converting a transient rate-limit into an unhandled crash. The guard
+    must fall through to exponential backoff instead.
+    """
+    with patch("codereview.providers.azure_openai.AzureChatOpenAI") as mock_azure:
+        mock_instance = Mock()
+        mock_instance.with_structured_output.return_value = Mock()
+        mock_azure.return_value = mock_instance
+
+        provider = AzureOpenAIProvider(model_config, provider_config)
+
+        # RateLimitError with response explicitly None
+        err = RateLimitError.__new__(RateLimitError)
+        err.response = None  # type: ignore[attr-defined]
+
+        config = RetryConfig(max_retries=3)
+        # Must not raise; falls back to 10.0 * 2^0 = 10s
+        wait = provider._calculate_backoff(err, attempt=0, config=config)
+        assert wait == 10.0
 
 
 def test_responses_api_enabled(provider_config):

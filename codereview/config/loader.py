@@ -124,8 +124,10 @@ class ConfigLoader:
             data: Parsed YAML data (dict, list, or scalar)
         """
         if isinstance(data, dict):
-            for key in data:
-                value = data[key]
+            # Snapshot items: reassigning existing values mid-iteration is safe
+            # in CPython, but list() makes the intent explicit and stays robust
+            # if a future edit ever inserts a key during expansion.
+            for key, value in list(data.items()):
                 if isinstance(value, str) and "${" in value:
                     data[key] = self._expand_env_var_string(value)
                 elif isinstance(value, (dict, list)):

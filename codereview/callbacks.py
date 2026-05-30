@@ -241,5 +241,12 @@ class ProgressCallbackHandler(BaseCallbackHandler):
                 self._status.stop()
             # PEP 758 syntax (Python 3.14+): unparenthesized multi-exception catch
             except OSError, RuntimeError:
-                pass
+                # OSError: terminal I/O errors; RuntimeError: shutdown threading
+                pass  # Best effort cleanup - expected failure modes
+            except Exception:
+                # cleanup() runs in a finally block during error handling; an
+                # unexpected exception here would mask the original error.
+                logging.debug(
+                    "Unexpected error during status display cleanup", exc_info=True
+                )
             self._status = None
