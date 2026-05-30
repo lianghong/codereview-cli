@@ -824,3 +824,34 @@ def test_filter_lines_for_paths_drops_summary_banners():
     kept, dropped = StaticAnalyzer._filter_lines_for_paths(output, {"foo.py"})
     assert kept == ["src/foo.py:1: error"]
     assert dropped == 2
+
+
+def test_npm_audit_count_uses_severity_buckets_not_total():
+    """metadata.vulnerabilities sums per-severity buckets, excluding `total`.
+
+    Including npm's `total` (itself the sum of the buckets) would double-count.
+    """
+    import json
+
+    output = json.dumps(
+        {
+            "metadata": {
+                "vulnerabilities": {
+                    "info": 0,
+                    "low": 2,
+                    "moderate": 1,
+                    "high": 3,
+                    "critical": 0,
+                    "total": 6,
+                }
+            }
+        }
+    )
+    assert StaticAnalyzer._count_npm_audit_issues(output) == 6
+
+
+def test_npm_audit_count_returns_zero_on_non_json():
+    """A non-JSON body (e.g. HTML error page from a proxy) must report 0, not a
+    fabricated per-line count that would inflate the issue total."""
+    html = "<html><body>\n" + "<p>proxy error</p>\n" * 200 + "</body></html>\n"
+    assert StaticAnalyzer._count_npm_audit_issues(html) == 0

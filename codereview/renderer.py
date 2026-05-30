@@ -25,6 +25,17 @@ SEVERITY_ICONS: dict[str, str] = {
 }
 
 
+def metrics_to_dict(report: CodeReviewReport) -> dict[str, Any]:
+    """Convert a report's metrics to a dict.
+
+    Single source of truth shared by TerminalRenderer and MarkdownExporter so
+    the model_dump fallback cannot diverge between the two renderers.
+    """
+    if hasattr(report.metrics, "model_dump"):
+        return report.metrics.model_dump(exclude_none=True)
+    return report.metrics  # type: ignore[return-value]
+
+
 class TerminalRenderer:
     """Renders code review results to Rich terminal."""
 
@@ -71,18 +82,11 @@ class TerminalRenderer:
         summary = self._strip_variation_selectors(self._format_summary(report))
         self.console.print(Panel(summary, title="Summary", border_style="green"))
 
-    @staticmethod
-    def _metrics_to_dict(report: CodeReviewReport) -> dict[str, Any]:
-        """Convert report metrics to dictionary."""
-        if hasattr(report.metrics, "model_dump"):
-            return report.metrics.model_dump(exclude_none=True)
-        return report.metrics  # type: ignore[return-value]
-
     def _format_summary(self, report: CodeReviewReport) -> str:
         """Format summary text."""
-        metrics_dict = self._metrics_to_dict(report)
+        metrics_dict = metrics_to_dict(report)
         # total_lines may be a non-int when metrics come from a raw dict (the
-        # model_dump fallback in _metrics_to_dict) rather than the Pydantic
+        # model_dump fallback in metrics_to_dict) rather than the Pydantic
         # model; guard the ',' format spec the same way _metrics does.
         total_lines = metrics_dict.get("total_lines", 0)
         total_lines_str = (
@@ -441,13 +445,6 @@ class MarkdownExporter:
         suffix = PurePath(file_path).suffix
         return self.LANGUAGE_EXTENSIONS.get(suffix, "text")
 
-    @staticmethod
-    def _metrics_to_dict(report: CodeReviewReport) -> dict[str, Any]:
-        """Convert report metrics to dictionary."""
-        if hasattr(report.metrics, "model_dump"):
-            return report.metrics.model_dump(exclude_none=True)
-        return report.metrics  # type: ignore[return-value]
-
     def export(
         self,
         report: CodeReviewReport,
@@ -492,7 +489,7 @@ class MarkdownExporter:
             self._metrics(report),
         ]
 
-        metrics_dict = self._metrics_to_dict(report)
+        metrics_dict = metrics_to_dict(report)
 
         # Add static analysis section if it was run
         if metrics_dict.get("static_analysis_run"):
@@ -630,7 +627,7 @@ class MarkdownExporter:
         """Generate metrics section."""
         lines = ["## Metrics\n"]
 
-        metrics_dict = self._metrics_to_dict(report)
+        metrics_dict = metrics_to_dict(report)
 
         # Separate token metrics from other metrics
         token_keys = {"input_tokens", "output_tokens", "total_tokens"}
@@ -696,7 +693,7 @@ class MarkdownExporter:
 
     def _static_analysis(self, report: CodeReviewReport) -> str:
         """Generate static analysis section."""
-        metrics_dict = self._metrics_to_dict(report)
+        metrics_dict = metrics_to_dict(report)
 
         if not metrics_dict.get("static_analysis_run"):
             return ""

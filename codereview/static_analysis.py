@@ -958,16 +958,17 @@ class StaticAnalyzer:
                 )
         # PEP 758 syntax (Python 3.14+): unparenthesized multi-exception catch
         except json.JSONDecodeError, TypeError, AttributeError:
-            # Without this log, an HTML error page from a corporate proxy
-            # would silently inflate "issue count" to one-per-line. Operators
-            # debugging phantom vulnerability counts need to see that JSON
-            # parsing failed so they can investigate the raw output.
+            # A non-JSON body (e.g. an HTML error page from a corporate proxy)
+            # means we cannot determine the vulnerability count. Returning a
+            # line count here would report hundreds of phantom vulnerabilities
+            # and break CI thresholds — "unknown" must read as 0, not as a
+            # fabricated number. The warning lets operators investigate.
             logging.warning(
-                "npm audit JSON parsing failed; falling back to non-empty "
-                "line count. Output preview: %s",
+                "npm audit JSON parsing failed; cannot determine vulnerability "
+                "count (reporting 0). Output preview: %s",
                 output[:200].replace("\n", " "),
             )
-            return len([line for line in output.split("\n") if line.strip()])
+            return 0
         return 0
 
     def run_all(self, parallel: bool = True) -> dict[str, StaticAnalysisResult]:

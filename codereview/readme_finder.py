@@ -20,6 +20,13 @@ def _timed_input(prompt: str, default: str, timeout: int) -> str:
 
     Uses select() on Unix to avoid spawning daemon threads that block on stdin.
 
+    Platform note: ``select.select`` does not support stdin on Windows and
+    raises ``OSError`` immediately, so on Windows this returns ``default``
+    right away (no interactive grace period). The project targets Python 3.14+
+    on Linux/macOS; a Windows-native ``msvcrt`` path is intentionally omitted
+    as it cannot be exercised by the test suite here. The fallback is safe —
+    it auto-confirms with the default rather than failing.
+
     Args:
         prompt: The prompt to display
         default: Default value to return on timeout
