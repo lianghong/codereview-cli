@@ -855,3 +855,55 @@ def test_npm_audit_count_returns_zero_on_non_json():
     fabricated per-line count that would inflate the issue total."""
     html = "<html><body>\n" + "<p>proxy error</p>\n" * 200 + "</body></html>\n"
     assert StaticAnalyzer._count_npm_audit_issues(html) == 0
+
+
+def test_safe_rglob_caches_repeated_patterns(tmp_path):
+    """Repeated _safe_rglob calls for the same pattern walk the tree once.
+
+    Several tools target one language (e.g. four Go tools all glob "*.go"); the
+    per-instance cache must collapse those to a single rglob walk per run.
+    """
+    (tmp_path / "a.go").write_text("package main\n")
+    (tmp_path / "b.go").write_text("package main\n")
+    (tmp_path / "c.py").write_text("x = 1\n")
+    analyzer = StaticAnalyzer(tmp_path)
+
+    real_rglob = Path.rglob
+    calls = {"n": 0}
+
+    def counting_rglob(self, pattern):
+        calls["n"] += 1
+        return real_rglob(self, pattern)
+
+    with patch.object(Path, "rglob", counting_rglob):
+        first = analyzer._safe_rglob("*.go")
+        second = analyzer._safe_rglob("*.go")
+        third = analyzer._safe_rglob("*.go")
+        py = analyzer._safe_rglob("*.py")
+
+    assert first == second == third
+    assert len(first) == 2
+    assert len(py) == 1
+    # "*.go" walked once (then cached) + "*.py" walked once == 2 total.
+    assert calls["n"] == 2
+
+
+def test_safe_rglob_suffixes_cache_key_is_order_independent(tmp_path):
+    """Suffix-set cache is keyed order-independently and shares one walk."""
+    (tmp_path / "a.go").write_text("package main\n")
+    (tmp_path / "c.py").write_text("x = 1\n")
+    analyzer = StaticAnalyzer(tmp_path)
+
+    real_rglob = Path.rglob
+    calls = {"n": 0}
+
+    def counting_rglob(self, pattern):
+        calls["n"] += 1
+        return real_rglob(self, pattern)
+
+    with patch.object(Path, "rglob", counting_rglob):
+        r1 = analyzer._safe_rglob_suffixes({".go", ".py"})
+        r2 = analyzer._safe_rglob_suffixes({".py", ".go"})  # same key
+
+    assert r1 == r2
+    assert calls["n"] == 1

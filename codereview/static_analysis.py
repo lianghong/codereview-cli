@@ -5,6 +5,7 @@ import logging
 import re
 import shutil
 import subprocess  # nosec B404 - required for running static analysis tools
+import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
@@ -344,6 +345,15 @@ class StaticAnalyzer:
         # Populated by _check_available_tools so run_tool doesn't have to
         # re-resolve (and re-validate) on every invocation.
         self._tool_paths: dict[str, str] = {}
+        # Per-run cache of recursive-glob results, keyed by the glob query.
+        # run_all executes tools concurrently (ThreadPoolExecutor), and the 3-4
+        # tools per language each call _safe_rglob with the same pattern (e.g.
+        # four Go tools all glob "*.go"), so without this the tree is walked
+        # once per tool. self.directory is fixed for the instance's lifetime,
+        # so caching is safe; the lock guards concurrent first-fill from the
+        # parallel workers (see CLAUDE.md: shared mutable state needs a lock).
+        self._rglob_cache: dict[str, list[Path]] = {}
+        self._rglob_cache_lock = threading.Lock()
         self.available_tools = self._check_available_tools()
 
     def _validate_directory(self) -> None:
@@ -412,13 +422,29 @@ class StaticAnalyzer:
             pattern: Glob pattern (e.g., "*.go", "*.py")
 
         Returns:
-            List of matching paths, or empty list if scanning fails
+            List of matching paths, or empty list if scanning fails.
+            Results are cached per analyzer instance (lock-guarded) so repeated
+            calls for the same pattern — common when several tools target one
+            language — walk the tree only once per run.
         """
+        cache_key = f"pattern:{pattern}"
+        with self._rglob_cache_lock:
+            cached = self._rglob_cache.get(cache_key)
+            if cached is not None:
+                return cached
+        # Walk outside the lock so concurrent first-fills for *different*
+        # patterns don't serialize on one big tree walk. A same-pattern race
+        # just means two threads walk once each and the last write wins —
+        # identical results, so this is benign and cheaper than holding the
+        # lock across the I/O.
         try:
-            return [p for p in self.directory.rglob(pattern) if not p.is_symlink()]
+            result = [p for p in self.directory.rglob(pattern) if not p.is_symlink()]
         except OSError as e:
             logging.warning("Error scanning for %s files: %s", pattern, e)
-            return []
+            result = []
+        with self._rglob_cache_lock:
+            self._rglob_cache[cache_key] = result
+        return result
 
     def _safe_rglob_suffixes(self, suffixes: set[str]) -> list[Path]:
         """Single-pass recursive glob filtered by file suffix set.
@@ -433,16 +459,28 @@ class StaticAnalyzer:
 
         Returns:
             List of matching file paths, or empty list if scanning fails.
+            Cached per analyzer instance (lock-guarded), keyed on the suffix
+            set, so repeated calls walk the tree once per run.
         """
+        # frozenset key is order-independent: {".js", ".ts"} and {".ts", ".js"}
+        # share a cache entry. Namespaced from _safe_rglob's "pattern:" keys.
+        cache_key = f"suffixes:{tuple(sorted(suffixes))}"
+        with self._rglob_cache_lock:
+            cached = self._rglob_cache.get(cache_key)
+            if cached is not None:
+                return cached
         try:
-            return [
+            result = [
                 p
                 for p in self.directory.rglob("*")
                 if p.is_file() and not p.is_symlink() and p.suffix in suffixes
             ]
         except OSError as e:
             logging.warning("Error scanning tree for %s: %s", sorted(suffixes), e)
-            return []
+            result = []
+        with self._rglob_cache_lock:
+            self._rglob_cache[cache_key] = result
+        return result
 
     def _resolve_tool_binary(self, executable: str) -> str | None:
         """Resolve a tool name to an absolute path on PATH.
