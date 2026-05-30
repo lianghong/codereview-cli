@@ -33,6 +33,14 @@ providers:
           # default_temperature omitted intentionally
           max_output_tokens: 128000
         context_window: 1000000
+        # Opus 4.8 only supports thinking.type="adaptive" and engages thinking
+        # server-side per request. Anthropic forbids a forced tool_choice while
+        # thinking is active (only "auto"/"none" allowed), but
+        # .with_structured_output() sets exactly that forced tool_choice — so on
+        # batches where the model thinks, the tool call comes back as literal
+        # text and CodeReviewReport.issues fails with a list_type error. Route
+        # through prompt-based JSON parsing instead (same pattern as Kimi K2.6).
+        supports_tool_use: false
         capabilities:
           - code_review
           - security_analysis
@@ -43,7 +51,9 @@ providers:
           Latest Opus model (May 2026) optimized for coding, agents,
           and deeper reasoning. 1M-token context, up to 128K output.
           Reasoning model - temperature parameter not supported.
-          Geo-US inference profile; routes across us-east-1/us-east-2/us-west-2.
+          Adaptive thinking is incompatible with forced tool_choice, so
+          structured output uses prompt-based JSON parsing (supports_tool_use:
+          false). Geo-US inference profile; routes us-east-1/us-east-2/us-west-2.
 
       - id: opus4.7
         full_id: us.anthropic.claude-opus-4-7
@@ -62,6 +72,10 @@ providers:
           # default_temperature omitted intentionally
           max_output_tokens: 128000
         context_window: 1000000
+        # Same adaptive-thinking / forced-tool_choice incompatibility as Opus
+        # 4.8 (see that entry). Route structured output through prompt-based
+        # JSON parsing instead of .with_structured_output().
+        supports_tool_use: false
         capabilities:
           - code_review
           - security_analysis
@@ -72,7 +86,9 @@ providers:
           Opus model with enhanced reasoning and adaptive thinking.
           1M-token context, up to 128K output (verified against the AWS
           Bedrock model card). Reasoning model - temperature not supported.
-          Geo-US inference profile; routes across us-east-1/us-east-2/us-west-2.
+          Adaptive thinking is incompatible with forced tool_choice, so
+          structured output uses prompt-based JSON parsing (supports_tool_use:
+          false). Geo-US inference profile; routes us-east-1/us-east-2/us-west-2.
 
       - id: opus
         full_id: global.anthropic.claude-opus-4-6-v1

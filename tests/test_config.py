@@ -187,6 +187,26 @@ def test_opus_4_7_context_and_output_match_bedrock_card():
     assert config.inference_params.max_output_tokens == 128_000
 
 
+def test_adaptive_thinking_claude_models_disable_tool_use():
+    """Adaptive-thinking Claude models must NOT use tool-based structured output.
+
+    Opus 4.7/4.8 only support ``thinking.type: "adaptive"`` and engage thinking
+    server-side per request. Anthropic forbids a forced ``tool_choice`` while
+    thinking is active, but ``with_structured_output()`` sets exactly that —
+    so these models must route through prompt-based JSON parsing
+    (``supports_tool_use: false``), same as Kimi K2.6 on Moonshot. Without
+    this, batches where the model thinks return tool-call markup as text and
+    fail CodeReviewReport validation with a list_type error on ``issues``.
+    """
+    loader = ConfigLoader()
+    for alias in ("opus4.8", "opus4.7"):
+        _, config = loader.resolve_model(alias)
+        assert config.supports_tool_use is False, (
+            f"{alias} is an adaptive-thinking model and must set "
+            "supports_tool_use: false to avoid forced tool_choice"
+        )
+
+
 # ---------------------------------------------------------------------------
 # Per-language prompt slicing
 # ---------------------------------------------------------------------------
