@@ -17,6 +17,29 @@ from codereview.providers.zai import ZAIProvider
 
 @pytest.fixture
 def model_config():
+    """A tool-use-capable GLM config (exercises the with_structured_output path)."""
+    return ModelConfig(
+        id="glm-tooluse",
+        full_id="glm-tooluse",
+        name="GLM tool-use (Z.AI)",
+        aliases=["glm-tu"],
+        pricing=PricingConfig(input_per_million=1.40, output_per_million=4.40),
+        inference_params=InferenceParams(
+            temperature=0.3,
+            top_p=0.95,
+            max_output_tokens=16384,
+        ),
+        supports_tool_use=True,
+    )
+
+
+@pytest.fixture
+def glm51_model_config():
+    """The real GLM-5.1 registry shape: supports_tool_use=False (prompt parsing).
+
+    Z.AI's OpenAI-compat endpoint ignores json_schema response_format and emits
+    markdown-fenced JSON, so GLM-5.1 routes through PydanticOutputParser.
+    """
     return ModelConfig(
         id="zhipuai/glm-5.1",
         full_id="glm-5.1",
@@ -28,6 +51,7 @@ def model_config():
             top_p=0.95,
             max_output_tokens=16384,
         ),
+        supports_tool_use=False,
     )
 
 
@@ -73,9 +97,8 @@ def test_zai_uses_chatopenai_with_custom_base_url(model_config, provider_config)
         mock_openai.assert_called_once()
         kwargs = mock_openai.call_args.kwargs
 
-        # Wire-level model name comes from full_id (langchain id is the
-        # user-facing zhipuai/glm-5.1 namespace; the API expects glm-5.1).
-        assert kwargs["model"] == "glm-5.1"
+        # Wire-level model name comes from full_id.
+        assert kwargs["model"] == "glm-tooluse"
         assert kwargs["base_url"] == "https://api.z.ai/api/paas/v4/"
 
         # api_key is wrapped in SecretStr to keep it out of repr/logs.
@@ -86,7 +109,7 @@ def test_zai_uses_chatopenai_with_custom_base_url(model_config, provider_config)
         assert kwargs["top_p"] == 0.95
         assert kwargs["max_tokens"] == 16384
 
-        # Tool-calling structured output is used (GLM-5.1 supports it).
+        # Tool-calling structured output is used when supports_tool_use=True.
         mock_instance.with_structured_output.assert_called_once_with(
             CodeReviewReport, include_raw=True
         )
@@ -214,3 +237,43 @@ def test_zai_validate_credentials_happy_path(model_config, provider_config):
         provider = ZAIProvider(model_config, provider_config)
         result = provider.validate_credentials()
         assert result.valid is True
+
+
+def test_zai_glm51_uses_prompt_parsing(glm51_model_config, provider_config):
+    """GLM-5.1 (supports_tool_use=False) must skip tool-calling structured
+    output and parse JSON with PydanticOutputParser.
+
+    Regression: Z.AI's endpoint ignores OpenAI's json_schema response_format
+    and returns markdown-fenced JSON (```json ... ```), which the json_schema
+    path rejects ("Invalid JSON: expected value at line 1 column 1"). The
+    PydanticOutputParser path strips the fences.
+    """
+    with patch("codereview.providers.zai.ChatOpenAI") as mock_openai:
+        mock_instance = Mock()
+        mock_openai.return_value = mock_instance
+
+        provider = ZAIProvider(glm51_model_config, provider_config)
+
+        # No tool-calling structured output should have been requested.
+        mock_instance.with_structured_output.assert_not_called()
+        assert provider._use_prompt_parsing is True
+        # Chain ends with the PydanticOutputParser so a fenced-JSON text
+        # response is still converted into a CodeReviewReport.
+        assert provider.chain.last is provider._output_parser
+
+
+def test_zai_prompt_parser_strips_markdown_fences():
+    """The PydanticOutputParser used by the GLM-5.1 path strips ```json fences.
+
+    This is the exact failure observed in the field: GLM returned
+    ```json\\n{...}\\n``` and the json_schema parser choked at column 1.
+    """
+    from langchain_core.output_parsers import PydanticOutputParser
+
+    from codereview.models import CodeReviewReport
+
+    parser = PydanticOutputParser(pydantic_object=CodeReviewReport)
+    fenced = '```json\n{"summary": "ok", "issues": []}\n```'
+    report = parser.parse(fenced)
+    assert report.summary == "ok"
+    assert report.issues == []

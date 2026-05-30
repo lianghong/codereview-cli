@@ -207,6 +207,20 @@ def test_adaptive_thinking_claude_models_disable_tool_use():
         )
 
 
+def test_glm51_zai_disables_tool_use():
+    """GLM-5.1 on Z.AI must use prompt-based JSON parsing.
+
+    Z.AI's OpenAI-compat endpoint ignores OpenAI's json_schema response_format
+    that with_structured_output() relies on and returns markdown-fenced JSON,
+    which the json_schema parser rejects. Routing via supports_tool_use: false
+    (PydanticOutputParser) strips the fences. Regression for the field-observed
+    "Invalid JSON: expected value at line 1 column 1".
+    """
+    loader = ConfigLoader()
+    _, config = loader.resolve_model("zhipuai/glm-5.1")
+    assert config.supports_tool_use is False
+
+
 # ---------------------------------------------------------------------------
 # Per-language prompt slicing
 # ---------------------------------------------------------------------------
