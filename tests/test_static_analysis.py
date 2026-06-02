@@ -130,6 +130,73 @@ def test_run_tool_with_issues(mock_subprocess, sample_directory):
     assert result.issues_count > 0
 
 
+@patch("subprocess.run")
+def test_gofmt_failure_is_not_reported_as_passed(mock_subprocess, tmp_path):
+    """Regression: a gofmt error (non-zero exit, empty stdout) must NOT pass.
+
+    Previously pass/fail keyed only on empty stdout, so a gofmt invocation that
+    errored (writing to stderr and exiting non-zero with empty stdout) was
+    falsely reported as formatted — letting broken/unformatted Go through CI.
+    """
+    (tmp_path / "main.go").write_text("package main\n")
+
+    mock_subprocess.return_value = Mock(
+        returncode=2, stdout="", stderr="gofmt: main.go: expected declaration\n"
+    )
+
+    analyzer = StaticAnalyzer(tmp_path)
+    analyzer.available_tools = ["gofmt"]
+
+    result = analyzer.run_tool("gofmt")
+
+    assert result.tool == "gofmt"
+    assert result.passed is False
+
+
+@patch("subprocess.run")
+def test_gofmt_clean_run_passes(mock_subprocess, tmp_path):
+    """A clean gofmt run (exit 0, empty stdout) still passes."""
+    (tmp_path / "main.go").write_text("package main\n")
+
+    mock_subprocess.return_value = Mock(returncode=0, stdout="", stderr="")
+
+    analyzer = StaticAnalyzer(tmp_path)
+    analyzer.available_tools = ["gofmt"]
+
+    result = analyzer.run_tool("gofmt")
+
+    assert result.passed is True
+
+
+@patch("subprocess.run")
+def test_gofmt_invoked_on_directory_not_flat_file_list(mock_subprocess, tmp_path):
+    """Guard: gofmt is run against the directory so it recurses into nested
+    packages. `gofmt -l <dir>` walks the tree (verified separately), so passing
+    the directory covers pkg/service/main.go etc. This locks that in: a future
+    refactor to a flat file list (which would NOT recurse the same way and
+    could hit command-line-length caps) is caught here.
+    """
+    nested = tmp_path / "pkg" / "service"
+    nested.mkdir(parents=True)
+    (nested / "main.go").write_text("package service\n")
+    (tmp_path / "root.go").write_text("package main\n")
+
+    mock_subprocess.return_value = Mock(returncode=0, stdout="", stderr="")
+
+    analyzer = StaticAnalyzer(tmp_path)
+    analyzer.available_tools = ["gofmt"]
+
+    analyzer.run_tool("gofmt")
+
+    # The command must include the analysis directory as a target, not the
+    # individual .go file paths.
+    command = mock_subprocess.call_args.args[0]
+    assert str(tmp_path) in command
+    assert not any(str(arg).endswith(".go") for arg in command), (
+        "gofmt should receive the directory, not a flat .go file list"
+    )
+
+
 def test_count_issues_ruff_summary_line():
     """ruff prints `Found N errors.` — extract N exactly, don't double-count.
 
@@ -801,9 +868,10 @@ def test_condense_for_prompt_filter_empty_for_unrelated_batch():
     assert block == ""
 
 
-def test_condense_for_prompt_filter_uses_basename():
-    """Path mismatch (relative vs absolute) still matches on basename."""
-    output = "/abs/path/to/foo.py:1:1 E501 line too long"
+def test_condense_for_prompt_filter_matches_across_path_forms():
+    """An absolute linter path still matches a relative only_paths entry when
+    they share the parent/basename suffix (tolerant of abs-vs-rel forms)."""
+    output = "/abs/path/to/src/foo.py:1:1 E501 line too long"
     results = {
         "ruff": StaticAnalysisResult(
             tool="ruff",
@@ -813,15 +881,35 @@ def test_condense_for_prompt_filter_uses_basename():
             errors=[],
         )
     }
-    # Caller passes a relative path; basename match still finds it.
     block = StaticAnalyzer.condense_for_prompt(results, only_paths=["src/foo.py"])
     assert "foo.py" in block and "E501" in block
 
 
+def test_condense_for_prompt_filter_rejects_basename_collision():
+    """Regression: a same-named file in a different directory must NOT match.
+
+    Basename-only matching pulled tests/fixtures/config.py into a batch that
+    only contained src/config.py. Matching on parent/basename keeps them
+    distinct.
+    """
+    output = (
+        "src/config.py:1:1 E501 line too long\n"
+        "tests/fixtures/config.py:9:1 F401 unused import\n"
+    )
+    results = {
+        "ruff": StaticAnalysisResult(
+            tool="ruff", passed=False, issues_count=2, output=output, errors=[]
+        )
+    }
+    block = StaticAnalyzer.condense_for_prompt(results, only_paths=["src/config.py"])
+    assert "src/config.py" in block
+    assert "fixtures/config.py" not in block
+
+
 def test_filter_lines_for_paths_drops_summary_banners():
-    """Lines without any allowed basename are dropped (e.g. 'Found 3 errors')."""
+    """Lines without any allowed path token are dropped (e.g. 'Found 3 errors')."""
     output = "src/foo.py:1: error\nFound 1 error in 1 file\nSome unrelated line\n"
-    kept, dropped = StaticAnalyzer._filter_lines_for_paths(output, {"foo.py"})
+    kept, dropped = StaticAnalyzer._filter_lines_for_paths(output, {"src/foo.py"})
     assert kept == ["src/foo.py:1: error"]
     assert dropped == 2
 

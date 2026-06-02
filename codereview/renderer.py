@@ -6,6 +6,7 @@ from pathlib import Path, PurePath
 from typing import Any
 
 from rich.console import Console
+from rich.markup import escape
 from rich.panel import Panel
 from rich.table import Table
 
@@ -93,7 +94,7 @@ class TerminalRenderer:
             f"{total_lines:,}" if isinstance(total_lines, int) else str(total_lines)
         )
         lines = [
-            f"[bold]{report.summary}[/bold]",
+            f"[bold]{escape(report.summary)}[/bold]",
             "",
             f"📊 Files analyzed: {metrics_dict.get('files_analyzed', 0)}",
             f"📝 Total lines of code: {total_lines_str}",
@@ -159,16 +160,22 @@ class TerminalRenderer:
         table.add_column("Key", style="bold cyan", width=10, justify="right")
         table.add_column("Value", overflow="fold")
 
+        # category is a validated Literal, so it's safe; every other field
+        # below is model-generated (influenced by reviewed source) and must be
+        # escaped so embedded Rich markup like "[red]" can't alter rendering.
         table.add_row("[bold cyan]Category[/]", issue.category)
         table.add_row(
-            "[bold cyan]File[/]", f"[underline]{issue.file_path}:{issue.line_start}[/]"
+            "[bold cyan]File[/]",
+            f"[underline]{escape(issue.file_path)}:{issue.line_start}[/]",
         )
-        table.add_row("[bold cyan]Issue[/]", f"[bold]{issue.title}[/]")
-        table.add_row("[bold cyan]Details[/]", issue.description)
-        table.add_row("[bold cyan]Why[/]", issue.rationale)
+        table.add_row("[bold cyan]Issue[/]", f"[bold]{escape(issue.title)}[/]")
+        table.add_row("[bold cyan]Details[/]", escape(issue.description))
+        table.add_row("[bold cyan]Why[/]", escape(issue.rationale))
 
         if issue.suggested_code:
-            table.add_row("[bold cyan]Fix[/]", f"```\n{issue.suggested_code}\n```")
+            table.add_row(
+                "[bold cyan]Fix[/]", f"```\n{escape(issue.suggested_code)}\n```"
+            )
 
         self.console.print(table)
         self.console.print()
@@ -190,7 +197,7 @@ class TerminalRenderer:
 
         lines = []
         for i, rec in enumerate(report.recommendations, 1):
-            lines.append(f"{i}. {rec}")
+            lines.append(f"{i}. {escape(rec)}")
 
         content = self._strip_variation_selectors("\n".join(lines))
         self.console.print(
@@ -207,7 +214,7 @@ class TerminalRenderer:
         self.console.rule(style="dim")
         for i, suggestion in enumerate(report.improvement_suggestions, 1):
             clean = self._strip_variation_selectors(suggestion)
-            self.console.print(f"  {i}. {clean}")
+            self.console.print(f"  {i}. {escape(clean)}")
         self.console.rule(style="dim")
 
     def _group_by_severity(
@@ -322,11 +329,15 @@ class StaticAnalysisRenderer:
                     title_style = "yellow"
                     border_style = "yellow"
 
-                # Show full output for failed/error tools, limited for passed tools
+                # Show full output for failed/error tools, limited for passed
+                # tools. result.output / result.errors are repository-influenced
+                # (file names, diagnostics), so escape them before they reach
+                # Rich — otherwise markup like "[red]" in a diagnostic could
+                # spoof the report. The intentional markup below stays literal.
                 if result.passed:
                     # Limit output to first 30 lines for passed tools
                     max_lines = 30
-                    output_lines = result.output.split("\n")
+                    output_lines = escape(result.output).split("\n")
                     total_lines = len(output_lines)
                     output_preview = "\n".join(output_lines[:max_lines])
 
@@ -336,11 +347,14 @@ class StaticAnalysisRenderer:
                         )
                 else:
                     # Show full output for failed/warning tools
-                    output_preview = result.output
+                    output_preview = escape(result.output)
 
                     # Prepend error information if available
                     if result.errors:
-                        error_msg = f"[red bold]Errors:[/red bold]\n{result.errors}\n\n"
+                        error_msg = (
+                            f"[red bold]Errors:[/red bold]\n"
+                            f"{escape(str(result.errors))}\n\n"
+                        )
                         output_preview = error_msg + output_preview
 
                 try:
@@ -634,12 +648,17 @@ class MarkdownExporter:
         regular_metrics = {k: v for k, v in metrics_dict.items() if k not in token_keys}
         token_metrics = {k: v for k, v in metrics_dict.items() if k in token_keys}
 
-        # Display regular metrics first
+        # Display regular metrics first. Check bool BEFORE int: bool is a
+        # subclass of int, so without this a metric like static_analysis_run
+        # would render as 1/0 instead of True/False under the int branch.
         for key, value in regular_metrics.items():
-            if isinstance(value, int):
-                lines.append(f"- **{key.replace('_', ' ').title()}:** {value:,}")
+            label = key.replace("_", " ").title()
+            if isinstance(value, bool):
+                lines.append(f"- **{label}:** {value}")
+            elif isinstance(value, int):
+                lines.append(f"- **{label}:** {value:,}")
             else:
-                lines.append(f"- **{key.replace('_', ' ').title()}:** {value}")
+                lines.append(f"- **{label}:** {value}")
 
         # Add token usage section if available
         if token_metrics:
@@ -769,8 +788,13 @@ class MarkdownExporter:
 
         if issue.suggested_code:
             lang = self._detect_language(issue.file_path)
+            # Use a longer fence when the snippet itself contains ``` (e.g.
+            # reviewing Markdown, heredocs, or code that emits fenced blocks),
+            # so the embedded backticks don't close the block early and corrupt
+            # the rest of the report.
+            fence = "````" if "```" in issue.suggested_code else "```"
             lines.append("**Suggested Fix:**")
-            lines.append(f"```{lang}\n{issue.suggested_code}\n```\n")
+            lines.append(f"{fence}{lang}\n{issue.suggested_code}\n{fence}\n")
 
         if issue.references:
             lines.append("**References:**")

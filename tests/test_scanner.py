@@ -135,3 +135,43 @@ def test_scanner_includes_hidden_dirs_when_opted_in(tmp_path):
     files = scanner.scan()
 
     assert target.resolve() in [f.resolve() for f in files]
+
+
+def test_finegrained_exclude_pattern_does_not_prune_directory(tmp_path):
+    """A fine-grained exclude pattern must not prune an entire directory.
+
+    Regression: ``_get_excluded_dir_names`` previously added every literal
+    pattern segment to the pruned-directory set, so an exclude like
+    ``src/generated.py`` would skip the whole ``src/`` tree, dropping
+    unrelated source files from the review.
+    """
+    src = tmp_path / "src"
+    src.mkdir()
+    keep = src / "app.py"
+    keep.write_text("x = 1\n")
+    (src / "generated.py").write_text("y = 2\n")
+
+    scanner = FileScanner(tmp_path, exclude_patterns=["src/generated.py"])
+    files = scanner.scan()
+
+    resolved = [f.resolve() for f in files]
+    # The directory must NOT be pruned: app.py is still reviewed...
+    assert keep.resolve() in resolved
+    # ...while the specifically-excluded file is dropped.
+    assert (src / "generated.py").resolve() not in resolved
+
+
+def test_directory_exclude_pattern_still_prunes(tmp_path):
+    """A ``**/dir/**`` pattern still prunes the whole directory (no regression)."""
+    build = tmp_path / "build"
+    build.mkdir()
+    (build / "out.py").write_text("x = 1\n")
+    keep = tmp_path / "main.py"
+    keep.write_text("y = 2\n")
+
+    scanner = FileScanner(tmp_path, exclude_patterns=["**/build/**"])
+    files = scanner.scan()
+
+    resolved = [f.resolve() for f in files]
+    assert keep.resolve() in resolved
+    assert all("build" not in p.parts for p in files)

@@ -168,6 +168,32 @@ class TestStaticAnalysisRenderer:
         assert "Ruff" in rendered or "ruff" in rendered
         assert "Mypy" in rendered or "mypy" in rendered
 
+    def test_render_escapes_markup_in_tool_output(self):
+        """Regression: repo-influenced linter output containing Rich markup must
+        be escaped, not interpreted, so a diagnostic can't spoof the report."""
+        output = StringIO()
+        console = Console(file=output, force_terminal=True)
+        renderer = StaticAnalysisRenderer(console=console)
+
+        # A diagnostic mentioning a markup-like filename/message.
+        results = {
+            "ruff": StaticAnalysisResult(
+                tool="ruff",
+                passed=False,
+                issues_count=1,
+                output="evil_[red]injected[/red].py:1:1 E501 [bold]spoofed[/bold]",
+                errors=[],
+            ),
+        }
+
+        renderer.render(results)
+        rendered = output.getvalue()
+
+        # The literal markup tokens must survive (escaped), proving Rich did
+        # not consume them as styling directives.
+        assert "[red]" in rendered
+        assert "[bold]" in rendered
+
 
 class TestValidationRenderer:
     """Tests for ValidationRenderer."""
@@ -280,3 +306,25 @@ class TestMarkdownExporter:
         assert "**2 file(s)**" in result
         assert "- `src/large.py`: File too large" in result
         assert "- `data/config.json`: Not a supported file type" in result
+
+    def test_boolean_metric_renders_as_true_false_not_one_zero(self):
+        """Regression: bool is a subclass of int, so static_analysis_run must
+        render as True/False, not 1/0, in the Markdown metrics section."""
+        exporter = MarkdownExporter()
+
+        report = CodeReviewReport(
+            summary="x",
+            metrics=ReviewMetrics(
+                files_analyzed=1,
+                total_issues=0,
+                static_analysis_run=True,
+            ),
+            issues=[],
+            system_design_insights="ok",
+            recommendations=[],
+        )
+
+        result = exporter._metrics(report)
+
+        assert "**Static Analysis Run:** True" in result
+        assert "**Static Analysis Run:** 1" not in result

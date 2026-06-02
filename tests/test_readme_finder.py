@@ -139,6 +139,32 @@ class TestReadReadmeContent:
         assert "[TRUNCATED" in returned_content
         assert file_size == len(large_content.encode("utf-8"))
 
+    def test_truncates_multibyte_readme_by_byte_budget(self, tmp_path: Path) -> None:
+        """Regression: max_size is a byte budget, enforced on UTF-8 bytes.
+
+        A README of multi-byte characters whose *character* count is under
+        max_size but whose *byte* count exceeds it must still be truncated —
+        otherwise non-ASCII READMEs blow the intended token budget.
+        """
+        from codereview.readme_finder import read_readme_content
+
+        readme = tmp_path / "README.md"
+        # 200 multi-byte chars = 600 UTF-8 bytes, but only 200 characters.
+        multibyte = "あ" * 200
+        readme.write_text(multibyte)
+
+        # char count (200) < max_size (300), but byte count (600) > max_size.
+        result = read_readme_content(readme, max_size=300)
+
+        assert result is not None
+        returned_content, _ = result
+        assert "[TRUNCATED" in returned_content
+        # The kept prefix (excluding the truncation message) must be within
+        # the byte budget.
+        message = "\n\n[TRUNCATED - README exceeded size limit]"
+        kept = returned_content[: -len(message)]
+        assert len(kept.encode("utf-8")) <= 300
+
     def test_returns_none_for_missing_file(self, tmp_path: Path) -> None:
         """Test that read_readme_content returns None for non-existent file."""
         from codereview.readme_finder import read_readme_content

@@ -8,7 +8,7 @@ import subprocess  # nosec B404 - required for running static analysis tools
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePath
 from typing import TypedDict
 
 # Per-tool regexes that pull an authoritative issue count from the tool's
@@ -565,8 +565,17 @@ class StaticAnalyzer:
                     "Tool %s version check timed out, marking as unavailable",
                     tool_name,
                 )
-            except PermissionError:
-                logging.debug("Tool %s not executable (permission denied)", tool_name)
+            except OSError as e:
+                # PermissionError (not executable), but also other OSError
+                # subclasses the version probe can raise — e.g. a PATH entry
+                # named like a tool but with an invalid binary format
+                # ("Exec format error"). A single broken executable must not
+                # abort StaticAnalyzer construction; just skip that tool.
+                logging.debug(
+                    "Tool %s version check failed, marking as unavailable: %s",
+                    tool_name,
+                    e,
+                )
         return available
 
     def run_tool(self, tool_name: str) -> StaticAnalysisResult:
@@ -730,7 +739,7 @@ class StaticAnalyzer:
             # confirm at least one JS/TS source exists; otherwise eslint
             # exits non-zero and we'd report a spurious failure.
             # Use the single-pass walk for consistency with prettier/clang-tidy.
-            if not self._safe_rglob_suffixes({".js", ".jsx", ".ts", ".tsx"}):
+            if not self._safe_rglob_suffixes({".js", ".jsx", ".mjs", ".ts", ".tsx"}):
                 return StaticAnalysisResult(
                     tool=tool_name,
                     passed=True,
@@ -741,9 +750,9 @@ class StaticAnalyzer:
             command = base_command + [dir_path]
             cwd = self.directory
         elif tool_name == "prettier":
-            # Prettier needs files to format (single tree walk across 8 suffixes)
+            # Prettier needs files to format (single tree walk across 9 suffixes)
             prettier_files = self._safe_rglob_suffixes(
-                {".js", ".jsx", ".ts", ".tsx", ".css", ".html", ".json", ".md"}
+                {".js", ".jsx", ".mjs", ".ts", ".tsx", ".css", ".html", ".json", ".md"}
             )
             # Validate files are within analysis directory (security measure)
             prettier_files = self._filter_safe_files(prettier_files)
@@ -813,7 +822,11 @@ class StaticAnalyzer:
             command = base_command
             cwd = self.directory
         elif tool_name == "gofmt":
-            # gofmt accepts a directory path but needs Go files to exist
+            # gofmt accepts a directory path and recurses into it (verified:
+            # `gofmt -l <dir>` lists unformatted files in nested packages like
+            # pkg/service/main.go), so passing the root dir covers the whole
+            # tree. We still rglob first only to short-circuit when there are
+            # no .go files at all.
             go_files = self._filter_safe_files(self._safe_rglob("*.go"))
             if not go_files:
                 return StaticAnalysisResult(
@@ -866,9 +879,13 @@ class StaticAnalyzer:
 
             # Determine pass/fail based on tool
             if tool_name == "gofmt":
-                # gofmt -l outputs filenames of unformatted files
-                # Empty output = all files formatted correctly
-                passed = len(result.stdout.strip()) == 0
+                # gofmt -l outputs filenames of unformatted files; empty
+                # stdout means all files are formatted. But empty stdout alone
+                # is NOT success — a gofmt error (e.g. a syntax-error file)
+                # writes to stderr and exits non-zero with empty stdout, which
+                # would otherwise be falsely reported as "passed". Require a
+                # zero exit code as well so failed invocations surface.
+                passed = result.returncode == 0 and len(result.stdout.strip()) == 0
             else:
                 # Most tools return non-zero when they find issues
                 passed = result.returncode == 0
@@ -1065,14 +1082,18 @@ class StaticAnalyzer:
 
     @staticmethod
     def _filter_lines_for_paths(
-        output: str, allowed_basenames: set[str]
+        output: str, allowed_tokens: set[str]
     ) -> tuple[list[str], int]:
-        """Keep only output lines that mention at least one allowed basename.
+        """Keep only output lines that mention at least one allowed path token.
 
         Most linters emit one diagnostic per line as ``<path>:<line>:<col>: ...``
-        so filename-substring matching is a good-enough, tool-agnostic filter.
-        We match on basename rather than full path because tools vary on
-        whether they print absolute or relative paths.
+        so path-substring matching is a good-enough, tool-agnostic filter. Each
+        token is a path *suffix* (``parent/basename`` where a parent exists, see
+        ``_path_match_token``) rather than a bare basename: matching the bare
+        basename would pull in diagnostics for an unrelated same-named file
+        (``src/config.py`` would also match ``tests/fixtures/config.py``).
+        Comparison is on a slash-normalized copy of the line so Windows-style
+        backslash paths still match.
 
         Returns the filtered non-empty lines plus the count of dropped lines.
         Empty lines and lines without any path token are dropped (they're
@@ -1083,11 +1104,26 @@ class StaticAnalyzer:
         for ln in output.splitlines():
             if not ln.strip():
                 continue
-            if any(name in ln for name in allowed_basenames):
+            line_norm = ln.replace("\\", "/")
+            if any(token in line_norm for token in allowed_tokens):
                 kept.append(ln)
             else:
                 dropped += 1
         return kept, dropped
+
+    @staticmethod
+    def _path_match_token(path: str) -> str:
+        """Return the match token for a file path: ``parent/basename``.
+
+        Using the last two components disambiguates same-named files in
+        different directories while staying tolerant of whether a linter prints
+        absolute or relative paths (the trailing components appear in both).
+        Top-level files (no parent) fall back to the bare basename.
+        """
+        pure = PurePath(path)
+        if pure.parent.name:
+            return f"{pure.parent.name}/{pure.name}"
+        return pure.name
 
     @staticmethod
     def condense_for_prompt(
@@ -1127,18 +1163,20 @@ class StaticAnalyzer:
         if not problem_tools:
             return ""
 
-        allowed_basenames: set[str] | None = None
+        allowed_tokens: set[str] | None = None
         if only_paths is not None:
-            from pathlib import PurePath
-
-            allowed_basenames = {PurePath(p).name for p in only_paths}
-            allowed_basenames.discard("")
+            # parent/basename tokens (slash-normalized) so same-named files in
+            # different directories don't cross-match — see _path_match_token.
+            allowed_tokens = {
+                StaticAnalyzer._path_match_token(p) for p in only_paths if p
+            }
+            allowed_tokens.discard("")
 
         sections: list[str] = []
         for name, res in problem_tools:
-            if allowed_basenames is not None:
+            if allowed_tokens is not None:
                 lines, _ = StaticAnalyzer._filter_lines_for_paths(
-                    res.output, allowed_basenames
+                    res.output, allowed_tokens
                 )
             else:
                 lines = [ln for ln in res.output.splitlines() if ln.strip()]
@@ -1148,7 +1186,7 @@ class StaticAnalyzer:
             truncated = len(lines) - len(head)
             count_label = (
                 f"{len(lines)} matching line(s)"
-                if allowed_basenames is not None
+                if allowed_tokens is not None
                 else f"{res.issues_count} issue(s)"
             )
             section = [f"-- {name} ({count_label}) --"]

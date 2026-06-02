@@ -163,10 +163,20 @@ class FileScanner:
         """
         dir_names: set[str] = set()
         for pattern in self.exclude_patterns:
-            # Match patterns like "**/dirname/**" or "**/dirname/*"
+            # Only prune a literal segment when it is *followed* by a wildcard
+            # segment ("**" or "*"), i.e. the pattern names a directory whose
+            # entire contents are excluded ("**/node_modules/**", "**/dist/*").
+            # A fine-grained pattern like "src/generated.py" or
+            # "tests/fixtures/*.py" must NOT prune "src"/"tests"/"fixtures" —
+            # doing so would skip unrelated files that should be reviewed.
             parts = PurePath(pattern).parts
-            for part in parts:
-                if part != "**" and part != "*" and "*" not in part:
+            for index, part in enumerate(parts[:-1]):
+                next_part = parts[index + 1]
+                if (
+                    part not in ("**", "*")
+                    and "*" not in part
+                    and next_part in ("**", "*")
+                ):
                     dir_names.add(part)
         return dir_names
 

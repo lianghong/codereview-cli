@@ -127,12 +127,16 @@ def read_readme_content(
         if "\x00" in content:
             return None
 
-        # Truncate if too large
-        if len(content) > max_size:
-            truncate_at = max_size - 100  # Leave room for truncation message
-            content = (
-                content[:truncate_at] + "\n\n[TRUNCATED - README exceeded size limit]"
-            )
+        # Truncate if too large. max_size is a BYTE budget, so measure and
+        # slice on UTF-8 bytes — len(content) counts characters, which would
+        # let a multi-byte (non-ASCII) README exceed the intended byte/token
+        # budget without being truncated. Decode with errors="ignore" so a cut
+        # landing mid-codepoint doesn't raise.
+        encoded = content.encode("utf-8")
+        if len(encoded) > max_size:
+            message = "\n\n[TRUNCATED - README exceeded size limit]"
+            truncate_at = max(0, max_size - len(message.encode("utf-8")))
+            content = encoded[:truncate_at].decode("utf-8", errors="ignore") + message
 
         return content, file_size
 
@@ -232,9 +236,15 @@ def prompt_readme_confirmation(
         if response == "" or response.lower() == "n":
             return None
 
+        # Validate readability as text, not just existence — mirror the
+        # found-README custom-path branch above so both prompt paths offer the
+        # same guarantee. A binary/oversized/undecodable file returned here
+        # would otherwise fail later at read time, far from this prompt.
         custom_path = Path(response).expanduser().resolve()
-        if custom_path.is_file():
+        if custom_path.is_file() and read_readme_content(custom_path) is not None:
             return custom_path
+        if custom_path.is_file():
+            console.print(f"[red]File not readable as text: {response}[/red]")
         else:
             console.print(f"[red]File not found: {response}[/red]")
-            return None
+        return None
