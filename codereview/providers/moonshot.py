@@ -20,7 +20,6 @@ from typing import Any
 from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.output_parsers import PydanticOutputParser
 from langchain_moonshot import ChatMoonshot
-from openai import RateLimitError
 from pydantic import SecretStr
 
 from codereview.config.models import ModelConfig, MoonshotConfig
@@ -31,7 +30,13 @@ from codereview.providers.base import (
     RetryConfig,
     ValidationResult,
 )
-from codereview.providers.mixins import TokenTrackingMixin
+from codereview.providers.mixins import (
+    TokenTrackingMixin,
+    extract_openai_token_usage,
+    is_openai_retryable_error,
+    parse_retry_after,
+    require_https,
+)
 
 
 class MoonshotProvider(TokenTrackingMixin, ModelProvider):
@@ -102,7 +107,9 @@ class MoonshotProvider(TokenTrackingMixin, ModelProvider):
         # (aliased `model`); `api_key` accepts SecretStr | None directly.
         model_params: dict[str, Any] = {
             "model": wire_model,
-            "base_url": self.provider_config.base_url,
+            # Fail closed on cleartext so KIMI_API_KEY can't be sent over HTTP
+            # even if validate_credentials was skipped.
+            "base_url": require_https(self.provider_config.base_url, "base_url"),
             "api_key": SecretStr(str(self.provider_config.api_key)),
             "max_tokens": self.max_tokens,
             "rate_limiter": self.rate_limiter,
@@ -139,44 +146,31 @@ class MoonshotProvider(TokenTrackingMixin, ModelProvider):
         return BATCH_PROMPT_TEMPLATE | self.model
 
     def _is_retryable_error(self, error: Exception) -> bool:
-        """Moonshot surfaces 429s as openai.RateLimitError via the OpenAI client."""
-        return isinstance(error, RateLimitError)
+        """Retry rate limits plus transient timeouts/connection/5xx errors.
+
+        Moonshot surfaces these via the OpenAI client, so the shared helper applies.
+        """
+        return is_openai_retryable_error(error)
 
     def _calculate_backoff(
         self, error: Exception, attempt: int, config: RetryConfig
     ) -> float:
         """Exponential backoff honoring Moonshot's Retry-After header."""
-        response = getattr(error, "response", None)
-        if isinstance(error, RateLimitError) and response is not None:
-            retry_after = response.headers.get("retry-after")
-            if retry_after:
-                try:
-                    wait = min(float(retry_after), config.max_wait)
-                    logging.info(
-                        "Moonshot rate limit: waiting %.1fs (Retry-After header)",
-                        wait,
-                    )
-                    return wait
-                # PEP 758 syntax (Python 3.14+): unparenthesized multi-exception catch
-                except ValueError, TypeError:
-                    pass
-
+        wait = parse_retry_after(error, config.max_wait)
+        if wait is not None:
+            logging.info(
+                "Moonshot rate limit: waiting %.1fs (Retry-After header)", wait
+            )
+            return wait
         return min(config.base_wait * (2**attempt), config.max_wait)
 
     def _extract_token_usage(self, result: Any) -> tuple[int, int]:
-        """Extract token usage from Moonshot response metadata.
+        """Extract token usage from Moonshot's OpenAI-shaped response metadata.
 
-        ChatMoonshot extends BaseChatOpenAI so the response shape mirrors
-        OpenAI's: prompt_tokens / completion_tokens land in
-        ``response_metadata.token_usage``.
+        ChatMoonshot extends BaseChatOpenAI, so usage lands in
+        ``response_metadata.token_usage`` like the other OpenAI-compat providers.
         """
-        if hasattr(result, "response_metadata"):
-            token_usage = result.response_metadata.get("token_usage", {})
-            return (
-                token_usage.get("prompt_tokens", 0),
-                token_usage.get("completion_tokens", 0),
-            )
-        return (0, 0)
+        return extract_openai_token_usage(result)
 
     def analyze_batch(
         self,

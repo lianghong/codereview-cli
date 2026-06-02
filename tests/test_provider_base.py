@@ -1,7 +1,85 @@
+import httpx
 import pytest
+from openai import (
+    APIConnectionError,
+    APIStatusError,
+    APITimeoutError,
+    RateLimitError,
+)
 
 from codereview.models import CodeReviewReport, ReviewMetrics
 from codereview.providers.base import ModelProvider
+from codereview.providers.mixins import is_openai_retryable_error
+
+
+def _api_status_error(status_code: int) -> APIStatusError:
+    """Build an APIStatusError with a given HTTP status for retry tests."""
+    request = httpx.Request("POST", "https://example.test/v1/chat/completions")
+    response = httpx.Response(status_code, request=request)
+    return APIStatusError("boom", response=response, body=None)
+
+
+def test_is_openai_retryable_error_retries_transient():
+    """Rate limits, timeouts, connection errors, and 5xx are retryable."""
+    req = httpx.Request("POST", "https://example.test/")
+    assert is_openai_retryable_error(
+        RateLimitError("rl", response=httpx.Response(429, request=req), body=None)
+    )
+    assert is_openai_retryable_error(APITimeoutError(request=req))
+    assert is_openai_retryable_error(APIConnectionError(request=req))
+    assert is_openai_retryable_error(_api_status_error(500))
+    assert is_openai_retryable_error(_api_status_error(503))
+
+
+def test_is_openai_retryable_error_skips_client_errors():
+    """4xx (other than 429) and unrelated exceptions are NOT retryable."""
+    assert not is_openai_retryable_error(_api_status_error(400))
+    assert not is_openai_retryable_error(_api_status_error(401))
+    assert not is_openai_retryable_error(_api_status_error(404))
+    assert not is_openai_retryable_error(ValueError("nope"))
+
+
+def _rate_limit_error_with_retry_after(value: str) -> RateLimitError:
+    """A RateLimitError whose response carries a given Retry-After header."""
+    req = httpx.Request("POST", "https://example.test/")
+    response = httpx.Response(429, headers={"retry-after": value}, request=req)
+    return RateLimitError("rl", response=response, body=None)
+
+
+def test_parse_retry_after_reads_valid_header():
+    """A valid Retry-After is returned, capped at max_wait."""
+    from codereview.providers.mixins import parse_retry_after
+
+    err = _rate_limit_error_with_retry_after("3")
+    assert parse_retry_after(err, max_wait=60.0) == 3.0
+    # Capped at max_wait.
+    assert parse_retry_after(_rate_limit_error_with_retry_after("999"), 60.0) == 60.0
+
+
+def test_parse_retry_after_rejects_negative():
+    """Regression: a negative Retry-After must return None, not a negative
+    sleep — time.sleep(-1) raises ValueError and would abort the retry."""
+    from codereview.providers.mixins import parse_retry_after
+
+    assert parse_retry_after(_rate_limit_error_with_retry_after("-1"), 60.0) is None
+
+
+def test_parse_retry_after_rejects_non_numeric():
+    """A non-numeric Retry-After falls back (None) rather than raising."""
+    from codereview.providers.mixins import parse_retry_after
+
+    assert parse_retry_after(_rate_limit_error_with_retry_after("soon"), 60.0) is None
+
+
+def test_parse_retry_after_none_without_header():
+    """No Retry-After header → None (caller uses exponential backoff)."""
+    from codereview.providers.mixins import parse_retry_after
+
+    req = httpx.Request("POST", "https://example.test/")
+    err = RateLimitError("rl", response=httpx.Response(429, request=req), body=None)
+    assert parse_retry_after(err, 60.0) is None
+    # A non-rate-limit error is never parsed for Retry-After.
+    assert parse_retry_after(ValueError("x"), 60.0) is None
 
 
 class ConcreteProvider(ModelProvider):
@@ -278,3 +356,272 @@ def test_execute_with_retry_rejects_none_result():
             retry_config=cfg,
             batch_context="y",
         )
+
+
+# ---------------------------------------------------------------------------
+# Malformed include_raw=True result (parsed is None) is retried, not aborted
+# ---------------------------------------------------------------------------
+
+
+class _SequencedChainProvider(ConcreteProvider):
+    """Returns a queued result per _invoke_chain call, counting invocations.
+
+    Lets a test assert that a transient parse failure is *retried* rather than
+    aborting the batch on the first attempt.
+    """
+
+    def __init__(self, results, enable_output_fixing=True):
+        super().__init__()
+        self._results = list(results)
+        self.enable_output_fixing = enable_output_fixing
+        self.invocations = 0
+
+    def _invoke_chain(self, chain_input):
+        self.invocations += 1
+        item = self._results.pop(0)
+        # An Exception in the queue is raised (simulates the chain itself
+        # throwing, e.g. PydanticOutputParser raising OutputParserException);
+        # any other item is returned as the chain result.
+        if isinstance(item, Exception):
+            raise item
+        return item
+
+
+def _malformed_raw():
+    """An include_raw=True dict whose parsed is None (transient bad output)."""
+    return {"raw": object(), "parsed": None, "parsing_error": "bad json"}
+
+
+def _good_raw():
+    report = CodeReviewReport(
+        summary="ok",
+        metrics=ReviewMetrics(files_analyzed=1),
+        issues=[],
+        system_design_insights="No design issues found",
+        recommendations=[],
+        improvement_suggestions=[],
+    )
+    return {"raw": object(), "parsed": report, "parsing_error": None}
+
+
+def test_parsed_none_is_retried_when_output_fixing_enabled():
+    """Regression: a malformed structured-output result (parsed is None) must
+    be retried via the enable_output_fixing path, not aborted immediately.
+
+    Previously the parsed-is-None branch raised a plain ValueError that fell
+    into the generic `except Exception`, where ValueError is non-retryable, so
+    the batch failed on attempt 1. The dedicated OutputParsingRetryError is now
+    caught alongside ValidationError and retried.
+    """
+    from codereview.providers.base import RetryConfig
+
+    provider = _SequencedChainProvider(
+        results=[_malformed_raw(), _good_raw()],
+        enable_output_fixing=True,
+    )
+    cfg = RetryConfig(max_retries=3, validation_retry_sleep=0.0)
+
+    result = provider._execute_with_retry(
+        chain_input={"system_prompt": "x", "batch_context": "y"},
+        retry_config=cfg,
+        batch_context="y",
+    )
+
+    assert isinstance(result, CodeReviewReport)
+    assert provider.invocations == 2  # retried once, then succeeded
+
+
+def test_parsed_none_raises_after_retries_exhausted():
+    """When every attempt is malformed, the retryable error surfaces."""
+    from codereview.providers.base import OutputParsingRetryError, RetryConfig
+
+    provider = _SequencedChainProvider(
+        results=[_malformed_raw(), _malformed_raw()],
+        enable_output_fixing=True,
+    )
+    cfg = RetryConfig(max_retries=1, validation_retry_sleep=0.0)
+
+    with pytest.raises(
+        OutputParsingRetryError, match="Structured output parsing failed"
+    ):
+        provider._execute_with_retry(
+            chain_input={"system_prompt": "x", "batch_context": "y"},
+            retry_config=cfg,
+            batch_context="y",
+        )
+    assert provider.invocations == 2  # initial + 1 retry
+
+
+def test_parsed_none_not_retried_when_output_fixing_disabled():
+    """With output fixing off, the malformed result raises on the first attempt."""
+    from codereview.providers.base import OutputParsingRetryError, RetryConfig
+
+    provider = _SequencedChainProvider(
+        results=[_malformed_raw(), _good_raw()],
+        enable_output_fixing=False,
+    )
+    cfg = RetryConfig(max_retries=3, validation_retry_sleep=0.0)
+
+    with pytest.raises(OutputParsingRetryError):
+        provider._execute_with_retry(
+            chain_input={"system_prompt": "x", "batch_context": "y"},
+            retry_config=cfg,
+            batch_context="y",
+        )
+    assert provider.invocations == 1  # no retry
+
+
+# ---------------------------------------------------------------------------
+# Prompt-parsing path: OutputParserException (malformed JSON) is retried
+# ---------------------------------------------------------------------------
+
+
+def test_output_parser_exception_is_retried_when_output_fixing_enabled():
+    """Regression (field failure): on the prompt-parsing path, a malformed-JSON
+    response makes PydanticOutputParser raise OutputParserException.
+
+    That exception is a ValueError subclass but NOT a ValidationError, so before
+    the fix it fell into the generic `except Exception` (non-retryable) and
+    aborted the batch on attempt 1 — observed with GPT-5.5 on Bedrock emitting
+    invalid JSON on a think-heavy batch. It must now retry like other transient
+    output failures.
+    """
+    from langchain_core.exceptions import OutputParserException
+
+    from codereview.providers.base import RetryConfig
+
+    provider = _SequencedChainProvider(
+        results=[
+            OutputParserException("Invalid json output: {"),
+            CodeReviewReport(
+                summary="ok",
+                metrics=ReviewMetrics(files_analyzed=1),
+                issues=[],
+                system_design_insights="No design issues found",
+                recommendations=[],
+                improvement_suggestions=[],
+            ),
+        ],
+        enable_output_fixing=True,
+    )
+    cfg = RetryConfig(max_retries=3, validation_retry_sleep=0.0)
+
+    result = provider._execute_with_retry(
+        chain_input={"system_prompt": "x", "batch_context": "y"},
+        retry_config=cfg,
+        batch_context="y",
+    )
+
+    assert isinstance(result, CodeReviewReport)
+    assert provider.invocations == 2  # retried once, then succeeded
+
+
+def test_output_parser_exception_raises_after_retries_exhausted():
+    """When every attempt yields malformed JSON, the parser error surfaces."""
+    from langchain_core.exceptions import OutputParserException
+
+    from codereview.providers.base import RetryConfig
+
+    provider = _SequencedChainProvider(
+        results=[
+            OutputParserException("Invalid json output: {"),
+            OutputParserException("Invalid json output: {"),
+        ],
+        enable_output_fixing=True,
+    )
+    cfg = RetryConfig(max_retries=1, validation_retry_sleep=0.0)
+
+    with pytest.raises(OutputParserException):
+        provider._execute_with_retry(
+            chain_input={"system_prompt": "x", "batch_context": "y"},
+            retry_config=cfg,
+            batch_context="y",
+        )
+    assert provider.invocations == 2  # initial + 1 retry
+
+
+def test_output_parser_exception_not_retried_when_output_fixing_disabled():
+    """With output fixing off, a parser error raises on the first attempt."""
+    from langchain_core.exceptions import OutputParserException
+
+    from codereview.providers.base import RetryConfig
+
+    provider = _SequencedChainProvider(
+        results=[OutputParserException("Invalid json output: {")],
+        enable_output_fixing=False,
+    )
+    cfg = RetryConfig(max_retries=3, validation_retry_sleep=0.0)
+
+    with pytest.raises(OutputParserException):
+        provider._execute_with_retry(
+            chain_input={"system_prompt": "x", "batch_context": "y"},
+            retry_config=cfg,
+            batch_context="y",
+        )
+    assert provider.invocations == 1  # no retry
+
+
+# ---------------------------------------------------------------------------
+# Tool-calling path: a schema-violating result (ValidationError) is retried
+# ---------------------------------------------------------------------------
+
+
+def _schema_validation_error() -> Exception:
+    """A real Pydantic ValidationError from a schema-violating CodeReviewReport.
+
+    Simulates with_structured_output coercing a malformed tool call into the
+    schema and failing — the tool-calling counterpart to OutputParserException.
+    """
+    from pydantic import ValidationError
+
+    try:
+        CodeReviewReport(summary="x", issues="not-a-list", metrics={})
+    except ValidationError as exc:
+        return exc
+    raise AssertionError("expected a ValidationError")  # pragma: no cover
+
+
+def test_tool_calling_validation_error_is_retried():
+    """A ValidationError from the tool-calling chain retries end-to-end.
+
+    Completes the both-paths malformed-output coverage: OutputParserException
+    covers the prompt-parsing path; this covers schema violations on the
+    tool-calling (with_structured_output) path surfacing into the retry loop.
+    """
+    from codereview.providers.base import RetryConfig
+
+    provider = _SequencedChainProvider(
+        results=[_schema_validation_error(), _good_raw()],
+        enable_output_fixing=True,
+    )
+    cfg = RetryConfig(max_retries=3, validation_retry_sleep=0.0)
+
+    result = provider._execute_with_retry(
+        chain_input={"system_prompt": "x", "batch_context": "y"},
+        retry_config=cfg,
+        batch_context="y",
+    )
+
+    assert isinstance(result, CodeReviewReport)
+    assert provider.invocations == 2  # retried once, then succeeded
+
+
+def test_tool_calling_validation_error_not_retried_when_fixing_disabled():
+    """With output fixing off, the schema ValidationError raises immediately."""
+    from pydantic import ValidationError
+
+    from codereview.providers.base import RetryConfig
+
+    provider = _SequencedChainProvider(
+        results=[_schema_validation_error(), _good_raw()],
+        enable_output_fixing=False,
+    )
+    cfg = RetryConfig(max_retries=3, validation_retry_sleep=0.0)
+
+    with pytest.raises(ValidationError):
+        provider._execute_with_retry(
+            chain_input={"system_prompt": "x", "batch_context": "y"},
+            retry_config=cfg,
+            batch_context="y",
+        )
+    assert provider.invocations == 1  # no retry

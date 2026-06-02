@@ -15,8 +15,8 @@ import logging
 from typing import Any
 
 from langchain_core.callbacks import BaseCallbackHandler
+from langchain_core.output_parsers import PydanticOutputParser
 from langchain_deepseek import ChatDeepSeek
-from openai import RateLimitError
 from pydantic import SecretStr
 
 from codereview.config.models import DeepSeekConfig, ModelConfig
@@ -27,7 +27,13 @@ from codereview.providers.base import (
     RetryConfig,
     ValidationResult,
 )
-from codereview.providers.mixins import TokenTrackingMixin
+from codereview.providers.mixins import (
+    TokenTrackingMixin,
+    extract_openai_token_usage,
+    is_openai_retryable_error,
+    parse_retry_after,
+    require_https,
+)
 
 
 class DeepSeekProvider(TokenTrackingMixin, ModelProvider):
@@ -59,6 +65,13 @@ class DeepSeekProvider(TokenTrackingMixin, ModelProvider):
         self.model_config = model_config
         self.provider_config = provider_config
         self.project_context = project_context
+
+        # Set True in _create_model when thinking mode is enabled: DeepSeek's
+        # thinking/reasoner path rejects the forced tool_choice that
+        # with_structured_output relies on, so we fall back to prompt-based
+        # JSON parsing (same pattern as MiniMax M2.5 / GLM-5.1).
+        self._output_parser = PydanticOutputParser(pydantic_object=CodeReviewReport)
+        self._use_prompt_parsing = False
 
         # DeepSeek V4 family accepts temperature; allow_none preserves
         # opt-out for any future reasoning-only variants.
@@ -93,7 +106,9 @@ class DeepSeekProvider(TokenTrackingMixin, ModelProvider):
         # (aliased `model`); keep the aliased form for readability.
         model_params: dict[str, Any] = {
             "model": wire_model,
-            "api_base": self.provider_config.api_base,
+            # Fail closed on cleartext so DEEPSEEK_API_KEY can't be sent over
+            # HTTP even if validate_credentials was skipped.
+            "api_base": require_https(self.provider_config.api_base, "api_base"),
             "api_key": SecretStr(str(self.provider_config.api_key)),
             "max_tokens": self.max_tokens,
             "rate_limiter": self.rate_limiter,
@@ -119,8 +134,16 @@ class DeepSeekProvider(TokenTrackingMixin, ModelProvider):
 
         # Both V4-Pro and V4-Flash support tool-calling-based structured
         # output (per https://api-docs.deepseek.com/guides/tool_calls)
-        # *when thinking mode is disabled*. include_raw=True so we can
-        # pull real token counts from the underlying AIMessage.
+        # *when thinking mode is disabled*. When an operator opts into
+        # thinking via inference_params.thinking, the forced tool_choice that
+        # with_structured_output sets is rejected server-side, so fall back to
+        # prompt-based JSON parsing (PydanticOutputParser) instead — otherwise
+        # the documented override would make every analyze_batch call fail.
+        if self._build_extra_body()["thinking"]["type"] == "enabled":
+            self._use_prompt_parsing = True
+            return base_model
+
+        # include_raw=True so we can pull real token counts from the AIMessage.
         return base_model.with_structured_output(CodeReviewReport, include_raw=True)
 
     def _build_extra_body(self) -> dict[str, Any]:
@@ -144,46 +167,32 @@ class DeepSeekProvider(TokenTrackingMixin, ModelProvider):
         return {"thinking": {"type": thinking_state}}
 
     def _create_chain(self) -> Any:
+        if self._use_prompt_parsing:
+            return BATCH_PROMPT_TEMPLATE | self.model | self._output_parser
         return BATCH_PROMPT_TEMPLATE | self.model
 
     def _is_retryable_error(self, error: Exception) -> bool:
-        """DeepSeek surfaces 429s as openai.RateLimitError via the OpenAI client."""
-        return isinstance(error, RateLimitError)
+        """Retry rate limits plus transient timeouts/connection/5xx errors.
+
+        DeepSeek surfaces these via the OpenAI client, so the shared helper applies.
+        """
+        return is_openai_retryable_error(error)
 
     def _calculate_backoff(
         self, error: Exception, attempt: int, config: RetryConfig
     ) -> float:
         """Exponential backoff honoring DeepSeek's Retry-After header."""
-        response = getattr(error, "response", None)
-        if isinstance(error, RateLimitError) and response is not None:
-            retry_after = response.headers.get("retry-after")
-            if retry_after:
-                try:
-                    wait = min(float(retry_after), config.max_wait)
-                    logging.info(
-                        "DeepSeek rate limit: waiting %.1fs (Retry-After header)",
-                        wait,
-                    )
-                    return wait
-                # PEP 758 syntax (Python 3.14+): unparenthesized multi-exception catch
-                except ValueError, TypeError:
-                    pass
-
+        wait = parse_retry_after(error, config.max_wait)
+        if wait is not None:
+            logging.info(
+                "DeepSeek rate limit: waiting %.1fs (Retry-After header)", wait
+            )
+            return wait
         return min(config.base_wait * (2**attempt), config.max_wait)
 
     def _extract_token_usage(self, result: Any) -> tuple[int, int]:
-        """Extract token usage from DeepSeek response metadata.
-
-        DeepSeek follows OpenAI's response shape, so prompt_tokens /
-        completion_tokens land in ``response_metadata.token_usage``.
-        """
-        if hasattr(result, "response_metadata"):
-            token_usage = result.response_metadata.get("token_usage", {})
-            return (
-                token_usage.get("prompt_tokens", 0),
-                token_usage.get("completion_tokens", 0),
-            )
-        return (0, 0)
+        """Extract token usage from DeepSeek's OpenAI-shaped response metadata."""
+        return extract_openai_token_usage(result)
 
     def analyze_batch(
         self,

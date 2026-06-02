@@ -1,8 +1,94 @@
 """Provider mixins for shared functionality."""
 
 import threading
+from typing import Any
+
+from openai import (
+    APIConnectionError,
+    APIStatusError,
+    APITimeoutError,
+    RateLimitError,
+)
 
 from codereview.config.models import ModelConfig
+
+
+def require_https(url: str, label: str) -> str:
+    """Return ``url`` if it uses HTTPS, else raise ValueError (fail closed).
+
+    Called at client construction (``_create_model``) so a provider used
+    directly — without first calling ``validate_credentials`` — still cannot
+    send an API key / bearer token to a cleartext ``http://`` endpoint (CWE-319).
+    ``label`` names the config field for the error message (e.g. "base_url").
+    """
+    if not str(url).lower().startswith("https://"):
+        raise ValueError(f"{label} must use HTTPS, got: {url!r}")
+    return str(url)
+
+
+def extract_openai_token_usage(result: Any) -> tuple[int, int]:
+    """Extract (prompt_tokens, completion_tokens) from an OpenAI-shaped result.
+
+    Shared by every provider on the OpenAI client (Azure, DeepSeek, Moonshot,
+    Z.AI, OpenAI-on-Bedrock), which all surface usage under
+    ``response_metadata.token_usage``. Returns ``(0, 0)`` when metadata is
+    absent so callers fall back to estimation.
+    """
+    if hasattr(result, "response_metadata"):
+        token_usage = result.response_metadata.get("token_usage", {})
+        return (
+            token_usage.get("prompt_tokens", 0),
+            token_usage.get("completion_tokens", 0),
+        )
+    return (0, 0)
+
+
+def parse_retry_after(error: Exception, max_wait: float) -> float | None:
+    """Return the Retry-After wait (seconds, capped at ``max_wait``) or None.
+
+    Reads the ``retry-after`` header from a rate-limit error's response. Returns
+    ``None`` when the error has no usable header, so each provider keeps its own
+    exponential-backoff fallback (and its own base-wait policy) — Azure, for
+    example, uses a longer fixed base than the OpenAI-compat default.
+    """
+    response = getattr(error, "response", None)
+    if isinstance(error, RateLimitError) and response is not None:
+        retry_after = response.headers.get("retry-after")
+        if retry_after:
+            try:
+                wait = float(retry_after)
+            # PEP 758 syntax (Python 3.14+): unparenthesized multi-exception catch
+            except ValueError, TypeError:
+                return None
+            # A malformed/proxy Retry-After (e.g. "-1") must not become
+            # time.sleep(-1) → ValueError. Treat negatives as "no usable
+            # header" so the caller falls back to exponential backoff.
+            if wait < 0:
+                return None
+            return min(wait, max_wait)
+    return None
+
+
+def is_openai_retryable_error(error: Exception) -> bool:
+    """Return True for transient errors worth retrying on OpenAI-compatible APIs.
+
+    Shared by every provider built on the OpenAI client (Azure, DeepSeek,
+    Moonshot, Z.AI, and OpenAI-on-Bedrock), which all surface the same
+    exception types. Retries:
+
+    - ``RateLimitError`` (HTTP 429) — also an ``APIStatusError``, handled first.
+    - ``APITimeoutError`` / ``APIConnectionError`` — network timeouts, resets,
+      DNS/TLS failures. (``APITimeoutError`` subclasses ``APIConnectionError``.)
+    - ``APIStatusError`` with a 5xx status — transient server-side failures.
+
+    A 4xx ``APIStatusError`` other than 429 (e.g. 400/401/404) is NOT retried —
+    those indicate a request/credential problem that a retry won't fix.
+    """
+    if isinstance(error, (RateLimitError, APIConnectionError, APITimeoutError)):
+        return True
+    if isinstance(error, APIStatusError):
+        return 500 <= error.status_code < 600
+    return False
 
 
 class TokenTrackingMixin:

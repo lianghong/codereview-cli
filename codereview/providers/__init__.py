@@ -40,4 +40,8 @@ def __getattr__(name: str) -> type:
         from codereview.providers.moonshot import MoonshotProvider
 
         return MoonshotProvider
+    if name == "BedrockOpenAIProvider":
+        from codereview.providers.bedrock_openai import BedrockOpenAIProvider
+
+        return BedrockOpenAIProvider
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

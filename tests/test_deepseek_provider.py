@@ -125,14 +125,8 @@ def test_deepseek_disables_thinking_by_default(model_config, provider_config):
         assert kwargs["extra_body"] == {"thinking": {"type": "disabled"}}
 
 
-def test_deepseek_thinking_override_enables_reasoner(provider_config):
-    """Explicit `thinking: enabled` in inference_params turns on reasoning.
-
-    Note: this combination requires *not* using structured output, since
-    reasoner mode rejects forced tool_choice. Operators who set this are
-    on their own re: schema validation.
-    """
-    cfg = ModelConfig(
+def _thinking_enabled_config():
+    return ModelConfig(
         id="deepseek-v4-pro",
         full_id="deepseek-v4-pro",
         name="DeepSeek-V4-Pro (thinking)",
@@ -144,6 +138,11 @@ def test_deepseek_thinking_override_enables_reasoner(provider_config):
             thinking="enabled",
         ),
     )
+
+
+def test_deepseek_thinking_override_enables_reasoner(provider_config):
+    """Explicit `thinking: enabled` in inference_params turns on reasoning."""
+    cfg = _thinking_enabled_config()
     with patch("codereview.providers.deepseek.ChatDeepSeek") as mock_ds:
         mock_instance = Mock()
         mock_instance.with_structured_output.return_value = Mock()
@@ -152,6 +151,42 @@ def test_deepseek_thinking_override_enables_reasoner(provider_config):
         DeepSeekProvider(cfg, provider_config)
         kwargs = mock_ds.call_args.kwargs
         assert kwargs["extra_body"] == {"thinking": {"type": "enabled"}}
+
+
+def test_deepseek_thinking_mode_uses_prompt_parsing(provider_config):
+    """Regression: thinking mode must fall back to prompt-based JSON parsing.
+
+    Reasoner mode rejects the forced tool_choice that with_structured_output
+    sets, so the provider must NOT call with_structured_output when thinking is
+    enabled — it must append a PydanticOutputParser to the chain instead.
+    Previously _create_model unconditionally called with_structured_output, so
+    every analyze_batch under the documented `thinking: enabled` override
+    failed at the API.
+    """
+    cfg = _thinking_enabled_config()
+    with patch("codereview.providers.deepseek.ChatDeepSeek") as mock_ds:
+        mock_instance = Mock()
+        mock_instance.with_structured_output.return_value = Mock()
+        mock_ds.return_value = mock_instance
+
+        provider = DeepSeekProvider(cfg, provider_config)
+
+        # Thinking enabled → prompt parsing, NOT tool-based structured output.
+        assert provider._use_prompt_parsing is True
+        mock_instance.with_structured_output.assert_not_called()
+
+
+def test_deepseek_no_thinking_uses_structured_output(model_config, provider_config):
+    """Default (thinking disabled) keeps tool-based structured output."""
+    with patch("codereview.providers.deepseek.ChatDeepSeek") as mock_ds:
+        mock_instance = Mock()
+        mock_instance.with_structured_output.return_value = Mock()
+        mock_ds.return_value = mock_instance
+
+        provider = DeepSeekProvider(model_config, provider_config)
+
+        assert provider._use_prompt_parsing is False
+        mock_instance.with_structured_output.assert_called_once()
 
 
 def test_deepseek_v4_flash_uses_correct_model_id(flash_model_config, provider_config):
@@ -285,9 +320,10 @@ def test_deepseek_validate_credentials_happy_path(model_config, provider_config)
         assert result.valid is True
 
 
-def test_deepseek_validate_rejects_non_https_base(model_config):
+def test_deepseek_non_https_base_fails_closed_at_construction(model_config):
+    """A cleartext api_base must fail closed when the client is built, before
+    any network call — DEEPSEEK_API_KEY can never reach an http:// endpoint."""
     config = DeepSeekConfig(api_key="test-key", api_base="http://insecure.example.com")
     with patch("codereview.providers.deepseek.ChatDeepSeek"):
-        provider = DeepSeekProvider(model_config, config)
-        result = provider.validate_credentials()
-        assert result.valid is False
+        with pytest.raises(ValueError, match="must use HTTPS"):
+            DeepSeekProvider(model_config, config)

@@ -21,7 +21,7 @@ from codereview.providers.base import (
     RetryConfig,
     ValidationResult,
 )
-from codereview.providers.mixins import TokenTrackingMixin
+from codereview.providers.mixins import TokenTrackingMixin, require_https
 
 
 @contextlib.contextmanager
@@ -166,9 +166,13 @@ class NVIDIAProvider(TokenTrackingMixin, ModelProvider):
         if self.top_p is not None:
             model_params["top_p"] = self.top_p
 
-        # Add base URL for self-hosted NIMs
+        # Add base URL for self-hosted NIMs. Fail closed on cleartext so
+        # NVIDIA_API_KEY can't be sent over HTTP even if validate_credentials
+        # was skipped (the default cloud endpoint is HTTPS).
         if self.provider_config.base_url:
-            model_params["base_url"] = self.provider_config.base_url
+            model_params["base_url"] = require_https(
+                self.provider_config.base_url, "base_url"
+            )
 
         # Add thinking mode parameters (for models like GLM-4.7 that support it)
         if self.model_config.inference_params:
@@ -388,8 +392,16 @@ class NVIDIAProvider(TokenTrackingMixin, ModelProvider):
                             "API endpoint is reachable and authenticated",
                         )
                     elif response.status_code in (401, 403):
-                        result.add_warning(
-                            "API key may be invalid or expired. "
+                        # Explicit auth rejection is a hard failure, not a
+                        # warning — fail fast so --validate is reliable, the
+                        # same contract as the other providers' connection tests.
+                        result.valid = False
+                        result.add_check(
+                            "Connection",
+                            False,
+                            f"API key rejected (HTTP {response.status_code})",
+                        )
+                        result.add_suggestion(
                             "Check your key at https://build.nvidia.com"
                         )
                     else:

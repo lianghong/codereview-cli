@@ -6,12 +6,25 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any
 
-from langchain_core.exceptions import ContextOverflowError
+from langchain_core.exceptions import ContextOverflowError, OutputParserException
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.rate_limiters import InMemoryRateLimiter
 from pydantic import ValidationError
 
 from codereview.models import CodeReviewReport
+
+
+class OutputParsingRetryError(ValueError):
+    """Structured output parsing failed but may succeed on retry.
+
+    Raised when a tool-using provider returns an ``include_raw=True`` result
+    whose ``parsed`` is ``None`` (a transient malformed-LLM-response case).
+    Subclasses ``ValueError`` for backwards compatibility with callers that
+    catch ``ValueError``, but is caught alongside ``ValidationError`` in
+    ``_execute_with_retry`` so ``enable_output_fixing`` retries it rather than
+    aborting the batch via the generic exception path.
+    """
+
 
 # Shared prompt template used by all providers
 BATCH_PROMPT_TEMPLATE = ChatPromptTemplate.from_messages(
@@ -542,6 +555,13 @@ class ModelProvider(ABC):
             ValidationError: If structured output parsing fails after all retries
             Exception: Provider-specific errors after all retries exhausted
         """
+        # Fallback input-token estimate when the provider returns no usage
+        # metadata. The real request is system_prompt + batch_context, so
+        # estimate from BOTH — the system prompt carries the (sliced) language
+        # rules and, on prompt-parsing providers, the appended Pydantic format
+        # instructions. Estimating from batch_context alone undercounts.
+        input_estimate_text = f"{chain_input.get('system_prompt', '')}\n{batch_context}"
+
         last_error: Exception | None = None
         for attempt in range(retry_config.max_retries + 1):
             try:
@@ -558,14 +578,18 @@ class ModelProvider(ABC):
                         msg = "Structured output parsing failed"
                         if parsing_error:
                             msg = f"{msg}: {parsing_error}"
-                        raise ValueError(msg)
+                        # Retryable: a transient malformed response. Raise the
+                        # dedicated subclass so the ValidationError handler
+                        # below honors enable_output_fixing instead of the
+                        # generic except-block aborting the batch immediately.
+                        raise OutputParsingRetryError(msg)
 
                     # Extract token usage from the raw AIMessage
                     input_tokens, output_tokens = self._extract_token_usage(raw)
 
                     # Fallback to estimation if actual counts unavailable
                     if input_tokens == 0:
-                        input_tokens = self._estimate_tokens(batch_context)
+                        input_tokens = self._estimate_tokens(input_estimate_text)
                     if output_tokens == 0:
                         output_tokens = self._estimate_tokens(parsed.model_dump_json())
 
@@ -593,7 +617,7 @@ class ModelProvider(ABC):
 
                 # Fallback to estimation if actual counts unavailable
                 if input_tokens == 0:
-                    input_tokens = self._estimate_tokens(batch_context)
+                    input_tokens = self._estimate_tokens(input_estimate_text)
                 if output_tokens == 0:
                     output_tokens = self._estimate_tokens(result.model_dump_json())
 
@@ -608,8 +632,22 @@ class ModelProvider(ABC):
                     "Try reducing --batch-size."
                 ) from e
 
-            except ValidationError as e:
-                # Output parsing/validation failed
+            except (
+                ValidationError,
+                OutputParsingRetryError,
+                OutputParserException,
+            ) as e:
+                # Output parsing/validation failed and is transient — retryable
+                # when output fixing is enabled. Three shapes land here:
+                #   - ValidationError: tool-use result violated the schema.
+                #   - OutputParsingRetryError: include_raw=True returned a null
+                #     `parsed` field.
+                #   - OutputParserException: the prompt-parsing path's
+                #     PydanticOutputParser got malformed JSON (e.g. a reasoning
+                #     model emitting invalid JSON on a think-heavy batch). This
+                #     is a ValueError subclass but NOT a ValidationError, so
+                #     without naming it here it would fall into the generic
+                #     except below and abort the batch on attempt 1.
                 last_error = e
 
                 enable_fixing = getattr(self, "enable_output_fixing", False)

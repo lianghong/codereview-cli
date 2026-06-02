@@ -189,3 +189,37 @@ def test_project_context_defaults_to_none(factory):
     provider = factory.create_provider("test-opus")
 
     assert provider.project_context is None
+
+
+def test_all_provider_classes_are_lazily_exportable():
+    """Every concrete provider must be importable from the package root.
+
+    Regression: BedrockOpenAIProvider was missing from the __getattr__ lazy
+    loader, so `from codereview.providers import BedrockOpenAIProvider` raised
+    AttributeError even though the module and factory branch existed.
+    """
+    import importlib
+
+    providers_pkg = importlib.import_module("codereview.providers")
+    for class_name in (
+        "BedrockProvider",
+        "AzureOpenAIProvider",
+        "NVIDIAProvider",
+        "GoogleGenAIProvider",
+        "ZAIProvider",
+        "DeepSeekProvider",
+        "MoonshotProvider",
+        "BedrockOpenAIProvider",
+    ):
+        cls = getattr(providers_pkg, class_name)
+        assert isinstance(cls, type)
+        assert cls.__name__ == class_name
+
+
+def test_unknown_provider_attribute_still_raises():
+    """The lazy loader must still reject genuinely unknown names."""
+    import importlib
+
+    providers_pkg = importlib.import_module("codereview.providers")
+    with pytest.raises(AttributeError):
+        _ = providers_pkg.NoSuchProvider

@@ -7,7 +7,6 @@ from typing import Any
 from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.output_parsers import PydanticOutputParser
 from langchain_openai import AzureChatOpenAI
-from openai import RateLimitError
 from pydantic import SecretStr
 
 # Import system prompt from config
@@ -19,7 +18,13 @@ from codereview.providers.base import (
     RetryConfig,
     ValidationResult,
 )
-from codereview.providers.mixins import TokenTrackingMixin
+from codereview.providers.mixins import (
+    TokenTrackingMixin,
+    extract_openai_token_usage,
+    is_openai_retryable_error,
+    parse_retry_after,
+    require_https,
+)
 
 
 class AzureOpenAIProvider(TokenTrackingMixin, ModelProvider):
@@ -92,7 +97,11 @@ class AzureOpenAIProvider(TokenTrackingMixin, ModelProvider):
         # Build base parameters
         model_params: dict[str, Any] = {
             "azure_deployment": self.model_config.deployment_name,
-            "azure_endpoint": str(self.provider_config.endpoint),
+            # Fail closed on cleartext so AZURE_OPENAI_API_KEY can't be sent
+            # over HTTP even if validate_credentials was skipped.
+            "azure_endpoint": require_https(
+                str(self.provider_config.endpoint), "Azure endpoint"
+            ),
             "api_key": SecretStr(str(self.provider_config.api_key)),
             "api_version": self.provider_config.api_version,
             # Set `model` (alias of model_name) explicitly. Real Azure-OpenAI
@@ -145,8 +154,8 @@ class AzureOpenAIProvider(TokenTrackingMixin, ModelProvider):
         return BATCH_PROMPT_TEMPLATE | self.model
 
     def _is_retryable_error(self, error: Exception) -> bool:
-        """Check if error is a retryable Azure rate limit error."""
-        return isinstance(error, RateLimitError)
+        """Retry Azure rate limits plus transient timeouts/connection/5xx errors."""
+        return is_openai_retryable_error(error)
 
     def _calculate_backoff(
         self, error: Exception, attempt: int, config: RetryConfig
@@ -158,32 +167,19 @@ class AzureOpenAIProvider(TokenTrackingMixin, ModelProvider):
         value instead of short exponential backoff prevents wasting all
         retries within the same rate limit window.
         """
-        response = getattr(error, "response", None)
-        if isinstance(error, RateLimitError) and response is not None:
-            retry_after = response.headers.get("retry-after")
-            if retry_after:
-                try:
-                    wait = min(float(retry_after), config.max_wait)
-                    logging.info(
-                        "Azure rate limit: waiting %.1fs (Retry-After header)", wait
-                    )
-                    return wait
-                # PEP 758 syntax (Python 3.14+): unparenthesized multi-exception catch
-                except ValueError, TypeError:
-                    pass
+        wait = parse_retry_after(error, config.max_wait)
+        if wait is not None:
+            logging.info("Azure rate limit: waiting %.1fs (Retry-After header)", wait)
+            return wait
 
-        # Fallback: longer base wait for Azure (rate limit windows are ~60s)
+        # Fallback: longer base wait for Azure (rate limit windows are ~60s).
+        # Azure keeps its own base here rather than config.base_wait — do not
+        # fold this into the shared helper.
         return min(10.0 * (2**attempt), config.max_wait)
 
     def _extract_token_usage(self, result: Any) -> tuple[int, int]:
-        """Extract token usage from Azure OpenAI response metadata."""
-        if hasattr(result, "response_metadata"):
-            token_usage = result.response_metadata.get("token_usage", {})
-            return (
-                token_usage.get("prompt_tokens", 0),
-                token_usage.get("completion_tokens", 0),
-            )
-        return (0, 0)
+        """Extract token usage from Azure's OpenAI-shaped response metadata."""
+        return extract_openai_token_usage(result)
 
     def analyze_batch(
         self,
@@ -379,11 +375,26 @@ class AzureOpenAIProvider(TokenTrackingMixin, ModelProvider):
                             True,
                             "Endpoint is reachable and authenticated",
                         )
-                    elif response.status_code in (401, 403):
+                    elif response.status_code == 401:
+                        # Endpoint reachable but the key is rejected — fail fast
+                        # so --validate surfaces it now, not on the first call.
+                        result.valid = False
                         result.add_check(
                             "Connection",
-                            True,
-                            "Endpoint is reachable (auth will be verified on first call)",
+                            False,
+                            "Endpoint is reachable but authentication failed (HTTP 401)",
+                        )
+                        result.add_suggestion("Verify AZURE_OPENAI_API_KEY is correct")
+                    elif response.status_code == 403:
+                        result.valid = False
+                        result.add_check(
+                            "Connection",
+                            False,
+                            "Endpoint is reachable but access was denied (HTTP 403)",
+                        )
+                        result.add_suggestion(
+                            "Verify the API key, deployment access, and "
+                            "network/firewall settings"
                         )
                     else:
                         result.add_check(

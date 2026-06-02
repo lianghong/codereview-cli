@@ -254,9 +254,10 @@ def test_moonshot_validate_credentials_happy_path(model_config, provider_config)
         assert result.valid is True
 
 
-def test_moonshot_validate_rejects_non_https_base(model_config):
+def test_moonshot_non_https_base_fails_closed_at_construction(model_config):
+    """A cleartext base_url must fail closed when the client is built, before
+    any network call — KIMI_API_KEY can never reach an http:// endpoint."""
     config = MoonshotConfig(api_key="test-key", base_url="http://insecure.example.com")
     with patch("codereview.providers.moonshot.ChatMoonshot"):
-        provider = MoonshotProvider(model_config, config)
-        result = provider.validate_credentials()
-        assert result.valid is False
+        with pytest.raises(ValueError, match="must use HTTPS"):
+            MoonshotProvider(model_config, config)

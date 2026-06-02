@@ -18,7 +18,6 @@ from typing import Any
 from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.output_parsers import PydanticOutputParser
 from langchain_openai import ChatOpenAI
-from openai import RateLimitError
 from pydantic import SecretStr
 
 from codereview.config.models import ModelConfig, ZAIConfig
@@ -29,7 +28,13 @@ from codereview.providers.base import (
     RetryConfig,
     ValidationResult,
 )
-from codereview.providers.mixins import TokenTrackingMixin
+from codereview.providers.mixins import (
+    TokenTrackingMixin,
+    extract_openai_token_usage,
+    is_openai_retryable_error,
+    parse_retry_after,
+    require_https,
+)
 
 
 class ZAIProvider(TokenTrackingMixin, ModelProvider):
@@ -107,7 +112,9 @@ class ZAIProvider(TokenTrackingMixin, ModelProvider):
 
         model_params: dict[str, Any] = {
             "model": wire_model,
-            "base_url": self.provider_config.base_url,
+            # Fail closed on cleartext so the API key can't be sent over HTTP
+            # even if validate_credentials was skipped.
+            "base_url": require_https(self.provider_config.base_url, "base_url"),
             "api_key": SecretStr(str(self.provider_config.api_key)),
             "max_tokens": self.max_tokens,
             "rate_limiter": self.rate_limiter,
@@ -143,46 +150,26 @@ class ZAIProvider(TokenTrackingMixin, ModelProvider):
         return BATCH_PROMPT_TEMPLATE | self.model
 
     def _is_retryable_error(self, error: Exception) -> bool:
-        """Check if error is a retryable Z.AI rate limit error.
+        """Retry rate limits plus transient timeouts/connection/5xx errors.
 
-        Z.AI's OpenAI-compatible endpoint surfaces 429s as openai.RateLimitError
-        through the same client, so the Azure pattern applies.
+        Z.AI's OpenAI-compatible endpoint surfaces these via the OpenAI client,
+        so the shared helper applies.
         """
-        return isinstance(error, RateLimitError)
+        return is_openai_retryable_error(error)
 
     def _calculate_backoff(
         self, error: Exception, attempt: int, config: RetryConfig
     ) -> float:
-        """Exponential backoff for Z.AI rate-limit responses."""
-        response = getattr(error, "response", None)
-        if isinstance(error, RateLimitError) and response is not None:
-            retry_after = response.headers.get("retry-after")
-            if retry_after:
-                try:
-                    wait = min(float(retry_after), config.max_wait)
-                    logging.info(
-                        "Z.AI rate limit: waiting %.1fs (Retry-After header)", wait
-                    )
-                    return wait
-                # PEP 758 syntax (Python 3.14+): unparenthesized multi-exception catch
-                except ValueError, TypeError:
-                    pass
-
+        """Exponential backoff for Z.AI, honoring a Retry-After header."""
+        wait = parse_retry_after(error, config.max_wait)
+        if wait is not None:
+            logging.info("Z.AI rate limit: waiting %.1fs (Retry-After header)", wait)
+            return wait
         return min(config.base_wait * (2**attempt), config.max_wait)
 
     def _extract_token_usage(self, result: Any) -> tuple[int, int]:
-        """Extract token usage from Z.AI response metadata.
-
-        Z.AI mirrors OpenAI's response shape, so prompt_tokens /
-        completion_tokens land in ``response_metadata.token_usage``.
-        """
-        if hasattr(result, "response_metadata"):
-            token_usage = result.response_metadata.get("token_usage", {})
-            return (
-                token_usage.get("prompt_tokens", 0),
-                token_usage.get("completion_tokens", 0),
-            )
-        return (0, 0)
+        """Extract token usage from Z.AI's OpenAI-shaped response metadata."""
+        return extract_openai_token_usage(result)
 
     def analyze_batch(
         self,

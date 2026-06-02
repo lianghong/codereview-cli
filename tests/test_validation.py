@@ -719,7 +719,13 @@ class TestAzureValidation:
             )
 
     def test_azure_validation_connection_test_auth_error(self):
-        """Test connection test still passes when endpoint returns 401."""
+        """A 401 from the endpoint must FAIL validation, not pass.
+
+        Regression: validate_credentials previously recorded 401/403 as a
+        *passed* Connection check ("auth will be verified on first call"), so a
+        bad key reported success and the run only failed later on the first
+        model call. --validate must fail fast when auth is explicitly rejected.
+        """
         from codereview.config.models import (
             AzureOpenAIConfig,
             ModelConfig,
@@ -755,9 +761,51 @@ class TestAzureValidation:
             with patch("httpx.Client", return_value=mock_client):
                 result = provider.validate_credentials()
 
-            assert result.valid is True
+            assert result.valid is False
             assert any(
-                "Connection" in c[0] and c[1] and "reachable" in c[2]
+                "Connection" in c[0] and not c[1] and "401" in c[2]
+                for c in result.checks
+            )
+
+    def test_azure_validation_connection_test_forbidden(self):
+        """A 403 from the endpoint must also FAIL validation."""
+        from codereview.config.models import (
+            AzureOpenAIConfig,
+            ModelConfig,
+            PricingConfig,
+        )
+        from codereview.providers.azure_openai import AzureOpenAIProvider
+
+        os.environ.pop("CODEREVIEW_SKIP_CONNECTION_TEST", None)
+
+        with patch("codereview.providers.azure_openai.AzureChatOpenAI"):
+            model_config = ModelConfig(
+                id="test",
+                name="Test Model",
+                deployment_name="test-deployment",
+                pricing=PricingConfig(input_per_million=1.0, output_per_million=5.0),
+            )
+            provider_config = AzureOpenAIConfig(
+                endpoint="https://test.openai.azure.com",
+                api_key="test-key-12345678901234567890",
+                api_version="2024-01-01",
+            )
+
+            provider = AzureOpenAIProvider(model_config, provider_config)
+
+            mock_response = Mock()
+            mock_response.status_code = 403
+            mock_client = Mock()
+            mock_client.__enter__ = Mock(return_value=mock_client)
+            mock_client.__exit__ = Mock(return_value=False)
+            mock_client.get.return_value = mock_response
+
+            with patch("httpx.Client", return_value=mock_client):
+                result = provider.validate_credentials()
+
+            assert result.valid is False
+            assert any(
+                "Connection" in c[0] and not c[1] and "403" in c[2]
                 for c in result.checks
             )
 
@@ -938,6 +986,47 @@ class TestNVIDIAValidation:
             assert any(
                 "Connection" in c[0] and c[1] and "503" in c[2] for c in result.checks
             )
+
+    def test_nvidia_validation_auth_rejected_is_hard_failure(self):
+        """A 401/403 from NVIDIA's connection test must FAIL validation.
+
+        Consistency: every provider with a connection test treats an explicit
+        auth rejection as a hard failure (same contract as Azure), rather than
+        a soft warning, so --validate is reliable.
+        """
+        from codereview.config.models import ModelConfig, NVIDIAConfig, PricingConfig
+        from codereview.providers.nvidia import NVIDIAProvider
+
+        os.environ.pop("CODEREVIEW_SKIP_CONNECTION_TEST", None)
+
+        for status in (401, 403):
+            with patch("codereview.providers.nvidia.ChatNVIDIA"):
+                model_config = ModelConfig(
+                    id="test",
+                    name="Test Model",
+                    full_id="vendor/test-model",
+                    pricing=PricingConfig(
+                        input_per_million=0.0, output_per_million=0.0
+                    ),
+                )
+                provider_config = NVIDIAConfig(api_key="nvapi-test-key-12345")
+                provider = NVIDIAProvider(model_config, provider_config)
+
+                mock_response = Mock()
+                mock_response.status_code = status
+                mock_client = Mock()
+                mock_client.__enter__ = Mock(return_value=mock_client)
+                mock_client.__exit__ = Mock(return_value=False)
+                mock_client.get.return_value = mock_response
+
+                with patch("httpx.Client", return_value=mock_client):
+                    result = provider.validate_credentials()
+
+                assert result.valid is False, f"status {status} should fail"
+                assert any(
+                    "Connection" in c[0] and not c[1] and str(status) in c[2]
+                    for c in result.checks
+                )
 
 
 class TestCLIValidation:

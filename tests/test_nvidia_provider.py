@@ -587,7 +587,13 @@ def test_validate_credentials_missing_api_key(model_config):
 
 
 def test_validate_credentials_invalid_key_format(model_config):
-    """Test credential validation warns about invalid key format."""
+    """Test credential validation warns about invalid key format.
+
+    The key-format check is a soft *warning* (the key might still work), so it
+    must not flip validity. Mock the connection test as a clean 200 to isolate
+    the format-warning behavior — a 401/403 would now be a separate hard
+    failure (see test_nvidia_validation_auth_rejected_is_hard_failure).
+    """
     provider_config_bad_format = NVIDIAConfig(api_key="not-a-nvidia-key")
 
     with (
@@ -595,7 +601,7 @@ def test_validate_credentials_invalid_key_format(model_config):
         patch("codereview.providers.nvidia.httpx.Client") as mock_client,
     ):
         mock_response = Mock()
-        mock_response.status_code = 401
+        mock_response.status_code = 200
         mock_client_instance = Mock()
         mock_client_instance.__enter__ = Mock(return_value=mock_client_instance)
         mock_client_instance.__exit__ = Mock(return_value=False)
@@ -605,7 +611,7 @@ def test_validate_credentials_invalid_key_format(model_config):
         provider = NVIDIAProvider(model_config, provider_config_bad_format)
         result = provider.validate_credentials()
 
-        # Should still be valid but with warning
+        # Should still be valid but with warning about the key format.
         assert result.valid is True
         assert any("nvapi-" in w for w in result.warnings)
 
