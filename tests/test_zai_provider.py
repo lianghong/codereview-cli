@@ -277,3 +277,15 @@ def test_zai_prompt_parser_strips_markdown_fences():
     report = parser.parse(fenced)
     assert report.summary == "ok"
     assert report.issues == []
+
+
+def test_zai_non_https_base_fails_closed_at_construction(model_config):
+    """A cleartext base_url must fail closed when the client is built, before
+    any network call — ZAI_API_KEY can never reach an http:// endpoint."""
+    config = ZAIConfig(
+        api_key="test-zai-key-1234567890abcdef",
+        base_url="http://insecure.example.com/api/paas/v4/",
+    )
+    with patch("codereview.providers.zai.ChatOpenAI"):
+        with pytest.raises(ValueError, match="must use HTTPS"):
+            ZAIProvider(model_config, config)

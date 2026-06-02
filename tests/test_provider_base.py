@@ -82,6 +82,68 @@ def test_parse_retry_after_none_without_header():
     assert parse_retry_after(ValueError("x"), 60.0) is None
 
 
+# ---------------------------------------------------------------------------
+# _resolve_temperature precedence
+# ---------------------------------------------------------------------------
+
+
+class _Cfg:
+    """Minimal stand-in: _resolve_temperature only reads inference_params."""
+
+    def __init__(self, inference_params):
+        self.inference_params = inference_params
+
+
+class _Params:
+    def __init__(self, temperature):
+        self.temperature = temperature
+
+
+@pytest.mark.parametrize(
+    "override, params, allow_none, provider_default, expected",
+    [
+        # CLI override wins over everything.
+        (0.7, _Params(0.2), False, 0.3, 0.7),
+        (0.7, None, True, 0.3, 0.7),
+        # Explicit numeric in inference_params beats the provider default.
+        (None, _Params(0.2), False, 0.3, 0.2),
+        (None, _Params(0.2), True, 0.3, 0.2),
+        # No inference_params at all → provider default.
+        (None, None, False, 0.3, 0.3),
+        (None, None, True, 0.3, 0.3),
+        # temperature is None in params:
+        #   allow_none=False → fall back to provider default,
+        #   allow_none=True  → stay None (reasoning models opt out). This is the
+        #   DOCUMENTED design: a reasoning model omits default_temperature in
+        #   YAML (loader passes temperature=None) so allow_none returns None.
+        (None, _Params(None), False, 0.3, 0.3),
+        (None, _Params(None), True, 0.3, None),
+    ],
+)
+def test_resolve_temperature_precedence(
+    override, params, allow_none, provider_default, expected
+):
+    result = ModelProvider._resolve_temperature(
+        override=override,
+        model_config=_Cfg(params),
+        provider_default=provider_default,
+        allow_none=allow_none,
+    )
+    assert result == expected
+
+
+@pytest.mark.parametrize("bad", [-0.1, 2.1, 5.0])
+def test_resolve_temperature_rejects_out_of_range_override(bad):
+    """An out-of-range CLI override raises before any provider is built."""
+    with pytest.raises(ValueError, match="between 0.0 and 2.0"):
+        ModelProvider._resolve_temperature(
+            override=bad,
+            model_config=_Cfg(None),
+            provider_default=0.3,
+            allow_none=True,
+        )
+
+
 class ConcreteProvider(ModelProvider):
     """Test implementation of ModelProvider."""
 

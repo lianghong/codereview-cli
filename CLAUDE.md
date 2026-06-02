@@ -155,6 +155,20 @@ The connection test is best-effort and skippable via `CODEREVIEW_SKIP_CONNECTION
 - BaseChatOpenAI subclass with vendor-specific quirks → mirror `providers/moonshot.py` (uses `ChatMoonshot`, accepts `base_url` alias)
 - Tool-use-less endpoints → mirror Bedrock's prompt-based JSON path (set `_use_prompt_parsing=True`, append `PydanticOutputParser` to the chain, inject format instructions via `_system_prompt_with_format_instructions`).
 
+**Provider contract — public API vs internal hooks.** When implementing a provider, know which methods callers invoke versus which the base class calls into:
+
+| Method | Role | Notes |
+|---|---|---|
+| `analyze_batch` | **public** | The single entry point `CodeAnalyzer` calls. Build `chain_input`, then delegate to `_execute_with_retry` (don't reimplement the retry loop). |
+| `validate_credentials` | **public** | Called by `--validate`. Follow the hard-fail vs warning contract above. |
+| `get_pricing` / `get_model_display_name` | **public** | Used by cost reporting and the renderer; `get_pricing` is mandatory for every provider. |
+| `_create_model` / `_create_chain` | **hook (required)** | Build the LangChain client and chain. Enforce HTTPS here via `require_https` (fail closed before any network call). Set `_use_prompt_parsing` for tool-use-less models. |
+| `_extract_token_usage` | **hook (required)** | OpenAI-compatible providers should delegate to `extract_openai_token_usage` (mixins.py). |
+| `_is_retryable_error` / `_calculate_backoff` | **hook (required)** | OpenAI-compatible providers should use `is_openai_retryable_error` + `parse_retry_after` (mixins.py); keep any provider-specific base-wait local (see Azure). |
+| `_execute_with_retry`, `_prepare_batch_context`, `_build_batch_system_prompt`, `_resolve_temperature`, `_build_rate_limiter` | **base-provided** | Inherited from `ModelProvider`; call them, don't override unless you have a specific reason. |
+
+Don't add shared mutable state to a provider without a lock (see the concurrency gotcha).
+
 **New review category:** add to `ReviewIssue.category` Literal + `VALID_CATEGORIES` + `CATEGORY_MAPPING` in `models.py`, then mention it in `SYSTEM_PROMPT` (`config/prompts.py`).
 
 **New language:** add extension to `FileScanner.target_extensions`, add language section to `SYSTEM_PROMPT`, add to `LANGUAGE_EXTENSIONS` in `renderer.py`, add a fixture under `tests/fixtures/`.

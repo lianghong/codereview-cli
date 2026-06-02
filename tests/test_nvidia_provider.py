@@ -672,3 +672,16 @@ def test_reasoning_effort_invalid_value_rejected():
 
     with pytest.raises(pydantic.ValidationError):
         InferenceParams(reasoning_effort="ultra")  # type: ignore[arg-type]
+
+
+def test_nvidia_non_https_custom_base_url_fails_closed(model_config):
+    """A cleartext custom base_url (self-hosted NIM) must fail closed at client
+    construction — NVIDIA_API_KEY can never reach an http:// endpoint. The
+    default cloud endpoint is HTTPS and unaffected."""
+    config = NVIDIAConfig(
+        api_key="nvapi-test-key-12345",
+        base_url="http://insecure-nim.example.com/v1",
+    )
+    with patch("codereview.providers.nvidia.ChatNVIDIA"):
+        with pytest.raises(ValueError, match="must use HTTPS"):
+            NVIDIAProvider(model_config, config)
