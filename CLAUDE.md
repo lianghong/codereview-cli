@@ -81,10 +81,29 @@ FileScanner → FileBatcher → CodeAnalyzer → ProviderFactory → {Bedrock|Az
 
 - **Structured output:** `.with_structured_output(CodeReviewReport, include_raw=True)` — `include_raw` is required to read real token counts from the raw `AIMessage`. MiniMax M2.5 (Bedrock), DeepSeek-V4-Pro (Azure), and Kimi K2.6 (Moonshot) set `supports_tool_use: false` and use `PydanticOutputParser` instead. Bedrock, Azure, and Moonshot providers all honor this flag (mirrored implementations: `_use_prompt_parsing` flag, format-instructions injection in `analyze_batch`). For K2.6 the trigger is server-side: Moonshot rejects `tool_choice='specified'` while thinking mode is enabled, which is exactly what `.with_structured_output()` would set.
 - **Category normalization** (`models.py`): non-Claude models return varying category names; `@field_validator` maps them (e.g., `"error handling" → "Code Quality"`). Unknown → `"Code Quality"`.
-- **Retry/backoff:** per-provider, exponential, capped at 60s. Azure honours `Retry-After`. NVIDIA uses 4s base for 504. Google uses 10s base for `ResourceExhausted` on preview models.
+- **Retry/backoff:** per-provider, exponential, capped at 60s. Azure honours `Retry-After`. NVIDIA uses 4s base for 504. Google uses 10s base for `ResourceExhausted` on preview models. **Output-parsing failures are retried under `enable_output_fixing`** via a dedicated `except` in `_execute_with_retry` that names three shapes: `ValidationError` (tool-use schema violation), `OutputParsingRetryError` (include_raw `parsed` is None), and `OutputParserException` (prompt-parsing path got malformed JSON — a `ValueError` subclass but NOT a `ValidationError`, so it must be named explicitly or it falls into the generic non-retryable `except`). Reasoning models on the prompt-parsing path (e.g. GPT-5.5/5.4 on Bedrock) intermittently emit invalid JSON on think-heavy batches; the retry is what makes those runs complete.
 - **Prompt injection defense:** `SYSTEM_PROMPT` instructs the model to treat code AND README content as data, never instructions. Don't add new "trusted" message paths without extending that defense.
 - **Parallel static analysis:** `StaticAnalyzer.run_all(parallel=True)` uses `ThreadPoolExecutor`; rglob helpers skip symlinks defensively.
 - **Pricing display:** zero-priced models (placeholder for unannounced rates) render `Estimated cost: TBD`, not `$0.0000`. See `_is_pricing_tbd` in `cli.py`.
+
+#### Structured-output path matrix
+
+Which structured-output path a model uses, and why. **When adding a reasoning/thinking model, assume the prompt-parsing path until a live run proves tool-use works** — the failure is often intermittent (only on batches where the model thinks). Set `supports_tool_use: false` in `models.yaml` to opt into prompt parsing; the provider appends a `PydanticOutputParser` and injects format instructions.
+
+| Model (provider) | Thinking | `supports_tool_use` | Path | Why prompt-parsing (if so) |
+|---|---|---|---|---|
+| Claude Opus 4.8 / 4.7 (Bedrock) | adaptive (server-side) | `false` | prompt | Forced `tool_choice` while thinking → tool call returned as **literal text** → `list_type` error (intermittent) |
+| Claude Opus 4.6 (Bedrock) | none | `true` | tool-use | Not adaptive-thinking — forced `tool_choice` works |
+| GPT-5.5 / GPT-5.4 (**Bedrock** OpenAI-compat) | adaptive (server-side) | `false` | prompt | Think-heavy batches return reasoning-only (`tool_calls=[]`, no `parsed`) → "no 'parsed' field" (intermittent) |
+| GPT-5.4 / 5.4 Pro (**Azure**) | reasoning | `true` | tool-use | Azure deployment tolerates forced `tool_choice`; Bedrock's endpoint does not |
+| Kimi K2.6 (Moonshot) | enabled (server-side) | `false` | prompt | Moonshot rejects `tool_choice='specified'` (HTTP 400) while thinking |
+| DeepSeek-V4-Pro (**Azure** Foundry) | — | `false` | prompt | SGLang backend lacks tool calling |
+| DeepSeek V4 family (**DeepSeek direct**) | off by default | `true` | tool-use | Tool calling works when thinking disabled. **`inference_params.thinking: enabled` flips this entry to the prompt path at runtime** (see `deepseek._create_model`) |
+| MiniMax M2.5 (Bedrock) | — | `false` | prompt | No usable tool-based structured output |
+| GLM-5.1 (Z.AI) | — | `false` | prompt | Endpoint ignores `json_schema` response_format, returns markdown-fenced JSON; `PydanticOutputParser` strips fences |
+| Everything else (Claude Sonnet, GPT-OSS, Qwen, Gemini, …) | — | `true` (default) | tool-use | Standard `.with_structured_output()` |
+
+Two distinct failure shapes drive the `false` cases: **"can't tool-call at all"** (MiniMax, DeepSeek-on-Azure, GLM-5.1 fenced JSON) and **"can tool-call but not *while thinking*"** (Opus 4.7/4.8, GPT-5.5/5.4-on-Bedrock, K2.6) — the latter are intermittent. The Gotchas section has the full per-model detail.
 
 ## Configuration
 
@@ -114,6 +133,15 @@ codereview/config/
 | OpenAI-on-Bedrock | `OPENAI_API_KEY` (an **Amazon Bedrock API key** / bearer token, *not* an openai.com key) + `OPENAI_BASE_URL` (region's Bedrock OpenAI endpoint); via OpenAI-compat (`ChatOpenAI` + `base_url`). Set `BEDROCK_OPENAI_MODEL_ID` into each model's `full_id`. | Bedrock console → API keys |
 
 Tests mock at the provider level — no credentials needed for `pytest`.
+
+### `validate_credentials` semantics (`--validate`)
+
+Every provider's `validate_credentials` returns a `ValidationResult`. Keep the hard-failure (`valid=False`) vs warning distinction **consistent across providers** — an inconsistency here is what let a bad Azure key report success once. The contract:
+
+- **Hard failure** (`result.valid = False`, via `add_check(..., False, msg)`) — a problem that *will* break the run: missing/placeholder API key, non-HTTPS `base_url`, unparseable endpoint, and an **explicit auth rejection from the connection test (HTTP 401/403)**. Bedrock additionally fails on AWS identity/credential-chain errors.
+- **Warning** (`add_warning(msg)`) — non-fatal or inconclusive: unusually short key, missing/defaulted API version, and **inconclusive connection tests** (timeout, DNS/TLS/connection refused, or a non-200/401/403 status). These don't flip `valid` because the run may still succeed.
+
+The connection test is best-effort and skippable via `CODEREVIEW_SKIP_CONNECTION_TEST=1`. The 401/403→hard-fail rule applies to every provider that runs a connection test (Azure, NVIDIA); providers without one (DeepSeek, Moonshot, Z.AI, OpenAI-on-Bedrock) validate key presence + HTTPS only and defer auth verification to the first call. When adding a provider with a connection test, follow this same mapping.
 
 **Canonical-owner convention** for the model registry: when the same model is exposed by both a vendor's direct API and a re-hoster (Bedrock/NVIDIA/Azure), the **direct API owns the canonical aliases**. E.g. `deepseek-v4-pro` routes to DeepSeek direct, not NVIDIA's free re-host (`dsv4-nvidia`); `kimi` and `kimi-k2.6` route to Moonshot direct, not Bedrock's K2.5 (`kimi-bedrock`) or NVIDIA's K2.6 (`kimi-nvidia-26`). Re-host entries keep provider-suffixed aliases only.
 
@@ -171,6 +199,6 @@ Fixtures live in `tests/fixtures/sample_code/` (verifies inclusion + exclusion l
 - **`--list-models`** shows everything regardless of credentials; credentials are only validated when a model is actually used.
 - **DeepSeek-V4-Pro on Azure / SGLang null-model bug**: the Foundry endpoint validates `body.model` strictly. langchain-openai's `AzureChatOpenAI` defaults `model_name=None` and serializes `"model": null`, which real Azure-OpenAI ignores but SGLang rejects with HTTP 400. The Azure provider explicitly sets `model=deployment_name` to satisfy both backends.
 - **Moonshot has two platforms**: `platform.moonshot.cn` (Chinese, default in our YAML) and `platform.moonshot.ai` (international). Keys are NOT interchangeable. `KIMI_API_KEY` typically maps to `.cn`; users with `.ai` keys must override `base_url` in the moonshot section.
-- **OpenAI-on-Bedrock is NOT the `bedrock` provider**: GPT-5.5/GPT-5.4 on Bedrock go through Bedrock's *OpenAI-compatible* endpoint, which authenticates with an Amazon Bedrock **API key (bearer token)** via `ChatOpenAI` + `base_url` — not the SigV4 `ChatBedrockConverse` path. It lives in the separate `bedrock_openai` provider. Underlying transport is the `openai` SDK (already pulled by `langchain-openai`; no new dep). The `bedrock_openai` model entries' `full_id` is a **literal**, not `${BEDROCK_OPENAI_MODEL_ID}` — an unset env var expands to `""` and fails `full_id`'s `min_length=1`, breaking `--list-models`; paste the wire id from the console instead. These are reasoning models (Responses API via `use_responses_api: true`, no temperature/top_p). `supports_tool_use: true` is provisional — if a forced `tool_choice` returns the tool call as literal text (the Opus 4.7/4.8 failure mode), flip to `false` for the prompt-based JSON path.
+- **OpenAI-on-Bedrock is NOT the `bedrock` provider**: GPT-5.5/GPT-5.4 on Bedrock go through Bedrock's *OpenAI-compatible* endpoint, which authenticates with an Amazon Bedrock **API key (bearer token)** via `ChatOpenAI` + `base_url` — not the SigV4 `ChatBedrockConverse` path. It lives in the separate `bedrock_openai` provider. Underlying transport is the `openai` SDK (already pulled by `langchain-openai`; no new dep). The `bedrock_openai` model entries' `full_id` is a **literal**, not `${BEDROCK_OPENAI_MODEL_ID}` — an unset env var expands to `""` and fails `full_id`'s `min_length=1`, breaking `--list-models`; paste the wire id from the console instead. These are reasoning models (Responses API via `use_responses_api: true`, no temperature/top_p) and use `supports_tool_use: false` — **verified against the live endpoint**: GPT-5.5/5.4 engage adaptive server-side thinking per request, and on think-heavy batches return a reasoning-only response (`tool_calls=[]`, no `parsed` field → "Structured Output response does not have a 'parsed' field"), which breaks the forced `tool_choice` that `.with_structured_output()` sets. Intermittent (only the batches where it thinks). Same failure mode as Opus 4.7/4.8 on Bedrock, so they route through prompt-based JSON parsing. Note GPT-5.4 on *Azure* keeps `supports_tool_use: true` — that deployment doesn't exhibit this; the Bedrock OpenAI-compatible endpoint does.
 - **Determinism for static analysis**: when `MAX_FILES_PER_TOOL=500` truncation triggers, file lists must be `sorted(...)[:N]`. Locked in by `tests/test_static_analysis.py::test_truncation_is_deterministic`. `MAX_FILES_PER_TOOL`'s docstring documents this as a design guarantee.
 - **`--tool-timeout`** plumbs through to `subprocess.run(timeout=...)` for static-analysis tools (default 120s). `--include-hidden` opts into `.github/scripts/` etc. Both are off the FileScanner / StaticAnalyzer constructors as well, not just the CLI.
