@@ -239,8 +239,17 @@ def test_moonshot_validate_credentials_empty_key_rejected():
         MoonshotConfig(api_key="")
 
 
-def test_moonshot_validate_credentials_placeholder(model_config):
-    config = MoonshotConfig(api_key="your-kimi-api-key-here")
+@pytest.mark.parametrize(
+    "placeholder",
+    [
+        "your-kimi-api-key-here",
+        "your-moonshot-key",  # the exact string README documents
+        "placeholder",
+        "  Your-Moonshot-Key  ",  # whitespace + case must still be rejected
+    ],
+)
+def test_moonshot_validate_credentials_placeholder(model_config, placeholder):
+    config = MoonshotConfig(api_key=placeholder)
     with patch("codereview.providers.moonshot.ChatMoonshot"):
         provider = MoonshotProvider(model_config, config)
         result = provider.validate_credentials()

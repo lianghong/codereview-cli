@@ -207,7 +207,14 @@ class MoonshotProvider(TokenTrackingMixin, ModelProvider):
             )
             return result
 
-        if api_key in ("your-kimi-api-key-here", "placeholder"):
+        # Reject the documented placeholders too: the README tells users to
+        # export KIMI_API_KEY="your-moonshot-key", so --validate must fail fast
+        # on that exact string instead of deferring a 401 to the first call.
+        if api_key.strip().lower() in (
+            "your-kimi-api-key-here",
+            "your-moonshot-key",
+            "placeholder",
+        ):
             result.valid = False
             result.add_check(
                 "API Key", False, "KIMI_API_KEY appears to be a placeholder"

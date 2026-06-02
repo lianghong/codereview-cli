@@ -85,6 +85,7 @@ FileScanner → FileBatcher → CodeAnalyzer → ProviderFactory → {Bedrock|Az
 - **Prompt injection defense:** `SYSTEM_PROMPT` instructs the model to treat code AND README content as data, never instructions. Don't add new "trusted" message paths without extending that defense.
 - **Parallel static analysis:** `StaticAnalyzer.run_all(parallel=True)` uses `ThreadPoolExecutor`; rglob helpers skip symlinks defensively.
 - **Pricing display:** zero-priced models (placeholder for unannounced rates) render `Estimated cost: TBD`, not `$0.0000`. See `_is_pricing_tbd` in `cli.py`.
+- **Markdown export tolerates raw-dict metrics:** `metrics_to_dict` (renderer.py) returns `report.metrics` unchanged when it isn't a Pydantic `ReviewMetrics` (the documented raw-dict fallback), so token values may be stringified or `None`. Every spot that formats a token metric with `:,` or divides it for cost must `isinstance(..., int)`-guard first — `_metrics`, the regular-metrics loop, and `_format_summary` all do. Don't add an unguarded `f"{value:,}"` or cost division on metrics values; locked in by the raw-dict tests in `tests/test_markdown_export.py`.
 
 #### Structured-output path matrix
 
@@ -138,7 +139,7 @@ Tests mock at the provider level — no credentials needed for `pytest`.
 
 Every provider's `validate_credentials` returns a `ValidationResult`. Keep the hard-failure (`valid=False`) vs warning distinction **consistent across providers** — an inconsistency here is what let a bad Azure key report success once. The contract:
 
-- **Hard failure** (`result.valid = False`, via `add_check(..., False, msg)`) — a problem that *will* break the run: missing/placeholder API key, non-HTTPS `base_url`, unparseable endpoint, and an **explicit auth rejection from the connection test (HTTP 401/403)**. Bedrock additionally fails on AWS identity/credential-chain errors.
+- **Hard failure** (`result.valid = False`, via `add_check(..., False, msg)`) — a problem that *will* break the run: missing/placeholder API key, non-HTTPS `base_url`, unparseable endpoint, and an **explicit auth rejection from the connection test (HTTP 401/403)**. Bedrock additionally fails on AWS identity/credential-chain errors. **The placeholder set must include the exact strings the README tells users to export** (e.g. `your-deepseek-key`, `your-moonshot-key`) — not just the generic `placeholder` / `your-…-api-key-here` — and is matched case-insensitively after `.strip()`, so a copied-and-not-replaced placeholder fails fast at `--validate` instead of 401'ing on the first real call.
 - **Warning** (`add_warning(msg)`) — non-fatal or inconclusive: unusually short key, missing/defaulted API version, and **inconclusive connection tests** (timeout, DNS/TLS/connection refused, or a non-200/401/403 status). These don't flip `valid` because the run may still succeed.
 
 The connection test is best-effort and skippable via `CODEREVIEW_SKIP_CONNECTION_TEST=1`. The 401/403→hard-fail rule applies to every provider that runs a connection test (Azure, NVIDIA); providers without one (DeepSeek, Moonshot, Z.AI, OpenAI-on-Bedrock) validate key presence + HTTPS only and defer auth verification to the first call. When adding a provider with a connection test, follow this same mapping.

@@ -228,7 +228,14 @@ class DeepSeekProvider(TokenTrackingMixin, ModelProvider):
             )
             return result
 
-        if api_key in ("your-deepseek-api-key-here", "placeholder"):
+        # Reject the documented placeholders too: the README tells users to
+        # export DEEPSEEK_API_KEY="your-deepseek-key", so --validate must fail
+        # fast on that exact string instead of deferring a 401 to the first call.
+        if api_key.strip().lower() in (
+            "your-deepseek-api-key-here",
+            "your-deepseek-key",
+            "placeholder",
+        ):
             result.valid = False
             result.add_check(
                 "API Key", False, "DEEPSEEK_API_KEY appears to be a placeholder"

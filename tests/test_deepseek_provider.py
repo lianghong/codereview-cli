@@ -305,8 +305,17 @@ def test_deepseek_validate_credentials_empty_key():
         DeepSeekConfig(api_key="")
 
 
-def test_deepseek_validate_credentials_placeholder(model_config):
-    config = DeepSeekConfig(api_key="your-deepseek-api-key-here")
+@pytest.mark.parametrize(
+    "placeholder",
+    [
+        "your-deepseek-api-key-here",
+        "your-deepseek-key",  # the exact string README documents
+        "placeholder",
+        "  Your-DeepSeek-Key  ",  # whitespace + case must still be rejected
+    ],
+)
+def test_deepseek_validate_credentials_placeholder(model_config, placeholder):
+    config = DeepSeekConfig(api_key=placeholder)
     with patch("codereview.providers.deepseek.ChatDeepSeek"):
         provider = DeepSeekProvider(model_config, config)
         result = provider.validate_credentials()

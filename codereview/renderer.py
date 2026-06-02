@@ -673,13 +673,22 @@ class MarkdownExporter:
             if model_name:
                 lines.append(f"**Model:** {model_name}\n")
 
+            # Guard the ',' format spec the same way the regular-metrics loop
+            # and _format_summary do: metrics_to_dict permits a raw-dict
+            # fallback whose token values may be stringified or None, and
+            # f"{value:,}" raises on anything that isn't a real number.
             for key, value in sorted(token_metrics.items()):
-                lines.append(f"- **{key.replace('_', ' ').title()}:** {value:,}")
+                formatted = f"{value:,}" if isinstance(value, int) else str(value)
+                lines.append(f"- **{key.replace('_', ' ').title()}:** {formatted}")
 
-            # Calculate and display cost only if we have both token counts AND pricing info
+            input_tokens = token_metrics.get("input_tokens")
+            output_tokens = token_metrics.get("output_tokens")
+            # Calculate and display cost only when token counts are real ints
+            # AND pricing info is present — a stringified/None token from the
+            # raw-dict fallback must not crash export with a TypeError.
             if (
-                "input_tokens" in token_metrics
-                and "output_tokens" in token_metrics
+                isinstance(input_tokens, int)
+                and isinstance(output_tokens, int)
                 and input_price is not None
                 and output_price is not None
             ):
@@ -691,12 +700,8 @@ class MarkdownExporter:
                         "(provider has not published pricing yet)"
                     )
                 else:
-                    input_cost = (
-                        token_metrics["input_tokens"] / 1_000_000
-                    ) * input_price
-                    output_cost = (
-                        token_metrics["output_tokens"] / 1_000_000
-                    ) * output_price
+                    input_cost = (input_tokens / 1_000_000) * input_price
+                    output_cost = (output_tokens / 1_000_000) * output_price
                     total_cost = input_cost + output_cost
                     lines.append(f"- **Estimated Cost:** ${total_cost:.4f} USD")
                     lines.append(

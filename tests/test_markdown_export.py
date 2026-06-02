@@ -81,6 +81,83 @@ def test_markdown_includes_code_blocks(sample_report, tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# Raw-dict / partial metrics resilience
+#
+# metrics_to_dict() deliberately supports a raw-dict fallback (it returns
+# report.metrics unchanged when it isn't a Pydantic model). The token-metrics
+# rendering and cost math must survive a raw dict whose token values are
+# stringified or None without raising during export — the same guard the
+# regular-metrics loop and _format_summary already apply.
+# ---------------------------------------------------------------------------
+
+
+def _report_with_raw_metrics(raw_metrics: dict) -> CodeReviewReport:
+    """Build a report whose .metrics is a plain dict (not ReviewMetrics).
+
+    model_construct skips validation so we can plant the raw-dict shape that
+    metrics_to_dict()'s fallback branch is written to tolerate.
+    """
+    return CodeReviewReport.model_construct(
+        summary="raw-dict metrics",
+        metrics=raw_metrics,
+        issues=[],
+    )
+
+
+@pytest.mark.parametrize(
+    "raw_metrics",
+    [
+        # Stringified token counts (e.g. from a hand-built/legacy raw dict).
+        {"input_tokens": "100", "output_tokens": "50", "total_tokens": "150"},
+        # None token fields alongside pricing.
+        {
+            "input_tokens": None,
+            "output_tokens": None,
+            "input_price_per_million": 3.0,
+            "output_price_per_million": 15.0,
+        },
+        # Mixed: one real int, one stringified — cost math must be skipped.
+        {
+            "input_tokens": 100,
+            "output_tokens": "50",
+            "input_price_per_million": 3.0,
+            "output_price_per_million": 15.0,
+        },
+    ],
+)
+def test_markdown_export_survives_raw_dict_token_metrics(raw_metrics, tmp_path):
+    """A malformed/stringified token metric must not abort the whole export."""
+    report = _report_with_raw_metrics(raw_metrics)
+    output_file = tmp_path / "report.md"
+
+    # Should not raise (no ValueError from f"{value:,}", no TypeError from
+    # dividing a str/None token count).
+    MarkdownExporter().export(report, output_file)
+
+    content = output_file.read_text()
+    assert "# Code Review Report" in content
+    assert "### Token Usage & Cost" in content
+
+
+def test_markdown_export_raw_dict_int_tokens_still_compute_cost(tmp_path):
+    """Well-formed int tokens in a raw dict still produce a cost line."""
+    report = _report_with_raw_metrics(
+        {
+            "input_tokens": 1_000_000,
+            "output_tokens": 1_000_000,
+            "input_price_per_million": 3.0,
+            "output_price_per_million": 15.0,
+        }
+    )
+    output_file = tmp_path / "report.md"
+    MarkdownExporter().export(report, output_file)
+
+    content = output_file.read_text()
+    # 1M input @ $3 + 1M output @ $15 = $18.0000
+    assert "**Estimated Cost:** $18.0000 USD" in content
+
+
+# ---------------------------------------------------------------------------
 # Audit-trail section
 # ---------------------------------------------------------------------------
 
