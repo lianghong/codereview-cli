@@ -355,6 +355,11 @@ def display_available_models(console: Console) -> None:
         "KIMI_API_KEY",
         "platform.moonshot.cn (Kimi); .ai for international",
     )
+    setup_table.add_row(
+        "bedrock_openai",
+        "OPENAI_API_KEY (Bedrock API key), OPENAI_BASE_URL",
+        "Bedrock console → API keys (OpenAI models, e.g. GPT-5.5)",
+    )
 
     console.print(setup_table)
     console.print()

@@ -4,7 +4,7 @@ Guidance for Claude Code working in this repository.
 
 ## Project
 
-LangChain-based CLI for AI code review across **7 providers**: AWS Bedrock, Azure OpenAI, NVIDIA NIM, Google GenAI, DeepSeek direct, Z.AI (Zhipu international), and Moonshot (Kimi). Reviews **Python, Go, Shell, C++, Java, JS, TS** with structured output (severity, line numbers, suggested fixes).
+LangChain-based CLI for AI code review across **8 providers**: AWS Bedrock, Azure OpenAI, NVIDIA NIM, Google GenAI, DeepSeek direct, Z.AI (Zhipu international), Moonshot (Kimi), and OpenAI-on-Bedrock (GPT-5.x via Bedrock's OpenAI-compatible endpoint). Reviews **Python, Go, Shell, C++, Java, JS, TS** with structured output (severity, line numbers, suggested fixes).
 
 **Stack:** Python 3.14, LangChain (1.3+), Pydantic V2, Click, Rich, AWS Bedrock, Azure OpenAI, NVIDIA NIM, Google GenAI, DeepSeek (`langchain-deepseek`), Z.AI (`langchain-openai` + custom base_url), Moonshot (`langchain-moonshot`).
 
@@ -66,7 +66,7 @@ uv run codereview ./src --output report.json --format json # CI-friendly
 ## Architecture
 
 ```
-FileScanner → FileBatcher → CodeAnalyzer → ProviderFactory → {Bedrock|Azure|NVIDIA|GoogleGenAI}Provider
+FileScanner → FileBatcher → CodeAnalyzer → ProviderFactory → {Bedrock|Azure|NVIDIA|GoogleGenAI|ZAI|DeepSeek|Moonshot|BedrockOpenAI}Provider
             → Aggregation (cli.py) → TerminalRenderer / MarkdownExporter
 ```
 
@@ -98,7 +98,7 @@ codereview/config/
 
 **Configurable via `models.yaml` (no code changes):** model registration, pricing, inference params (`temperature`, `top_p`, `top_k`, `max_output_tokens`), `context_window`, `supports_tool_use`, `use_responses_api`, AWS region, scanning patterns/extensions, max file size.
 
-**Secrets via env vars** (expanded with `${VAR}` syntax in YAML): `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_ENDPOINT`, `NVIDIA_API_KEY`, `GOOGLE_API_KEY`, `DEEPSEEK_API_KEY`, `ZAI_API_KEY`, `KIMI_API_KEY`. AWS uses standard credential chain.
+**Secrets via env vars** (expanded with `${VAR}` syntax in YAML): `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_ENDPOINT`, `NVIDIA_API_KEY`, `GOOGLE_API_KEY`, `DEEPSEEK_API_KEY`, `ZAI_API_KEY`, `KIMI_API_KEY`, `OPENAI_API_KEY` + `OPENAI_BASE_URL` (OpenAI-on-Bedrock). AWS Bedrock (Converse path) uses the standard credential chain; OpenAI-on-Bedrock uses a Bedrock API key (bearer token) instead.
 
 ## Provider credentials
 
@@ -111,6 +111,7 @@ codereview/config/
 | DeepSeek direct | `DEEPSEEK_API_KEY`; via `langchain-deepseek` | platform.deepseek.com/api_keys |
 | Z.AI (Zhipu) | `ZAI_API_KEY`; via OpenAI-compat (`ChatOpenAI` + `base_url`) | z.ai |
 | Moonshot (Kimi) | `KIMI_API_KEY`; default endpoint is `.cn` (Chinese platform). Override `base_url` to `https://api.moonshot.ai/v1` for international keys | platform.moonshot.cn |
+| OpenAI-on-Bedrock | `OPENAI_API_KEY` (an **Amazon Bedrock API key** / bearer token, *not* an openai.com key) + `OPENAI_BASE_URL` (region's Bedrock OpenAI endpoint); via OpenAI-compat (`ChatOpenAI` + `base_url`). Set `BEDROCK_OPENAI_MODEL_ID` into each model's `full_id`. | Bedrock console → API keys |
 
 Tests mock at the provider level — no credentials needed for `pytest`.
 
@@ -122,7 +123,7 @@ Tests mock at the provider level — no credentials needed for `pytest`.
 
 **New provider:** subclass `ModelProvider` in `codereview/providers/`, implement `analyze_batch`, `_create_model`, `_create_chain`, `_extract_token_usage`, `_is_retryable_error`, `_calculate_backoff`, `validate_credentials`. Register in `ProviderFactory.create_provider` (and add the `<Name>Config` Pydantic class to `config/models.py`, plus a parsing branch in `config/loader.py`). Add the env-var to `cli.py`'s Provider Setup table. **Reference implementations**:
 - OpenAI-compatible vendor with dedicated langchain package → mirror `providers/deepseek.py` (uses `ChatDeepSeek`, `api_base` parameter)
-- OpenAI-compatible vendor without dedicated package → mirror `providers/zai.py` (uses `ChatOpenAI` with custom `base_url`)
+- OpenAI-compatible vendor without dedicated package → mirror `providers/zai.py` (uses `ChatOpenAI` with custom `base_url`); for a reasoning model on an OpenAI-compatible endpoint that needs the Responses API, mirror `providers/bedrock_openai.py` (adds `use_responses_api` + temperature/top_p opt-out)
 - BaseChatOpenAI subclass with vendor-specific quirks → mirror `providers/moonshot.py` (uses `ChatMoonshot`, accepts `base_url` alias)
 - Tool-use-less endpoints → mirror Bedrock's prompt-based JSON path (set `_use_prompt_parsing=True`, append `PydanticOutputParser` to the chain, inject format instructions via `_system_prompt_with_format_instructions`).
 
@@ -170,5 +171,6 @@ Fixtures live in `tests/fixtures/sample_code/` (verifies inclusion + exclusion l
 - **`--list-models`** shows everything regardless of credentials; credentials are only validated when a model is actually used.
 - **DeepSeek-V4-Pro on Azure / SGLang null-model bug**: the Foundry endpoint validates `body.model` strictly. langchain-openai's `AzureChatOpenAI` defaults `model_name=None` and serializes `"model": null`, which real Azure-OpenAI ignores but SGLang rejects with HTTP 400. The Azure provider explicitly sets `model=deployment_name` to satisfy both backends.
 - **Moonshot has two platforms**: `platform.moonshot.cn` (Chinese, default in our YAML) and `platform.moonshot.ai` (international). Keys are NOT interchangeable. `KIMI_API_KEY` typically maps to `.cn`; users with `.ai` keys must override `base_url` in the moonshot section.
+- **OpenAI-on-Bedrock is NOT the `bedrock` provider**: GPT-5.5/GPT-5.4 on Bedrock go through Bedrock's *OpenAI-compatible* endpoint, which authenticates with an Amazon Bedrock **API key (bearer token)** via `ChatOpenAI` + `base_url` — not the SigV4 `ChatBedrockConverse` path. It lives in the separate `bedrock_openai` provider. Underlying transport is the `openai` SDK (already pulled by `langchain-openai`; no new dep). The `bedrock_openai` model entries' `full_id` is a **literal**, not `${BEDROCK_OPENAI_MODEL_ID}` — an unset env var expands to `""` and fails `full_id`'s `min_length=1`, breaking `--list-models`; paste the wire id from the console instead. These are reasoning models (Responses API via `use_responses_api: true`, no temperature/top_p). `supports_tool_use: true` is provisional — if a forced `tool_choice` returns the tool call as literal text (the Opus 4.7/4.8 failure mode), flip to `false` for the prompt-based JSON path.
 - **Determinism for static analysis**: when `MAX_FILES_PER_TOOL=500` truncation triggers, file lists must be `sorted(...)[:N]`. Locked in by `tests/test_static_analysis.py::test_truncation_is_deterministic`. `MAX_FILES_PER_TOOL`'s docstring documents this as a design guarantee.
 - **`--tool-timeout`** plumbs through to `subprocess.run(timeout=...)` for static-analysis tools (default 120s). `--include-hidden` opts into `.github/scripts/` etc. Both are off the FileScanner / StaticAnalyzer constructors as well, not just the CLI.

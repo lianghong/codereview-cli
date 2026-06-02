@@ -22,6 +22,7 @@ from pydantic import ValidationError
 from codereview.config.models import (
     AzureOpenAIConfig,
     BedrockConfig,
+    BedrockOpenAIConfig,
     DeepSeekConfig,
     GoogleGenAIConfig,
     InferenceParams,
@@ -366,6 +367,37 @@ class ConfigLoader:
                     logging.info(
                         "Z.AI provider not configured: %s. "
                         "Set ZAI_API_KEY environment variable to enable Z.AI models.",
+                        e,
+                    )
+
+        # Parse OpenAI-on-Bedrock provider (OpenAI-compatible endpoint).
+        # NOTE: this is distinct from the SigV4-based "bedrock" provider above.
+        if "bedrock_openai" in providers_section:
+            bo_data = providers_section["bedrock_openai"]
+
+            # Always register models for --list-models display.
+            for model_data in bo_data.get("models", []):
+                model_config = self._parse_model_config(model_data)
+                self._register_model("bedrock_openai", model_config, model_config.id)
+                for alias in model_config.aliases:
+                    self._register_model("bedrock_openai", model_config, alias)
+
+            # Only register provider config when both key and endpoint are set.
+            bo_api_key = bo_data.get("api_key", "")
+            bo_base_url = bo_data.get("base_url", "")
+            if bo_api_key and bo_base_url:
+                try:
+                    bo_config = BedrockOpenAIConfig(
+                        api_key=bo_api_key,
+                        base_url=bo_base_url,
+                        request_timeout=bo_data.get("request_timeout", 300),
+                    )
+                    self._providers["bedrock_openai"] = bo_config
+                except (KeyError, ValueError, TypeError, ValidationError) as e:
+                    logging.info(
+                        "Bedrock OpenAI provider not configured: %s. "
+                        "Set OPENAI_API_KEY and OPENAI_BASE_URL environment "
+                        "variables to enable OpenAI models on Bedrock.",
                         e,
                     )
 

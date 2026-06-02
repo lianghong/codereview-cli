@@ -1175,6 +1175,91 @@ providers:
           parsing (supports_tool_use: false) — Z.AI ignores OpenAI's
           json_schema response_format and returns markdown-fenced JSON.
 
+  # OpenAI-on-Bedrock Provider (OpenAI-compatible endpoint)
+  # AWS hosts OpenAI's frontier models (GPT-5.5, GPT-5.4, Codex) on Amazon
+  # Bedrock. This is a DIFFERENT path from the SigV4-based "bedrock" provider
+  # above: the OpenAI-compatible surface authenticates with an Amazon Bedrock
+  # API KEY (a bearer token, NOT AWS creds) and is driven with langchain-openai's
+  # ChatOpenAI + custom base_url — same mechanism as the Z.AI provider.
+  #
+  #   OPENAI_API_KEY        → the Amazon Bedrock API key (generate in the
+  #                           Bedrock console; this is NOT an openai.com key)
+  #   OPENAI_BASE_URL       → your region's Bedrock OpenAI endpoint
+  #   BEDROCK_OPENAI_MODEL_ID → paste into each model's `full_id` below
+  #
+  # No new dependency: langchain-openai (already required) pulls the `openai`
+  # SDK, which reads OPENAI_API_KEY/OPENAI_BASE_URL natively.
+  #
+  # full_id holds the wire-level model id. It is a LITERAL here (not
+  # ${BEDROCK_OPENAI_MODEL_ID}) because an unset env var would expand to "" and
+  # fail full_id's min_length validation, breaking --list-models. Replace the
+  # placeholders below with the exact model IDs from your Bedrock console.
+  bedrock_openai:
+    api_key: "${OPENAI_API_KEY}"
+    base_url: "${OPENAI_BASE_URL}"
+    request_timeout: 300
+    models:
+      # GPT-5.5 — OpenAI frontier reasoning model, GA on Amazon Bedrock.
+      # Reasoning model: rejects temperature/top_p (no default_temperature),
+      # surfaces reasoning summaries via the Responses API (use_responses_api).
+      # Tool calling works for structured output → supports_tool_use stays true
+      # (mirrors GPT-5.4 on Azure). Flip to false if a forced tool_choice ever
+      # returns the tool call as literal text on this endpoint.
+      - id: gpt5.5-bedrock
+        # TODO: replace with the exact model id from your Bedrock console /
+        # the value of BEDROCK_OPENAI_MODEL_ID (e.g. "openai.gpt-5.5-...:0").
+        full_id: openai.gpt-5.5
+        name: GPT-5.5 (Bedrock)
+        aliases:
+          - gpt5.5-bedrock
+          - gpt-bedrock
+        pricing:
+          # TODO: confirm Bedrock-hosted rates from the AWS pricing page.
+          # Placeholder mirrors OpenAI-direct GPT-5 family list pricing.
+          input_per_million: 2.50
+          output_per_million: 15.00
+        inference_params:
+          # No default_temperature/top_p — GPT-5 reasoning models reject them.
+          max_output_tokens: 128000
+        use_responses_api: true
+        context_window: 400000
+        supports_tool_use: true
+        capabilities:
+          - reasoning
+          - code_review
+          - security_analysis
+          - structured_output
+          - tool_use
+        notes: >-
+          OpenAI GPT-5.5 hosted on Amazon Bedrock via the OpenAI-compatible
+          endpoint (bearer-key auth, ChatOpenAI + base_url). Reasoning model:
+          Responses API, no temperature/top_p.
+
+      # GPT-5.4 — sibling frontier reasoning model, also GA on Bedrock.
+      - id: gpt5.4-bedrock
+        # TODO: replace with the exact Bedrock model id for GPT-5.4.
+        full_id: openai.gpt-5.4
+        name: GPT-5.4 (Bedrock)
+        aliases:
+          - gpt5.4-bedrock
+        pricing:
+          input_per_million: 2.50
+          output_per_million: 15.00
+        inference_params:
+          max_output_tokens: 128000
+        use_responses_api: true
+        context_window: 400000
+        supports_tool_use: true
+        capabilities:
+          - reasoning
+          - code_review
+          - security_analysis
+          - structured_output
+          - tool_use
+        notes: >-
+          OpenAI GPT-5.4 hosted on Amazon Bedrock via the OpenAI-compatible
+          endpoint. Reasoning model: Responses API, no temperature/top_p.
+
 # Default model configuration
 defaults:
   bedrock_default: opus4.8

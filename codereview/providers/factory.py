@@ -6,6 +6,7 @@ from codereview.config import ConfigLoader, get_config_loader
 from codereview.config.models import (
     AzureOpenAIConfig,
     BedrockConfig,
+    BedrockOpenAIConfig,
     DeepSeekConfig,
     GoogleGenAIConfig,
     MoonshotConfig,
@@ -48,7 +49,7 @@ class ProviderFactory:
         Returns:
             Instantiated provider — one of BedrockProvider, AzureOpenAIProvider,
             NVIDIAProvider, GoogleGenAIProvider, ZAIProvider, DeepSeekProvider,
-            or MoonshotProvider.
+            MoonshotProvider, or BedrockOpenAIProvider.
 
         Raises:
             ValueError: If model name not found or provider unknown
@@ -172,11 +173,27 @@ class ProviderFactory:
                 project_context=project_context,
             )
 
+        elif provider_name == "bedrock_openai":
+            if not isinstance(provider_config, BedrockOpenAIConfig):
+                raise ValueError(
+                    f"Expected BedrockOpenAIConfig for bedrock_openai provider, "
+                    f"got {type(provider_config).__name__}"
+                )
+            from codereview.providers.bedrock_openai import BedrockOpenAIProvider
+
+            return BedrockOpenAIProvider(
+                model_config,
+                provider_config,
+                temperature,
+                callbacks=callbacks,
+                project_context=project_context,
+            )
+
         else:
             raise ValueError(
                 f"Unknown provider: {provider_name}. "
                 f"Supported providers: bedrock, azure_openai, nvidia, "
-                f"google_genai, zai, deepseek, moonshot"
+                f"google_genai, zai, deepseek, moonshot, bedrock_openai"
             )
 
     def list_available_models(self) -> dict[str, list[dict[str, str]]]:

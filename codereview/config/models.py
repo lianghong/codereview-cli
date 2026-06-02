@@ -351,6 +351,49 @@ class ZAIConfig(ProviderConfig):
     )
 
 
+class BedrockOpenAIConfig(ProviderConfig):
+    """Configuration for OpenAI models hosted on Amazon Bedrock.
+
+    AWS exposes OpenAI's frontier models (GPT-5.5, GPT-5.4, Codex) on Amazon
+    Bedrock through an OpenAI-compatible surface. Unlike every other Bedrock
+    model in this project — which goes through ``ChatBedrockConverse`` and the
+    AWS SigV4 credential chain — the OpenAI-compatible endpoint authenticates
+    with an **Amazon Bedrock API key** (a bearer token) and is driven with
+    langchain-openai's ``ChatOpenAI`` pointed at a custom ``base_url`` (the same
+    mechanism as the Z.AI provider). It is therefore configured as its own
+    provider, NOT under ``bedrock``.
+
+    The Bedrock API key is read from ``OPENAI_API_KEY`` and the endpoint from
+    ``OPENAI_BASE_URL`` — the canonical env vars the underlying ``openai`` SDK
+    reads by default — so an existing OpenAI-SDK setup works by changing only
+    the base URL and key.
+
+    Attributes:
+        api_key: Amazon Bedrock API key (bearer token), read from OPENAI_API_KEY.
+        base_url: OpenAI-compatible Bedrock endpoint, read from OPENAI_BASE_URL.
+        request_timeout: Request timeout in seconds for API calls.
+        models: List of model configurations for Bedrock-hosted OpenAI models.
+    """
+
+    model_config = {"frozen": True}
+
+    api_key: str = Field(
+        ...,
+        min_length=1,
+        description="Amazon Bedrock API key (bearer token, read from OPENAI_API_KEY)",
+    )
+    base_url: str = Field(
+        ...,
+        min_length=1,
+        description="OpenAI-compatible Bedrock endpoint (read from OPENAI_BASE_URL)",
+    )
+    request_timeout: int = Field(
+        default=300,
+        gt=0,
+        description="Request timeout in seconds for API calls (default: 5 minutes)",
+    )
+
+
 class ScanningConfig(BaseModel):
     """Configuration for file scanning.
 
@@ -395,5 +438,6 @@ class ModelsConfigFile(BaseModel):
         | GoogleGenAIConfig
         | DeepSeekConfig
         | MoonshotConfig
-        | ZAIConfig,
+        | ZAIConfig
+        | BedrockOpenAIConfig,
     ] = Field(default_factory=dict, description="Provider configurations")
