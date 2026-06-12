@@ -345,6 +345,7 @@ codereview /path/to/your/codebase
 codereview --list-models
 
 # AWS Bedrock Models (Claude family)
+codereview /path/to/code --model fable5    # Claude Fable 5 (Mythos-class, 1M context)
 codereview /path/to/code --model opus4.8   # Claude Opus 4.8 (latest, default, 1M context)
 codereview /path/to/code --model opus4.7   # Claude Opus 4.7 (reasoning, 200K context)
 codereview /path/to/code --model opus      # Claude Opus 4.6

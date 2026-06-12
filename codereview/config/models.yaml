@@ -16,6 +16,45 @@ providers:
     models:
       # Claude Models (Anthropic)
       # Best for: Code review, reasoning, security
+      - id: fable5
+        full_id: us.anthropic.claude-fable-5
+        name: Claude Fable 5
+        aliases:
+          - claude-fable-5
+          - fable-5
+          - fable
+        pricing:
+          input_per_million: 10.00
+          output_per_million: 50.00
+          cache_write_per_million: 12.50
+          cache_read_per_million: 1.00
+        inference_params:
+          # Fable 5 requires temperature to be 1.0-or-unset, top_p to be
+          # >=0.99-or-unset, and rejects top_k entirely (Bedrock model card,
+          # June 2026) - omit all sampling params
+          max_output_tokens: 128000
+        context_window: 1000000
+        # Adaptive thinking is always on and cannot be disabled (Bedrock model
+        # card), and Anthropic forbids a forced tool_choice while thinking is
+        # active - the same incompatibility as Opus 4.7/4.8 (see opus4.8
+        # entry). Route structured output through prompt-based JSON parsing.
+        supports_tool_use: false
+        capabilities:
+          - code_review
+          - security_analysis
+          - reasoning
+          - vision
+          - adaptive_thinking
+        notes: >-
+          Mythos-class flagship (June 2026) for complex knowledge work and
+          coding. 1M-token context, up to 128K output. Adaptive thinking is
+          always on - temperature/top_p/top_k not configurable, and structured
+          output uses prompt-based JSON parsing (supports_tool_use: false).
+          Requires a one-time account opt-in to provider data sharing
+          (Data Retention API, mode=provider_data_share) before invocation.
+          Dual-use prompts fall back to Opus 4.8 server-side and are billed
+          at Opus rates. Geo-US inference profile; in-region us-east-1 only.
+
       - id: opus4.8
         full_id: us.anthropic.claude-opus-4-8
         name: Claude Opus 4.8
