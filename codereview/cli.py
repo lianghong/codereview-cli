@@ -937,7 +937,9 @@ def main(
                 con.print(f"\n[dim]⏱️  Completed in {m}m {s}s[/dim]")
             else:
                 con.print(f"\n[dim]⏱️  Completed in {elapsed:.1f}s[/dim]")
-            return
+            # Exit non-zero: a run with zero review results must not signal
+            # success to CI pipelines gating on this command.
+            raise SystemExit(1)
 
         # Warn about partial results when some batches failed
         if failed_batches > 0:

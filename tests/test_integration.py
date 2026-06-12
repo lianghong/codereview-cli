@@ -473,10 +473,15 @@ class TestErrorHandlingIntegration:
                 main, [str(sample_project_dir), "--verbose", "--no-readme"]
             )
 
-            # Should handle error gracefully (not crash) and show error message
-            # Note: CLI returns 0 because error occurs during batch processing,
-            # not during initialization. All batches fail so it shows error message.
-            assert result.exit_code == 0, "CLI should not crash on batch errors"
+            # Should handle the error gracefully: a controlled non-zero exit
+            # with a readable message, not a traceback. All batches failed, so
+            # exit 0 would wrongly signal success to CI gates.
+            assert result.exit_code == 1, (
+                "all-batches-failed run must exit 1 (controlled), got "
+                f"{result.exit_code}"
+            )
+            # (--verbose intentionally prints batch tracebacks; the graceful
+            # part is the controlled exit + summary line, asserted below.)
             assert (
                 ("All" in result.output and "failed" in result.output)
                 or "AccessDeniedException" in result.output

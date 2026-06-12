@@ -692,3 +692,39 @@ def test_dry_run_estimate_is_upper_bound_on_actual_input(tmp_path):
     assert estimated >= actual, (
         f"dry-run estimate {estimated} must be an upper bound on actual {actual}"
     )
+
+
+def test_all_batches_failed_exits_nonzero(cli_runner, sample_code_dir):
+    """A run where every batch fails must exit non-zero.
+
+    Regression guard: the all-batches-failed path printed an error then
+    returned bare, which Click converts to exit code 0 — CI pipelines saw
+    success on runs that produced no review at all.
+    """
+    with (
+        patch("codereview.cli.CodeAnalyzer") as mock_analyzer_cls,
+        patch("codereview.cli.FileScanner") as mock_scanner_cls,
+        patch("codereview.cli.ProviderFactory") as mock_factory_cls,
+    ):
+        mock_factory = Mock()
+        mock_factory.get_model_display_name.return_value = "Claude Opus 4.6"
+        mock_factory_cls.return_value = mock_factory
+
+        mock_analyzer = Mock()
+        mock_analyzer.provider = Mock()
+        mock_analyzer.analyze_batch.side_effect = RuntimeError("rate limited")
+        mock_analyzer.skipped_files = []
+        mock_analyzer_cls.return_value = mock_analyzer
+
+        mock_scanner = Mock()
+        mock_scanner.scan.return_value = [sample_code_dir / "test.py"]
+        mock_scanner.skipped_files = []
+        mock_scanner_cls.return_value = mock_scanner
+
+        result = cli_runner.invoke(main, [str(sample_code_dir), "--no-readme"])
+
+        assert "failed" in result.output.lower()
+        assert result.exit_code != 0, (
+            "all-batches-failed run must not exit 0 — CI would treat a run "
+            "with zero review results as success"
+        )
