@@ -98,9 +98,13 @@ class BedrockProvider(TokenTrackingMixin, ModelProvider):
         if self.top_k is not None:
             additional_fields["top_k"] = self.top_k
 
-        # Configure botocore with timeout settings
+        # Configure botocore with timeout settings. Models with always-on
+        # thinking (e.g. Fable 5) stream nothing until the full response is
+        # generated, so think-heavy batches outlast the provider default;
+        # they carry their own read_timeout.
         botocore_config = BotocoreConfig(
-            read_timeout=self.provider_config.read_timeout,
+            read_timeout=self.model_config.read_timeout
+            or self.provider_config.read_timeout,
             connect_timeout=self.provider_config.connect_timeout,
             retries={"max_attempts": 0},  # We handle retries ourselves
         )

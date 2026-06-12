@@ -240,6 +240,23 @@ def test_model_config_region_override():
         ModelConfig(id="test", name="Test", pricing=pricing, region="")
 
 
+def test_model_config_read_timeout_override():
+    """Test that ModelConfig accepts an optional per-model read_timeout."""
+    pricing = PricingConfig(input_per_million=10.0, output_per_million=50.0)
+
+    # Default: no override
+    model = ModelConfig(id="test", name="Test", pricing=pricing)
+    assert model.read_timeout is None
+
+    # Override accepted (e.g. fable5's always-on thinking needs > 300s)
+    model = ModelConfig(id="test", name="Test", pricing=pricing, read_timeout=1800)
+    assert model.read_timeout == 1800
+
+    # Non-positive rejected
+    with pytest.raises(ValidationError):
+        ModelConfig(id="test", name="Test", pricing=pricing, read_timeout=0)
+
+
 def test_string_fields_reject_empty_when_provided():
     """Test that optional string fields reject empty strings."""
     pricing = PricingConfig(input_per_million=1.0, output_per_million=1.0)

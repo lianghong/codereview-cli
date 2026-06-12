@@ -24,6 +24,11 @@ providers:
         # invoking from the provider default (us-west-2) fails with
         # "data retention mode 'default' is not available for this model".
         region: us-east-1
+        # Adaptive thinking is always on and the Converse call is
+        # non-streaming, so no bytes arrive until the full response is
+        # generated - think-heavy batches outlast the provider-default
+        # read_timeout (300s); observed ReadTimeoutError at 5+ minutes.
+        read_timeout: 1800
         aliases:
           - claude-fable-5
           - fable-5

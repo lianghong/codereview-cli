@@ -104,6 +104,17 @@ def test_fable5_pinned_to_us_east_1():
     assert model_config.region == "us-east-1"
 
 
+def test_fable5_read_timeout_covers_thinking_latency():
+    """fable5's adaptive thinking is always on and can't be disabled, and the
+    Converse call is non-streaming — think-heavy batches exceed the 300s
+    provider-default read_timeout (observed: ReadTimeoutError at 5+ minutes).
+    The model entry must carry a read_timeout well above that."""
+    loader = ConfigLoader()
+    _, model_config = loader.resolve_model("fable5")
+    assert model_config.read_timeout is not None
+    assert model_config.read_timeout >= 1800
+
+
 def test_model_id_conflict_detection(caplog):
     """Test that model ID conflicts are detected and logged."""
     import logging

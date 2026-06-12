@@ -461,6 +461,7 @@ class ConfigLoader:
             supports_tool_use=model_data.get("supports_tool_use", True),
             context_window=model_data.get("context_window"),
             region=model_data.get("region"),
+            read_timeout=model_data.get("read_timeout"),
         )
 
     def resolve_model(self, name: str) -> tuple[str, ModelConfig]:

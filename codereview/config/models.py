@@ -88,6 +88,7 @@ class ModelConfig(BaseModel):
         use_responses_api: Use OpenAI Responses API instead of ChatCompletion (Azure, optional).
         supports_tool_use: Whether the model supports tool/function calling (default: True).
         region: Per-model AWS region override for region-restricted Bedrock models (optional).
+        read_timeout: Per-model read timeout override in seconds (optional).
     """
 
     model_config = {"frozen": True}
@@ -127,6 +128,16 @@ class ModelConfig(BaseModel):
             "Per-model AWS region override for region-restricted Bedrock "
             "models (e.g. Fable 5's geo-US profile is us-east-1 only); "
             "falls back to the provider-level region when unset"
+        ),
+    )
+    read_timeout: int | None = Field(
+        None,
+        gt=0,
+        description=(
+            "Per-model read timeout override in seconds for models whose "
+            "non-streaming responses outlast the provider default (e.g. "
+            "Fable 5's always-on adaptive thinking); falls back to the "
+            "provider-level read_timeout when unset"
         ),
     )
 

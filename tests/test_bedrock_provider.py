@@ -84,6 +84,33 @@ def test_no_model_region_uses_provider_region(model_config, provider_config):
         assert mock_bedrock.call_args.kwargs["region_name"] == "us-west-2"
 
 
+def test_model_read_timeout_overrides_provider_read_timeout(provider_config):
+    """A model-level read_timeout (e.g. fable5's always-on adaptive thinking
+    pushes non-streaming Converse calls past the 300s provider default) wins
+    over the provider-level read_timeout for the botocore client config."""
+    slow_model = ModelConfig(
+        id="test-slow",
+        name="Test Slow",
+        full_id="test.slow.v1",
+        read_timeout=1800,
+        pricing=PricingConfig(input_per_million=10.0, output_per_million=50.0),
+    )
+    with patch("codereview.providers.bedrock.ChatBedrockConverse") as mock_bedrock:
+        BedrockProvider(slow_model, provider_config)
+        botocore_config = mock_bedrock.call_args.kwargs["config"]
+        assert botocore_config.read_timeout == 1800
+
+
+def test_no_model_read_timeout_uses_provider_read_timeout(
+    model_config, provider_config
+):
+    """Without a model-level read_timeout, the provider-level value is used."""
+    with patch("codereview.providers.bedrock.ChatBedrockConverse") as mock_bedrock:
+        BedrockProvider(model_config, provider_config)
+        botocore_config = mock_bedrock.call_args.kwargs["config"]
+        assert botocore_config.read_timeout == provider_config.read_timeout
+
+
 def test_validate_credentials_uses_model_region(provider_config):
     """validate_credentials must check Bedrock access in the model's
     effective region, not the provider default."""
