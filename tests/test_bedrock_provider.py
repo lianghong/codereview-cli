@@ -62,6 +62,57 @@ def test_bedrock_provider_initialization(model_config, provider_config):
         assert provider.temperature == 0.1
 
 
+def test_model_region_overrides_provider_region(provider_config):
+    """A model-level region (e.g. fable5: us-east-1 only) wins over the
+    provider-level region for the Bedrock client."""
+    regional_model = ModelConfig(
+        id="test-regional",
+        name="Test Regional",
+        full_id="test.regional.v1",
+        region="us-east-1",
+        pricing=PricingConfig(input_per_million=10.0, output_per_million=50.0),
+    )
+    with patch("codereview.providers.bedrock.ChatBedrockConverse") as mock_bedrock:
+        BedrockProvider(regional_model, provider_config)
+        assert mock_bedrock.call_args.kwargs["region_name"] == "us-east-1"
+
+
+def test_no_model_region_uses_provider_region(model_config, provider_config):
+    """Without a model-level region, the provider-level region is used."""
+    with patch("codereview.providers.bedrock.ChatBedrockConverse") as mock_bedrock:
+        BedrockProvider(model_config, provider_config)
+        assert mock_bedrock.call_args.kwargs["region_name"] == "us-west-2"
+
+
+def test_validate_credentials_uses_model_region(provider_config):
+    """validate_credentials must check Bedrock access in the model's
+    effective region, not the provider default."""
+    regional_model = ModelConfig(
+        id="test-regional",
+        name="Test Regional",
+        full_id="test.regional.v1",
+        region="us-east-1",
+        pricing=PricingConfig(input_per_million=10.0, output_per_million=50.0),
+    )
+    with patch("codereview.providers.bedrock.ChatBedrockConverse"):
+        with patch("boto3.Session") as mock_session:
+            mock_session.return_value.get_credentials.return_value = Mock()
+            mock_client = Mock()
+            mock_client.get_caller_identity.return_value = {"Account": "123456789012"}
+            mock_client.list_foundation_models.return_value = {"modelSummaries": []}
+            mock_session.return_value.client.return_value = mock_client
+
+            provider = BedrockProvider(regional_model, provider_config)
+            provider.validate_credentials()
+
+            regions_used = [
+                call.kwargs.get("region_name")
+                for call in mock_session.return_value.client.call_args_list
+            ]
+            assert "us-east-1" in regions_used
+            assert "us-west-2" not in regions_used
+
+
 def test_bedrock_provider_custom_temperature(model_config, provider_config):
     """Test temperature override."""
     with patch("codereview.providers.bedrock.ChatBedrockConverse"):

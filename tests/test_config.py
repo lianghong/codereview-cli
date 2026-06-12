@@ -93,6 +93,17 @@ def test_all_aliases_map_to_valid_models():
         assert model_config.name is not None
 
 
+def test_fable5_pinned_to_us_east_1():
+    """fable5 requires the per-region provider_data_share opt-in, which this
+    account (and the geo-US profile generally) has in us-east-1 only — the
+    model entry must pin region us-east-1 or invocation fails with
+    ValidationException: data retention mode 'default' is not available."""
+    loader = ConfigLoader()
+    provider, model_config = loader.resolve_model("fable5")
+    assert provider == "bedrock"
+    assert model_config.region == "us-east-1"
+
+
 def test_model_id_conflict_detection(caplog):
     """Test that model ID conflicts are detected and logged."""
     import logging

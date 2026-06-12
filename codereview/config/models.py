@@ -87,6 +87,7 @@ class ModelConfig(BaseModel):
         deployment_name: Deployment name for Azure (optional).
         use_responses_api: Use OpenAI Responses API instead of ChatCompletion (Azure, optional).
         supports_tool_use: Whether the model supports tool/function calling (default: True).
+        region: Per-model AWS region override for region-restricted Bedrock models (optional).
     """
 
     model_config = {"frozen": True}
@@ -118,6 +119,15 @@ class ModelConfig(BaseModel):
     )
     context_window: int | None = Field(
         None, gt=0, description="Maximum context window size in tokens"
+    )
+    region: str | None = Field(
+        None,
+        min_length=1,
+        description=(
+            "Per-model AWS region override for region-restricted Bedrock "
+            "models (e.g. Fable 5's geo-US profile is us-east-1 only); "
+            "falls back to the provider-level region when unset"
+        ),
     )
 
 

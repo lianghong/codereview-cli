@@ -34,6 +34,14 @@ providers:
           input_per_million: 3.0
           output_per_million: 15.0
 
+      - id: test-regional
+        full_id: test.regional.v1
+        name: Test Regional
+        region: us-east-1
+        pricing:
+          input_per_million: 10.0
+          output_per_million: 50.0
+
   azure_openai:
     endpoint: "${AZURE_TEST_ENDPOINT}"
     api_key: "${AZURE_TEST_KEY}"
@@ -135,8 +143,18 @@ def test_list_models(loader_with_env):
     assert "bedrock" in models
     assert "azure_openai" in models
 
-    assert len(models["bedrock"]) == 2  # test-opus, test-sonnet
+    assert len(models["bedrock"]) == 3  # test-opus, test-sonnet, test-regional
     assert len(models["azure_openai"]) == 1  # test-gpt
+
+
+def test_model_region_override_parsed(loader_with_env):
+    """Test that a model-level region in YAML lands on ModelConfig.region."""
+    _, model = loader_with_env.resolve_model("test-regional")
+    assert model.region == "us-east-1"
+
+    # Models without a region override keep None (use provider region)
+    _, model = loader_with_env.resolve_model("test-opus")
+    assert model.region is None
 
 
 def test_env_var_expansion(temp_config_file, monkeypatch):

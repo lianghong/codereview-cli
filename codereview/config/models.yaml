@@ -19,6 +19,11 @@ providers:
       - id: fable5
         full_id: us.anthropic.claude-fable-5
         name: Claude Fable 5
+        # Geo-US profile is us-east-1 only, and the provider_data_share
+        # data-retention opt-in it requires is per-region account state -
+        # invoking from the provider default (us-west-2) fails with
+        # "data retention mode 'default' is not available for this model".
+        region: us-east-1
         aliases:
           - claude-fable-5
           - fable-5

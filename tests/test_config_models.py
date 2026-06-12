@@ -223,6 +223,23 @@ def test_models_are_immutable():
     assert "frozen" in str(exc_info.value).lower()
 
 
+def test_model_config_region_override():
+    """Test that ModelConfig accepts an optional per-model region override."""
+    pricing = PricingConfig(input_per_million=10.0, output_per_million=50.0)
+
+    # Default: no override
+    model = ModelConfig(id="test", name="Test", pricing=pricing)
+    assert model.region is None
+
+    # Override accepted (e.g. fable5 is us-east-1 only)
+    model = ModelConfig(id="test", name="Test", pricing=pricing, region="us-east-1")
+    assert model.region == "us-east-1"
+
+    # Empty string rejected
+    with pytest.raises(ValidationError):
+        ModelConfig(id="test", name="Test", pricing=pricing, region="")
+
+
 def test_string_fields_reject_empty_when_provided():
     """Test that optional string fields reject empty strings."""
     pricing = PricingConfig(input_per_million=1.0, output_per_million=1.0)

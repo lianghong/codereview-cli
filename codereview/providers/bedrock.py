@@ -48,6 +48,11 @@ class BedrockProvider(TokenTrackingMixin, ModelProvider):
         self.provider_config = provider_config
         self.project_context = project_context
 
+        # Region-restricted models (e.g. Fable 5's geo-US profile, which
+        # also needs the per-region provider_data_share opt-in) carry their
+        # own region; everything else uses the provider-level default.
+        self.region = model_config.region or provider_config.region
+
         # Determine temperature; allow_none preserves opt-out for reasoning
         # models (e.g. Opus 4.7) that set inference_params.temperature = None.
         self.temperature = self._resolve_temperature(
@@ -103,7 +108,7 @@ class BedrockProvider(TokenTrackingMixin, ModelProvider):
         # Build model kwargs - omit temperature for reasoning models
         model_kwargs: dict = {
             "model": self.model_config.full_id,
-            "region_name": self.provider_config.region,
+            "region_name": self.region,
             "max_tokens": self.max_tokens,
             "config": botocore_config,
             "rate_limiter": self.rate_limiter,
@@ -218,7 +223,7 @@ class BedrockProvider(TokenTrackingMixin, ModelProvider):
 
         # Check 2: STS identity (validates credentials work)
         try:
-            sts = session.client("sts", region_name=self.provider_config.region)
+            sts = session.client("sts", region_name=self.region)
             identity = sts.get_caller_identity()
             account_id = identity.get("Account", "unknown")
             result.add_check(
@@ -257,7 +262,7 @@ class BedrockProvider(TokenTrackingMixin, ModelProvider):
         try:
             bedrock = session.client(
                 "bedrock",
-                region_name=self.provider_config.region,
+                region_name=self.region,
             )
 
             # List foundation models to check access
@@ -299,7 +304,7 @@ class BedrockProvider(TokenTrackingMixin, ModelProvider):
                 )
                 result.add_suggestion(
                     f"Ensure '{self.model_config.name}' is enabled in AWS Bedrock console "
-                    f"for region {self.provider_config.region}"
+                    f"for region {self.region}"
                 )
 
         except ClientError as e:

@@ -117,7 +117,7 @@ codereview/config/
 └── prompts.py    # SYSTEM_PROMPT — code review behavior lives here
 ```
 
-**Configurable via `models.yaml` (no code changes):** model registration, pricing, inference params (`temperature`, `top_p`, `top_k`, `max_output_tokens`), `context_window`, `supports_tool_use`, `use_responses_api`, AWS region, scanning patterns/extensions, max file size.
+**Configurable via `models.yaml` (no code changes):** model registration, pricing, inference params (`temperature`, `top_p`, `top_k`, `max_output_tokens`), `context_window`, `supports_tool_use`, `use_responses_api`, AWS region (provider-level, plus per-model `region` override for region-restricted Bedrock models — fable5 pins `us-east-1` because its `provider_data_share` data-retention opt-in is per-region account state), scanning patterns/extensions, max file size.
 
 **Secrets via env vars** (expanded with `${VAR}` syntax in YAML): `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_ENDPOINT`, `NVIDIA_API_KEY`, `GOOGLE_API_KEY`, `DEEPSEEK_API_KEY`, `ZAI_API_KEY`, `KIMI_API_KEY`, `OPENAI_API_KEY` + `OPENAI_BASE_URL` (OpenAI-on-Bedrock). AWS Bedrock (Converse path) uses the standard credential chain; OpenAI-on-Bedrock uses a Bedrock API key (bearer token) instead.
 
