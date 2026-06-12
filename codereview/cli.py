@@ -60,6 +60,7 @@ from codereview.renderer import (
     TerminalRenderer,
     ValidationRenderer,
 )
+from codereview.renderer import is_pricing_tbd as _is_pricing_tbd
 from codereview.scanner import FileScanner
 from codereview.static_analysis import StaticAnalyzer
 
@@ -215,16 +216,6 @@ def _render_batch_error(
             traceback.format_exception(type(error), error, error.__traceback__)
         )
         con.print(tb)
-
-
-def _is_pricing_tbd(input_price: float, output_price: float) -> bool:
-    """Check if model pricing is a placeholder (provider hasn't published rates).
-
-    Many free-tier or preview models in models.yaml use 0.00 placeholders.
-    Treating these as $0 in cost output misleads users into thinking the
-    model is permanently free; surface them as TBD instead.
-    """
-    return input_price == 0.0 and output_price == 0.0
 
 
 # Upper bound on the per-batch linter-findings block. Mirrors the max_chars

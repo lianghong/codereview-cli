@@ -350,3 +350,27 @@ def test_system_prompt_alias_matches_full_render():
     from codereview.config import SYSTEM_PROMPT, build_system_prompt
 
     assert SYSTEM_PROMPT == build_system_prompt()
+
+
+def test_canonical_owner_aliases_route_to_direct_api():
+    """Lock the canonical-owner convention (CLAUDE.md).
+
+    When a model is exposed by both the vendor's direct API and a re-hoster,
+    the direct API owns the canonical aliases. Alias collisions resolve
+    first-registration-wins with only a log warning, so without this test a
+    re-hoster gaining a canonical alias (or a reorder of the provider parsing
+    branches in loader.py) would silently reroute these — changing pricing
+    and transport for anyone using the alias.
+    """
+    loader = ConfigLoader()
+    canonical_owners = {
+        "deepseek-v4-pro": "deepseek",  # not NVIDIA's free re-host
+        "kimi": "moonshot",  # not Bedrock's K2.5 or NVIDIA's K2.6
+        "kimi-k2.6": "moonshot",
+    }
+    for alias, owner in canonical_owners.items():
+        provider, _ = loader.resolve_model(alias)
+        assert provider == owner, (
+            f"canonical alias {alias!r} must route to {owner!r} (direct API), "
+            f"got {provider!r} — re-host entries keep suffixed aliases only"
+        )

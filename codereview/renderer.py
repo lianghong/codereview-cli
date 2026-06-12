@@ -14,6 +14,18 @@ from codereview.models import CodeReviewReport, ReviewIssue
 from codereview.providers.base import ValidationResult
 from codereview.static_analysis import StaticAnalysisResult, StaticAnalyzer
 
+
+def is_pricing_tbd(input_price: float, output_price: float) -> bool:
+    """Check if model pricing is a placeholder (provider hasn't published rates).
+
+    Many free-tier or preview models in models.yaml use 0.00 placeholders.
+    Treating these as $0 in cost output misleads users into thinking the
+    model is permanently free; surface them as TBD instead. Single source of
+    truth — the terminal (cli.py) and markdown export must agree on the rule.
+    """
+    return input_price == 0.0 and output_price == 0.0
+
+
 # Shared constants for severity display
 SEVERITY_ORDER: list[str] = ["Critical", "High", "Medium", "Low", "Info"]
 
@@ -129,6 +141,16 @@ class TerminalRenderer:
                 f"[green]✓ No issues at {min_severity_title} severity or above![/green]\n"
             )
             return
+
+        # The summary panel above reports the unfiltered total; when the
+        # severity filter hides issues, say so here or the two counts read
+        # as a contradiction.
+        if len(filtered_issues) < len(report.issues):
+            self.console.print(
+                f"\n[dim]Showing {len(filtered_issues)} of {len(report.issues)} "
+                f"issue(s) (≥ {min_severity_title} severity; "
+                "lower severities hidden by --severity).[/dim]"
+            )
 
         grouped = self._group_by_severity(filtered_issues)
 
@@ -694,7 +716,7 @@ class MarkdownExporter:
             ):
                 # Placeholder pricing (0.00/0.00) means provider hasn't published rates;
                 # render TBD instead of misleading $0.0000.
-                if input_price == 0.0 and output_price == 0.0:
+                if is_pricing_tbd(input_price, output_price):
                     lines.append(
                         "- **Estimated Cost:** TBD "
                         "(provider has not published pricing yet)"

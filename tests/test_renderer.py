@@ -328,3 +328,56 @@ class TestMarkdownExporter:
 
         assert "**Static Analysis Run:** True" in result
         assert "**Static Analysis Run:** 1" not in result
+
+
+def test_severity_filter_states_hidden_count(sample_report):
+    """When --severity hides issues, the output must say N of M.
+
+    Regression guard: the summary panel showed 'Total issues: 2' while the
+    filtered list below displayed only 1, with nothing explaining the
+    mismatch — users reconciled the counts by hand or assumed a bug.
+    """
+    output = StringIO()
+    console = Console(file=output, force_terminal=False, width=120)
+    renderer = TerminalRenderer(console=console)
+
+    # sample_report has 1 Critical + 1 Low; 'high' filter hides the Low one
+    renderer.render(sample_report, min_severity="high")
+    text = output.getvalue()
+
+    assert "1 of 2" in text, (
+        "filtered render must state how many issues the severity filter "
+        f"hides; got:\n{text}"
+    )
+
+
+def test_no_filter_no_hidden_count_note(sample_report):
+    """With everything displayed, no 'of' note should appear."""
+    output = StringIO()
+    console = Console(file=output, force_terminal=False, width=120)
+    renderer = TerminalRenderer(console=console)
+
+    renderer.render(sample_report, min_severity="info")
+    text = output.getvalue()
+
+    assert "1 of 2" not in text and "2 of 2" not in text
+
+
+def test_is_pricing_tbd_single_source_of_truth():
+    """The TBD-pricing rule must live in renderer.py and be shared.
+
+    Regression guard: the rule existed twice — _is_pricing_tbd in cli.py and
+    an open-coded `input_price == 0.0 and output_price == 0.0` in the
+    markdown exporter — so extending it (e.g. a sentinel negative price)
+    would silently split terminal output from markdown export.
+    """
+    from codereview.renderer import is_pricing_tbd
+
+    assert is_pricing_tbd(0.0, 0.0)
+    assert not is_pricing_tbd(5.0, 25.0)
+    assert not is_pricing_tbd(0.0, 25.0)  # one real price → not TBD
+
+    # cli must use the shared helper, not its own copy
+    from codereview import cli
+
+    assert cli._is_pricing_tbd is is_pricing_tbd
