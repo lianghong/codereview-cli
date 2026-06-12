@@ -100,14 +100,29 @@ class StreamingCallbackHandler(BaseCallbackHandler):
             raise
         return None
 
-    def on_llm_new_token(self, token: str, **kwargs: Any) -> None:
-        """Called for each new token generated."""
+    def on_llm_new_token(
+        self, token: str | list[str | dict[str, Any]], **kwargs: Any
+    ) -> None:
+        """Called for each new token generated.
+
+        langchain-core types ``token`` as ``str | list[str | dict]`` — content
+        blocks arrive as a list whose dict parts carry their text under
+        ``"text"``. Coerce to plain text before appending.
+        """
         _ = kwargs  # Suppress unused parameter warning
 
         if not self.verbose or not self._live:
             return
 
-        self._current_parts.append(token)
+        if isinstance(token, list):
+            text = "".join(
+                part if isinstance(part, str) else str(part.get("text", ""))
+                for part in token
+            )
+        else:
+            text = token
+
+        self._current_parts.append(text)
         self._token_count += 1
 
         # Update display with current text (truncated for readability)

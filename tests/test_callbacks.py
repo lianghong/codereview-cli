@@ -63,6 +63,23 @@ class TestStreamingCallbackHandler:
         assert "".join(handler._current_parts) == "Hello world"
         assert handler._token_count == 2
 
+    def test_on_llm_new_token_accepts_list_shaped_token(self):
+        """langchain-core 1.4.6+ may deliver token as a list of str/dict.
+
+        The supertype signature is ``token: str | list[str | dict]``; a
+        handler that assumes str crashes on ``"".join`` or renders
+        "['Hello']" garbage. Coerce list parts to their text content.
+        """
+        handler = StreamingCallbackHandler(verbose=True)
+        handler._current_parts = []
+        handler._token_count = 0
+        handler._live = Mock()
+
+        handler.on_llm_new_token(["Hello", {"type": "text", "text": " world"}])
+
+        assert "".join(handler._current_parts) == "Hello world"
+        assert handler._token_count == 1
+
     def test_on_llm_new_token_skipped_when_not_verbose(self):
         """Test on_llm_new_token does nothing when not verbose."""
         handler = StreamingCallbackHandler(verbose=False)

@@ -100,7 +100,7 @@ def _is_authoritative_url(url: str) -> bool:
 
     try:
         parsed = urlparse(url.strip())
-    except (ValueError, AttributeError):
+    except ValueError, AttributeError:
         return False
     if parsed.scheme not in ("http", "https"):
         return False

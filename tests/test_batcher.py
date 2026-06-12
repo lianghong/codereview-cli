@@ -314,7 +314,7 @@ def test_estimate_file_tokens_handles_special_token_literals(tmp_path):
     special-token literals (e.g. llama-cpp source). Regression for ValueError:
     'Encountered text corresponding to disallowed special token'.
     """
-    from codereview.batcher import _get_encoder, FileBatcher
+    from codereview.batcher import FileBatcher, _get_encoder
 
     if _get_encoder() is None:
         pytest.skip("tiktoken unavailable; byte fallback can't trigger this")
