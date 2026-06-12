@@ -9,12 +9,11 @@ from pydantic import SecretStr
 from codereview.config.models import GoogleGenAIConfig, ModelConfig
 from codereview.models import CodeReviewReport
 from codereview.providers.base import (
-    BATCH_PROMPT_TEMPLATE,
     ModelProvider,
     RetryConfig,
     ValidationResult,
 )
-from codereview.providers.mixins import TokenTrackingMixin
+from codereview.providers.mixins import TokenTrackingMixin, is_placeholder_api_key
 
 
 class GoogleGenAIProvider(TokenTrackingMixin, ModelProvider):
@@ -105,15 +104,10 @@ class GoogleGenAIProvider(TokenTrackingMixin, ModelProvider):
             model_params["top_k"] = self.top_k
 
         base_model = ChatGoogleGenerativeAI(**model_params)
-        # include_raw=True returns {"raw": AIMessage, "parsed": CodeReviewReport}
-        # so we can extract actual token counts from the raw AIMessage
-        return base_model.with_structured_output(
-            CodeReviewReport, method="json_schema", include_raw=True
-        )
-
-    def _create_chain(self) -> Any:
-        """Create LangChain chain with prompt template."""
-        return BATCH_PROMPT_TEMPLATE | self.model
+        # Tool-use vs prompt-parsing routing (and _create_chain) live in the
+        # base class; supports_tool_use in models.yaml decides the path.
+        # Gemini's structured output wants method="json_schema".
+        return self._apply_structured_output(base_model, method="json_schema")
 
     def _is_retryable_error(self, error: Exception) -> bool:
         """Check if error is a retryable Google API error."""
@@ -191,7 +185,8 @@ class GoogleGenAIProvider(TokenTrackingMixin, ModelProvider):
 
         # Check 1: API key configured
         api_key = self.provider_config.api_key
-        if not api_key or api_key in ("", "your-api-key-here", "placeholder"):
+        # "your-api-key-here" (the exact README string) is in the generic set
+        if not api_key or is_placeholder_api_key(api_key):
             result.valid = False
             result.add_check(
                 "API Key",

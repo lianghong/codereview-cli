@@ -16,14 +16,12 @@ import logging
 from typing import Any
 
 from langchain_core.callbacks import BaseCallbackHandler
-from langchain_core.output_parsers import PydanticOutputParser
 from langchain_openai import ChatOpenAI
 from pydantic import SecretStr
 
 from codereview.config.models import ModelConfig, ZAIConfig
 from codereview.models import CodeReviewReport
 from codereview.providers.base import (
-    BATCH_PROMPT_TEMPLATE,
     ModelProvider,
     RetryConfig,
     ValidationResult,
@@ -32,6 +30,7 @@ from codereview.providers.mixins import (
     TokenTrackingMixin,
     extract_openai_token_usage,
     is_openai_retryable_error,
+    is_placeholder_api_key,
     parse_retry_after,
     require_https,
 )
@@ -63,18 +62,9 @@ class ZAIProvider(TokenTrackingMixin, ModelProvider):
         """
         self.callbacks = callbacks or []
         self.enable_output_fixing = enable_output_fixing
-        self._output_parser = PydanticOutputParser(pydantic_object=CodeReviewReport)
         self.model_config = model_config
         self.provider_config = provider_config
         self.project_context = project_context
-
-        # Set in _create_model when model_config.supports_tool_use is False.
-        # GLM-5.1 on Z.AI's OpenAI-compat endpoint does not honor the
-        # json_schema response_format that .with_structured_output() relies on
-        # — it returns markdown-fenced JSON (```json ... ```), which the
-        # json_schema parser rejects ("Invalid JSON: expected value at line 1
-        # column 1"). The PydanticOutputParser path strips those fences.
-        self._use_prompt_parsing = False
 
         # GLM models accept temperature; allow_none preserves opt-out for
         # any future reasoning variants that don't.
@@ -130,24 +120,12 @@ class ZAIProvider(TokenTrackingMixin, ModelProvider):
 
         base_model = ChatOpenAI(**model_params)
 
-        if self.model_config.supports_tool_use:
-            # Tool-calling-based structured output. include_raw=True so we can
-            # extract real token counts from the AIMessage.
-            return base_model.with_structured_output(CodeReviewReport, include_raw=True)
-
-        # Prompt-based JSON path. Z.AI's GLM endpoint ignores OpenAI's
-        # json_schema response_format and emits markdown-fenced JSON, so we ask
-        # for JSON via prompt format instructions (injected in
-        # _build_batch_system_prompt because _use_prompt_parsing is set) and
-        # parse with PydanticOutputParser, which strips the ```json fences.
-        self._use_prompt_parsing = True
-        return base_model
-
-    def _create_chain(self) -> Any:
-        """Create LangChain chain with prompt template."""
-        if self._use_prompt_parsing:
-            return BATCH_PROMPT_TEMPLATE | self.model | self._output_parser
-        return BATCH_PROMPT_TEMPLATE | self.model
+        # Tool-use vs prompt-parsing routing (and _create_chain) live in the
+        # base class; supports_tool_use in models.yaml decides the path.
+        # GLM-5.1 sets it false: Z.AI's endpoint ignores OpenAI's json_schema
+        # response_format and emits markdown-fenced JSON, which the
+        # PydanticOutputParser path strips.
+        return self._apply_structured_output(base_model)
 
     def _is_retryable_error(self, error: Exception) -> bool:
         """Retry rate limits plus transient timeouts/connection/5xx errors.
@@ -204,7 +182,8 @@ class ZAIProvider(TokenTrackingMixin, ModelProvider):
             )
             return result
 
-        if api_key in ("your-zai-api-key-here", "placeholder"):
+        # "your-zai-key" is the exact string the README documents
+        if is_placeholder_api_key(api_key, ("your-zai-api-key-here", "your-zai-key")):
             result.valid = False
             result.add_check(
                 "API Key", False, "ZAI_API_KEY appears to be a placeholder"

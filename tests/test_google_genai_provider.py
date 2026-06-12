@@ -543,3 +543,34 @@ def test_validate_credentials_missing_model_id(provider_config):
 
         assert result.valid is False
         assert any("full_id" in err for err in result.errors)
+
+
+def test_google_genai_honors_supports_tool_use_false(provider_config):
+    """A Gemini model with supports_tool_use=False must use prompt parsing.
+
+    Regression guard: google_genai was the only provider ignoring the flag —
+    it always called .with_structured_output(). Per CLAUDE.md, a new
+    reasoning/thinking model should be routable to the prompt-parsing path by
+    setting supports_tool_use: false in models.yaml; without this, that YAML
+    change would be silently ignored for Google models.
+    """
+    no_tool_config = ModelConfig(
+        id="test-gemini-thinking",
+        name="Test Gemini Thinking",
+        full_id="gemini-thinking-preview",
+        pricing=PricingConfig(input_per_million=2.0, output_per_million=12.0),
+        supports_tool_use=False,
+    )
+    with patch("codereview.providers.google_genai.ChatGoogleGenerativeAI") as mock_cls:
+        mock_instance = Mock()
+        mock_cls.return_value = mock_instance
+
+        provider = GoogleGenAIProvider(no_tool_config, provider_config)
+
+        mock_instance.with_structured_output.assert_not_called()
+        assert provider._use_prompt_parsing is True
+        # Chain must end with the PydanticOutputParser, and the system prompt
+        # must carry the format instructions it relies on.
+        assert provider.chain.last is provider._output_parser
+        prompt = provider._build_batch_system_prompt({"x.py": "code"})
+        assert "json" in prompt.lower()

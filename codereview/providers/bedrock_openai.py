@@ -25,14 +25,12 @@ import logging
 from typing import Any
 
 from langchain_core.callbacks import BaseCallbackHandler
-from langchain_core.output_parsers import PydanticOutputParser
 from langchain_openai import ChatOpenAI
 from pydantic import SecretStr
 
 from codereview.config.models import BedrockOpenAIConfig, ModelConfig
 from codereview.models import CodeReviewReport
 from codereview.providers.base import (
-    BATCH_PROMPT_TEMPLATE,
     ModelProvider,
     RetryConfig,
     ValidationResult,
@@ -41,6 +39,7 @@ from codereview.providers.mixins import (
     TokenTrackingMixin,
     extract_openai_token_usage,
     is_openai_retryable_error,
+    is_placeholder_api_key,
     parse_retry_after,
     require_https,
 )
@@ -72,13 +71,9 @@ class BedrockOpenAIProvider(TokenTrackingMixin, ModelProvider):
         """
         self.callbacks = callbacks or []
         self.enable_output_fixing = enable_output_fixing
-        self._output_parser = PydanticOutputParser(pydantic_object=CodeReviewReport)
         self.model_config = model_config
         self.provider_config = provider_config
         self.project_context = project_context
-
-        # Set in _create_model when model_config.supports_tool_use is False.
-        self._use_prompt_parsing = False
 
         # GPT-5.5 / GPT-5.4 are reasoning models and reject temperature/top_p;
         # allow_none preserves that opt-out (no default_temperature in YAML).
@@ -144,18 +139,9 @@ class BedrockOpenAIProvider(TokenTrackingMixin, ModelProvider):
             # extract real token counts from the AIMessage.
             return base_model.with_structured_output(CodeReviewReport, include_raw=True)
 
-        # Tool-use-less models: parse JSON via prompt format instructions
-        # (injected in _build_batch_system_prompt because _use_prompt_parsing is
-        # set) and PydanticOutputParser — same pattern as Bedrock's MiniMax M2.5
-        # / Z.AI's GLM-5.1 path.
-        self._use_prompt_parsing = True
-        return base_model
-
-    def _create_chain(self) -> Any:
-        """Create LangChain chain with prompt template."""
-        if self._use_prompt_parsing:
-            return BATCH_PROMPT_TEMPLATE | self.model | self._output_parser
-        return BATCH_PROMPT_TEMPLATE | self.model
+        # Tool-use-less models (GPT-5.5/5.4 adaptive thinking): routing and
+        # _create_chain live in the base class.
+        return self._apply_structured_output(base_model)
 
     def _is_retryable_error(self, error: Exception) -> bool:
         """Retry rate limits plus transient timeouts/connection/5xx errors.
@@ -215,7 +201,7 @@ class BedrockOpenAIProvider(TokenTrackingMixin, ModelProvider):
             )
             return result
 
-        if api_key in ("your-bedrock-api-key-here", "placeholder"):
+        if is_placeholder_api_key(api_key, ("your-bedrock-api-key-here",)):
             result.valid = False
             result.add_check(
                 "API Key", False, "OPENAI_API_KEY appears to be a placeholder"

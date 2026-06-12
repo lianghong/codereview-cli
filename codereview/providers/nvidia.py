@@ -8,7 +8,6 @@ from typing import Any
 
 import httpx
 from langchain_core.callbacks import BaseCallbackHandler
-from langchain_core.output_parsers import PydanticOutputParser
 from langchain_nvidia_ai_endpoints import ChatNVIDIA
 from pydantic import SecretStr
 
@@ -16,12 +15,15 @@ from pydantic import SecretStr
 from codereview.config.models import ModelConfig, NVIDIAConfig
 from codereview.models import CodeReviewReport
 from codereview.providers.base import (
-    BATCH_PROMPT_TEMPLATE,
     ModelProvider,
     RetryConfig,
     ValidationResult,
 )
-from codereview.providers.mixins import TokenTrackingMixin, require_https
+from codereview.providers.mixins import (
+    TokenTrackingMixin,
+    is_placeholder_api_key,
+    require_https,
+)
 
 
 @contextlib.contextmanager
@@ -95,7 +97,6 @@ class NVIDIAProvider(TokenTrackingMixin, ModelProvider):
         """
         self.callbacks = callbacks or []
         self.enable_output_fixing = enable_output_fixing
-        self._output_parser = PydanticOutputParser(pydantic_object=CodeReviewReport)
         self.model_config = model_config
         self.provider_config = provider_config
         self.project_context = project_context
@@ -121,9 +122,6 @@ class NVIDIAProvider(TokenTrackingMixin, ModelProvider):
 
         # Token tracking (from mixin)
         self._init_token_tracking()
-
-        # Flag for prompt-based parsing (set in _create_model if model doesn't support tool use)
-        self._use_prompt_parsing = False
 
         # Rate limiter for API calls
         self.rate_limiter = self._build_rate_limiter(requests_per_second)
@@ -205,28 +203,13 @@ class NVIDIAProvider(TokenTrackingMixin, ModelProvider):
         with suppress_nvidia_warnings():
             base_model = ChatNVIDIA(**model_params)
 
-            # Check if model supports tool use for structured output
-            if not self.model_config.supports_tool_use:
-                # Return base model for prompt-based JSON parsing
-                self._use_prompt_parsing = True
-                return base_model
-
-            # Try include_raw=True first (returns {"raw": AIMessage, "parsed": CodeReviewReport}
-            # so we can extract actual token counts from the raw AIMessage).
-            # Some models (e.g., GLM-5) don't support include_raw — fall back gracefully.
+            # Tool-use vs prompt-parsing routing (and _create_chain) live in
+            # the base class. Some NVIDIA models (e.g., GLM-5) don't support
+            # include_raw — fall back gracefully to the no-raw variant.
             try:
-                return base_model.with_structured_output(
-                    CodeReviewReport, include_raw=True
-                )
+                return self._apply_structured_output(base_model)
             except NotImplementedError:
                 return base_model.with_structured_output(CodeReviewReport)
-
-    def _create_chain(self) -> Any:
-        """Create LangChain chain with prompt template."""
-        if self._use_prompt_parsing:
-            # For models without tool use, add output parser to chain
-            return BATCH_PROMPT_TEMPLATE | self.model | self._output_parser
-        return BATCH_PROMPT_TEMPLATE | self.model
 
     def _is_retryable_error(self, error: Exception) -> bool:
         """Check if error is a retryable NVIDIA gateway/rate limit error."""
@@ -316,7 +299,8 @@ class NVIDIAProvider(TokenTrackingMixin, ModelProvider):
 
         # Check 1: API key configured
         api_key = self.provider_config.api_key
-        if not api_key or api_key in ("", "your-api-key-here", "placeholder"):
+        # "nvapi-your-key-here" is the exact string the README documents
+        if not api_key or is_placeholder_api_key(api_key, ("nvapi-your-key-here",)):
             result.valid = False
             result.add_check(
                 "API Key",

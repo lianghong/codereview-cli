@@ -6,13 +6,11 @@ from botocore.config import Config as BotocoreConfig  # type: ignore[import-unty
 from botocore.exceptions import ClientError  # type: ignore[import-untyped]
 from langchain_aws import ChatBedrockConverse
 from langchain_core.callbacks import BaseCallbackHandler
-from langchain_core.output_parsers import PydanticOutputParser
 
 # Import system prompt from config
 from codereview.config.models import BedrockConfig, ModelConfig
 from codereview.models import CodeReviewReport
 from codereview.providers.base import (
-    BATCH_PROMPT_TEMPLATE,
     ModelProvider,
     RetryConfig,
     ValidationResult,
@@ -46,7 +44,6 @@ class BedrockProvider(TokenTrackingMixin, ModelProvider):
         """
         self.callbacks = callbacks or []
         self.enable_output_fixing = enable_output_fixing
-        self._output_parser = PydanticOutputParser(pydantic_object=CodeReviewReport)
         self.model_config = model_config
         self.provider_config = provider_config
         self.project_context = project_context
@@ -73,9 +70,6 @@ class BedrockProvider(TokenTrackingMixin, ModelProvider):
 
         # Token tracking (from mixin)
         self._init_token_tracking()
-
-        # Flag for prompt-based parsing (set in _create_model if model doesn't support tool use)
-        self._use_prompt_parsing = False
 
         # Rate limiter for API calls
         self.rate_limiter = self._build_rate_limiter(requests_per_second)
@@ -125,23 +119,9 @@ class BedrockProvider(TokenTrackingMixin, ModelProvider):
 
         base_model = ChatBedrockConverse(**model_kwargs)
 
-        # Check if model supports tool use for structured output
-        if self.model_config.supports_tool_use:
-            # Configure for structured output using tool calling
-            # include_raw=True returns {"raw": AIMessage, "parsed": CodeReviewReport}
-            # so we can extract actual token counts from the raw AIMessage
-            return base_model.with_structured_output(CodeReviewReport, include_raw=True)
-        else:
-            # Return base model for prompt-based JSON parsing
-            self._use_prompt_parsing = True
-            return base_model
-
-    def _create_chain(self) -> Any:
-        """Create LangChain chain with prompt template."""
-        if self._use_prompt_parsing:
-            # For models without tool use, add output parser to chain
-            return BATCH_PROMPT_TEMPLATE | self.model | self._output_parser
-        return BATCH_PROMPT_TEMPLATE | self.model
+        # Tool-use vs prompt-parsing routing (and _create_chain) live in the
+        # base class; supports_tool_use in models.yaml decides the path.
+        return self._apply_structured_output(base_model)
 
     def _is_retryable_error(self, error: Exception) -> bool:
         """Check if error is a retryable AWS throttling error."""

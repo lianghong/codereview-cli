@@ -18,14 +18,12 @@ import logging
 from typing import Any
 
 from langchain_core.callbacks import BaseCallbackHandler
-from langchain_core.output_parsers import PydanticOutputParser
 from langchain_moonshot import ChatMoonshot
 from pydantic import SecretStr
 
 from codereview.config.models import ModelConfig, MoonshotConfig
 from codereview.models import CodeReviewReport
 from codereview.providers.base import (
-    BATCH_PROMPT_TEMPLATE,
     ModelProvider,
     RetryConfig,
     ValidationResult,
@@ -34,6 +32,7 @@ from codereview.providers.mixins import (
     TokenTrackingMixin,
     extract_openai_token_usage,
     is_openai_retryable_error,
+    is_placeholder_api_key,
     parse_retry_after,
     require_https,
 )
@@ -65,14 +64,9 @@ class MoonshotProvider(TokenTrackingMixin, ModelProvider):
         """
         self.callbacks = callbacks or []
         self.enable_output_fixing = enable_output_fixing
-        self._output_parser = PydanticOutputParser(pydantic_object=CodeReviewReport)
         self.model_config = model_config
         self.provider_config = provider_config
         self.project_context = project_context
-
-        # Set in _create_model when model_config.supports_tool_use is False
-        # (kimi-k2.6 — server rejects tool_choice while thinking is enabled).
-        self._use_prompt_parsing = False
 
         # Kimi family accepts temperature; allow_none preserves opt-out for
         # any future reasoning-only variants.
@@ -132,18 +126,10 @@ class MoonshotProvider(TokenTrackingMixin, ModelProvider):
             # AIMessage's response_metadata.
             return base_model.with_structured_output(CodeReviewReport, include_raw=True)
 
-        # Prompt-based JSON path for models whose tool_choice conflicts
-        # with thinking mode (kimi-k2.6). Format instructions are injected
-        # into the system prompt by `_build_batch_system_prompt` since
-        # `_use_prompt_parsing` is set; the parser turns the raw response
-        # into a CodeReviewReport.
-        self._use_prompt_parsing = True
-        return base_model
-
-    def _create_chain(self) -> Any:
-        if self._use_prompt_parsing:
-            return BATCH_PROMPT_TEMPLATE | self.model | self._output_parser
-        return BATCH_PROMPT_TEMPLATE | self.model
+        # Prompt-based JSON path for models whose tool_choice conflicts with
+        # thinking mode (kimi-k2.6) — routing and _create_chain live in the
+        # base class.
+        return self._apply_structured_output(base_model)
 
     def _is_retryable_error(self, error: Exception) -> bool:
         """Retry rate limits plus transient timeouts/connection/5xx errors.
@@ -210,10 +196,8 @@ class MoonshotProvider(TokenTrackingMixin, ModelProvider):
         # Reject the documented placeholders too: the README tells users to
         # export KIMI_API_KEY="your-moonshot-key", so --validate must fail fast
         # on that exact string instead of deferring a 401 to the first call.
-        if api_key.strip().lower() in (
-            "your-kimi-api-key-here",
-            "your-moonshot-key",
-            "placeholder",
+        if is_placeholder_api_key(
+            api_key, ("your-kimi-api-key-here", "your-moonshot-key")
         ):
             result.valid = False
             result.add_check(

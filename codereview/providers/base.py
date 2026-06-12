@@ -4,9 +4,11 @@ import logging
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from functools import cached_property
 from typing import Any
 
 from langchain_core.exceptions import ContextOverflowError, OutputParserException
+from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.rate_limiters import InMemoryRateLimiter
 from pydantic import ValidationError
@@ -100,6 +102,54 @@ class ModelProvider(ABC):
     # `type: ignore[attr-defined]`. Subclasses that adopt __slots__ must
     # include "linter_findings" in their slot tuple.
     linter_findings: object | None = None
+
+    # The LangChain runnable built by _create_model; concrete providers set
+    # this in __init__ before calling _create_chain.
+    model: Any
+
+    # Structured-output path selector. False (the default) means tool-calling
+    # via .with_structured_output(); _apply_structured_output flips it to True
+    # for models that can't tool-call (or can't while thinking), routing the
+    # chain through the PydanticOutputParser instead. Class-level default so
+    # providers don't each re-declare it in __init__.
+    _use_prompt_parsing: bool = False
+
+    @cached_property
+    def _output_parser(self) -> PydanticOutputParser:
+        """Parser for the prompt-based JSON path (created on first use)."""
+        return PydanticOutputParser(pydantic_object=CodeReviewReport)
+
+    def _apply_structured_output(self, base_model: Any, **kwargs: Any) -> Any:
+        """Wrap ``base_model`` for structured output, honoring tool-use support.
+
+        Models with ``supports_tool_use`` get ``.with_structured_output(
+        CodeReviewReport, include_raw=True)`` — ``include_raw`` is required to
+        read real token counts from the raw ``AIMessage``. Tool-use-less models
+        get the base model back and ``_use_prompt_parsing`` is set, which makes
+        ``_create_chain`` append the ``PydanticOutputParser`` and
+        ``_build_batch_system_prompt`` inject the JSON format instructions.
+
+        ``kwargs`` are forwarded to ``with_structured_output`` for provider
+        quirks (e.g. Google's ``method="json_schema"``).
+        """
+        if self.model_config.supports_tool_use:  # type: ignore[attr-defined]
+            return base_model.with_structured_output(
+                CodeReviewReport, include_raw=True, **kwargs
+            )
+        self._use_prompt_parsing = True
+        return base_model
+
+    def _create_chain(self) -> Any:
+        """Create the LangChain chain: prompt template piped into the model.
+
+        On the prompt-parsing path (``_use_prompt_parsing`` set by
+        ``_apply_structured_output``) the ``PydanticOutputParser`` is appended
+        so the model's JSON text is coerced into a ``CodeReviewReport``.
+        Providers normally inherit this as-is.
+        """
+        if self._use_prompt_parsing:
+            return BATCH_PROMPT_TEMPLATE | self.model | self._output_parser
+        return BATCH_PROMPT_TEMPLATE | self.model
 
     @abstractmethod
     def analyze_batch(

@@ -15,14 +15,12 @@ import logging
 from typing import Any
 
 from langchain_core.callbacks import BaseCallbackHandler
-from langchain_core.output_parsers import PydanticOutputParser
 from langchain_deepseek import ChatDeepSeek
 from pydantic import SecretStr
 
 from codereview.config.models import DeepSeekConfig, ModelConfig
 from codereview.models import CodeReviewReport
 from codereview.providers.base import (
-    BATCH_PROMPT_TEMPLATE,
     ModelProvider,
     RetryConfig,
     ValidationResult,
@@ -31,6 +29,7 @@ from codereview.providers.mixins import (
     TokenTrackingMixin,
     extract_openai_token_usage,
     is_openai_retryable_error,
+    is_placeholder_api_key,
     parse_retry_after,
     require_https,
 )
@@ -70,8 +69,6 @@ class DeepSeekProvider(TokenTrackingMixin, ModelProvider):
         # thinking/reasoner path rejects the forced tool_choice that
         # with_structured_output relies on, so we fall back to prompt-based
         # JSON parsing (same pattern as MiniMax M2.5 / GLM-5.1).
-        self._output_parser = PydanticOutputParser(pydantic_object=CodeReviewReport)
-        self._use_prompt_parsing = False
 
         # DeepSeek V4 family accepts temperature; allow_none preserves
         # opt-out for any future reasoning-only variants.
@@ -143,8 +140,9 @@ class DeepSeekProvider(TokenTrackingMixin, ModelProvider):
             self._use_prompt_parsing = True
             return base_model
 
-        # include_raw=True so we can pull real token counts from the AIMessage.
-        return base_model.with_structured_output(CodeReviewReport, include_raw=True)
+        # Tool-use vs prompt-parsing routing (and _create_chain) live in the
+        # base class; supports_tool_use in models.yaml decides the path.
+        return self._apply_structured_output(base_model)
 
     def _build_extra_body(self) -> dict[str, Any]:
         """Construct the OpenAI-client extra_body payload for DeepSeek.
@@ -165,11 +163,6 @@ class DeepSeekProvider(TokenTrackingMixin, ModelProvider):
         ):
             thinking_state = "enabled"
         return {"thinking": {"type": thinking_state}}
-
-    def _create_chain(self) -> Any:
-        if self._use_prompt_parsing:
-            return BATCH_PROMPT_TEMPLATE | self.model | self._output_parser
-        return BATCH_PROMPT_TEMPLATE | self.model
 
     def _is_retryable_error(self, error: Exception) -> bool:
         """Retry rate limits plus transient timeouts/connection/5xx errors.
@@ -231,10 +224,8 @@ class DeepSeekProvider(TokenTrackingMixin, ModelProvider):
         # Reject the documented placeholders too: the README tells users to
         # export DEEPSEEK_API_KEY="your-deepseek-key", so --validate must fail
         # fast on that exact string instead of deferring a 401 to the first call.
-        if api_key.strip().lower() in (
-            "your-deepseek-api-key-here",
-            "your-deepseek-key",
-            "placeholder",
+        if is_placeholder_api_key(
+            api_key, ("your-deepseek-api-key-here", "your-deepseek-key")
         ):
             result.valid = False
             result.add_check(

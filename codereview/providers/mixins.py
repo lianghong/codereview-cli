@@ -26,6 +26,33 @@ def require_https(url: str, label: str) -> str:
     return str(url)
 
 
+# Generic placeholder strings common to provider docs and READMEs. Each
+# provider passes its README-documented export string(s) as ``extra`` so the
+# exact copy-paste fails fast at --validate instead of 401'ing later.
+_GENERIC_PLACEHOLDER_KEYS = frozenset(
+    {
+        "placeholder",
+        "your-api-key",
+        "your-api-key-here",
+    }
+)
+
+
+def is_placeholder_api_key(api_key: str, extra: tuple[str, ...] = ()) -> bool:
+    """Return True when ``api_key`` is a documentation placeholder.
+
+    CLAUDE.md contract: the placeholder set must include the exact strings the
+    README tells users to export, matched case-insensitively after ``strip()``.
+    ``extra`` carries the provider-specific README strings (e.g.
+    ``"your-deepseek-key"``); the generic set lives here so every provider
+    rejects the common ones without re-declaring them.
+    """
+    normalized = api_key.strip().lower()
+    return normalized in _GENERIC_PLACEHOLDER_KEYS or normalized in {
+        e.lower() for e in extra
+    }
+
+
 def extract_openai_token_usage(result: Any) -> tuple[int, int]:
     """Extract (prompt_tokens, completion_tokens) from an OpenAI-shaped result.
 

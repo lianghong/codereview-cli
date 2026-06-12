@@ -5,7 +5,6 @@ import os
 from typing import Any
 
 from langchain_core.callbacks import BaseCallbackHandler
-from langchain_core.output_parsers import PydanticOutputParser
 from langchain_openai import AzureChatOpenAI
 from pydantic import SecretStr
 
@@ -13,7 +12,6 @@ from pydantic import SecretStr
 from codereview.config.models import AzureOpenAIConfig, ModelConfig
 from codereview.models import CodeReviewReport
 from codereview.providers.base import (
-    BATCH_PROMPT_TEMPLATE,
     ModelProvider,
     RetryConfig,
     ValidationResult,
@@ -22,6 +20,7 @@ from codereview.providers.mixins import (
     TokenTrackingMixin,
     extract_openai_token_usage,
     is_openai_retryable_error,
+    is_placeholder_api_key,
     parse_retry_after,
     require_https,
 )
@@ -53,7 +52,6 @@ class AzureOpenAIProvider(TokenTrackingMixin, ModelProvider):
         """
         self.callbacks = callbacks or []
         self.enable_output_fixing = enable_output_fixing
-        self._output_parser = PydanticOutputParser(pydantic_object=CodeReviewReport)
         self.model_config = model_config
         self.provider_config = provider_config
         self.project_context = project_context
@@ -79,11 +77,6 @@ class AzureOpenAIProvider(TokenTrackingMixin, ModelProvider):
 
         # Token tracking (from mixin)
         self._init_token_tracking()
-
-        # Set in _create_model when the deployed model lacks tool-calling
-        # support (e.g. DeepSeek-V4-Pro on Azure Foundry). Mirrors the
-        # Bedrock provider's prompt-based JSON parsing path.
-        self._use_prompt_parsing = False
 
         # Rate limiter for API calls
         self.rate_limiter = self._build_rate_limiter(requests_per_second)
@@ -138,20 +131,9 @@ class AzureOpenAIProvider(TokenTrackingMixin, ModelProvider):
         # For those, return the raw chat model and parse JSON via prompt
         # instructions in `_create_chain` — same pattern as Bedrock's
         # DeepSeek-R1 / MiniMax M2.5 path.
-        if self.model_config.supports_tool_use:
-            # include_raw=True returns {"raw": AIMessage, "parsed": CodeReviewReport}
-            # so we can extract actual token counts from the raw AIMessage
-            return base_model.with_structured_output(CodeReviewReport, include_raw=True)
-        self._use_prompt_parsing = True
-        return base_model
-
-    def _create_chain(self) -> Any:
-        """Create LangChain chain with prompt template."""
-        if self._use_prompt_parsing:
-            # Append the Pydantic output parser so the raw chat response
-            # is coerced into a CodeReviewReport for tool-use-less models.
-            return BATCH_PROMPT_TEMPLATE | self.model | self._output_parser
-        return BATCH_PROMPT_TEMPLATE | self.model
+        # Tool-use vs prompt-parsing routing (and _create_chain) live in the
+        # base class; supports_tool_use in models.yaml decides the path.
+        return self._apply_structured_output(base_model)
 
     def _is_retryable_error(self, error: Exception) -> bool:
         """Retry Azure rate limits plus transient timeouts/connection/5xx errors."""
@@ -232,7 +214,8 @@ class AzureOpenAIProvider(TokenTrackingMixin, ModelProvider):
 
         # Check 1: API key configured
         api_key = self.provider_config.api_key
-        if not api_key or api_key in ("", "your-api-key-here", "placeholder"):
+        # "your-api-key" (the exact README string) is in the generic set
+        if not api_key or is_placeholder_api_key(api_key):
             result.valid = False
             result.add_check(
                 "API Key",
