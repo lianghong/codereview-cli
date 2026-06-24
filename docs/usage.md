@@ -453,7 +453,7 @@ Be aware of costs and choose models accordingly:
 - **Kimi K2.6**: 1T MoE, 32B active, 256K context, agentic ($0.60/M input, $2.50/M output)
 
 **NVIDIA NIM (Free Tier):**
-- **Mistral Small 4, Mistral Medium 3.5, MiniMax M2.7, Kimi K2.6, Qwen3 Coder, Qwen3.5, DeepSeek-V4-Pro/Flash, GLM-5.1, Step 3.5/3.7 Flash**: Currently free
+- **Mistral Small 4, Mistral Medium 3.5, MiniMax M2.7, MiniMax M3, Kimi K2.6, Qwen3 Coder, Qwen3.5, DeepSeek-V4-Pro/Flash, GLM-5.1, Step 3.5/3.7 Flash**: Currently free
 
 **Cost optimization tips:**
 - Use `--max-files` to limit scope
@@ -600,6 +600,7 @@ codereview ./src --model kimi-azure    # Kimi K2.5 (256K context)
 codereview ./src --model mistral-medium     # Mistral Medium 3.5 128B (77.6% SWE-Bench)
 codereview ./src --model mistral-small      # Mistral Small 4 119B
 codereview ./src --model minimax-m2.7       # MiniMax M2.7 (agent-native; supersedes retired M2.5)
+codereview ./src --model minimax-m3         # MiniMax M3 (multimodal MoE, 1M context, thinking)
 codereview ./src --model dsv4-nvidia        # DeepSeek-V4-Pro on NVIDIA (free)
 codereview ./src --model dsv4-flash-nvidia  # DeepSeek-V4-Flash on NVIDIA (free, 1M context, fast)
 codereview ./src --model glm51              # GLM-5.1 (744B MoE; supersedes deprecated glm5)
@@ -639,6 +640,7 @@ codereview ./src --model kimi               # Short alias
 | **Mistral Small 4** | NVIDIA NIM | Free tier, MoE architecture, 256K context | Free* |
 | **Mistral Medium 3.5** | NVIDIA NIM | Free tier, 128B dense, 77.6% SWE-Bench | Free* |
 | **MiniMax M2.7** | NVIDIA NIM | Free tier, agent-native, 204K context (M2.5 retired 2026-05-12) | Free* |
+| **MiniMax M3** | NVIDIA NIM | Free tier, multimodal MoE (428B/22B active), 1M context, thinking, long-horizon coding | Free* |
 | **DeepSeek-V4-Pro (NVIDIA)** | NVIDIA NIM | Free tier, 1M context, three reasoning modes | Free* |
 | **DeepSeek-V4-Flash (NVIDIA)** | NVIDIA NIM | Free tier, 1M context, fast/cheap sibling of V4-Pro | Free* |
 | **GLM-5.1** | NVIDIA NIM | Free tier, thinking mode (GLM-5 deprecated 2026-04-20) | Free* |

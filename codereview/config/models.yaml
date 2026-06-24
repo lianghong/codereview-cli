@@ -676,6 +676,58 @@ providers:
           open-source), agent-native model for
           long-horizon engineering workflows
 
+      # MiniMax M3 Preview (via NVIDIA)
+      # Multimodal MoE vision-language model:
+      # 428B total, ~22B active per token (A22B),
+      # ViT vision encoder for image/video; text-only output
+      # 1M-token input context; long-form video up to 30 min
+      # Best for: long-horizon coding (8+ hrs), agentic tool
+      # use, multimodal + long-context reasoning
+      # Note: reasoning/thinking model — routes through
+      #   prompt-based JSON parsing (supports_tool_use: false)
+      #   per the "assume prompt-parsing until a live run proves
+      #   tool-use" rule for new reasoning models.
+      - id: minimax-m3-nvidia
+        full_id: minimaxai/minimax-m3
+        name: MiniMax M3 (NVIDIA)
+        aliases:
+          - minimax-m3
+          - mm3-nvidia
+          - mm3
+        pricing:
+          # Free/non-commercial NVIDIA NIM trial endpoint
+          input_per_million: 0.00
+          output_per_million: 0.00
+        inference_params:
+          # MiniMax house recommendation (matches M2.7):
+          # temperature=1.0, top_p=0.95, top_k=40
+          default_temperature: 1.0
+          default_top_p: 0.95
+          default_top_k: 40
+          # Headroom for thinking tokens + report (matches M2.7)
+          max_output_tokens: 128000
+          # Interleaved thinking for deeper code analysis
+          enable_thinking: true
+          clear_thinking: false
+        # Input Context Length (ISL): 1,000,000
+        context_window: 1000000
+        # Reasoning model: forced tool_choice while thinking is
+        # unproven on this endpoint — prompt-based JSON parsing
+        supports_tool_use: false
+        architecture: "MoE (428B total, ~22B active, multimodal)"
+        capabilities:
+          - code_review
+          - code_generation
+          - reasoning
+          - agentic_tasks
+          - thinking
+          - multimodal
+        notes: >-
+          Multimodal MoE vision-language model (text/image/video
+          in, text out), 1M-token context, long-form video to
+          30 min, long-horizon coding (8+ hrs). Non-commercial
+          NVIDIA NIM trial endpoint. Prompt-based JSON parsing.
+
       # Qwen3 Coder 480B (via NVIDIA)
       # MoE: 480B total, 35B active parameters
       # Best for: Code generation, code review

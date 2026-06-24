@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+#### New Models
+- **MiniMax M3 (NVIDIA NIM)** — multimodal MoE vision-language model
+  (428B total / ~22B active, A22B), 1M-token context, text-only output,
+  long-form video understanding (to 30 min) and long-horizon coding (8+ hrs)
+  - Model ID: `minimax-m3-nvidia` (`full_id: minimaxai/minimax-m3`)
+  - Aliases: `minimax-m3`, `mm3-nvidia`, `mm3`
+  - Free/non-commercial NVIDIA NIM trial endpoint → cost renders `TBD`
+  - Interleaved thinking enabled (temp 1.0 / top_p 0.95 / top_k 40,
+    128K max output), mirroring the MiniMax M2.7 house recommendation
+  - `supports_tool_use: false` (prompt-based JSON parsing) — per the
+    "assume prompt-parsing until a live run proves tool-use works" rule
+    for new reasoning models; live-verified working on the prompt path
+
 #### New Providers (3)
 - **DeepSeek direct API** — 6th provider, via dedicated `langchain-deepseek`
   package (small single-purpose dep, not the heavy langchain-community)

@@ -168,7 +168,7 @@ codereview --list-models  # Should show Azure models
 
 ## NVIDIA NIM Configuration (Alternative Provider)
 
-NVIDIA NIM provides access to Mistral Small 4, Mistral Medium 3.5, MiniMax M2.7, Kimi K2.6, Qwen3 Coder, Qwen3.5, DeepSeek-V4-Pro/Flash, GLM-5.1, Step 3.5/3.7 Flash, and more — with a free tier for development.
+NVIDIA NIM provides access to Mistral Small 4, Mistral Medium 3.5, MiniMax M2.7, MiniMax M3, Kimi K2.6, Qwen3 Coder, Qwen3.5, DeepSeek-V4-Pro/Flash, GLM-5.1, Step 3.5/3.7 Flash, and more — with a free tier for development.
 
 ### 1. Get API Key
 
@@ -207,6 +207,9 @@ codereview /path/to/code --model qwen3.5
 # (NVIDIA retired the M2.5 endpoint 2026-05-12; minimax-m2.5/mm25 now route here)
 codereview /path/to/code --model minimax-m2.7
 
+# MiniMax M3 - Multimodal MoE (428B/22B active), 1M context, thinking, long-horizon coding
+codereview /path/to/code --model minimax-m3
+
 # Kimi K2.6 - 262K context, thinking mode
 # (NVIDIA shut down the K2.5 endpoint 2026-05-20; kimi-k2.5/kimi25 now route here)
 codereview /path/to/code --model kimi-k2.6
@@ -222,7 +225,7 @@ codereview /path/to/code --model step-3.5-flash
 codereview /path/to/code --model step-3.7-flash
 ```
 
-**Note:** NVIDIA NIM models are currently in free tier. No charges apply during the preview period. Models with thinking mode enabled (MiniMax M2.7, Qwen3.5, DeepSeek-V4-Pro/Flash, Qwen3 Coder, GLM-5.1, Kimi K2.6) provide deeper reasoning for complex code analysis.
+**Note:** NVIDIA NIM models are currently in free tier. No charges apply during the preview period. Models with thinking mode enabled (MiniMax M2.7, MiniMax M3, Qwen3.5, DeepSeek-V4-Pro/Flash, Qwen3 Coder, GLM-5.1, Kimi K2.6) provide deeper reasoning for complex code analysis.
 
 ## Google Generative AI Configuration (Alternative Provider)
 
@@ -419,6 +422,7 @@ codereview /path/to/code -m kimi
 | Mistral Small 4 | NVIDIA NIM | 256K context, MoE architecture | Free* | Free* |
 | Mistral Medium 3.5 | NVIDIA NIM | 128B dense, 256K context, reasoning_effort, 77.6% SWE-Bench | Free* | Free* |
 | MiniMax M2.7 | NVIDIA NIM | 204K context, 128K output, thinking mode, agent-native (supersedes retired M2.5) | Free* | Free* |
+| MiniMax M3 | NVIDIA NIM | Multimodal MoE (428B/22B active), 1M context, 128K output, thinking, long-horizon coding | Free* | Free* |
 | DeepSeek-V4-Pro (NVIDIA) | NVIDIA NIM | 1M context, three reasoning modes | Free* | Free* |
 | DeepSeek-V4-Flash (NVIDIA) | NVIDIA NIM | 1M context, fast/cheap sibling of V4-Pro | Free* | Free* |
 | Qwen3 Coder (NIM) | NVIDIA NIM | Ultra-large coding, thinking mode | Free* | Free* |
