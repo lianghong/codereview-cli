@@ -408,6 +408,12 @@ codereview ./src --model deepseek-v4-pro     # Flagship
 codereview ./src --model deepseek-v4-flash   # 12x cheaper input
 ```
 
+**GLM-5.2 (Z.AI)** - flagship, 1M-token context (default Z.AI model):
+```bash
+codereview ./src --model zhipuai/glm-5.2
+codereview ./src --model glm        # short alias
+```
+
 **GLM-5.1 (Z.AI)** - long-horizon coding, 203K context:
 ```bash
 codereview ./src --model zhipuai/glm-5.1
@@ -447,6 +453,7 @@ Be aware of costs and choose models accordingly:
 - **DeepSeek-V4-Flash**: 12x cheaper input than V4-Pro ($0.14/M input, $0.28/M output)
 
 **Z.AI direct:**
+- **GLM-5.2**: Flagship, 1M-token context, long-horizon engineering, thinking mode ($1.40/M input, $4.40/M output)
 - **GLM-5.1**: Long-horizon coding, 203K context ($1.40/M input, $4.40/M output)
 
 **Moonshot direct (Kimi):**
@@ -617,6 +624,7 @@ codereview ./src --model deepseek-v4-pro    # Flagship, 1M context
 codereview ./src --model deepseek-v4-flash  # 12x cheaper input than V4-Pro
 
 # Z.AI (Zhipu international)
+codereview ./src --model zhipuai/glm-5.2    # Flagship, 1M-token context
 codereview ./src --model zhipuai/glm-5.1    # Long-horizon coding, 203K context
 
 # Moonshot direct API (Kimi)
@@ -649,6 +657,7 @@ codereview ./src --model kimi               # Short alias
 | **Gemini 3 Flash** | Google GenAI | Fast and cheap, 1M context | $0.50/M input, $3/M output |
 | **DeepSeek-V4-Pro** | DeepSeek direct | 1M context, three reasoning modes, native tool calling | $1.74/M input, $3.48/M output |
 | **DeepSeek-V4-Flash** | DeepSeek direct | 1M context, cheapest paid option with tool calling | $0.14/M input, $0.28/M output |
+| **GLM-5.2** | Z.AI direct | Flagship, 1M-token context, long-horizon engineering, thinking mode | $1.40/M input, $4.40/M output |
 | **GLM-5.1** | Z.AI direct | Long-horizon coding, 203K context, function calling | $1.40/M input, $4.40/M output |
 | **Kimi K2.6** | Moonshot direct | 1T MoE, 32B active, 256K context, agentic | $0.60/M input, $2.50/M output |
 

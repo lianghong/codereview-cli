@@ -23,7 +23,7 @@ A LangChain-based CLI tool that provides comprehensive, intelligent code reviews
 
 ## Features
 
-- **Multi-Provider Support** (7 providers): AWS Bedrock (Claude, Minimax, Kimi, Qwen), Azure OpenAI (GPT-5.4, GPT-5.4 Pro, DeepSeek-V4-Pro, Kimi K2.5), NVIDIA NIM (Mistral, MiniMax, Kimi, Qwen, DeepSeek-V4-Pro, GLM-5/5.1, Step), Google GenAI (Gemini 3.1 Pro / 3 Pro / 3 Flash), DeepSeek direct (V4-Pro, V4-Flash), Z.AI (GLM-5.1), and Moonshot direct (Kimi K2.6)
+- **Multi-Provider Support** (7 providers): AWS Bedrock (Claude, Minimax, Kimi, Qwen), Azure OpenAI (GPT-5.4, GPT-5.4 Pro, DeepSeek-V4-Pro, Kimi K2.5), NVIDIA NIM (Mistral, MiniMax, Kimi, Qwen, DeepSeek-V4-Pro, GLM-5/5.1, Step), Google GenAI (Gemini 3.1 Pro / 3 Pro / 3 Flash), DeepSeek direct (V4-Pro, V4-Flash), Z.AI (GLM-5.2, GLM-5.1), and Moonshot direct (Kimi K2.6)
 - **AI-Powered Analysis**: Leverages Claude Opus 4.8, GPT-5.4, DeepSeek-V4-Pro, Kimi K2.6, GLM-5.1, Gemini 3.1 Pro, and other leading models for deep code understanding
 - **Multi-Language Support**: Reviews Python, Go, Shell Script, C++, Java, JavaScript, and TypeScript codebases
 - **Smart Batching**: Automatically groups files for efficient token usage
@@ -48,7 +48,7 @@ A LangChain-based CLI tool that provides comprehensive, intelligent code reviews
   - NVIDIA API key from [build.nvidia.com](https://build.nvidia.com) — `NVIDIA_API_KEY` (Mistral, MiniMax, Kimi, Qwen, DeepSeek-V4-Pro, GLM-5/5.1, Step; free tier available)
   - Google API key from [AI Studio](https://aistudio.google.com/apikey) — `GOOGLE_API_KEY` (Gemini 3.1 Pro / 3 Pro / 3 Flash)
   - DeepSeek API key from [platform.deepseek.com](https://platform.deepseek.com/api_keys) — `DEEPSEEK_API_KEY` (V4-Pro, V4-Flash)
-  - Z.AI API key from [z.ai](https://z.ai) — `ZAI_API_KEY` (GLM-5.1, international)
+  - Z.AI API key from [z.ai](https://z.ai) — `ZAI_API_KEY` (GLM-5.2, GLM-5.1; international)
   - Moonshot/Kimi API key from [platform.moonshot.cn](https://platform.moonshot.cn) — `KIMI_API_KEY` (Kimi K2.6; international keys from `platform.moonshot.ai` work too — override `base_url`)
 
 ### Install with uv (recommended)
@@ -280,7 +280,7 @@ codereview /path/to/code --model deepseek-v4-flash
 
 ## Z.AI (Zhipu) Configuration (Alternative Provider)
 
-Z.AI is Zhipu's international platform exposing GLM-5.1 (long-horizon coding model, 203K context) via an OpenAI-compatible endpoint. The CLI integrates via `langchain-openai`'s `ChatOpenAI` with a custom base URL — no langchain-community dependency.
+Z.AI is Zhipu's international platform exposing GLM-5.2 (current flagship — long-horizon engineering model, 1M-token context) and GLM-5.1 via an OpenAI-compatible endpoint. The CLI integrates via `langchain-openai`'s `ChatOpenAI` with a custom base URL — no langchain-community dependency.
 
 ### 1. Get API Key
 
@@ -295,6 +295,10 @@ export ZAI_API_KEY="your-zai-key"
 ### 3. Use Z.AI Models
 
 ```bash
+# GLM-5.2 - flagship, 1M-token context (default Z.AI model)
+codereview /path/to/code --model zhipuai/glm-5.2
+codereview /path/to/code --model glm        # short alias
+
 # GLM-5.1 - long-horizon coding, 203K context
 codereview /path/to/code --model zhipuai/glm-5.1
 codereview /path/to/code --model zai-glm  # short alias
@@ -390,6 +394,7 @@ codereview /path/to/code --model deepseek-v4-pro    # Flagship, 1M context
 codereview /path/to/code --model deepseek-v4-flash  # 12x cheaper input, 1M context
 
 # Z.AI (Zhipu international)
+codereview /path/to/code --model zhipuai/glm-5.2    # Flagship, 1M-token context
 codereview /path/to/code --model zhipuai/glm-5.1    # Long-horizon coding, 203K context
 codereview /path/to/code --model zai-glm            # Short alias
 
@@ -435,6 +440,7 @@ codereview /path/to/code -m kimi
 | Gemini 3 Flash | Google GenAI | Fast and cheap, 1M context | $0.50 | $3.00 |
 | **DeepSeek-V4-Pro** | **DeepSeek direct** | **1M context, three reasoning modes, tool calling** | **$1.74** | **$3.48** |
 | **DeepSeek-V4-Flash** | **DeepSeek direct** | **1M context, 12x cheaper input than V4-Pro** | **$0.14** | **$0.28** |
+| **GLM-5.2 (Z.AI)** | **Z.AI direct** | **Flagship, 1M-token context, long-horizon engineering, thinking mode** | **$1.40** | **$4.40** |
 | **GLM-5.1 (Z.AI)** | **Z.AI direct** | **Long-horizon coding, 203K context, function calling** | **$1.40** | **$4.40** |
 | **Kimi K2.6** | **Moonshot direct** | **1T MoE, 32B active, 256K context, agentic** | **$0.60** | **$2.50** |
 | Qwen3 Coder (Bedrock) | AWS Bedrock | Ultra-large model, deep analysis | $0.22 | $1.40 |

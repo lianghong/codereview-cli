@@ -243,6 +243,26 @@ def test_glm51_zai_disables_tool_use():
     assert config.supports_tool_use is False
 
 
+def test_glm52_zai_disables_tool_use():
+    """GLM-5.2 on Z.AI must use prompt-based JSON parsing.
+
+    Same fenced-JSON issue as GLM-5.1 (Z.AI's OpenAI-compat endpoint ignores
+    OpenAI's json_schema response_format and returns markdown-fenced JSON), and
+    GLM-5.2 is additionally a thinking model — both reasons keep it on the
+    PydanticOutputParser path. Resolves via every advertised alias.
+    """
+    loader = ConfigLoader()
+    for alias in ("zhipuai/glm-5.2", "glm", "glm-5.2", "glm5.2", "glm5.2-zai"):
+        provider, config = loader.resolve_model(alias)
+        assert provider == "zai", f"{alias} should route to the zai provider"
+        assert config.id == "zhipuai/glm-5.2"
+        assert config.supports_tool_use is False, (
+            f"{alias} (GLM-5.2) must set supports_tool_use: false — Z.AI returns "
+            "markdown-fenced JSON and it's a thinking model"
+        )
+        assert config.context_window == 1048576
+
+
 # ---------------------------------------------------------------------------
 # Per-language prompt slicing
 # ---------------------------------------------------------------------------

@@ -1234,6 +1234,59 @@ providers:
     base_url: "https://api.z.ai/api/paas/v4/"
     request_timeout: 300
     models:
+      # GLM-5.2 (Z.AI) — current Zhipu flagship, supersedes GLM-5.1.
+      # Long-horizon engineering model: "truly usable 1M-token context" for
+      # project-scale coding/refactoring, more stable long-task execution, and
+      # tighter adherence to engineering standards. Thinking/reasoning mode +
+      # function calling + MCP. https://docs.z.ai/guides/llm/glm-5.2
+      - id: zhipuai/glm-5.2
+        full_id: glm-5.2
+        name: GLM-5.2 (Z.AI)
+        aliases:
+          - glm
+          - glm-5.2
+          - glm5.2
+          - glm5.2-zai
+        pricing:
+          # Official docs.z.ai pricing page: $1.40 / $4.40 per 1M tokens
+          # (same list price as GLM-5.1).
+          input_per_million: 1.40
+          output_per_million: 4.40
+        inference_params:
+          # GLM-5.2 is a thinking model. The vendor's examples pair thinking
+          # with temperature 1.0 (non-streaming) / 0.6 (streaming). For
+          # deterministic code review we take the LOWER documented value (0.6):
+          # it curbs variance/hallucinated line numbers without starving the
+          # reasoning pass — pushing lower (<=0.3) tends to destabilize thinking
+          # models. top_p mirrors the GLM-5.1 entry. NOTE: thinking is governed
+          # server-side on Z.AI's OpenAI-compat endpoint; ZAIProvider does not
+          # forward enable_thinking/reasoning_effort, so they're omitted here.
+          default_temperature: 0.6
+          default_top_p: 0.95
+          max_output_tokens: 16384
+        # Docs: "truly usable 1M-token context" (1024*1024 tokens).
+        context_window: 1048576
+        # Same path as GLM-5.1: Z.AI's OpenAI-compat endpoint ignores OpenAI's
+        # json_schema response_format that .with_structured_output() sets and
+        # returns markdown-fenced JSON, which the json_schema parser rejects
+        # with "Invalid JSON: expected value at line 1 column 1". GLM-5.2 is
+        # additionally a thinking model, so per the "assume prompt-parsing until
+        # a live run proves tool-use" rule it stays on the PydanticOutputParser
+        # path regardless. (PydanticOutputParser strips the ```json fences.)
+        supports_tool_use: false
+        capabilities:
+          - reasoning
+          - code_review
+          - code_generation
+          - long_horizon_agentic
+          - tool_use
+          - structured_output
+        notes: >-
+          Current Zhipu flagship (supersedes GLM-5.1). 1M-token context for
+          project-scale coding, stable long-horizon execution, thinking mode.
+          OpenAI-compatible endpoint; structured output via prompt-based JSON
+          parsing (supports_tool_use: false) — Z.AI returns markdown-fenced JSON.
+
       # GLM-5.1 (Z.AI)
       # Long-horizon coding model: can plan/execute on a single task
       # autonomously for hours. 203K context, function calling supported.
@@ -1379,7 +1432,7 @@ defaults:
   bedrock_default: opus4.8
   azure_default: gpt-5.4
   nvidia_default: mistral-medium-nvidia
-  zai_default: zhipuai/glm-5.1
+  zai_default: zhipuai/glm-5.2
   deepseek_default: deepseek-v4-pro
   moonshot_default: kimi-k2.6
   aws_region: us-west-2
