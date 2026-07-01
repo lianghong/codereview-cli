@@ -10,6 +10,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 #### New Models
+- **Claude Sonnet 5 (AWS Bedrock)** — first Sonnet-tier model of the Claude 5
+  generation, near-Opus-4.8 intelligence at Sonnet pricing (announced
+  2026-06-30)
+  - Model ID: `sonnet5` (`full_id: us.anthropic.claude-sonnet-5`, geo-US
+    inference profile; routes us-east-1/us-east-2/us-west-2)
+  - Aliases: `claude-sonnet-5`, `sonnet-5`, `claude-sonnet5` (the bare
+    `sonnet` alias intentionally stays on Sonnet 4.6)
+  - 1M-token context, up to 128K output; pricing $3/$15 per M (standard;
+    a launch promo of $2/$10 runs through 2026-08-31 — we register the
+    durable standard rate)
+  - `supports_tool_use: false` (prompt-based JSON parsing) — first Sonnet
+    tier with adaptive thinking on by default, so it hits the same
+    forced-`tool_choice`-while-thinking conflict as Opus 4.7/4.8. Also
+    rejects `temperature`/`top_p`/`top_k`. Unverified live; flip to `true`
+    only if a live run proves tool-use works
 - **MiniMax M3 (NVIDIA NIM)** — multimodal MoE vision-language model
   (428B total / ~22B active, A22B), 1M-token context, text-only output,
   long-form video understanding (to 30 min) and long-horizon coding (8+ hrs)
@@ -115,6 +130,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   static-analysis section previously claimed "ruff, mypy, black, isort
   (when available)" regardless of what actually ran (the codebase now
   supports 19+ tools across 6 languages).
+
+### Changed
+- **`supports_tool_use` audit — 9 models moved to prompt-based JSON parsing**
+  (`true` → `false`). A per-model research pass found these were on the
+  forced-`tool_choice` (tool-use) path despite being thinking models and/or
+  having documented tool-call breakage on their endpoints. Moving them to the
+  prompt-parsing path is the safe direction (it works even where tool-use
+  also would); flip any back to `true` only if a live run proves tool-use.
+  - Kimi K2.5 (Bedrock) `kimi-k2.5-bedrock` — Converse leaks Moonshot
+    tool-call markers (`<|tool_call_begin|>…`) into text
+  - Kimi K2.5 (Azure) `kimi-k2.5-azure` — SGLang/vLLM backend rejects forced
+    `tool_choice` (needs `--enable-auto-tool-choice`)
+  - Kimi K2.6 (NVIDIA) `kimi-k2.6-nvidia` — same model/behavior as Kimi K2.6
+    on Moonshot (already `false`); thinking on by default
+  - MiniMax M2.7 (NVIDIA) `minimax-m2.7-nvidia` — live NIM bug: tool name
+    repeated per stream chunk → concatenated/invalid tool calls
+  - Qwen3.5 397B (NVIDIA) `qwen3.5-nvidia` — tool calls emitted as XML inside
+    the `<think>` block when thinking is on
+  - GLM 5 (Bedrock) `glm5-bedrock` — thinking on by default (reasoning_effort
+    defaults to max); forced `tool_choice` conflict
+  - GLM-5.1 (NVIDIA) `glm51` — NIM re-host emits malformed/truncated
+    tool-call JSON; kept consistent with GLM-5.1/5.2 on Z.AI
+  - Step 3.5 Flash (NVIDIA) `step-3.5-flash` — reasoning-only (thinking can't
+    be disabled); forced `tool_choice` while thinking unproven
+  - Step 3.7 Flash (NVIDIA) `step-3.7-flash` — always-thinking backbone;
+    forced `tool_choice` while thinking unproven
+- **DeepSeek V4 thinking-default rationale corrected** (docs/comments only,
+  no behavior change) — both V4-Pro and V4-Flash default to thinking **on**
+  (not "V4-Flash non-thinking by default" as previously documented). Tool-use
+  works because the `deepseek` provider explicitly sends `thinking: disabled`,
+  not because the model is non-thinking. Updated `deepseek.py` and CLAUDE.md.
 
 ### Fixed
 - **DeepSeek-V4-Pro on Azure: SGLang `null` model body** — the Foundry

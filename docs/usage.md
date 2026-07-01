@@ -589,6 +589,7 @@ codereview --list-models
 codereview ./src --model opus4.8  # Claude Opus 4.8 (default, reasoning model, 1M context)
 codereview ./src --model opus4.7  # Claude Opus 4.7 (reasoning model, 200K context)
 codereview ./src --model opus     # Claude Opus 4.6 (highest quality, temperature control)
+codereview ./src --model sonnet5  # Claude Sonnet 5 (Claude 5 gen, 1M context)
 codereview ./src --model sonnet   # Claude Sonnet 4.6 (balanced)
 codereview ./src --model haiku    # Claude Haiku 4.5 (fastest)
 
@@ -639,6 +640,7 @@ codereview ./src --model kimi               # Short alias
 | **Opus 4.8** (default) | AWS Bedrock | Latest reasoning, critical reviews, 1M context | $5/M input, $25/M output |
 | **Opus 4.7** | AWS Bedrock | Reasoning, 200K context | $5/M input, $25/M output |
 | **Opus 4.6** | AWS Bedrock | Critical code reviews, security audits | $5/M input, $25/M output |
+| **Sonnet 5** | AWS Bedrock | Claude 5 gen, near-Opus at Sonnet price, 1M context | $3/M input, $15/M output |
 | **Sonnet 4.6** | AWS Bedrock | Daily development, PR reviews | $3/M input, $15/M output |
 | **Haiku 4.5** | AWS Bedrock | Large codebases, CI/CD integration | $1/M input, $5/M output |
 | **GPT-5.4** | Azure OpenAI | Frontier reasoning, default Azure, 1.05M context | $2.50/M input, $15/M output |

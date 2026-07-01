@@ -24,7 +24,7 @@ A LangChain-based CLI tool that provides comprehensive, intelligent code reviews
 ## Features
 
 - **Multi-Provider Support** (7 providers): AWS Bedrock (Claude, Minimax, Kimi, Qwen), Azure OpenAI (GPT-5.4, GPT-5.4 Pro, DeepSeek-V4-Pro, Kimi K2.5), NVIDIA NIM (Mistral, MiniMax, Kimi, Qwen, DeepSeek-V4-Pro, GLM-5/5.1, Step), Google GenAI (Gemini 3.1 Pro / 3 Pro / 3 Flash), DeepSeek direct (V4-Pro, V4-Flash), Z.AI (GLM-5.2, GLM-5.1), and Moonshot direct (Kimi K2.6)
-- **AI-Powered Analysis**: Leverages Claude Opus 4.8, GPT-5.4, DeepSeek-V4-Pro, Kimi K2.6, GLM-5.1, Gemini 3.1 Pro, and other leading models for deep code understanding
+- **AI-Powered Analysis**: Leverages Claude Opus 4.8, Claude Sonnet 5, GPT-5.4, DeepSeek-V4-Pro, Kimi K2.6, GLM-5.1, Gemini 3.1 Pro, and other leading models for deep code understanding
 - **Multi-Language Support**: Reviews Python, Go, Shell Script, C++, Java, JavaScript, and TypeScript codebases
 - **Smart Batching**: Automatically groups files for efficient token usage
 - **Structured Output**: Get categorized issues with severity levels and actionable suggestions
@@ -356,6 +356,7 @@ codereview /path/to/code --model fable5    # Claude Fable 5 (Mythos-class, 1M co
 codereview /path/to/code --model opus4.8   # Claude Opus 4.8 (latest, default, 1M context)
 codereview /path/to/code --model opus4.7   # Claude Opus 4.7 (reasoning, 200K context)
 codereview /path/to/code --model opus      # Claude Opus 4.6
+codereview /path/to/code --model sonnet5   # Claude Sonnet 5 (Claude 5 gen, 1M context)
 codereview /path/to/code --model sonnet    # Claude Sonnet 4.6 (balanced)
 codereview /path/to/code --model haiku     # Claude Haiku 4.5 (fastest)
 
@@ -415,6 +416,7 @@ codereview /path/to/code -m kimi
 | Opus 4.8 | AWS Bedrock | Latest reasoning, default model, 1M context | $5.00 | $25.00 |
 | Opus 4.7 | AWS Bedrock | Reasoning, 200K context | $5.00 | $25.00 |
 | Opus 4.6 | AWS Bedrock | Highest quality, critical reviews | $5.00 | $25.00 |
+| Sonnet 5 | AWS Bedrock | Claude 5 gen, near-Opus at Sonnet price, 1M context | $3.00 | $15.00 |
 | Sonnet 4.6 | AWS Bedrock | Balanced performance and cost | $3.00 | $15.00 |
 | Haiku 4.5 | AWS Bedrock | Fast, economical, large codebases | $1.00 | $5.00 |
 | Kimi K2.5 (Bedrock) | AWS Bedrock | 262K context, MoE | TBD | TBD |

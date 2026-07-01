@@ -112,13 +112,15 @@ class DeepSeekProvider(TokenTrackingMixin, ModelProvider):
             "callbacks": self.callbacks if self.callbacks else None,
             "streaming": bool(self.callbacks),
             "timeout": self.provider_config.request_timeout,
-            # DeepSeek-V4-Pro defaults to thinking/reasoner mode server-side,
-            # which rejects tool_choice="auto" (the choice langchain pins
-            # for with_structured_output). Disable thinking explicitly so
-            # tool-calling-based structured output works. V4-Flash is
-            # non-thinking by default; this field is harmless for it.
-            # Operators who want chain-of-thought can override via
-            # `inference_params.thinking: enabled` in models.yaml.
+            # Both DeepSeek-V4-Pro and V4-Flash default to thinking/reasoner
+            # mode server-side, which rejects a forced tool_choice (what
+            # with_structured_output pins) with HTTP 400 "Thinking mode does
+            # not support this tool_choice". Disable thinking explicitly so
+            # tool-calling-based structured output works — tool-use is NOT a
+            # property of the model being non-thinking, it's a property of us
+            # sending thinking:disabled. Operators who want chain-of-thought
+            # can override via `inference_params.thinking: enabled` in
+            # models.yaml (which flips this entry to prompt parsing below).
             "extra_body": self._build_extra_body(),
         }
 

@@ -162,6 +162,55 @@ providers:
           - reasoning
           - computer_use
 
+      - id: sonnet5
+        full_id: us.anthropic.claude-sonnet-5
+        name: Claude Sonnet 5
+        aliases:
+          - claude-sonnet-5
+          - sonnet-5
+          - claude-sonnet5
+        pricing:
+          # Standard rates ($3/$15). A launch promo of $2/$10 runs through
+          # 2026-08-31 on both Bedrock and Anthropic; we register the durable
+          # standard price so cost previews don't silently under-report once
+          # the promo lapses (matches Sonnet 4.6's rates).
+          input_per_million: 3.00
+          output_per_million: 15.00
+          cache_write_per_million: 3.75
+          cache_read_per_million: 0.30
+        inference_params:
+          # Sonnet 5 rejects temperature/top_p/top_k with a 400 (same
+          # constraint as Opus 4.7/4.8 and Fable 5) - omit all sampling params.
+          # default_temperature omitted intentionally.
+          max_output_tokens: 128000
+        context_window: 1000000
+        # First Sonnet-tier model with adaptive thinking on by default, engaged
+        # server-side per request. Anthropic forbids a forced tool_choice while
+        # thinking is active (only "auto"/"none" allowed), but
+        # .with_structured_output() sets exactly that forced tool_choice - so on
+        # batches where the model thinks, the tool call comes back as literal
+        # text and CodeReviewReport.issues fails with a list_type error. Same
+        # incompatibility as Opus 4.7/4.8. Route through prompt-based JSON
+        # parsing instead.
+        supports_tool_use: false
+        capabilities:
+          - code_review
+          - coding
+          - agents
+          - computer_use
+          - reasoning
+          - adaptive_thinking
+          - vision
+        notes: >-
+          Latest Sonnet model (June 2026), first of the Claude 5 generation's
+          Sonnet tier. Near-Opus-4.8 intelligence at Sonnet pricing. 1M-token
+          context, up to 128K output. Adaptive thinking on by default; rejects
+          temperature/top_p/top_k, and structured output uses prompt-based JSON
+          parsing (supports_tool_use: false), same as Opus 4.7/4.8. Uses an
+          updated tokenizer (~1.0-1.35x more tokens than Sonnet 4.6). Ships with
+          real-time cybersecurity safeguards (same as Opus 4.7/4.8). Geo-US
+          inference profile; routes us-east-1/us-east-2/us-west-2.
+
       - id: sonnet
         full_id: global.anthropic.claude-sonnet-4-6
         name: Claude Sonnet 4.6
@@ -262,6 +311,13 @@ providers:
           default_top_k: 40
           max_output_tokens: 65536
         context_window: 262000
+        # Reasoning model with a server-side think toggle on Bedrock, and
+        # Bedrock's Converse parsing for Moonshot models leaks internal
+        # tool-call markers (<|tool_call_begin|>...) into the text field
+        # instead of parsing them as tool_use — the same "tool call returned
+        # as literal text" failure as Opus 4.7/4.8. Route through prompt-based
+        # JSON parsing per the assume-prompt-parsing rule.
+        supports_tool_use: false
         architecture: "MoE (1T total, 32B active)"
         capabilities:
           - reasoning
@@ -367,6 +423,12 @@ providers:
           default_top_p: 0.95
           max_output_tokens: 128000
         context_window: 200000
+        # GLM-5 is a thinking model with reasoning on by default
+        # (reasoning_effort defaults to max), so a forced tool_choice is
+        # auto-downgraded / returned as text while thinking — the same
+        # incompatibility the GLM-5.1/5.2-on-Z.AI entries route around.
+        # Assume prompt-based JSON parsing until a live run proves tool-use.
+        supports_tool_use: false
         capabilities:
           - reasoning
           - code_review
@@ -377,7 +439,7 @@ providers:
           Frontier-class model optimized for complex systems
           engineering and long-horizon agentic tasks,
           multi-step reasoning, advanced coding, tool-augmented
-          workflows
+          workflows. Prompt-based JSON parsing (thinking on by default).
 
   # Azure OpenAI Provider
   azure_openai:
@@ -488,6 +550,12 @@ providers:
           default_top_p: 0.95
           max_output_tokens: 65536
         context_window: 262144
+        # K2.5 is a thinking model, and on Azure Foundry the SGLang/vLLM
+        # backend rejects a forced tool_choice ("tool choice requires
+        # --enable-auto-tool-choice ...") — the same backend limitation as
+        # DeepSeek-V4-Pro on Azure below. Route through prompt-based JSON
+        # parsing per the assume-prompt-parsing rule.
+        supports_tool_use: false
         capabilities:
           - reasoning
           - multimodal
@@ -496,7 +564,7 @@ providers:
           - agentic_tasks
         notes: >-
           1T MoE multimodal, 96.1% AIME 2025,
-          Agent Swarm support
+          Agent Swarm support. Prompt-based JSON parsing on Azure Foundry.
 
       # DeepSeek-V4-Pro (Azure AI Foundry)
       # Reasoning model with chain-of-thought
@@ -662,6 +730,11 @@ providers:
           clear_thinking: false
         # Input Context Length (ISL): 204,800
         context_window: 204800
+        # Always-on interleaved thinking, and the NVIDIA NIM endpoint has a
+        # live tool-call bug: the tool name is emitted in every stream chunk,
+        # producing invalid concatenated tool calls (search_filessearch_files).
+        # Route through prompt-based JSON parsing (same path as MiniMax M3).
+        supports_tool_use: false
         architecture: "MoE (230B total, 10B active)"
         capabilities:
           - coding
@@ -674,7 +747,8 @@ providers:
           56.22% SWE-Pro, 57.0% Terminal Bench 2,
           1495 ELO GDPval-AA (highest among
           open-source), agent-native model for
-          long-horizon engineering workflows
+          long-horizon engineering workflows.
+          Prompt-based JSON parsing on NVIDIA NIM.
 
       # MiniMax M3 Preview (via NVIDIA)
       # Multimodal MoE vision-language model:
@@ -786,6 +860,12 @@ providers:
           enable_thinking: true
           clear_thinking: false
         context_window: 262144
+        # Operates in thinking mode by default (enable_thinking: true above),
+        # and with reasoning on the vLLM/SGLang backend emits tool calls as
+        # XML inside the think block instead of as structured tool_use — the
+        # "tool call returned as literal text" failure. Route through
+        # prompt-based JSON parsing per the assume-prompt-parsing rule.
+        supports_tool_use: false
         architecture: "MoE (397B total, 17B active)"
         capabilities:
           - code_generation
@@ -794,7 +874,8 @@ providers:
           - thinking
         notes: >-
           Next-gen Qwen MoE with 262K context,
-          thinking mode for complex analysis
+          thinking mode for complex analysis.
+          Prompt-based JSON parsing on NVIDIA NIM.
 
       # DeepSeek-V4-Pro (via NVIDIA) - DeepSeek AI
       # MoE: 1.6T total, 49B active parameters
@@ -907,6 +988,12 @@ providers:
           max_output_tokens: 16384
           thinking: true
         context_window: 262144
+        # Same model as the Moonshot-direct kimi-k2.6 (which is also
+        # supports_tool_use: false): thinking is on by default (thinking: true
+        # above), and a forced tool_choice while thinking is rejected/returned
+        # as text. Route through prompt-based JSON parsing for consistency with
+        # the Moonshot-direct entry and the assume-prompt-parsing rule.
+        supports_tool_use: false
         architecture: "MoE (1T total, 32B active, 384 experts)"
         capabilities:
           - reasoning
@@ -917,6 +1004,7 @@ providers:
           Long-horizon agentic model with interleaved
           thinking. Fixed temperature=1.0, top_p=0.95
           required by Moonshot serving backend.
+          Prompt-based JSON parsing (thinking on by default).
 
       # GLM-5.1 (via NVIDIA) - Zhipu AI flagship
       # Post-training update of GLM-5 for agentic coding
@@ -947,6 +1035,12 @@ providers:
           enable_thinking: true
           clear_thinking: false
         context_window: 131072
+        # Thinking on by default (enable_thinking: true above); on the NIM
+        # re-host GLM-5.1 emits malformed/truncated tool-call JSON that fails
+        # strict parsing. Both GLM-5.1 and GLM-5.2 on Z.AI direct are already
+        # supports_tool_use: false — keep this re-host consistent and route
+        # through prompt-based JSON parsing.
+        supports_tool_use: false
         architecture: "MoE (744B total, 40B active)"
         capabilities:
           - reasoning
@@ -958,6 +1052,7 @@ providers:
           Agentic flagship, 131K context, interleaved
           thinking preserved across turns. Replaces
           deprecated GLM-5 endpoint.
+          Prompt-based JSON parsing on NVIDIA NIM.
 
       # Step-3.5-Flash (via NVIDIA) - StepFun
       # 256K context, optimized for fast inference
@@ -980,13 +1075,20 @@ providers:
           # For detailed reports
           max_output_tokens: 16384
         context_window: 256000
+        # Step-3.5-Flash only supports reasoning mode (thinking always on,
+        # cannot be disabled), so a forced tool_choice while thinking is
+        # unproven on this endpoint — the same always-thinking risk profile as
+        # Opus 4.7/4.8. Route through prompt-based JSON parsing per the
+        # assume-prompt-parsing rule until a live run proves tool-use.
+        supports_tool_use: false
         capabilities:
           - code_review
           - reasoning
           - general_intelligence
         notes: >-
           Cost-efficient 256K context model,
-          good coherence at temperature 0.6
+          good coherence at temperature 0.6.
+          Prompt-based JSON parsing (reasoning-only model).
 
       # Step-3.7-Flash (via NVIDIA) - StepFun
       # MoE: 198B total, ~11B active, 256K context, multimodal
@@ -1009,6 +1111,12 @@ providers:
           default_top_k: 40
           max_output_tokens: 16384
         context_window: 256000
+        # Built on the always-thinking Step 3.5 backbone; reasoning_effort
+        # defaults to medium (reasoning always on, only depth is tunable), so a
+        # forced tool_choice while thinking is unproven on this endpoint. Route
+        # through prompt-based JSON parsing per the assume-prompt-parsing rule
+        # until a live run proves tool-use (same treatment as Step 3.5 Flash).
+        supports_tool_use: false
         architecture: "MoE (198B total, ~11B active, multimodal)"
         capabilities:
           - code_review
@@ -1020,6 +1128,7 @@ providers:
           Newer 256K multimodal sibling of Step 3.5 Flash
           (released 2026-05-28) with reasoning levels, tuned
           for coding agents and frontend-generation workflows.
+          Prompt-based JSON parsing (reasoning on by default).
 
   # Google Generative AI Provider
   # Models via Google AI Studio / Gemini API
