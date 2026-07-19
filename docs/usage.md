@@ -58,9 +58,9 @@ Comprehensive guide for using the Code Review CLI tool effectively.
 **For Google Generative AI (optional):**
 - [ ] `GOOGLE_API_KEY` environment variable set (get from aistudio.google.com/apikey)
 
-**For OpenAI-on-Bedrock — GPT-5.5/5.4, Grok 4.3 (optional):**
+**For OpenAI-on-Bedrock — GPT-5.6 Sol, GPT-5.5/5.4, Grok 4.3 (optional):**
 - [ ] `OPENAI_API_KEY` set to an Amazon Bedrock API key (bearer token, not an openai.com key)
-- [ ] `OPENAI_BASE_URL` set to your Region's `bedrock-mantle` endpoint (Grok 4.3 is In-Region only: us-west-2 / us-east-1 / us-east-2)
+- [ ] `OPENAI_BASE_URL` set to your Region's `bedrock-mantle` endpoint (GPT-5.6 Sol is In-Region only: us-east-1 / us-east-2; Grok 4.3 also adds us-west-2)
 
 ## Typical Workflows
 
@@ -637,6 +637,7 @@ codereview ./src --model kimi-k2.6          # Canonical Kimi, 256K context
 codereview ./src --model kimi               # Short alias
 
 # OpenAI-on-Bedrock (bedrock-mantle OpenAI-compatible endpoint; Bedrock API-key auth)
+codereview ./src --model gpt5.6             # GPT-5.6 Sol (OpenAI flagship, best coding model, 272K)
 codereview ./src --model grok               # Grok 4.3 (xAI, reasoning-first, 1M context)
 codereview ./src --model gpt5.5-bedrock     # GPT-5.5 on Bedrock
 codereview ./src --model gpt5.4-bedrock     # GPT-5.4 on Bedrock
@@ -671,6 +672,7 @@ codereview ./src --model gpt5.4-bedrock     # GPT-5.4 on Bedrock
 | **GLM-5.2** | Z.AI direct | Flagship, 1M-token context, long-horizon engineering, thinking mode | $1.40/M input, $4.40/M output |
 | **GLM-5.1** | Z.AI direct | Long-horizon coding, 203K context, function calling | $1.40/M input, $4.40/M output |
 | **Kimi K2.6** | Moonshot direct | 1T MoE, 32B active, 256K context, agentic | $0.60/M input, $2.50/M output |
+| **GPT-5.6 Sol (Bedrock)** | OpenAI-on-Bedrock | OpenAI flagship, best coding model, 272K context, `bedrock-mantle` endpoint | $5/M input, $30/M output |
 | **Grok 4.3 (Bedrock)** | OpenAI-on-Bedrock | xAI reasoning-first, 1M context, `bedrock-mantle` endpoint | $1.25/M input, $2.50/M output |
 | **GPT-5.5 / GPT-5.4 (Bedrock)** | OpenAI-on-Bedrock | Frontier reasoning, `bedrock-mantle` endpoint | $2.50/M input, $15/M output |
 

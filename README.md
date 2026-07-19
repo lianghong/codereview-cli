@@ -9,6 +9,7 @@
 ## 🎉 What's New (Unreleased)
 
 - ✅ **3 new providers**: DeepSeek direct API (`deepseek-v4-pro`, `deepseek-v4-flash`), Z.AI (`zhipuai/glm-5.1`), Moonshot/Kimi (`kimi-k2.6`). 8 providers total now (incl. OpenAI-on-Bedrock).
+- ✅ **GPT-5.6 Sol (Bedrock)** — OpenAI's flagship and best coding model, on the OpenAI-compatible `bedrock-mantle` endpoint, 272K context, Responses API (`--model gpt5.6` / `sol`)
 - ✅ **Grok 4.3 (Bedrock)** — xAI reasoning-first model on the new OpenAI-compatible `bedrock-mantle` endpoint, 1M context (`--model grok`)
 - ✅ **GLM-5.2 (NVIDIA)** — Zhipu flagship, 753B MoE, 1M context (`--model glm52`); supersedes the deprecated GLM-5.1 NVIDIA endpoint, whose aliases now route here
 - ✅ **GPT-5.4 (Azure)** — frontier reasoning model, 1.05M context, default Azure model
@@ -25,7 +26,7 @@ A LangChain-based CLI tool that provides comprehensive, intelligent code reviews
 
 ## Features
 
-- **Multi-Provider Support** (8 providers): AWS Bedrock (Claude, Minimax, Kimi, Qwen), Azure OpenAI (GPT-5.4, GPT-5.4 Pro, DeepSeek-V4-Pro, Kimi K2.5), NVIDIA NIM (Mistral, MiniMax, Kimi, Qwen, DeepSeek-V4-Pro, GLM-5.2, Step), Google GenAI (Gemini 3.1 Pro / 3 Pro / 3 Flash), DeepSeek direct (V4-Pro, V4-Flash), Z.AI (GLM-5.2, GLM-5.1), Moonshot direct (Kimi K2.6), and OpenAI-on-Bedrock (GPT-5.5/5.4, Grok 4.3 via the `bedrock-mantle` OpenAI-compatible endpoint)
+- **Multi-Provider Support** (8 providers): AWS Bedrock (Claude, Minimax, Kimi, Qwen), Azure OpenAI (GPT-5.4, GPT-5.4 Pro, DeepSeek-V4-Pro, Kimi K2.5), NVIDIA NIM (Mistral, MiniMax, Kimi, Qwen, DeepSeek-V4-Pro, GLM-5.2, Step), Google GenAI (Gemini 3.1 Pro / 3 Pro / 3 Flash), DeepSeek direct (V4-Pro, V4-Flash), Z.AI (GLM-5.2, GLM-5.1), Moonshot direct (Kimi K2.6), and OpenAI-on-Bedrock (GPT-5.6 Sol, GPT-5.5/5.4, Grok 4.3 via the `bedrock-mantle` OpenAI-compatible endpoint)
 - **AI-Powered Analysis**: Leverages Claude Opus 4.8, Claude Sonnet 5, GPT-5.4, Grok 4.3, DeepSeek-V4-Pro, Kimi K2.6, GLM-5.2, Gemini 3.1 Pro, and other leading models for deep code understanding
 - **Multi-Language Support**: Reviews Python, Go, Shell Script, C++, Java, JavaScript, and TypeScript codebases
 - **Smart Batching**: Automatically groups files for efficient token usage
@@ -52,7 +53,7 @@ A LangChain-based CLI tool that provides comprehensive, intelligent code reviews
   - DeepSeek API key from [platform.deepseek.com](https://platform.deepseek.com/api_keys) — `DEEPSEEK_API_KEY` (V4-Pro, V4-Flash)
   - Z.AI API key from [z.ai](https://z.ai) — `ZAI_API_KEY` (GLM-5.2, GLM-5.1; international)
   - Moonshot/Kimi API key from [platform.moonshot.cn](https://platform.moonshot.cn) — `KIMI_API_KEY` (Kimi K2.6; international keys from `platform.moonshot.ai` work too — override `base_url`)
-  - Amazon Bedrock API key (bearer token) for OpenAI-on-Bedrock — `OPENAI_API_KEY` + `OPENAI_BASE_URL` (GPT-5.5/5.4, Grok 4.3 via the `bedrock-mantle` OpenAI-compatible endpoint)
+  - Amazon Bedrock API key (bearer token) for OpenAI-on-Bedrock — `OPENAI_API_KEY` + `OPENAI_BASE_URL` (GPT-5.6 Sol, GPT-5.5/5.4, Grok 4.3 via the `bedrock-mantle` OpenAI-compatible endpoint)
 
 ### Install with uv (recommended)
 
@@ -341,7 +342,7 @@ moonshot:
 
 ## OpenAI-on-Bedrock Configuration (Alternative Provider)
 
-Amazon Bedrock hosts OpenAI's frontier models (GPT-5.5, GPT-5.4) **and xAI's Grok 4.3** on an OpenAI-compatible `bedrock-mantle` endpoint. This is a **different path** from the SigV4 `bedrock` provider above: it authenticates with an **Amazon Bedrock API key (a bearer token, not AWS creds)** and is driven with `ChatOpenAI` + a custom `base_url` — no new dependency.
+Amazon Bedrock hosts OpenAI's frontier models (GPT-5.6 Sol, GPT-5.5, GPT-5.4) **and xAI's Grok 4.3** on an OpenAI-compatible `bedrock-mantle` endpoint. This is a **different path** from the SigV4 `bedrock` provider above: it authenticates with an **Amazon Bedrock API key (a bearer token, not AWS creds)** and is driven with `ChatOpenAI` + a custom `base_url` — no new dependency.
 
 ### 1. Get an Amazon Bedrock API Key
 
@@ -359,6 +360,10 @@ export OPENAI_BASE_URL="https://bedrock-mantle.us-west-2.api.aws/openai/v1"
 ### 3. Use OpenAI-on-Bedrock Models
 
 ```bash
+# GPT-5.6 Sol - OpenAI flagship, best coding model, 272K context (Responses API)
+codereview /path/to/code --model gpt5.6
+codereview /path/to/code --model sol        # or gpt5.6-sol, gpt5.6-bedrock
+
 # Grok 4.3 - xAI reasoning-first, 1M context, accepts temperature/top_p
 codereview /path/to/code --model grok
 codereview /path/to/code --model grok-4.3   # or grok43, grok-bedrock
@@ -367,6 +372,8 @@ codereview /path/to/code --model grok-4.3   # or grok43, grok-bedrock
 codereview /path/to/code --model gpt5.5-bedrock
 codereview /path/to/code --model gpt5.4-bedrock
 ```
+
+> **Tip:** GPT-5.6 also ships cheaper tiers — Terra (`openai.gpt-5.6-terra`, $2.50/$15) for balanced everyday work and Luna (`openai.gpt-5.6-luna`, $1/$6) for high-volume/CI. Add either the same way as the Sol entry in `models.yaml` if you want a lower-cost run.
 
 ## Usage
 
@@ -436,6 +443,7 @@ codereview /path/to/code --model kimi-k2.6          # Canonical, 256K context, 1
 codereview /path/to/code --model kimi               # Short alias
 
 # OpenAI-on-Bedrock (bedrock-mantle OpenAI-compatible endpoint; bearer-key auth)
+codereview /path/to/code --model gpt5.6             # GPT-5.6 Sol (OpenAI flagship, best coding model)
 codereview /path/to/code --model grok               # Grok 4.3 (xAI, reasoning-first, 1M context)
 codereview /path/to/code --model gpt5.5-bedrock     # GPT-5.5 on Bedrock
 codereview /path/to/code --model gpt5.4-bedrock     # GPT-5.4 on Bedrock
@@ -485,6 +493,7 @@ codereview /path/to/code -m kimi
 | Qwen3 Coder (Bedrock) | AWS Bedrock | Ultra-large model, deep analysis | $0.22 | $1.40 |
 | Qwen3 Coder Next (Bedrock) | AWS Bedrock | Ultra-sparse MoE, 70%+ SWE-bench | $0.50 | $1.20 |
 | GLM 5 (Bedrock) | AWS Bedrock | Zhipu next-gen reasoning | TBD | TBD |
+| **GPT-5.6 Sol (Bedrock)** | **OpenAI-on-Bedrock** | **OpenAI flagship, best coding model, 272K context, `bedrock-mantle` endpoint** | **$5.00** | **$30.00** |
 | **Grok 4.3 (Bedrock)** | **OpenAI-on-Bedrock** | **xAI reasoning-first, 1M context, `bedrock-mantle` endpoint** | **$1.25** | **$2.50** |
 | GPT-5.5 (Bedrock) | OpenAI-on-Bedrock | Frontier reasoning, `bedrock-mantle` endpoint | $2.50 | $15.00 |
 | GPT-5.4 (Bedrock) | OpenAI-on-Bedrock | Frontier reasoning, `bedrock-mantle` endpoint | $2.50 | $15.00 |

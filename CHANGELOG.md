@@ -49,6 +49,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `supports_tool_use: false` (prompt-based JSON parsing) — NIM re-host emits
     malformed tool-call JSON and it's a thinking model; assume-prompt-parsing
     rule (flip to `true` only if a live run proves tool-use)
+- **GPT-5.6 Sol (OpenAI-on-Bedrock)** — flagship of OpenAI's GPT-5.6 family
+  (Sol/Terra/Luna), GA on Amazon Bedrock (launched 2026-07-13) via the same
+  OpenAI-compatible `bedrock-mantle` endpoint. Sol is OpenAI's best coding
+  model to date (SOTA on the Artificial Analysis Coding Agent Index,
+  Terminal-Bench 2.1, DeepSWE) — the code-review pick of the family.
+  - Model ID: `gpt5.6-sol-bedrock` (`full_id: openai.gpt-5.6-sol`)
+  - Aliases: `gpt5.6`, `gpt-5.6`, `gpt5.6-sol`, `gpt5.6-bedrock`, `sol`
+  - 272K context; pricing $5/$30 per M (OpenAI list; cache read $0.50)
+  - Reasoning model: **Responses API only** (Chat Completions not supported →
+    `use_responses_api: true` required), rejects `temperature`/`top_p`
+  - `supports_tool_use: false` (prompt-based JSON parsing) — same adaptive
+    server-side reasoning / reasoning-only failure mode as GPT-5.5/5.4 on
+    Bedrock
+  - In-Region only: us-east-1 / us-east-2 (no Geo/Global; narrower than Grok)
+  - Terra (`openai.gpt-5.6-terra`, $2.50/$15) and Luna (`openai.gpt-5.6-luna`,
+    $1/$6) are the cheaper balanced / high-volume tiers — not registered, add
+    the same way if wanted
 - **Grok 4.3 (OpenAI-on-Bedrock)** — xAI reasoning-first frontier model on
   Amazon Bedrock's new OpenAI-compatible `bedrock-mantle` endpoint (NOT the
   SigV4 Converse path — the model card lists Converse/`bedrock-runtime` as
