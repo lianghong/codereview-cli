@@ -36,6 +36,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `supports_tool_use: false` (prompt-based JSON parsing) — per the
     "assume prompt-parsing until a live run proves tool-use works" rule
     for new reasoning models; live-verified working on the prompt path
+- **GLM-5.2 (NVIDIA NIM)** — Zhipu flagship, successor to GLM-5.1: 753B-total
+  MoE with IndexShare sparse attention, "solid" 1M-token context, multiple
+  thinking effort levels (High/Max)
+  - Model ID: `glm52` (`full_id: z-ai/glm-5.2`)
+  - Aliases: `glm52-nvidia`, `glm5.2-nvidia`, `glm-5.2-nvidia`; also absorbs
+    the retired GLM-5.1 aliases (`glm51-nvidia`, `glm-5.1`, `glm5.1`) and the
+    older GLM-5 aliases (`glm5`, `glm-5`, `glm5-nvidia`) — the whole
+    GLM-5.x-on-NVIDIA lineage now resolves here
+  - Free NVIDIA NIM trial endpoint → cost renders `TBD`; thinking enabled
+    (temp 0.5 / top_p 0.95 for deterministic review)
+  - `supports_tool_use: false` (prompt-based JSON parsing) — NIM re-host emits
+    malformed tool-call JSON and it's a thinking model; assume-prompt-parsing
+    rule (flip to `true` only if a live run proves tool-use)
+- **Grok 4.3 (OpenAI-on-Bedrock)** — xAI reasoning-first frontier model on
+  Amazon Bedrock's new OpenAI-compatible `bedrock-mantle` endpoint (NOT the
+  SigV4 Converse path — the model card lists Converse/`bedrock-runtime` as
+  unsupported). Rides the existing `bedrock_openai` provider (`ChatOpenAI` +
+  `base_url` + a Bedrock API-key bearer token).
+  - Model ID: `grok-4.3-bedrock` (`full_id: xai.grok-4.3`)
+  - Aliases: `grok`, `grok-4.3`, `grok43`, `grok-bedrock`
+  - 1M context; pricing $1.25/$2.50 per M (third-party aggregator, pending AWS)
+  - Unlike the GPT-5.x entries on this endpoint it **accepts**
+    `temperature`/`top_p` (card defaults 0.7/0.95), so it uses Chat Completions
+    (no `use_responses_api`) with temp 0.3 for deterministic review
+  - `supports_tool_use: false` (prompt-based JSON parsing) — always-on
+    reasoning is the highest-risk forced-`tool_choice`-while-thinking profile
+  - In-Region only: us-west-2 / us-east-1 / us-east-2 (no Geo/Global)
 
 #### New Providers (3)
 - **DeepSeek direct API** — 6th provider, via dedicated `langchain-deepseek`
@@ -150,8 +177,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     the `<think>` block when thinking is on
   - GLM 5 (Bedrock) `glm5-bedrock` — thinking on by default (reasoning_effort
     defaults to max); forced `tool_choice` conflict
-  - GLM-5.1 (NVIDIA) `glm51` — NIM re-host emits malformed/truncated
-    tool-call JSON; kept consistent with GLM-5.1/5.2 on Z.AI
+  - GLM-5.2 (NVIDIA) `glm52` — NIM re-host emits malformed/truncated
+    tool-call JSON; kept consistent with GLM-5.1/5.2 on Z.AI (replaces the
+    now-removed GLM-5.1 NVIDIA entry, which carried the same rationale)
   - Step 3.5 Flash (NVIDIA) `step-3.5-flash` — reasoning-only (thinking can't
     be disabled); forced `tool_choice` while thinking unproven
   - Step 3.7 Flash (NVIDIA) `step-3.7-flash` — always-thinking backbone;
@@ -304,6 +332,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Shipped-feature planning docs** in `docs/plans/` (~1,100 lines) — the
   readme-context feature they designed landed in `codereview/readme_finder.py`
   long ago.
+- **GLM-5.1 (NVIDIA) entry** `glm51` (`z-ai/glm-5.1`) — NVIDIA deprecated the
+  free `bedrock-mantle`/NIM endpoint (~2026-07) and superseded it with
+  `z-ai/glm-5.2`. The new GLM-5.2 (NVIDIA) entry absorbs its aliases, so
+  existing `--model glm51`/`glm-5.1`/`glm5` invocations keep working (now
+  resolving to GLM-5.2). The Z.AI-direct `zhipuai/glm-5.1` entry is a
+  separate provider path and remains available.
 
 ### Documentation
 - Trimmed overall documentation footprint from ~5,600 to ~4,500 lines
@@ -312,10 +346,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added `.ruff_cache/` to `.gitignore` to match existing cache ignores
 
 ### Quality
-- Test suite: **368 passing** (up from 319; +2 scanner `exclude_hidden`,
+- Test suite: **572 passing** (up from 319; +2 scanner `exclude_hidden`,
   +3 supply-chain `_resolve_tool_binary`, +5 ruff/mypy/bandit counters,
   +2 Azure `supports_tool_use=false`, +9 Z.AI provider, +11 DeepSeek
-  provider, +10 Moonshot provider, +5 truncation/timeout/batcher resets);
+  provider, +10 Moonshot provider, +5 truncation/timeout/batcher resets,
+  plus OpenAI-on-Bedrock provider, Sonnet 5, GLM-5.2, Grok 4.3, and the
+  retired-alias / dead-upstream registry guards);
   two pre-existing fixtures fixed — they passed kwargs that Pydantic
   silently dropped
 - `ruff check`, `ruff format --check`, `mypy`: clean

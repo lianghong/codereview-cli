@@ -58,6 +58,10 @@ Comprehensive guide for using the Code Review CLI tool effectively.
 **For Google Generative AI (optional):**
 - [ ] `GOOGLE_API_KEY` environment variable set (get from aistudio.google.com/apikey)
 
+**For OpenAI-on-Bedrock — GPT-5.5/5.4, Grok 4.3 (optional):**
+- [ ] `OPENAI_API_KEY` set to an Amazon Bedrock API key (bearer token, not an openai.com key)
+- [ ] `OPENAI_BASE_URL` set to your Region's `bedrock-mantle` endpoint (Grok 4.3 is In-Region only: us-west-2 / us-east-1 / us-east-2)
+
 ## Typical Workflows
 
 ### Workflow 1: Pre-Commit Review
@@ -611,7 +615,7 @@ codereview ./src --model minimax-m2.7       # MiniMax M2.7 (agent-native; supers
 codereview ./src --model minimax-m3         # MiniMax M3 (multimodal MoE, 1M context, thinking)
 codereview ./src --model dsv4-nvidia        # DeepSeek-V4-Pro on NVIDIA (free)
 codereview ./src --model dsv4-flash-nvidia  # DeepSeek-V4-Flash on NVIDIA (free, 1M context, fast)
-codereview ./src --model glm51              # GLM-5.1 (744B MoE; supersedes deprecated glm5)
+codereview ./src --model glm52              # GLM-5.2 (753B MoE, 1M context; supersedes deprecated glm51/glm5)
 codereview ./src --model kimi-nvidia-26     # Kimi K2.6 on NVIDIA (free; supersedes retired K2.5)
 codereview ./src --model step-3.5-flash     # Step 3.5 Flash
 codereview ./src --model step-3.7-flash     # Step 3.7 Flash (256K, multimodal, newer)
@@ -631,6 +635,11 @@ codereview ./src --model zhipuai/glm-5.1    # Long-horizon coding, 203K context
 # Moonshot direct API (Kimi)
 codereview ./src --model kimi-k2.6          # Canonical Kimi, 256K context
 codereview ./src --model kimi               # Short alias
+
+# OpenAI-on-Bedrock (bedrock-mantle OpenAI-compatible endpoint; Bedrock API-key auth)
+codereview ./src --model grok               # Grok 4.3 (xAI, reasoning-first, 1M context)
+codereview ./src --model gpt5.5-bedrock     # GPT-5.5 on Bedrock
+codereview ./src --model gpt5.4-bedrock     # GPT-5.4 on Bedrock
 ```
 
 **When to use each model:**
@@ -653,7 +662,7 @@ codereview ./src --model kimi               # Short alias
 | **MiniMax M3** | NVIDIA NIM | Free tier, multimodal MoE (428B/22B active), 1M context, thinking, long-horizon coding | Free* |
 | **DeepSeek-V4-Pro (NVIDIA)** | NVIDIA NIM | Free tier, 1M context, three reasoning modes | Free* |
 | **DeepSeek-V4-Flash (NVIDIA)** | NVIDIA NIM | Free tier, 1M context, fast/cheap sibling of V4-Pro | Free* |
-| **GLM-5.1** | NVIDIA NIM | Free tier, thinking mode (GLM-5 deprecated 2026-04-20) | Free* |
+| **GLM-5.2** | NVIDIA NIM | Free tier, 753B MoE, 1M context, thinking (GLM-5.1/GLM-5 deprecated) | Free* |
 | **Kimi K2.6** | NVIDIA NIM | Free tier, 262K context (K2.5 retired 2026-05-20) | Free* |
 | **Gemini 3.1 Pro** | Google GenAI | Most advanced reasoning, 1M context (3 Pro retired 2026-03-09) | $2/M input, $12/M output |
 | **Gemini 3 Flash** | Google GenAI | Fast and cheap, 1M context | $0.50/M input, $3/M output |
@@ -662,6 +671,8 @@ codereview ./src --model kimi               # Short alias
 | **GLM-5.2** | Z.AI direct | Flagship, 1M-token context, long-horizon engineering, thinking mode | $1.40/M input, $4.40/M output |
 | **GLM-5.1** | Z.AI direct | Long-horizon coding, 203K context, function calling | $1.40/M input, $4.40/M output |
 | **Kimi K2.6** | Moonshot direct | 1T MoE, 32B active, 256K context, agentic | $0.60/M input, $2.50/M output |
+| **Grok 4.3 (Bedrock)** | OpenAI-on-Bedrock | xAI reasoning-first, 1M context, `bedrock-mantle` endpoint | $1.25/M input, $2.50/M output |
+| **GPT-5.5 / GPT-5.4 (Bedrock)** | OpenAI-on-Bedrock | Frontier reasoning, `bedrock-mantle` endpoint | $2.50/M input, $15/M output |
 
 *NVIDIA NIM models are currently in free preview tier.
 
