@@ -184,8 +184,16 @@ def test_retired_model_aliases_redirect_to_live_successors():
         "mm25": "minimaxai/minimax-m2.7",
         "kimi-k2.5": "moonshotai/kimi-k2.6",
         "kimi25": "moonshotai/kimi-k2.6",
-        "glm5": "z-ai/glm-5.1",
-        "glm-5": "z-ai/glm-5.1",
+        # NVIDIA deprecated the z-ai/glm-5.1 free endpoint (~2026-07) and it
+        # was superseded by z-ai/glm-5.2. glm-5.2 absorbed the GLM-5.1 aliases,
+        # which had themselves absorbed glm5 — so the whole GLM-5.x-on-NVIDIA
+        # lineage now resolves to the live glm-5.2.
+        "glm5": "z-ai/glm-5.2",
+        "glm-5": "z-ai/glm-5.2",
+        "glm5-nvidia": "z-ai/glm-5.2",
+        "glm-5.1": "z-ai/glm-5.2",
+        "glm5.1": "z-ai/glm-5.2",
+        "glm51-nvidia": "z-ai/glm-5.2",
         "gemini-3-pro": "gemini-3.1-pro-preview",
         "g3pro": "gemini-3.1-pro-preview",
     }

@@ -12,7 +12,7 @@ version: "1.1"
 providers:
   # AWS Bedrock Provider
   bedrock:
-    region: us-west-2
+    region: us-east-1
     models:
       # Claude Models (Anthropic)
       # Best for: Code review, reasoning, security
@@ -1006,42 +1006,56 @@ providers:
           required by Moonshot serving backend.
           Prompt-based JSON parsing (thinking on by default).
 
-      # GLM-5.1 (via NVIDIA) - Zhipu AI flagship
-      # Post-training update of GLM-5 for agentic coding
-      # 744B total / 40B active MoE (same arch as GLM-5)
-      # 131K context window, interleaved thinking
-      # Best for: Agentic workflows, long-horizon code tasks
-      - id: glm51
-        full_id: z-ai/glm-5.1
-        name: GLM-5.1 (NVIDIA)
+      # GLM-5.2 (via NVIDIA) - Zhipu AI flagship
+      # Successor to GLM-5.1: 753B-total MoE (GLM w/ DSA + IndexShare
+      # sparse attention, built on GLM-5.1). Extends context from 200K to a
+      # "solid" 1M tokens; multiple thinking effort levels (High/Max).
+      # Best for: long-horizon agentic coding, project-scale code review
+      - id: glm52
+        full_id: z-ai/glm-5.2
+        name: GLM-5.2 (NVIDIA)
+        # NVIDIA-suffixed aliases only — the canonical `glm`, `glm-5.2`,
+        # `glm5.2` are owned by the Z.AI direct provider (canonical owner of
+        # the GLM family, and the current zai_default). Re-host keeps
+        # provider-suffixed aliases only.
         aliases:
-          - glm-5.1
+          - glm52-nvidia
+          - glm5.2-nvidia
+          - glm-5.2-nvidia
+          # Absorbed from glm51 (NVIDIA deprecated the z-ai/glm-5.1 free
+          # endpoint ~2026-07 and points users to z-ai/glm-5.2). That entry
+          # had itself absorbed glm5 (deprecated 2026-04-20), so the whole
+          # GLM-5.x-on-NVIDIA lineage now resolves here.
           - glm51-nvidia
+          - glm-5.1
           - glm5.1
-          # Absorbed from glm5 (NVIDIA deprecated z-ai/glm5 2026-04-20 and
-          # points users to z-ai/glm-5.1). Old invocations now resolve here.
+          - glm5-nvidia
           - glm5
           - glm-5
-          - glm5-nvidia
         pricing:
+          # Free/trial endpoint on build.nvidia.com
           input_per_million: 0.00
           output_per_million: 0.00
         inference_params:
-          # Sample code uses 1.0/1.0; lowered here to 0.5 for
-          # deterministic code review (same rationale as GLM-5).
+          # Model card evaluates reasoning at temperature=1.0/top_p=0.95;
+          # lowered to 0.5 for deterministic code review (same rationale as
+          # GLM-5 and GLM-5.1 below).
           default_temperature: 0.5
           default_top_p: 0.95
           max_output_tokens: 16384
           enable_thinking: true
           clear_thinking: false
-        context_window: 131072
-        # Thinking on by default (enable_thinking: true above); on the NIM
-        # re-host GLM-5.1 emits malformed/truncated tool-call JSON that fails
-        # strict parsing. Both GLM-5.1 and GLM-5.2 on Z.AI direct are already
-        # supports_tool_use: false — keep this re-host consistent and route
-        # through prompt-based JSON parsing.
+        # Model card: "Input context length: 1,000,000 tokens."
+        context_window: 1000000
+        # Thinking model with effort levels (enable_thinking above). On the
+        # NIM re-host GLM-5.x emits malformed/truncated tool-call JSON that
+        # fails strict parsing (see glm51 below); both GLM-5.1 and GLM-5.2 on
+        # Z.AI direct are already supports_tool_use: false. Keep this re-host
+        # consistent and route through prompt-based JSON parsing per the
+        # assume-prompt-parsing rule (flip to true only if a live run proves
+        # tool-use).
         supports_tool_use: false
-        architecture: "MoE (744B total, 40B active)"
+        architecture: "MoE (753B total)"
         capabilities:
           - reasoning
           - code_review
@@ -1049,9 +1063,9 @@ providers:
           - tool_use
           - thinking
         notes: >-
-          Agentic flagship, 131K context, interleaved
-          thinking preserved across turns. Replaces
-          deprecated GLM-5 endpoint.
+          Zhipu flagship, successor to GLM-5.1. 753B-total MoE with IndexShare
+          sparse attention, "solid" 1M-token context, multiple thinking effort
+          levels (High/Max). Free NVIDIA NIM trial endpoint.
           Prompt-based JSON parsing on NVIDIA NIM.
 
       # Step-3.5-Flash (via NVIDIA) - StepFun
@@ -1535,6 +1549,65 @@ providers:
           endpoint. Reasoning model: Responses API, no temperature/top_p.
           Structured output via prompt-based JSON parsing (supports_tool_use:
           false) — see GPT-5.5 above.
+
+      # Grok 4.3 (xAI) — reasoning-first frontier model, GA on Amazon Bedrock
+      # via the NEW `bedrock-mantle` OpenAI-compatible endpoint. Despite being a
+      # Bedrock model it does NOT use the SigV4 Converse path (ChatBedrockConverse):
+      # the model card lists Converse and bedrock-runtime as NOT supported — only
+      # Chat Completions / Responses on bedrock-mantle. That is the SAME transport
+      # as the GPT-5.x-on-Bedrock entries above (ChatOpenAI + base_url + a Bedrock
+      # API key bearer token via OPENAI_API_KEY/OPENAI_BASE_URL), so it lives in
+      # this bedrock_openai provider. The bedrock-mantle base URL is
+      # https://bedrock-mantle.{region}.api.aws/openai/v1 (already what
+      # OPENAI_BASE_URL points at for GPT-5.x-on-Bedrock — same host).
+      #
+      # UNLIKE the GPT-5.x reasoning models here, Grok 4.3 ACCEPTS temperature and
+      # top_p (model card defaults: temperature 0.7, top_p 0.95), so we DON'T set
+      # use_responses_api (which would skip the sampling params) and instead pass a
+      # low temperature for deterministic review over plain Chat Completions.
+      - id: grok-4.3-bedrock
+        full_id: xai.grok-4.3
+        name: Grok 4.3 (Bedrock)
+        aliases:
+          - grok
+          - grok-4.3
+          - grok43
+          - grok-bedrock
+        pricing:
+          # Third-party aggregator rates (AWS pricing page links out without a
+          # per-token table for Mantle at config time). Update from
+          # https://aws.amazon.com/bedrock/pricing/ once published.
+          input_per_million: 1.25
+          output_per_million: 2.50
+        inference_params:
+          # Grok 4.3 accepts temperature/top_p (card defaults 0.7/0.95); lowered
+          # to 0.3 for deterministic code review. Card default max_completion_tokens
+          # is 131072; we cap lower to bound per-batch cost + leave reasoning room.
+          default_temperature: 0.3
+          default_top_p: 0.95
+          max_output_tokens: 32000
+        # Model card: 1M-token context window.
+        context_window: 1000000
+        # Reasoning-first model with ALWAYS-ON reasoning (effort configurable but
+        # not disable-by-default) — the highest-risk profile for the forced
+        # tool_choice-while-thinking conflict. The GPT-5.5/5.4 entries on this SAME
+        # bedrock-mantle endpoint are already supports_tool_use: false for that
+        # reason. Route through prompt-based JSON parsing per the assume-prompt-
+        # parsing rule; flip to true only if a live run proves tool-use works.
+        supports_tool_use: false
+        capabilities:
+          - reasoning
+          - code_review
+          - security_analysis
+          - structured_output
+          - tool_use
+        notes: >-
+          xAI Grok 4.3 on Amazon Bedrock via the OpenAI-compatible bedrock-mantle
+          endpoint (bearer-key auth, ChatOpenAI + base_url — NOT the SigV4 Converse
+          path). Reasoning-first, always-on reasoning, 1M context. Accepts
+          temperature/top_p (Chat Completions, not Responses API). Structured
+          output via prompt-based JSON parsing (supports_tool_use: false).
+          In-Region only: us-west-2 / us-east-1 / us-east-2 (no Geo/Global).
 
 # Default model configuration
 defaults:
