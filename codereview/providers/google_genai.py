@@ -1,5 +1,6 @@
 """Google Generative AI (Gemini) provider implementation."""
 
+import re
 from typing import Any
 
 from langchain_core.callbacks import BaseCallbackHandler
@@ -13,7 +14,24 @@ from codereview.providers.base import (
     RetryConfig,
     ValidationResult,
 )
-from codereview.providers.mixins import TokenTrackingMixin, is_placeholder_api_key
+from codereview.providers.mixins import (
+    TRANSPORT_TRANSIENT_ERRORS,
+    TokenTrackingMixin,
+    is_blank,
+    is_placeholder_api_key,
+)
+
+# Status codes worth another attempt: quota exhaustion and transient server-side
+# failures. Deliberately excludes 400/401/403/404 — a retry can't fix a bad
+# request or a bad key, it just makes the failure slower.
+#
+# 429 and 503 are the status equivalents of the ResourceExhausted /
+# ServiceUnavailable classes this provider used to test for, so those two
+# restore the intended policy exactly. 500 and 504 are added deliberately: the
+# google-genai SDK raises them as plain ServerError with no api_core analogue,
+# they are the server admitting the fault is its own, and Gemini returns them on
+# overload. Locked by the status-code table in tests/test_retry_contract.py.
+_RETRYABLE_GOOGLE_STATUS_CODES = frozenset({429, 500, 503, 504})
 
 
 class GoogleGenAIProvider(TokenTrackingMixin, ModelProvider):
@@ -110,20 +128,49 @@ class GoogleGenAIProvider(TokenTrackingMixin, ModelProvider):
         return self._apply_structured_output(base_model, method="json_schema")
 
     def _is_retryable_error(self, error: Exception) -> bool:
-        """Check if error is a retryable Google API error."""
-        from google.api_core.exceptions import ResourceExhausted, ServiceUnavailable
+        """Check if error is a retryable Google API error.
 
-        return isinstance(error, ResourceExhausted | ServiceUnavailable)
+        Classified on the **status code**, not on an exception class hierarchy.
+        ``langchain-google-genai`` 4.x runs on the ``google-genai`` SDK, which
+        raises ``google.genai.errors.ClientError`` / ``ServerError`` carrying a
+        ``.code``. It does *not* raise the ``google.api_core.exceptions`` types
+        (``ResourceExhausted``/``ServiceUnavailable``) this used to test for —
+        those belong to the older ``google-generativeai`` stack, so the
+        isinstance check matched nothing and **every** 429 and 503 aborted the
+        batch on attempt 1. ``api_core`` is still installed as a transitive
+        dependency, which is why the dead branch stayed invisible: it imported
+        fine and the tests constructed the exceptions by hand.
+
+        Retryable: 429 (quota), 500/503/504 (transient server-side), plus the
+        transport failures the SDK surfaces from httpx/requests. A 400/401/403/404
+        is a request or credential problem that a retry cannot fix.
+        """
+        return self._google_status_code(error) in _RETRYABLE_GOOGLE_STATUS_CODES or (
+            isinstance(error, TRANSPORT_TRANSIENT_ERRORS)
+        )
+
+    @staticmethod
+    def _google_status_code(error: Exception) -> int | None:
+        """Return the HTTP status carried by a google-genai error, if any.
+
+        ``APIError.code`` is the documented attribute. The langchain wrapper also
+        re-raises some failures as ``ChatGoogleGenerativeAIError`` with the status
+        only in the message text (see the wrapper's own 429 handling example), so
+        fall back to a leading-status scan of the string form.
+        """
+        code = getattr(error, "code", None)
+        if isinstance(code, int):
+            return code
+        match = re.match(r"\s*(\d{3})\b", str(error))
+        return int(match.group(1)) if match else None
 
     def _calculate_backoff(
         self, error: Exception, attempt: int, config: RetryConfig
     ) -> float:
         """Calculate backoff: longer for rate limits (429) on preview models."""
-        from google.api_core.exceptions import ResourceExhausted
-
         # Google preview models have strict rate limits — use longer base (10s)
         # giving 10, 20, 40, 60, 60 ... progression
-        if isinstance(error, ResourceExhausted):
+        if self._google_status_code(error) == 429:
             return min(10.0 * (2**attempt), config.max_wait)
         return min(config.base_wait * (2**attempt), config.max_wait)
 
@@ -151,13 +198,13 @@ class GoogleGenAIProvider(TokenTrackingMixin, ModelProvider):
             batch_number: Current batch number
             total_batches: Total number of batches
             files_content: Dictionary mapping file paths to file contents
-            max_retries: Maximum number of retries for API errors (default: 3)
+            max_retries: Maximum number of retries for API errors (None uses
+                this provider's default of 5 — preview models throttle hard)
 
         Returns:
             CodeReviewReport with findings
         """
-        if max_retries is None:
-            max_retries = 5
+        retries = self._resolve_max_retries(max_retries, self.provider_config, 5)
 
         batch_context = self._prepare_batch_context(
             batch_number, total_batches, files_content, self.project_context
@@ -168,7 +215,7 @@ class GoogleGenAIProvider(TokenTrackingMixin, ModelProvider):
             "batch_context": batch_context,
         }
 
-        retry_config = RetryConfig(max_retries=max_retries, base_wait=5.0)
+        retry_config = RetryConfig(max_retries=retries, base_wait=5.0)
         return self._execute_with_retry(chain_input, retry_config, batch_context)
 
     def validate_credentials(self) -> ValidationResult:
@@ -186,7 +233,7 @@ class GoogleGenAIProvider(TokenTrackingMixin, ModelProvider):
         # Check 1: API key configured
         api_key = self.provider_config.api_key
         # "your-api-key-here" (the exact README string) is in the generic set
-        if not api_key or is_placeholder_api_key(api_key):
+        if is_blank(api_key) or is_placeholder_api_key(api_key):
             result.valid = False
             result.add_check(
                 "API Key",

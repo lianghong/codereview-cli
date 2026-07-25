@@ -158,26 +158,39 @@ class FileScanner:
         Parses glob patterns like '**/node_modules/**' to extract 'node_modules'
         as a directory name to skip during os.walk traversal.
 
+        Pruning is by *bare name*, which matches a directory at any depth, so a
+        name may only be extracted from a pattern that is itself unanchored.
+        Two conditions must both hold:
+
+        1. The segment is *followed* by a wildcard segment ("**" or "*"), i.e.
+           the pattern excludes the directory's entire contents
+           ("**/node_modules/**", "**/dist/*"). A fine-grained pattern like
+           "src/generated.py" or "tests/fixtures/*.py" must NOT prune
+           "src"/"tests"/"fixtures" — that would skip unrelated files.
+        2. Every segment *before* it is a wildcard ("**"/"*"), or there are
+           none. A path-qualified pattern like "docs/api/*" names one specific
+           directory, so pruning the bare name "api" would also skip an
+           unrelated "app/api/" elsewhere in the tree — silently dropping files
+           from the review. Such patterns simply don't contribute a prune name;
+           ``_is_excluded`` still excludes the files they match, so the result
+           is correct, just walked rather than skipped.
+
         Returns:
             Set of directory base names to prune
         """
         dir_names: set[str] = set()
         for pattern in self.exclude_patterns:
-            # Only prune a literal segment when it is *followed* by a wildcard
-            # segment ("**" or "*"), i.e. the pattern names a directory whose
-            # entire contents are excluded ("**/node_modules/**", "**/dist/*").
-            # A fine-grained pattern like "src/generated.py" or
-            # "tests/fixtures/*.py" must NOT prune "src"/"tests"/"fixtures" —
-            # doing so would skip unrelated files that should be reviewed.
             parts = PurePath(pattern).parts
             for index, part in enumerate(parts[:-1]):
-                next_part = parts[index + 1]
-                if (
-                    part not in ("**", "*")
-                    and "*" not in part
-                    and next_part in ("**", "*")
-                ):
-                    dir_names.add(part)
+                if part in ("**", "*") or "*" in part:
+                    continue
+                if parts[index + 1] not in ("**", "*"):
+                    continue
+                # Unanchored only: a literal segment ahead of this one pins the
+                # pattern to one location, which a bare-name prune can't express.
+                if any(earlier not in ("**", "*") for earlier in parts[:index]):
+                    continue
+                dir_names.add(part)
         return dir_names
 
     def _is_excluded(self, path: str) -> bool:

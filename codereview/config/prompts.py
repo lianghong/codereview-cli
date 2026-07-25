@@ -346,6 +346,49 @@ FALSE POSITIVES to ignore for secrets:
 When flagging secrets: title "Hardcoded [type] detected", describe the risk WITHOUT exposing the actual value, suggest environment variables or secret management.
 
 ═══════════════════════════════════════════════════════════════════════════════
+CORRECTNESS ANALYSIS (category: Correctness — second only to Security)
+═══════════════════════════════════════════════════════════════════════════════
+
+The primary question: does the code do what it claims to do? Report a
+Correctness issue when you can name an input, call order, or state that makes
+the code return a WRONG RESULT, crash, hang, corrupt data, or leak a resource.
+
+LOGIC & CONTROL FLOW:
+- Off-by-one errors in indexing, slicing, ranges, loop bounds
+- Inverted or wrong comparison (`<` vs `<=`, `and` vs `or`, missing negation)
+- Conditions that can never be true, or branches that are unreachable
+- Early return / missing return leaving a value unset or stale
+- Operator precedence and integer-vs-float division mistakes
+
+EDGE CASES (the classic gaps):
+- Empty collection, single element, or exactly-at-the-boundary input
+- None/null/undefined where a value is assumed present
+- Zero, negative, and overflow values where a positive is assumed
+- Unicode, empty string, and whitespace-only string handling
+- First/last iteration special cases
+
+ERROR PATHS (not just the happy path):
+- Exception raised mid-operation leaving state half-updated (no rollback)
+- Resource acquired but not released on the error path (file, lock, connection)
+- Error swallowed so the caller proceeds with invalid data
+- Retry that repeats a non-idempotent side effect
+
+CONCURRENCY & STATE:
+- Shared mutable state mutated without a lock (check-then-act, `+=`, dict/list mutation)
+- TOCTOU: a value checked and then used after it could have changed
+- Deadlock from nested or inconsistently ordered lock acquisition
+- Assumption that async/threaded work completed before its result is read
+
+RESOURCE LIFECYCLE:
+- File handles, sockets, locks, cursors, subprocesses not closed on every path
+- Unbounded growth of a cache/list/queue with no eviction
+
+Severity guidance: data loss, corruption, and crashes are Critical; a wrong
+result or leak on a reachable path is High; a wrong result only in an unlikely
+path is Medium. Constraint 10 still applies — name the triggering input or do
+not report it.
+
+═══════════════════════════════════════════════════════════════════════════════
 ARCHITECTURE & PRODUCTION READINESS
 ═══════════════════════════════════════════════════════════════════════════════
 
@@ -448,8 +491,9 @@ EVERY ISSUE MUST INCLUDE:
 
 If you cannot provide specific details for an issue, DO NOT report it.
 
-VALID CATEGORIES: Code Style, Code Quality, Security, Performance, Best Practices, System Design, Testing, Documentation
-- Use **Code Quality** for: error handling, type hints/typing, readability, maintainability, complexity.
+VALID CATEGORIES: Correctness, Code Style, Code Quality, Security, Performance, Best Practices, System Design, Testing, Documentation
+- Use **Correctness** for: the code does not do what it claims — logic errors, off-by-one, wrong operator/comparison, unhandled edge cases (null/empty/boundary), missing error paths, race conditions and thread-safety bugs, state inconsistency, resource leaks, data loss or corruption. If the code produces a WRONG RESULT or CRASHES for some input you can name, it is Correctness — not Code Quality.
+- Use **Code Quality** for: error handling style, type hints/typing, readability, maintainability, complexity. Use this when the code WORKS but is hard to maintain.
 - Use **Best Practices** for: language/framework idioms, naming conventions, project conventions.
 - Use **System Design** for: layering, coupling, module boundaries, abstraction choices.
 - Do not invent categories outside this list — they will be silently coerced.

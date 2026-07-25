@@ -201,7 +201,12 @@ class ProviderFactory:
 
         Returns:
             Dict mapping provider names to lists of model info dicts.
-            Each model info dict contains: id, name, aliases
+            Each model info dict contains: id, name, aliases, deprecated_aliases.
+
+            ``aliases`` holds only the current, recommended names — the ones
+            worth advertising. Back-compat-only names live in
+            ``deprecated_aliases`` so the caller can decide whether to show
+            them; see ``ModelConfig.deprecated_aliases``.
         """
         result: dict[str, list[dict[str, str]]] = {}
 
@@ -215,6 +220,9 @@ class ProviderFactory:
                         "id": model_config.id,
                         "name": model_config.name,
                         "aliases": ", ".join(model_config.aliases),
+                        "deprecated_aliases": ", ".join(
+                            model_config.deprecated_aliases
+                        ),
                     }
                 )
 

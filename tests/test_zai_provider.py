@@ -34,16 +34,16 @@ def model_config():
 
 
 @pytest.fixture
-def glm51_model_config():
-    """The real GLM-5.1 registry shape: supports_tool_use=False (prompt parsing).
+def glm52_model_config():
+    """The real GLM-5.2 registry shape: supports_tool_use=False (prompt parsing).
 
     Z.AI's OpenAI-compat endpoint ignores json_schema response_format and emits
-    markdown-fenced JSON, so GLM-5.1 routes through PydanticOutputParser.
+    markdown-fenced JSON, so GLM routes through PydanticOutputParser.
     """
     return ModelConfig(
-        id="zhipuai/glm-5.1",
-        full_id="glm-5.1",
-        name="GLM-5.1 (Z.AI)",
+        id="zhipuai/glm-5.2",
+        full_id="glm-5.2",
+        name="GLM-5.2 (Z.AI)",
         aliases=["zai-glm"],
         pricing=PricingConfig(input_per_million=1.40, output_per_million=4.40),
         inference_params=InferenceParams(
@@ -239,8 +239,8 @@ def test_zai_validate_credentials_happy_path(model_config, provider_config):
         assert result.valid is True
 
 
-def test_zai_glm51_uses_prompt_parsing(glm51_model_config, provider_config):
-    """GLM-5.1 (supports_tool_use=False) must skip tool-calling structured
+def test_zai_glm52_uses_prompt_parsing(glm52_model_config, provider_config):
+    """GLM-5.2 (supports_tool_use=False) must skip tool-calling structured
     output and parse JSON with PydanticOutputParser.
 
     Regression: Z.AI's endpoint ignores OpenAI's json_schema response_format
@@ -252,7 +252,7 @@ def test_zai_glm51_uses_prompt_parsing(glm51_model_config, provider_config):
         mock_instance = Mock()
         mock_openai.return_value = mock_instance
 
-        provider = ZAIProvider(glm51_model_config, provider_config)
+        provider = ZAIProvider(glm52_model_config, provider_config)
 
         # No tool-calling structured output should have been requested.
         mock_instance.with_structured_output.assert_not_called()
@@ -263,7 +263,7 @@ def test_zai_glm51_uses_prompt_parsing(glm51_model_config, provider_config):
 
 
 def test_zai_prompt_parser_strips_markdown_fences():
-    """The PydanticOutputParser used by the GLM-5.1 path strips ```json fences.
+    """The PydanticOutputParser used by the GLM path strips ```json fences.
 
     This is the exact failure observed in the field: GLM returned
     ```json\\n{...}\\n``` and the json_schema parser choked at column 1.

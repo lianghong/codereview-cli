@@ -157,7 +157,7 @@ class ModelProvider(ABC):
         batch_number: int,
         total_batches: int,
         files_content: dict[str, str],
-        max_retries: int = 3,
+        max_retries: int | None = None,
     ) -> CodeReviewReport:
         """Analyze a batch of files.
 
@@ -165,7 +165,13 @@ class ModelProvider(ABC):
             batch_number: Current batch number
             total_batches: Total number of batches
             files_content: Dictionary mapping file paths to file contents
-            max_retries: Maximum number of retries for rate limiting
+            max_retries: Maximum number of retries for rate limiting. ``None``
+                means "provider decides" — implementations resolve it through
+                ``_resolve_max_retries``, so each endpoint's own default (and
+                any ``max_retries`` on its provider config) applies. Every
+                implementation must keep this default ``None``; a concrete
+                default here would override the provider layer for every
+                caller that doesn't pass one.
 
         Returns:
             CodeReviewReport with findings
@@ -179,7 +185,7 @@ class ModelProvider(ABC):
         ``model_config`` attribute must override.
 
         Returns:
-            Display name like "Claude Opus 4.6" or "GPT-5.3 Codex"
+            Display name like "Claude Opus 5" or "GPT-5.5 (Bedrock)"
         """
         model_config = getattr(self, "model_config", None)
         if model_config is None:
@@ -376,7 +382,7 @@ class ModelProvider(ABC):
         Precedence: explicit ``override`` > ``model_config.inference_params.temperature``
         > ``provider_default``. When ``allow_none`` is True, a model that
         explicitly sets ``temperature=None`` (reasoning models like Claude
-        Opus 4.7) stays None.
+        Opus 5) stays None.
 
         Args:
             override: Caller-supplied temperature (usually from CLI), or None
@@ -404,6 +410,45 @@ class ModelProvider(ABC):
             if allow_none:
                 # Reasoning models explicitly opt out of temperature
                 return None
+        return provider_default
+
+    @staticmethod
+    def _resolve_max_retries(
+        override: int | None,
+        provider_config: Any,
+        provider_default: int,
+    ) -> int:
+        """Resolve the effective retry count for a batch call.
+
+        Precedence: explicit ``override`` > ``provider_config.max_retries``
+        (only some provider configs expose one) > ``provider_default``, the
+        value the provider itself considers right for its endpoint.
+
+        ``None`` is the "no opinion" sentinel all the way down from
+        ``CodeAnalyzer.analyze_batch``: a caller that doesn't care about retries
+        passes nothing and each provider's own default applies. Passing a
+        concrete number instead — as ``CodeAnalyzer`` used to do
+        unconditionally — silently overrides both of the lower layers.
+
+        Args:
+            override: Caller-supplied retry count, or None for "provider decides"
+            provider_config: Provider config, optionally with a ``max_retries`` field
+            provider_default: Fallback when neither of the above is set
+
+        Returns:
+            Effective maximum number of retries
+
+        Raises:
+            ValueError: If override is negative
+        """
+        if override is not None:
+            if override < 0:
+                raise ValueError(f"max_retries must be >= 0, got {override}")
+            return override
+
+        configured = getattr(provider_config, "max_retries", None)
+        if configured is not None:
+            return int(configured)
         return provider_default
 
     @staticmethod
@@ -526,6 +571,31 @@ class ModelProvider(ABC):
         """
         return (0, 0)
 
+    def _track_usage_from_raw(self, raw: Any) -> None:
+        """Bill a response the provider produced but we could not parse.
+
+        Reported counts only — deliberately no estimation fallback. On the
+        success paths a zero count means "metadata missing", and the parsed
+        report is there to estimate from; here there is no payload, and
+        inventing a number would put a fabricated figure in the cost report
+        rather than an honest undercount. When the provider does report usage
+        (Bedrock and every OpenAI-compatible endpoint do, even on a response we
+        reject), the charge is recorded exactly.
+
+        Failures are swallowed: this runs on the way to raising a retryable
+        error, and an accounting problem must not replace the parse error the
+        caller needs to see.
+        """
+        try:
+            input_tokens, output_tokens = self._extract_token_usage(raw)
+        except Exception:  # pragma: no cover - defensive; metadata shape varies
+            logging.debug(
+                "Token usage unavailable for unparsed response", exc_info=True
+            )
+            return
+        if input_tokens or output_tokens:
+            self._track_tokens(input_tokens, output_tokens)
+
     def _invoke_chain(self, chain_input: dict[str, str]) -> Any:
         """Invoke the LLM chain. Override for provider-specific wrappers.
 
@@ -625,6 +695,17 @@ class ModelProvider(ABC):
                     parsing_error = result.get("parsing_error")
 
                     if parsed is None:
+                        # Bill it before raising. The provider generated (and
+                        # charged for) this response; only *our* parse of it
+                        # failed. Skipping the accounting made every retried
+                        # malformed batch free in the run's cost report, and
+                        # reasoning models on the prompt-parsing path can burn
+                        # several attempts on one batch — the models whose
+                        # output tokens cost the most are exactly the ones that
+                        # trigger this. Estimation is not a substitute: it can't
+                        # see the thinking tokens the vendor bills.
+                        self._track_usage_from_raw(raw)
+
                         msg = "Structured output parsing failed"
                         if parsing_error:
                             msg = f"{msg}: {parsing_error}"

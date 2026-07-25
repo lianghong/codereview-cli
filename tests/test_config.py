@@ -1,6 +1,14 @@
 # tests/test_config.py
 """Tests for configuration management."""
 
+import re
+import subprocess
+from pathlib import Path
+
+import pytest
+import yaml
+from pydantic import ValidationError
+
 from codereview.config import (
     DEFAULT_EXCLUDE_EXTENSIONS,
     DEFAULT_EXCLUDE_PATTERNS,
@@ -28,7 +36,7 @@ def test_config_loader_default_model():
     loader = ConfigLoader()
     provider, model_config = loader.resolve_model("opus")
     assert provider == "bedrock"
-    assert model_config.name == "Claude Opus 4.6"
+    assert model_config.name == "Claude Opus 5"
     assert model_config.pricing.input_per_million > 0
 
 
@@ -53,7 +61,7 @@ def test_resolve_model_id_with_alias():
     """Test resolving short model names to full IDs via ConfigLoader."""
     loader = ConfigLoader()
     provider, model_config = loader.resolve_model("opus")
-    assert model_config.full_id == "global.anthropic.claude-opus-4-6-v1"
+    assert model_config.full_id == "us.anthropic.claude-opus-5"
 
     provider, model_config = loader.resolve_model("sonnet")
     assert model_config.full_id == "global.anthropic.claude-sonnet-4-6"
@@ -62,7 +70,7 @@ def test_resolve_model_id_with_alias():
     assert model_config.full_id == "global.anthropic.claude-haiku-4-5-20251001-v1:0"
 
     provider, model_config = loader.resolve_model("qwen")
-    assert model_config.full_id == "qwen.qwen3-coder-480b-a35b-v1:0"
+    assert model_config.full_id == "qwen.qwen3-coder-next"
 
 
 def test_resolve_model_id_case_insensitive():
@@ -71,7 +79,7 @@ def test_resolve_model_id_case_insensitive():
     # Aliases in YAML are lowercase, so we test that lowercase works
     provider1, model1 = loader.resolve_model("opus")
     provider2, model2 = loader.resolve_model("sonnet")
-    assert model1.name == "Claude Opus 4.6"
+    assert model1.name == "Claude Opus 5"
     assert model2.name == "Claude Sonnet 4.6"
 
 
@@ -79,8 +87,8 @@ def test_resolve_model_id_with_full_id():
     """Test resolving with full model ID works."""
     loader = ConfigLoader()
     # Short ID (which is used in the YAML as the primary ID)
-    provider, model_config = loader.resolve_model("opus")
-    assert model_config.id == "opus"
+    provider, model_config = loader.resolve_model("opus5")
+    assert model_config.id == "opus5"
 
 
 def test_all_aliases_map_to_valid_models():
@@ -115,6 +123,81 @@ def test_fable5_read_timeout_covers_thinking_latency():
     assert model_config.read_timeout >= 1800
 
 
+def test_opus5_read_timeout_covers_thinking_latency():
+    """opus5 has thinking ON by default (a breaking change from Opus 4.8, where
+    it was off unless requested) at default effort "high", and the Converse call
+    is non-streaming — no bytes arrive until the full response is generated, so
+    think-heavy batches would outlast the 300s provider-default read_timeout.
+    Same condition that forced fable5's override."""
+    loader = ConfigLoader()
+    _, model_config = loader.resolve_model("opus5")
+    assert model_config.read_timeout is not None
+    assert model_config.read_timeout >= 1800
+
+
+def test_opus5_context_and_output_match_bedrock_card():
+    """Opus 5 advertises 1M context (both default and maximum) / 128K output."""
+    loader = ConfigLoader()
+    _, config = loader.resolve_model("opus5")
+    assert config.context_window == 1_000_000
+    assert config.inference_params is not None
+    assert config.inference_params.max_output_tokens == 128_000
+
+
+def test_opus5_omits_sampling_params():
+    """Opus 5 is a reasoning model — temperature/top_p/top_k are unsupported.
+
+    The Bedrock provider passes ``allow_none=True`` to ``_resolve_temperature``,
+    so an absent ``default_temperature`` in the YAML (loaded into the
+    ``temperature`` field) is what opts the model out of sending
+    ``temperature`` on the Converse call.
+    """
+    loader = ConfigLoader()
+    _, config = loader.resolve_model("opus5")
+    assert config.inference_params is not None
+    assert config.inference_params.temperature is None
+    assert config.inference_params.top_p is None
+    assert config.inference_params.top_k is None
+
+
+def test_generation_neutral_opus_alias_tracks_opus5():
+    """The bare Opus aliases must resolve to the newest Opus entry.
+
+    ``_register_model`` last-write-wins within a single provider (it only warns
+    across providers), so a stale entry keeping ``opus`` as its ``id`` would
+    silently shadow this alias depending on YAML order.
+    """
+    loader = ConfigLoader()
+    for alias in ("opus", "claude-opus", "claude-opus-5", "opus-5"):
+        _, config = loader.resolve_model(alias)
+        assert config.id == "opus5", f"{alias!r} resolved to {config.id!r}"
+
+
+def test_superseded_opus_generation_aliases_are_gone():
+    """``--model opus4.6`` must fail loudly, not resolve to Opus 5.
+
+    The 2026-07-25 cleanup initially migrated the removed Opus 4.7/4.6 entries'
+    aliases onto Opus 5 to keep scripted invocations working. That turned out to
+    be the wrong trade: a name that says "4.6" silently getting a
+    two-generations-newer model with different pricing, different sampling-param
+    support and a different structured-output path is worse than an error a
+    human reads and fixes. They were deleted instead — this guards against a
+    well-meaning re-migration.
+    """
+    loader = ConfigLoader()
+    for alias in (
+        "opus4.7",
+        "opus-4.7",
+        "claude-opus-4.7",
+        "claude-opus-47",
+        "opus4.6",
+        "opus-4.6",
+        "claude-opus-4.6",
+    ):
+        with pytest.raises(ValueError, match="Unknown model"):
+            loader.resolve_model(alias)
+
+
 def test_model_id_conflict_detection(caplog):
     """Test that model ID conflicts are detected and logged."""
     import logging
@@ -125,7 +208,7 @@ def test_model_id_conflict_detection(caplog):
 
     # Simulate registering same ID from different provider
     mock_config = ModelConfig(
-        id="opus",  # Already registered by bedrock
+        id="opus",  # Already registered by bedrock (as an opus5 alias)
         name="Fake Opus",
         aliases=[],
         pricing=PricingConfig(input_per_million=1.0, output_per_million=1.0),
@@ -142,26 +225,123 @@ def test_model_id_conflict_detection(caplog):
     # Original should still be registered (first wins)
     provider, config = loader.resolve_model("opus")
     assert provider == "bedrock"
-    assert config.name == "Claude Opus 4.6"
+    assert config.name == "Claude Opus 5"
+
+
+def test_same_provider_model_name_conflict_is_warned(caplog):
+    """Two entries under ONE provider claiming a name must warn, not go silent.
+
+    Intra-provider registration is deliberately last-write-wins (CLAUDE.md: it
+    is what lets a generation-neutral alias move to a newer entry further down
+    the YAML). The defect was that this case logged *nothing*: the conflict
+    check only fired when the providers differed, so two bedrock entries sharing
+    an alias silently made the earlier entry unreachable under that name — the
+    exact trap the generation-neutral-alias convention warns about.
+
+    Resolution behavior is unchanged; only the warning is new.
+    """
+    import logging
+
+    from codereview.config.models import ModelConfig, PricingConfig
+
+    loader = ConfigLoader()
+
+    shadowing = ModelConfig(
+        id="some-other-bedrock-entry",
+        name="Shadowing Entry",
+        aliases=[],
+        pricing=PricingConfig(input_per_million=1.0, output_per_million=1.0),
+    )
+
+    with caplog.at_level(logging.WARNING):
+        loader._register_model("bedrock", shadowing, "opus")
+
+    assert "Model name conflict" in caplog.text
+    assert "some-other-bedrock-entry" in caplog.text
+    # Names both sides so the message is actionable.
+    assert "opus5" in caplog.text or "Claude Opus 5" in caplog.text
+
+    # Documented last-write-wins semantics preserved.
+    provider, config = loader.resolve_model("opus")
+    assert provider == "bedrock"
+    assert config.id == "some-other-bedrock-entry"
+
+
+def test_reregistering_the_same_entry_is_not_a_conflict(caplog):
+    """_register_all_names is idempotent; re-registering one entry must be quiet."""
+    import logging
+
+    loader = ConfigLoader()
+    _, existing = loader.resolve_model("opus5")
+
+    with caplog.at_level(logging.WARNING):
+        loader._register_model("bedrock", existing, "opus5")
+
+    assert "Model name conflict" not in caplog.text
+
+
+def test_real_registry_loads_without_any_conflict_warning(caplog):
+    """models.yaml itself must not trip either conflict branch.
+
+    With the same-provider branch now warning, a duplicate alias inside one
+    provider block becomes visible at load time instead of silently shadowing.
+    """
+    import logging
+
+    from codereview.config import get_config_loader
+
+    get_config_loader.cache_clear()
+    with caplog.at_level(logging.WARNING):
+        ConfigLoader()
+
+    assert "Model name conflict" not in caplog.text, (
+        "models.yaml has a duplicate model id/alias: " + caplog.text
+    )
 
 
 # ---------------------------------------------------------------------------
 # Upstream-currency guards
 # ---------------------------------------------------------------------------
 
-# Upstream endpoints that were retired/shut down by their providers. Audited
-# 2026-05-30; removing the registry entries that pointed here, with their
-# aliases redirected to the live successors. This guard fails if any of these
-# dead full_ids is ever reintroduced (e.g. by copy-paste from an old entry).
-#   minimaxai/minimax-m2.5  — NVIDIA NIM deprecated 2026-05-12 → minimax-m2.7
-#   moonshotai/kimi-k2.5    — NVIDIA NIM shut down 2026-05-20 → kimi-k2.6
-#   z-ai/glm5               — NVIDIA NIM deprecated 2026-04-20 → z-ai/glm-5.1
-#   gemini-3-pro-preview    — Google shut down 2026-03-09  → gemini-3.1-pro-preview
+# Upstream endpoints no registry entry may target: either retired/shut down by
+# their provider, or unreachable from the region/resource this project is
+# configured for. Audited 2026-05-30 and re-audited 2026-07-25 by probing every
+# entry against its live provider endpoint. The entries that pointed here were
+# removed and their aliases redirected to live successors; this guard fails if
+# a dead full_id is ever reintroduced (e.g. by copy-paste from an old entry).
+#
+# Superseded-but-still-live endpoints are deliberately NOT listed — re-adding
+# those is a judgement call, not a bug. Their aliases are covered by
+# test_retired_model_aliases_redirect_to_live_successors instead.
+#   minimaxai/minimax-m2.5              — NIM deprecated 2026-05-12
+#   moonshotai/kimi-k2.5                — NIM shut down 2026-05-20 (NOTE: the
+#                                         dotted Bedrock id is a different
+#                                         endpoint and is still live)
+#   z-ai/glm5                           — NIM deprecated 2026-04-20
+#   z-ai/glm-5.1                        — NIM deprecated ~2026-07
+#   gemini-3-pro-preview                — Google shut down 2026-03-09
+#   qwen/qwen3-coder-480b-a35b-instruct — NIM endpoint returns 404 (2026-07-25)
+#   qwen.qwen3-coder-480b-a35b-v1:0     — Bedrock us-west-2 only; the provider's
+#                                         configured region does not offer it
+#   Kimi-K2.5 / DeepSeek-V4-Pro (Azure) — DeploymentNotFound on this resource
+#                                         (deployment_name, not full_id — see
+#                                         DEAD_AZURE_DEPLOYMENT_NAMES below)
 DEAD_UPSTREAM_FULL_IDS = {
     "minimaxai/minimax-m2.5",
     "moonshotai/kimi-k2.5",
     "z-ai/glm5",
+    "z-ai/glm-5.1",
     "gemini-3-pro-preview",
+    "qwen/qwen3-coder-480b-a35b-instruct",
+    "qwen.qwen3-coder-480b-a35b-v1:0",
+}
+
+# Azure entries are addressed by deployment_name, not full_id, and only work if
+# a deployment with that exact name exists on the resource. Both of these
+# returned DeploymentNotFound when probed 2026-07-25.
+DEAD_AZURE_DEPLOYMENT_NAMES = {
+    "Kimi-K2.5",
+    "DeepSeek-V4-Pro",
 }
 
 
@@ -176,26 +356,70 @@ def test_no_model_points_at_dead_upstream_endpoint():
     assert not offenders, f"Entries point at retired endpoints: {offenders}"
 
 
+def test_no_model_points_at_missing_azure_deployment():
+    """No Azure entry may name a deployment that doesn't exist on the resource.
+
+    Unlike Bedrock/NVIDIA catalog models, an Azure entry is only usable if
+    someone created a deployment with that exact name — a stale one fails at
+    invocation time with DeploymentNotFound rather than at ``--list-models``.
+    """
+    loader = ConfigLoader()
+    offenders = {
+        model_id: config.deployment_name
+        for model_id, (_, config) in loader._models_by_id.items()
+        if config.deployment_name in DEAD_AZURE_DEPLOYMENT_NAMES
+    }
+    assert not offenders, f"Entries name missing Azure deployments: {offenders}"
+
+
 def test_retired_model_aliases_redirect_to_live_successors():
-    """Aliases inherited from retired entries resolve to the live successor."""
+    """Aliases inherited from removed entries resolve to a live successor.
+
+    Removing a model should not break a scripted ``--model <alias>`` when the
+    successor is a drop-in: the successor absorbs the alias. The exception is a
+    name that states a *version* (``opus4.6``, ``minimax-m2.5``, ``glm-5.1``) —
+    those were deleted in the 2026-07-25 alias cleanup rather than redirected,
+    because silently serving a different generation is worse than a clear error.
+    ``RETIRED_ALIASES_DELETED_NOT_REDIRECTED`` below is the counterpart guard.
+    """
     loader = ConfigLoader()
     expected = {
-        "minimax-m2.5": "minimaxai/minimax-m2.7",
-        "mm25": "minimaxai/minimax-m2.7",
-        "kimi-k2.5": "moonshotai/kimi-k2.6",
-        "kimi25": "moonshotai/kimi-k2.6",
-        # NVIDIA deprecated the z-ai/glm-5.1 free endpoint (~2026-07) and it
-        # was superseded by z-ai/glm-5.2. glm-5.2 absorbed the GLM-5.1 aliases,
-        # which had themselves absorbed glm5 — so the whole GLM-5.x-on-NVIDIA
-        # lineage now resolves to the live glm-5.2.
+        # Kimi/DeepSeek-on-Azure: both deployments are gone from the resource,
+        # and the direct APIs are the canonical owners of those families. These
+        # names don't state a version, so redirecting is safe.
+        "kimi-azure": "kimi-k2.6",
+        "kimi25-azure": "kimi-k2.6",
+        "deepseek-v4-azure": "deepseek-v4-pro",
+        "ds-v4-azure": "deepseek-v4-pro",
+        # NVIDIA deprecated the z-ai/glm5 free endpoint; glm-5.2 is the live
+        # GLM on NIM. (`glm5`/`glm-5` predate GLM-5.1 and stay redirected; the
+        # GLM-5.1-specific names were deleted — see the counterpart guard.)
         "glm5": "z-ai/glm-5.2",
         "glm-5": "z-ai/glm-5.2",
         "glm5-nvidia": "z-ai/glm-5.2",
-        "glm-5.1": "z-ai/glm-5.2",
-        "glm5.1": "z-ai/glm-5.2",
-        "glm51-nvidia": "z-ai/glm-5.2",
+        # GLM-on-Z.AI: 5.1 removed in favour of 5.2 (same price, 1M context).
+        "zai-glm": "glm-5.2",
+        "glm-zai": "glm-5.2",
+        # Gemini: 3 Pro shut down 2026-03-09; 3 Flash Preview deprecated in
+        # favour of the GA Gemini 3.6 Flash.
         "gemini-3-pro": "gemini-3.1-pro-preview",
-        "g3pro": "gemini-3.1-pro-preview",
+        "gemini3-pro": "gemini-3.1-pro-preview",
+        "gemini-3-flash": "gemini-3.6-flash",
+        "gemini3-flash": "gemini-3.6-flash",
+        "g3flash": "gemini-3.6-flash",
+        # Qwen: the 480B NIM endpoint is gone; on Bedrock the 480B model is
+        # us-west-2-only, so Qwen3 Coder Next is the only reachable Qwen there.
+        "qwen-nvidia": "qwen/qwen3.5-397b-a17b",
+        "qwen3-nvidia": "qwen/qwen3.5-397b-a17b",
+        "qwen-coder-nvidia": "qwen/qwen3.5-397b-a17b",
+        "qwen-bedrock": "qwen.qwen3-coder-next",
+        # Step: 3.5 Flash superseded by 3.7 Flash on NIM. The generation-neutral
+        # name redirects; step35 / step-3.5-flash were deleted.
+        "step-flash": "stepfun-ai/step-3.7-flash",
+        # A removed entry's *id* is a --model spelling too, not just its
+        # aliases — these were ids of removed entries and are easy to forget.
+        "deepseek-v4-pro-azure": "deepseek-v4-pro",
+        "kimi-k2.5-azure": "kimi-k2.6",
     }
     for alias, live_full_id in expected.items():
         _, config = loader.resolve_model(alias)
@@ -204,32 +428,277 @@ def test_retired_model_aliases_redirect_to_live_successors():
         )
 
 
-def test_opus_4_7_context_and_output_match_bedrock_card():
-    """Opus 4.7 advertises 1M context / 128K output on the AWS model card.
+# Identifiers that once shipped and were deliberately DELETED in the 2026-07-25
+# alias cleanup rather than redirected onto a successor. Each states a specific
+# model version or is a redundant short form; resolving them to a newer
+# generation would silently change pricing, sampling-param support and the
+# structured-output path, so failing fast is the correct behavior.
+#
+# This is the allowlist for test_no_historical_model_id_is_orphaned — anything
+# NOT listed here must still resolve.
+RETIRED_ALIASES_DELETED_NOT_REDIRECTED = frozenset(
+    {
+        # Opus 4.7 / 4.6 (removed entries) — Opus 5 is two generations newer.
+        "opus4.7",
+        "opus-4.7",
+        "claude-opus-4.7",
+        "claude-opus-47",
+        "opus4.6",
+        "opus-4.6",
+        "claude-opus-4.6",
+        # MiniMax-on-NVIDIA M2.5 / M2.7 — both NIM endpoints are gone.
+        "minimax-m2.5",
+        "minimax-m2.5-nvidia",
+        "mm2.5-nvidia",
+        "mm25",
+        "minimax-m2.7",
+        "minimax-m2.7-nvidia",
+        "mm2.7-nvidia",
+        "mm27",
+        # Kimi K2.5 on NVIDIA — endpoint shut down 2026-05-20.
+        "kimi-k2.5",
+        "kimi-k2.5-nvidia",
+        "kimi25",
+        # GLM-5.1 (both the NVIDIA re-host and the Z.AI entry, whose id it was).
+        "glm51",
+        "glm51-nvidia",
+        "glm-5.1",
+        "glm5.1",
+        "glm5.1-zai",
+        "zhipuai/glm-5.1",
+        # Step 3.5 Flash — superseded; step-flash still redirects.
+        "step35",
+        "step-3.5-flash",
+        # GPT-5.4 on Bedrock — gpt-bedrock still redirects.
+        "gpt5.4-bedrock",
+        # Redundant/cryptic short forms of live models, dropped as noise.
+        "gpt54p",
+        "glm5b",
+        "dsv4f",
+        "dsv4pro",
+        "dsv4-azure",
+        "g31pro",
+        "g3pro",
+        "g36flash",
+        "kimi-moonshot",
+        "mm35",
+        "mmed",
+        "gpt5.6-sol",
+        "sol",
+    }
+)
 
-    Regression guard: an earlier registry value of 200K/32K under-batched
-    inputs 5x and truncated long reports.
+
+def test_deprecated_aliases_resolve_but_are_not_advertised():
+    """The two lists must differ in display only, never in resolution.
+
+    This is the whole contract of the ``aliases`` / ``deprecated_aliases``
+    split. If ``_register_all_names`` ever skipped the deprecated list, every
+    back-compat name would break at once while ``--list-models`` looked fine.
     """
     loader = ConfigLoader()
-    _, config = loader.resolve_model("opus4.7")
-    assert config.context_window == 1_000_000
-    assert config.inference_params is not None
-    assert config.inference_params.max_output_tokens == 128_000
+    checked = 0
+    for models in loader.list_models().values():
+        for config in models:
+            for name in config.deprecated_aliases:
+                provider, resolved = loader.resolve_model(name)
+                assert resolved.id == config.id, (
+                    f"deprecated alias {name!r} resolved to {resolved.id!r}, "
+                    f"expected {config.id!r}"
+                )
+                checked += 1
+    assert checked, "no deprecated aliases in the registry — is the split wired?"
+
+
+def test_no_model_lists_its_own_id_as_an_alias():
+    """The id is already a valid --model spelling; repeating it is pure noise.
+
+    ``gpt5.5-bedrock`` and ``deepseek-v4-flash-nvidia`` both shipped listing
+    their own id, padding the ``--list-models`` Aliases column with a name
+    already in the ID column. ``ModelConfig`` now rejects it at load time; this
+    asserts the real registry is clean.
+    """
+    loader = ConfigLoader()
+    offenders = [
+        config.id
+        for models in loader.list_models().values()
+        for config in models
+        if config.id in (*config.aliases, *config.deprecated_aliases)
+    ]
+    assert not offenders, f"entries listing their own id as an alias: {offenders}"
+
+
+def test_model_config_rejects_self_alias():
+    """The schema — not just the registry — must reject a self-alias."""
+    from codereview.config.models import ModelConfig, PricingConfig
+
+    with pytest.raises(ValidationError, match="its own id"):
+        ModelConfig(
+            id="dupe",
+            name="Dupe",
+            aliases=["dupe"],
+            pricing=PricingConfig(input_per_million=1.0, output_per_million=1.0),
+        )
+
+
+def test_model_config_rejects_duplicate_alias_across_both_lists():
+    """A name in both lists has no defined display answer, so it's an error."""
+    from codereview.config.models import ModelConfig, PricingConfig
+
+    with pytest.raises(ValidationError, match="repeats alias"):
+        ModelConfig(
+            id="m",
+            name="M",
+            aliases=["shared"],
+            deprecated_aliases=["shared"],
+            pricing=PricingConfig(input_per_million=1.0, output_per_million=1.0),
+        )
+
+
+def test_deleted_aliases_do_not_resolve():
+    """The deleted names must raise, not quietly resolve.
+
+    Complements ``test_retired_model_aliases_redirect_to_live_successors``: that
+    one pins what still works, this one pins what deliberately stopped working.
+    Without it, re-adding ``mm25`` as an M3 alias would pass every other test.
+    """
+    loader = ConfigLoader()
+    for name in sorted(RETIRED_ALIASES_DELETED_NOT_REDIRECTED):
+        with pytest.raises(ValueError, match="Unknown model"):
+            loader.resolve_model(name)
+
+
+def test_no_historical_model_id_is_orphaned():
+    """Every id/alias that ever shipped resolves, unless explicitly retired.
+
+    The hand-written table above documents *which* successor each retired name
+    maps to; this test is the exhaustive net that catches a name nobody
+    remembered to migrate. It reads previous revisions of ``models.yaml``
+    straight from git, so it needs no maintenance when entries are removed —
+    only that the removal migrates the names, or records them in
+    ``RETIRED_ALIASES_DELETED_NOT_REDIRECTED``.
+
+    A removed entry's ``id`` counts: ``--model <id>`` is exactly as valid an
+    invocation as ``--model <alias>``, and ids are the ones that get forgotten
+    (``glm51``, ``kimi-k2.5-azure``, ``deepseek-v4-pro-azure`` and
+    ``zhipuai/glm-5.1`` all shipped orphaned before this test existed).
+
+    Deliberate deletions go in the allowlist — which is the point of having one:
+    dropping a name becomes an explicit, reviewable line of code rather than a
+    silently weakened test.
+
+    Skips when git history isn't available (e.g. an sdist install).
+    """
+    repo_root = Path(__file__).resolve().parent.parent
+    yaml_rel = "codereview/config/models.yaml"
+
+    def git(*args: str) -> str:
+        return subprocess.run(
+            ["git", *args],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout
+
+    try:
+        revs = git("log", "--format=%H", "-8", "--", yaml_rel).split()
+    except subprocess.CalledProcessError, FileNotFoundError:
+        pytest.skip("git history unavailable")
+    if not revs:
+        pytest.skip("no history for models.yaml")
+
+    historical: set[str] = set()
+    for rev in revs:
+        doc = yaml.safe_load(git("show", f"{rev}:{yaml_rel}"))
+        for provider_cfg in (doc.get("providers") or {}).values():
+            for model in provider_cfg.get("models") or []:
+                historical.add(model["id"])
+                historical.update(model.get("aliases") or [])
+                historical.update(model.get("deprecated_aliases") or [])
+
+    loader = ConfigLoader()
+    orphaned = []
+    for name in sorted(historical - RETIRED_ALIASES_DELETED_NOT_REDIRECTED):
+        try:
+            loader.resolve_model(name)
+        except ValueError:
+            orphaned.append(name)
+
+    assert not orphaned, (
+        "These model names shipped previously but no longer resolve — either "
+        "migrate each onto a live successor's aliases, or, if dropping them is "
+        "intended, add them to RETIRED_ALIASES_DELETED_NOT_REDIRECTED with a "
+        f"reason: {orphaned}"
+    )
+
+    # The allowlist must stay honest, but "absent from the scanned history" is
+    # NOT the check for that: the window is only the last 8 revisions, and a
+    # name added and deleted within the same uncommitted change never appears
+    # in committed history at all. The check that actually matters — that every
+    # allowlisted name really fails to resolve — is
+    # test_deleted_aliases_do_not_resolve.
+
+
+def test_documented_model_names_all_resolve():
+    """Every ``--model X`` in the user-facing docs must be a real model.
+
+    The 2026-07-25 alias cleanup deleted 40 names that the README, usage guide
+    and examples still advertised as "route here". A doc that tells someone to
+    run ``--model mm25`` is worse than no doc: they hit an error on a command we
+    published. Removing or renaming an alias now fails here until the prose
+    catches up.
+
+    Scoped to `--model <name>` occurrences on purpose — prose *about* a deleted
+    alias (the migration table, the removal notes) must keep naming it.
+    """
+    repo_root = Path(__file__).resolve().parent.parent
+    docs = [
+        repo_root / "README.md",
+        repo_root / "docs" / "usage.md",
+        repo_root / "docs" / "examples.md",
+    ]
+    pattern = re.compile(r"--model\s+([A-Za-z0-9][A-Za-z0-9./-]*)")
+
+    loader = ConfigLoader()
+    broken: list[str] = []
+    checked = 0
+    for doc in docs:
+        if not doc.exists():  # pragma: no cover - docs ship with the repo
+            continue
+        for name in sorted(set(pattern.findall(doc.read_text()))):
+            # Placeholders in generic syntax lines, not real model names.
+            if name in {"X", "id-or-alias"}:
+                continue
+            checked += 1
+            try:
+                loader.resolve_model(name)
+            except ValueError:
+                broken.append(f"{doc.name}: {name}")
+
+    assert checked, "regex matched no --model examples; the pattern is wrong"
+    assert not broken, (
+        "Docs advertise --model names that no longer resolve. Either restore "
+        "the alias or update the prose to a live spelling: " + ", ".join(broken)
+    )
 
 
 def test_adaptive_thinking_claude_models_disable_tool_use():
     """Adaptive-thinking Claude models must NOT use tool-based structured output.
 
     Opus 4.7/4.8 only support ``thinking.type: "adaptive"`` and engage thinking
-    server-side per request. Anthropic forbids a forced ``tool_choice`` while
-    thinking is active, but ``with_structured_output()`` sets exactly that —
-    so these models must route through prompt-based JSON parsing
+    server-side per request; Opus 5 goes further and has thinking on by
+    default. Anthropic forbids a forced ``tool_choice`` while thinking is
+    active, but ``with_structured_output()`` sets exactly that — so these
+    models must route through prompt-based JSON parsing
     (``supports_tool_use: false``), same as Kimi K2.6 on Moonshot. Without
     this, batches where the model thinks return tool-call markup as text and
     fail CodeReviewReport validation with a list_type error on ``issues``.
+    Opus 5 has independent confirmation: its Bedrock model card lists
+    "Structured outputs: Not Supported" on bedrock-runtime and bedrock-mantle.
     """
     loader = ConfigLoader()
-    for alias in ("opus4.8", "opus4.7"):
+    for alias in ("opus5", "opus4.8", "sonnet5", "fable5"):
         _, config = loader.resolve_model(alias)
         assert config.supports_tool_use is False, (
             f"{alias} is an adaptive-thinking model and must set "
@@ -237,30 +706,30 @@ def test_adaptive_thinking_claude_models_disable_tool_use():
         )
 
 
-def test_glm51_zai_disables_tool_use():
-    """GLM-5.1 on Z.AI must use prompt-based JSON parsing.
-
-    Z.AI's OpenAI-compat endpoint ignores OpenAI's json_schema response_format
-    that with_structured_output() relies on and returns markdown-fenced JSON,
-    which the json_schema parser rejects. Routing via supports_tool_use: false
-    (PydanticOutputParser) strips the fences. Regression for the field-observed
-    "Invalid JSON: expected value at line 1 column 1".
-    """
-    loader = ConfigLoader()
-    _, config = loader.resolve_model("zhipuai/glm-5.1")
-    assert config.supports_tool_use is False
-
-
 def test_glm52_zai_disables_tool_use():
     """GLM-5.2 on Z.AI must use prompt-based JSON parsing.
 
-    Same fenced-JSON issue as GLM-5.1 (Z.AI's OpenAI-compat endpoint ignores
-    OpenAI's json_schema response_format and returns markdown-fenced JSON), and
-    GLM-5.2 is additionally a thinking model — both reasons keep it on the
-    PydanticOutputParser path. Resolves via every advertised alias.
+    Z.AI's OpenAI-compat endpoint ignores OpenAI's json_schema response_format
+    that with_structured_output() relies on and returns markdown-fenced JSON,
+    which the json_schema parser rejects ("Invalid JSON: expected value at line
+    1 column 1" in the field) — and GLM-5.2 is additionally a thinking model.
+    Both reasons keep it on the PydanticOutputParser path, which strips the
+    fences. Resolves via every advertised alias — the version-explicit GLM-5.1
+    names were deleted in the 2026-07-25 alias cleanup, not absorbed, so they
+    are deliberately absent here (see
+    ``RETIRED_ALIASES_DELETED_NOT_REDIRECTED``).
     """
     loader = ConfigLoader()
-    for alias in ("zhipuai/glm-5.2", "glm", "glm-5.2", "glm5.2", "glm5.2-zai"):
+    aliases = (
+        "zhipuai/glm-5.2",
+        "glm",
+        "glm-5.2",
+        "glm5.2",
+        "glm5.2-zai",
+        "zai-glm",
+        "glm-zai",
+    )
+    for alias in aliases:
         provider, config = loader.resolve_model(alias)
         assert provider == "zai", f"{alias} should route to the zai provider"
         assert config.id == "zhipuai/glm-5.2"
@@ -269,6 +738,60 @@ def test_glm52_zai_disables_tool_use():
             "markdown-fenced JSON and it's a thinking model"
         )
         assert config.context_window == 1048576
+
+
+def test_gemini36_flash_context_and_output_match_model_card():
+    """Gemini 3.6 Flash advertises a 1M-token context and up to 64K output."""
+    loader = ConfigLoader()
+    provider, config = loader.resolve_model("gemini-3.6-flash")
+    assert provider == "google_genai"
+    assert config.full_id == "gemini-3.6-flash"
+    assert config.context_window == 1_000_000
+    assert config.inference_params is not None
+    assert config.inference_params.max_output_tokens == 65536
+
+
+def test_gemini36_flash_omits_sampling_params():
+    """Gemini 3.6 Flash onward, temperature/top_p/top_k are deprecated.
+
+    Google's API ignores all three today and documents an HTTP 400 for future
+    model generations. The Google provider passes ``allow_none=True`` to
+    ``_resolve_temperature`` and drops ``top_p``/``top_k`` when unset, so
+    omitting ``default_temperature``/``default_top_p``/``default_top_k`` from
+    the YAML (loaded into ``temperature``/``top_p``/``top_k``) is what keeps
+    them off the wire. Applies to every Gemini entry added from 3.6 onward.
+    """
+    loader = ConfigLoader()
+    _, config = loader.resolve_model("gemini-3.6-flash")
+    assert config.inference_params is not None
+    assert config.inference_params.temperature is None
+    assert config.inference_params.top_p is None
+    assert config.inference_params.top_k is None
+
+
+def test_gemini36_flash_keeps_tool_use_path():
+    """Gemini 3.6 Flash documents structured outputs and function calling, and
+    a live review run confirmed the tool-use path works — so it must not be
+    opted into prompt-based JSON parsing."""
+    loader = ConfigLoader()
+    _, config = loader.resolve_model("gemini-3.6-flash")
+    assert config.supports_tool_use is True
+
+
+def test_generation_neutral_gemini_flash_alias_tracks_36():
+    """Every Gemini Flash alias must resolve to Gemini 3.6 Flash.
+
+    ``gemini-3-flash-preview`` is deprecated upstream with ``gemini-3.6-flash``
+    named as its replacement, so the generation-neutral alias moved there first;
+    the 2026-07-25 cleanup then removed the Gemini 3 Flash entry outright and
+    Gemini 3.6 Flash absorbed its version-explicit aliases too. Gemini 3.6 Flash
+    is the only Flash-tier entry now, so all of these resolve to it.
+    """
+    loader = ConfigLoader()
+    aliases = ("gemini-flash", "gemini-3-flash", "gemini3-flash", "g3flash")
+    for alias in aliases:
+        _, config = loader.resolve_model(alias)
+        assert config.id == "gemini-3.6-flash", f"{alias!r} resolved to {config.id!r}"
 
 
 # ---------------------------------------------------------------------------
@@ -423,4 +946,127 @@ def test_canonical_owner_aliases_route_to_direct_api():
         assert provider == owner, (
             f"canonical alias {alias!r} must route to {owner!r} (direct API), "
             f"got {provider!r} — re-host entries keep suffixed aliases only"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Provider-level YAML keys must actually reach the provider config object
+# ---------------------------------------------------------------------------
+
+# Every non-default provider-level value to write into a scratch models.yaml,
+# and the attribute it must show up on. Deliberately distinctive numbers so a
+# class default can't accidentally match.
+_PROVIDER_LEVEL_OVERRIDES: dict[str, dict[str, object]] = {
+    "bedrock": {"read_timeout": 111, "connect_timeout": 22},
+    "azure_openai": {"request_timeout": 444},
+    "nvidia": {"polling_timeout": 333, "max_retries": 9},
+    "google_genai": {"request_timeout": 555},
+    "deepseek": {"request_timeout": 666},
+    "moonshot": {"request_timeout": 777},
+    "zai": {"request_timeout": 888},
+    "bedrock_openai": {"request_timeout": 999},
+}
+
+# Credentials each provider's branch requires before it registers a config at
+# all (the loader skips unconfigured providers so --list-models still works).
+_PROVIDER_CREDENTIALS: dict[str, dict[str, str]] = {
+    "azure_openai": {
+        "endpoint": "https://example.openai.azure.com",
+        "api_key": "a" * 40,
+        "api_version": "2025-04-01-preview",
+    },
+    "nvidia": {"api_key": "nvapi-" + "x" * 30},
+    "google_genai": {"api_key": "g" * 40},
+    "deepseek": {"api_key": "d" * 40},
+    "moonshot": {"api_key": "m" * 40},
+    "zai": {"api_key": "z" * 40},
+    "bedrock_openai": {
+        "api_key": "b" * 40,
+        "base_url": "https://bedrock-mantle.us-east-1.api.aws/openai/v1",
+    },
+}
+
+
+def _loader_with_provider_overrides(tmp_path: Path) -> ConfigLoader:
+    """A ConfigLoader over the real models.yaml with every knob turned."""
+    raw = yaml.safe_load(
+        (Path("codereview/config/models.yaml")).read_text(encoding="utf-8")
+    )
+    for provider, overrides in _PROVIDER_LEVEL_OVERRIDES.items():
+        block = raw["providers"][provider]
+        block.update(_PROVIDER_CREDENTIALS.get(provider, {}))
+        block.update(overrides)
+
+    path = tmp_path / "models.yaml"
+    path.write_text(yaml.safe_dump(raw), encoding="utf-8")
+    return ConfigLoader(path)
+
+
+@pytest.mark.parametrize(
+    "provider, field, expected",
+    [
+        (provider, field, value)
+        for provider, overrides in _PROVIDER_LEVEL_OVERRIDES.items()
+        for field, value in overrides.items()
+    ],
+)
+def test_provider_level_yaml_value_reaches_the_config_object(
+    tmp_path, provider, field, expected
+):
+    """A provider-level key in models.yaml must not be silently inert.
+
+    ``_parse_providers`` constructs each ``*Config`` with an explicit keyword
+    list, so a field the class declares but the branch forgets to forward keeps
+    its class default and the YAML value becomes a comment. Five were being
+    dropped: Bedrock's ``read_timeout``/``connect_timeout``, NVIDIA's
+    ``polling_timeout``/``max_retries``, and Azure's ``request_timeout`` —
+    including the two the docs advertise as the tuning knobs for exactly the
+    failures they address (Converse read timeouts on always-thinking models,
+    and NIM's frequent gateway 504s).
+    """
+    loader = _loader_with_provider_overrides(tmp_path)
+
+    config = loader.get_provider_config(provider)
+
+    assert getattr(config, field) == expected, (
+        f"providers.{provider}.{field} in models.yaml never reached "
+        f"{type(config).__name__}; the class default won and the YAML value "
+        "has no effect"
+    )
+
+
+def test_every_declared_provider_config_field_is_forwarded_by_the_loader(tmp_path):
+    """Coverage guard: no settable provider-level field goes unforwarded.
+
+    The parametrized test above only checks the fields listed in
+    ``_PROVIDER_LEVEL_OVERRIDES``. This one reflects over each Pydantic config
+    class and fails when a *new* tunable field appears that neither the loader
+    forwards nor this file covers — which is how the original five slipped in.
+    """
+    loader = _loader_with_provider_overrides(tmp_path)
+
+    # Not provider-level knobs: models comes from the models: list, and the
+    # credential/identity fields are covered by _PROVIDER_CREDENTIALS above.
+    structural = {
+        "models",
+        "api_key",
+        "endpoint",
+        "api_version",
+        "base_url",
+        "api_base",
+    }
+
+    for provider, overrides in _PROVIDER_LEVEL_OVERRIDES.items():
+        config = loader.get_provider_config(provider)
+        tunable = {
+            name
+            for name in type(config).model_fields
+            if name not in structural and name != "region"
+        }
+        missing = tunable - set(overrides)
+        assert not missing, (
+            f"{type(config).__name__} declares {sorted(missing)}, which "
+            f"_PROVIDER_LEVEL_OVERRIDES does not exercise — add it there (and "
+            f"forward it in loader.py's {provider} branch) so the YAML key "
+            "cannot be silently inert"
         )

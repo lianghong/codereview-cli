@@ -195,9 +195,13 @@ def prompt_readme_confirmation(
 
             response_stripped = response.strip()
             response_lower = response_stripped.lower()
-            if response_lower in ("", "y"):
+            # Accept the spelled-out forms too. The third option here is a file
+            # path, so anything unrecognized is treated as one — which meant a
+            # user typing "yes" got "File not found: yes" and silently lost the
+            # README context they had just confirmed.
+            if response_lower in ("", "y", "yes"):
                 return readme_path
-            elif response_lower == "n":
+            elif response_lower in ("n", "no"):
                 return None
             else:
                 # User specified a custom path - preserve original case.
@@ -233,7 +237,9 @@ def prompt_readme_confirmation(
         )
 
         response = response.strip()
-        if response == "" or response.lower() == "n":
+        # "no" as well as "n" — same reasoning as the found-README prompt above:
+        # the alternative is a path, so an unrecognized answer becomes one.
+        if response == "" or response.lower() in ("n", "no"):
             return None
 
         # Validate readability as text, not just existence — mirror the

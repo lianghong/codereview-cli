@@ -534,6 +534,149 @@ def test_parsed_none_not_retried_when_output_fixing_disabled():
 
 
 # ---------------------------------------------------------------------------
+# A response we could not parse was still generated — and still billed
+# ---------------------------------------------------------------------------
+
+
+class _BilledUsageProvider(_SequencedChainProvider):
+    """A provider that reports and accumulates real token usage.
+
+    Mirrors what the OpenAI-compatible providers do for real: read the counts
+    out of ``response_metadata.token_usage`` on the raw AIMessage, and add them
+    to the run totals. ConcreteProvider's ``_track_tokens`` is the base no-op,
+    so the accumulation has to be wired up here for the totals to move.
+    """
+
+    def _extract_token_usage(self, result):
+        from codereview.providers.mixins import extract_openai_token_usage
+
+        return extract_openai_token_usage(result)
+
+    def _track_tokens(self, input_tokens, output_tokens):
+        self._input_tokens += input_tokens
+        self._output_tokens += output_tokens
+
+
+def _usage_message(input_tokens: int, output_tokens: int):
+    """An AIMessage carrying provider-reported usage, as the real ones do."""
+    from langchain_core.messages import AIMessage
+
+    return AIMessage(
+        content="{...}",
+        response_metadata={
+            "token_usage": {
+                "prompt_tokens": input_tokens,
+                "completion_tokens": output_tokens,
+            }
+        },
+    )
+
+
+def _billed_malformed_raw(input_tokens: int, output_tokens: int):
+    """include_raw dict: usage reported, but nothing we could parse."""
+    return {
+        "raw": _usage_message(input_tokens, output_tokens),
+        "parsed": None,
+        "parsing_error": "bad json",
+    }
+
+
+def _billed_good_raw(input_tokens: int, output_tokens: int):
+    return {
+        "raw": _usage_message(input_tokens, output_tokens),
+        "parsed": CodeReviewReport(
+            summary="ok",
+            metrics=ReviewMetrics(files_analyzed=1),
+            issues=[],
+            system_design_insights="No design issues found",
+            recommendations=[],
+            improvement_suggestions=[],
+        ),
+        "parsing_error": None,
+    }
+
+
+def test_unparsable_response_is_still_billed():
+    """A response the provider charged for counts even when our parse failed.
+
+    The vendor generated the tokens; only *our* structured-output read of them
+    failed. Skipping the accounting made every retried malformed batch free in
+    the run's cost report — and the models that trigger this (reasoning models
+    on the prompt-parsing path, whose thinking tokens are billed as output) are
+    exactly the expensive ones.
+    """
+    from codereview.providers.base import RetryConfig
+
+    provider = _BilledUsageProvider(
+        results=[_billed_malformed_raw(900, 4000), _billed_good_raw(900, 700)],
+        enable_output_fixing=True,
+    )
+
+    result = provider._execute_with_retry(
+        chain_input={"system_prompt": "x", "batch_context": "y"},
+        retry_config=RetryConfig(max_retries=3, validation_retry_sleep=0.0),
+        batch_context="y",
+    )
+
+    assert isinstance(result, CodeReviewReport)
+    assert provider.total_input_tokens == 1800, "the discarded attempt went unbilled"
+    assert provider.total_output_tokens == 4700, (
+        "4000 output tokens of thinking were generated, charged by the vendor, "
+        "and omitted from the run's totals"
+    )
+
+
+def test_every_failed_attempt_is_billed_when_retries_are_exhausted():
+    """The worst case for the cost report: a batch that never parses.
+
+    Every attempt is a real, billed generation. Before the fix a batch could
+    burn max_retries+1 expensive responses and contribute zero to the totals.
+    """
+    from codereview.providers.base import OutputParsingRetryError, RetryConfig
+
+    provider = _BilledUsageProvider(
+        results=[_billed_malformed_raw(900, 4000), _billed_malformed_raw(900, 3500)],
+        enable_output_fixing=True,
+    )
+
+    with pytest.raises(OutputParsingRetryError):
+        provider._execute_with_retry(
+            chain_input={"system_prompt": "x", "batch_context": "y"},
+            retry_config=RetryConfig(max_retries=1, validation_retry_sleep=0.0),
+            batch_context="y",
+        )
+
+    assert provider.invocations == 2
+    assert provider.total_input_tokens == 1800
+    assert provider.total_output_tokens == 7500
+
+
+def test_unparsed_response_without_usage_metadata_is_not_estimated():
+    """Reported counts only — no estimation fallback on this path.
+
+    The success paths estimate from the parsed report when metadata is missing.
+    Here there is no payload to estimate from, so an estimate would be a
+    fabricated figure in a cost report; an honest undercount is better.
+    """
+    from codereview.providers.base import OutputParsingRetryError, RetryConfig
+
+    provider = _BilledUsageProvider(
+        results=[{"raw": object(), "parsed": None, "parsing_error": "bad json"}],
+        enable_output_fixing=False,
+    )
+
+    with pytest.raises(OutputParsingRetryError):
+        provider._execute_with_retry(
+            chain_input={"system_prompt": "x" * 4000, "batch_context": "y" * 4000},
+            retry_config=RetryConfig(max_retries=3, validation_retry_sleep=0.0),
+            batch_context="y" * 4000,
+        )
+
+    assert provider.total_input_tokens == 0
+    assert provider.total_output_tokens == 0
+
+
+# ---------------------------------------------------------------------------
 # Prompt-parsing path: OutputParserException (malformed JSON) is retried
 # ---------------------------------------------------------------------------
 

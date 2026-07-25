@@ -145,6 +145,18 @@ class ConfigLoader:
     ) -> None:
         """Register a model ID or alias, warning on conflicts.
 
+        Cross-provider collisions keep the *first* registration; within a
+        provider the *last* write wins (CLAUDE.md documents this — it's what
+        lets a generation-neutral alias move to a newer entry further down the
+        YAML). Both now warn: a same-provider collision between two *different*
+        model entries silently makes one entry's name resolve to the other,
+        which is exactly the trap the generation-neutral-alias convention warns
+        about, and it was the one case that logged nothing at all.
+
+        Re-registering the same name for the same entry is not a conflict —
+        ``_register_all_names`` is idempotent by design — so identity is
+        compared on the config, not just the provider.
+
         Args:
             provider: Provider name (bedrock, azure_openai, nvidia)
             model_config: Model configuration
@@ -166,7 +178,40 @@ class ConfigLoader:
                     provider,
                 )
                 return  # Keep first registration
+            if existing_config is not model_config:
+                logging.warning(
+                    "Model name conflict: '%s' is claimed by two '%s' entries, "
+                    "'%s' (%s) and '%s' (%s). Using '%s' (last one wins), so "
+                    "'%s' is now unreachable under this name. Rename one entry's "
+                    "id or alias.",
+                    name,
+                    provider,
+                    existing_config.id,
+                    existing_config.name,
+                    model_config.id,
+                    model_config.name,
+                    model_config.id,
+                    existing_config.id,
+                )
         self._models_by_id[name] = (provider, model_config)
+
+    def _register_all_names(self, provider: str, model_config: "ModelConfig") -> None:
+        """Register every ``--model`` spelling for one model entry.
+
+        The id, the advertised aliases, and the back-compat-only
+        ``deprecated_aliases`` all resolve identically — the split between the
+        two alias lists is a *display* concern (``--list-models``), never a
+        resolution one. Keeping this in one helper rather than repeating the
+        loop per provider is what guarantees that: a provider block can't
+        accidentally register only half of a model's names.
+
+        Args:
+            provider: Provider name (bedrock, azure_openai, nvidia, ...)
+            model_config: Model configuration whose names should resolve
+        """
+        self._register_model(provider, model_config, model_config.id)
+        for alias in (*model_config.aliases, *model_config.deprecated_aliases):
+            self._register_model(provider, model_config, alias)
 
     def _parse_providers(self) -> None:
         """Parse provider configurations and models."""
@@ -176,18 +221,23 @@ class ConfigLoader:
         if "bedrock" in providers_section:
             bedrock_data = providers_section["bedrock"]
             bedrock_config = BedrockConfig(
-                region=bedrock_data.get("region", "us-west-2")
+                region=bedrock_data.get("region", "us-west-2"),
+                # Forwarded explicitly: every provider-level key a *Config
+                # class declares has to be read here or it is silently
+                # inert — the class default wins and the YAML value is a
+                # comment. read_timeout in particular is what keeps
+                # think-heavy batches on always-thinking models from
+                # ReadTimeoutError, and a user raising it in YAML had no
+                # effect at all.
+                read_timeout=bedrock_data.get("read_timeout", 300),
+                connect_timeout=bedrock_data.get("connect_timeout", 60),
             )
             self._providers["bedrock"] = bedrock_config
 
             # Parse Bedrock models
             for model_data in bedrock_data.get("models", []):
                 model_config = self._parse_model_config(model_data)
-                self._register_model("bedrock", model_config, model_config.id)
-
-                # Register aliases
-                for alias in model_config.aliases:
-                    self._register_model("bedrock", model_config, alias)
+                self._register_all_names("bedrock", model_config)
 
         # Parse Azure OpenAI provider
         if "azure_openai" in providers_section:
@@ -196,11 +246,7 @@ class ConfigLoader:
             # Always register Azure models for display (--list-models)
             for model_data in azure_data.get("models", []):
                 model_config = self._parse_model_config(model_data)
-                self._register_model("azure_openai", model_config, model_config.id)
-
-                # Register aliases
-                for alias in model_config.aliases:
-                    self._register_model("azure_openai", model_config, alias)
+                self._register_all_names("azure_openai", model_config)
 
             # Only register provider config if credentials are present
             # (required for actual API calls, not for listing models)
@@ -214,6 +260,7 @@ class ConfigLoader:
                         endpoint=endpoint,
                         api_key=api_key,
                         api_version=api_version,
+                        request_timeout=azure_data.get("request_timeout", 300),
                     )
                     self._providers["azure_openai"] = azure_config
                 except (KeyError, ValueError, TypeError, ValidationError) as e:
@@ -231,11 +278,7 @@ class ConfigLoader:
             # Always register NVIDIA models for display (--list-models)
             for model_data in nvidia_data.get("models", []):
                 model_config = self._parse_model_config(model_data)
-                self._register_model("nvidia", model_config, model_config.id)
-
-                # Register aliases
-                for alias in model_config.aliases:
-                    self._register_model("nvidia", model_config, alias)
+                self._register_all_names("nvidia", model_config)
 
             # Only register provider config if API key is present
             # (required for actual API calls, not for listing models)
@@ -246,6 +289,13 @@ class ConfigLoader:
                     nvidia_config = NVIDIAConfig(
                         api_key=api_key,
                         base_url=nvidia_data.get("base_url"),
+                        # models.yaml documents both of these under the nvidia
+                        # block; neither reached the config object. max_retries
+                        # is the one provider-level retry override the CLI
+                        # exposes (NIM's frequent gateway 504s), so dropping it
+                        # made that knob a no-op.
+                        polling_timeout=nvidia_data.get("polling_timeout", 900),
+                        max_retries=nvidia_data.get("max_retries", 5),
                     )
                     self._providers["nvidia"] = nvidia_config
                 except (KeyError, ValueError, TypeError, ValidationError) as e:
@@ -262,11 +312,7 @@ class ConfigLoader:
             # Always register Google GenAI models for display (--list-models)
             for model_data in google_data.get("models", []):
                 model_config = self._parse_model_config(model_data)
-                self._register_model("google_genai", model_config, model_config.id)
-
-                # Register aliases
-                for alias in model_config.aliases:
-                    self._register_model("google_genai", model_config, alias)
+                self._register_all_names("google_genai", model_config)
 
             # Only register provider config if API key is present
             # (required for actual API calls, not for listing models)
@@ -293,9 +339,7 @@ class ConfigLoader:
             # Always register models for --list-models display.
             for model_data in ds_data.get("models", []):
                 model_config = self._parse_model_config(model_data)
-                self._register_model("deepseek", model_config, model_config.id)
-                for alias in model_config.aliases:
-                    self._register_model("deepseek", model_config, alias)
+                self._register_all_names("deepseek", model_config)
 
             ds_api_key = ds_data.get("api_key", "")
             if ds_api_key:
@@ -320,9 +364,7 @@ class ConfigLoader:
 
             for model_data in ms_data.get("models", []):
                 model_config = self._parse_model_config(model_data)
-                self._register_model("moonshot", model_config, model_config.id)
-                for alias in model_config.aliases:
-                    self._register_model("moonshot", model_config, alias)
+                self._register_all_names("moonshot", model_config)
 
             ms_api_key = ms_data.get("api_key", "")
             if ms_api_key:
@@ -347,9 +389,7 @@ class ConfigLoader:
             # Always register models for --list-models display.
             for model_data in zai_data.get("models", []):
                 model_config = self._parse_model_config(model_data)
-                self._register_model("zai", model_config, model_config.id)
-                for alias in model_config.aliases:
-                    self._register_model("zai", model_config, alias)
+                self._register_all_names("zai", model_config)
 
             # Only register provider config when an API key is present.
             zai_api_key = zai_data.get("api_key", "")
@@ -378,9 +418,7 @@ class ConfigLoader:
             # Always register models for --list-models display.
             for model_data in bo_data.get("models", []):
                 model_config = self._parse_model_config(model_data)
-                self._register_model("bedrock_openai", model_config, model_config.id)
-                for alias in model_config.aliases:
-                    self._register_model("bedrock_openai", model_config, alias)
+                self._register_all_names("bedrock_openai", model_config)
 
             # Only register provider config when both key and endpoint are set.
             bo_api_key = bo_data.get("api_key", "")
@@ -453,6 +491,7 @@ class ConfigLoader:
             id=model_data["id"],
             name=model_data["name"],
             aliases=model_data.get("aliases", []),
+            deprecated_aliases=model_data.get("deprecated_aliases", []),
             pricing=pricing,
             inference_params=inference_params,
             full_id=model_data.get("full_id"),

@@ -55,6 +55,7 @@ from codereview.readme_finder import (
     read_readme_content,
 )
 from codereview.renderer import (
+    SEVERITY_ORDER,
     MarkdownExporter,
     StaticAnalysisRenderer,
     TerminalRenderer,
@@ -68,6 +69,13 @@ from codereview.static_analysis import StaticAnalyzer
 ALL_MODEL_NAMES = sorted(MODEL_ALIASES.keys())
 # Get only primary model IDs for display
 PRIMARY_MODEL_IDS = sorted(set(MODEL_ALIASES.values()))
+
+# Exit code for a review that completed successfully but found issues at or
+# above the --fail-on threshold. Deliberately distinct from 1 (the run itself
+# failed: no results, unreadable output path, credentials, API errors) so a CI
+# pipeline can tell "the tool broke" from "the tool worked and your code has
+# problems" — those need different actions.
+EXIT_QUALITY_GATE_FAILED = 2
 
 
 def validate_exclude_pattern(pattern: str) -> bool:
@@ -144,6 +152,28 @@ def _format_batch_files_desc(file_names: list[str]) -> str:
     return f"{', '.join(file_names[:3])} +{len(file_names) - 3} more"
 
 
+def _aws_error_detail(error: ClientError, verbose: bool) -> str:
+    """Render an AWS ``ClientError``'s detail without leaking policy text.
+
+    AWS puts genuinely sensitive material in ``Error.Message``: the SCP
+    statement that denied the call, principal and role ARNs, account ids,
+    resource ids. Console output routinely lands in CI logs, which are retained
+    and shared far more widely than the authorization config they'd be
+    describing (CWE-209). The error *code* is what a user acts on — it names the
+    failure class and drives every troubleshooting hint below — so the code is
+    always shown and the provider's prose is withheld unless the user asked for
+    detail with ``--verbose``.
+
+    ``validate_credentials`` in ``providers/bedrock.py`` already did exactly
+    this for its STS and ListFoundationModels branches; this is the same rule
+    applied to the paths that render a *run's* errors, which were the loud ones.
+    """
+    if not verbose:
+        return " [dim](details hidden; rerun with --verbose)[/dim]"
+    message = error.response.get("Error", {}).get("Message", "")
+    return f": {escape(message)}" if message else ""
+
+
 def _render_batch_error(
     con: Console,
     batch_num: int,
@@ -159,9 +189,11 @@ def _render_batch_error(
     """
     if isinstance(error, ClientError):
         error_code = error.response.get("Error", {}).get("Code", "")
-        error_msg = error.response.get("Error", {}).get("Message", "")
+        # AWS Error.Message can carry SCP fragments, ARNs, and account ids into
+        # CI logs — show the actionable code, gate the prose behind --verbose.
+        detail = _aws_error_detail(error, verbose)
         if error_code == "AccessDeniedException":
-            con.print(f"\n[red]✗ AWS Access Denied: {escape(error_msg)}[/red]")
+            con.print(f"\n[red]✗ AWS Access Denied[/red]{detail}")
             con.print(
                 f"[yellow]Check that you have access to "
                 f"{escape(model_display_name)} on AWS Bedrock[/yellow]"
@@ -175,7 +207,7 @@ def _render_batch_error(
         else:
             con.print(
                 f"\n[red]✗ AWS Error on batch {batch_num} "
-                f"({escape(error_code)}): {escape(error_msg)}[/red]"
+                f"({escape(error_code)})[/red]{detail}"
             )
     elif isinstance(error, ValueError | KeyError | RuntimeError | OSError):
         # Don't pre-label these as "Parse error" — ValueError/KeyError can
@@ -272,35 +304,79 @@ def _per_batch_overhead_tokens(
     )
 
 
-def display_available_models(console: Console) -> None:
+def display_available_models(console: Console, verbose: bool = False) -> None:
     """Display all available models in a formatted table.
+
+    Only *current* aliases are listed by default. Back-compat-only names
+    (``deprecated_aliases`` — inherited from removed entries so old ``--model``
+    invocations keep resolving) are summarised as a "+N deprecated" count and
+    shown in full only under ``verbose``. Advertising them was actively
+    misleading: ``--model opus4.6`` resolves, but to Opus *5*, and a reader
+    scanning the table can't tell which names are the current spelling.
 
     Args:
         console: Rich console instance (respects --no-color flag)
+        verbose: Also list the deprecated aliases in full.
     """
     factory = ProviderFactory()
     models_by_provider = factory.list_available_models()
 
-    # Create models table
+    # Create models table. The Aliases column must render every name intact:
+    # a Rich ellipsis ("claude-opus-4.…") prints a name that is invalid as
+    # typed, which is worse than useless in a table whose entire purpose is
+    # telling users what they can type. Two settings are needed — `fold` stops
+    # the ellipsis, and `min_width` (the longest alias, so Rich shrinks the
+    # other columns instead) stops `fold` from breaking a name across lines at
+    # the 80-column default width.
+    longest_alias = max(
+        (
+            len(alias)
+            for models in models_by_provider.values()
+            for model in models
+            for field in ("aliases", "deprecated_aliases")
+            for alias in model.get(field, "").split(", ")
+        ),
+        default=0,
+    )
     table = Table(
         title="Available Models", show_header=True, header_style="bold magenta"
     )
     table.add_column("ID", style="cyan", no_wrap=True)
     table.add_column("Name", style="green")
     table.add_column("Provider", style="yellow")
-    table.add_column("Aliases", style="blue")
+    table.add_column(
+        "Aliases", style="blue", overflow="fold", min_width=longest_alias + 2
+    )
 
     # Add rows grouped by provider, sorted by model ID within each provider
+    deprecated_total = 0
     for provider_name, models in sorted(models_by_provider.items()):
         for model in sorted(models, key=lambda m: m["id"]):
+            deprecated = [
+                a for a in model.get("deprecated_aliases", "").split(", ") if a
+            ]
+            deprecated_total += len(deprecated)
+            aliases = model["aliases"]
+            if deprecated:
+                if verbose:
+                    suffix = "\n[dim](deprecated: " + ", ".join(deprecated) + ")[/dim]"
+                else:
+                    suffix = f" [dim]+{len(deprecated)} deprecated[/dim]"
+                aliases = f"{aliases}{suffix}" if aliases else suffix.lstrip()
             table.add_row(
                 model["id"],
                 model["name"],
                 provider_name,
-                model["aliases"],
+                aliases,
             )
 
     console.print(table)
+    if deprecated_total and not verbose:
+        console.print(
+            f"[dim]{deprecated_total} deprecated alias(es) hidden — kept so "
+            "older --model invocations keep working, but they resolve to a "
+            "successor model. Use --list-models --verbose to see them.[/dim]"
+        )
     console.print()
 
     # Create provider setup table
@@ -359,7 +435,10 @@ def display_available_models(console: Console) -> None:
 
 
 def validate_provider_credentials(
-    model_name: str, aws_profile: str | None, console: Console
+    model_name: str,
+    aws_profile: str | None,
+    console: Console,
+    verbose: bool = False,
 ) -> None:
     """Validate provider credentials without running analysis.
 
@@ -367,6 +446,9 @@ def validate_provider_credentials(
         model_name: Model ID or alias to validate
         aws_profile: Optional AWS profile to use
         console: Rich console instance (respects --no-color flag)
+        verbose: Show the provider's own AWS error prose. Off by default —
+            ``ClientError.__str__`` embeds ``Error.Message``, which can carry
+            SCP statements and ARNs into logs (see ``_aws_error_detail``).
     """
     # Set AWS profile if provided
     if aws_profile:
@@ -395,7 +477,15 @@ def validate_provider_credentials(
     except ValueError as e:
         console.print(f"[red]Error:[/red] {e}")
         raise SystemExit(1)
-    except (NoCredentialsError, ClientError) as e:
+    except ClientError as e:
+        # str(ClientError) splices Error.Message in verbatim; render the code
+        # and gate the provider's prose behind --verbose.
+        error_code = e.response.get("Error", {}).get("Code", "Unknown")
+        console.print(
+            f"[red]AWS Error:[/red] {escape(error_code)}{_aws_error_detail(e, verbose)}"
+        )
+        raise SystemExit(1)
+    except NoCredentialsError as e:
         console.print(f"[red]AWS Error:[/red] {e}")
         raise SystemExit(1)
     except Exception as e:
@@ -432,6 +522,19 @@ def validate_provider_credentials(
     default="info",
     help="Minimum severity level to display",
 )
+@click.option(
+    "--fail-on",
+    type=click.Choice(
+        ["critical", "high", "medium", "low", "info"], case_sensitive=False
+    ),
+    default=None,
+    help=(
+        "Exit with code 2 if any issue at this severity or above was found "
+        "(e.g. --fail-on high fails on Critical or High). Independent of "
+        "--severity, which only filters what is displayed. Default: never "
+        "fail on findings."
+    ),
+)
 @click.option("--exclude", "-e", multiple=True, help="Additional exclusion patterns")
 @click.option(
     "--include-hidden",
@@ -462,8 +565,8 @@ def validate_provider_credentials(
     "-m",
     "model_name",
     type=ModelChoice(),
-    default="opus4.8",
-    help="Model to use (default: opus4.8). Use --list-models to see all options.",
+    default="opus5",
+    help="Model to use (default: opus5). Use --list-models to see all options.",
 )
 @click.option(
     "--static-analysis",
@@ -481,10 +584,31 @@ def validate_provider_credentials(
     ),
 )
 @click.option(
+    "--trust-repo-config",
+    is_flag=True,
+    help=(
+        "Run mypy/ESLint/Prettier even when the reviewed repository ships a "
+        "config that makes them execute code from the tree (a mypy 'plugins' "
+        "entry, a JavaScript eslint.config.*). Off by default: that code runs "
+        "with your privileges. Use only on a repository you trust."
+    ),
+)
+@click.option(
     "--temperature",
-    type=float,
+    # Bounded at parse time. _resolve_temperature enforces the same 0.0–2.0
+    # range, but it runs inside provider construction — after the scan, the
+    # line count, static analysis and batching — so `--temperature 99` spent
+    # all of that work (and, with --static-analysis, minutes of linters) before
+    # rejecting an argument that was invalid before anything started. Click
+    # reports it as a usage error with exit 2, which is also the honest code
+    # for a bad argument; the deep check stays as the library-level guard for
+    # callers that don't come through Click.
+    type=click.FloatRange(0.0, 2.0),
     default=None,
-    help="Temperature for model inference (uses model-specific default if not specified)",
+    help=(
+        "Temperature for model inference, 0.0-2.0 "
+        "(uses model-specific default if not specified)"
+    ),
 )
 @click.option(
     "--dry-run",
@@ -506,7 +630,10 @@ def validate_provider_credentials(
 @click.option(
     "--list-models",
     is_flag=True,
-    help="List all available models and exit",
+    help=(
+        "List all available models and exit. Add --verbose to also show "
+        "deprecated aliases (kept for back-compat; they resolve to a successor)"
+    ),
 )
 @click.option(
     "--validate",
@@ -535,6 +662,7 @@ def main(
     output: Path | None,
     output_format: str,
     severity: str,
+    fail_on: str | None,
     exclude: tuple[str, ...],
     include_hidden: bool,
     max_files: int | None,
@@ -544,6 +672,7 @@ def main(
     model_name: str,
     static_analysis: bool,
     tool_timeout: int | None,
+    trust_repo_config: bool,
     temperature: float | None,
     dry_run: bool,
     verbose: bool,
@@ -566,12 +695,12 @@ def main(
 
     # Handle --list-models flag first
     if list_models:
-        display_available_models(con)
+        display_available_models(con, verbose=verbose)
         return
 
     # Handle --validate flag
     if validate:
-        validate_provider_credentials(model_name, aws_profile, con)
+        validate_provider_credentials(model_name, aws_profile, con, verbose=verbose)
         return
 
     # Show help if no directory provided
@@ -579,6 +708,113 @@ def main(
         click.echo(ctx.get_help())
         ctx.exit(0)
         return
+
+    # Everything from here on is the review pipeline itself.
+    run_review(
+        directory,
+        console=con,
+        model_name=model_name,
+        output=output,
+        output_format=output_format,
+        severity=severity,
+        fail_on=fail_on,
+        exclude=exclude,
+        include_hidden=include_hidden,
+        max_files=max_files,
+        max_file_size=max_file_size,
+        batch_size=batch_size,
+        aws_profile=aws_profile,
+        static_analysis=static_analysis,
+        tool_timeout=tool_timeout,
+        trust_repo_config=trust_repo_config,
+        temperature=temperature,
+        dry_run=dry_run,
+        verbose=verbose,
+        quiet=quiet,
+        stream=stream,
+        readme=readme,
+        no_readme=no_readme,
+    )
+
+
+def run_review(
+    directory: Path,
+    *,
+    console: Console,
+    model_name: str = "opus5",
+    output: Path | None = None,
+    output_format: str = "markdown",
+    severity: str = "info",
+    fail_on: str | None = None,
+    exclude: tuple[str, ...] = (),
+    include_hidden: bool = False,
+    max_files: int | None = None,
+    max_file_size: int = MAX_FILE_SIZE_KB,
+    batch_size: int = 10,
+    aws_profile: str | None = None,
+    static_analysis: bool = False,
+    tool_timeout: int | None = None,
+    trust_repo_config: bool = False,
+    temperature: float | None = None,
+    dry_run: bool = False,
+    verbose: bool = False,
+    quiet: bool = False,
+    stream: bool = False,
+    readme: Path | None = None,
+    no_readme: bool = False,
+) -> None:
+    """Run the review pipeline for *directory* and report to *console*.
+
+    Everything between "scan the directory" and "apply the --fail-on gate"
+    lives here: scanning, optional static analysis, batching, concurrent
+    analysis, aggregation, rendering, export, and the quality gate. ``main``
+    keeps only Click argument parsing and the flags that exit before any of
+    this runs (``--list-models``, ``--validate``, no-directory help).
+
+    Split out of ``main`` so the pipeline is callable without going through
+    ``CliRunner.invoke``: tests can drive it with real objects and assert on
+    behaviour directly, and a caller embedding this tool can reuse it. Keeping
+    the parameters keyword-only with the same defaults as the Click options
+    means ``main`` is a thin pass-through and the two cannot drift on defaults.
+
+    Args:
+        directory: Directory to review. Must exist (Click validates this).
+        console: Rich console for all output. Required, not defaulted — the
+            caller owns quiet/no-color policy (see ``_create_console``).
+        model_name: Model id or alias to resolve.
+        output: Export path, or None for terminal-only.
+        output_format: ``"markdown"`` or ``"json"``; only used with *output*.
+        severity: Minimum severity to *display*. Never affects *fail_on*.
+        fail_on: Severity threshold that trips the CI quality gate, or None.
+        exclude: Extra glob patterns, validated before use.
+        include_hidden: Scan inside dot-directories.
+        max_files: Hard cap on files analyzed, or None.
+        max_file_size: Per-file size cap in KB.
+        batch_size: Max files per batch, atop any token budget.
+        aws_profile: AWS profile to export as ``AWS_PROFILE``, or None.
+        static_analysis: Run installed linters and feed findings to the model.
+        tool_timeout: Per-tool subprocess timeout in seconds, or None.
+        trust_repo_config: Let mypy/ESLint/Prettier honour a repo config that
+            executes code from the reviewed tree. Off by default.
+        temperature: Sampling temperature override, or None for the model default.
+        dry_run: Print the cost/file preview and return without API calls.
+        verbose: Detailed progress and the token-budget breakdown.
+        quiet: Suppress terminal rendering; forces off *verbose* and *stream*.
+        stream: Token-by-token output; forces sequential batch execution.
+        readme: Explicit README path, or None to auto-discover.
+        no_readme: Skip README context entirely.
+
+    Raises:
+        click.Abort: The run failed (credentials, AWS error, unwritable output,
+            or any unexpected exception). Click turns this into exit code 1.
+        SystemExit: ``EXIT_QUALITY_GATE_FAILED`` (2) when *fail_on* trips, or 1
+            when every batch failed. Deliberately a ``BaseException`` so it
+            passes through the ``except Exception`` handler untouched while the
+            ``finally`` block still cleans up callback handlers.
+    """
+    # Local alias: the body prints through `con` throughout, while the
+    # parameter is named `console` to read well at the call site.
+    con = console
 
     # Quiet mode overrides verbose and stream
     if quiet:
@@ -588,6 +824,11 @@ def main(
     # Initialize callback handlers for cleanup in finally block
     streaming_handler: StreamingCallbackHandler | None = None
     progress_handler: ProgressCallbackHandler | None = None
+
+    # Bound before the try so the AccessDeniedException handler can name the
+    # model even when resolve_model itself is what raised. Seeded with the raw
+    # CLI argument and upgraded to the config's display name once resolved.
+    model_display_name = model_name
 
     try:
         # Set AWS profile if provided
@@ -684,8 +925,19 @@ def main(
         for file_path in files:
             try:
                 with file_path.open("rb") as fb:
+                    last_byte = b""
                     while chunk := fb.read(65536):
                         total_lines += chunk.count(b"\n")
+                        last_byte = chunk[-1:]
+                    # Counting newlines alone is wc -l, not a line count: a
+                    # final line with no trailing newline has no separator to
+                    # count. A one-line file without a trailing newline
+                    # reported 0 lines of code, and every such file in a repo
+                    # shaved 1 off the total the report presents as the size of
+                    # what was reviewed. last_byte is "" only for an empty
+                    # file, which correctly contributes nothing.
+                    if last_byte and last_byte != b"\n":
+                        total_lines += 1
             except OSError:
                 # Skip files that can't be read
                 pass
@@ -707,7 +959,11 @@ def main(
         static_results = None
         if static_analysis:
             con.print("[cyan]Running static analysis tools...[/cyan]\n")
-            analyzer_static = StaticAnalyzer(directory, tool_timeout=tool_timeout)
+            analyzer_static = StaticAnalyzer(
+                directory,
+                tool_timeout=tool_timeout,
+                trust_repo_config=trust_repo_config,
+            )
 
             if not analyzer_static.available_tools:
                 con.print(
@@ -772,9 +1028,17 @@ def main(
                     con.print(f"   Safety margin:     {safety_margin:>10,}")
                     con.print(f"   [bold]Token budget:      {token_budget:>10,}[/bold]")
                     con.print()
-            elif verbose:
+            else:
+                # Not verbose-only: losing the token budget means batches are
+                # packed by file count alone and can overflow the context
+                # window mid-run. That changes what the review actually does,
+                # so it is a warning every run must show.
                 con.print(
-                    "[yellow]Token budget negative; falling back to count-only batching[/yellow]\n"
+                    "[yellow]⚠ Token budget unavailable "
+                    f"({computed_budget:,} after reserving output + prompt "
+                    "overhead); falling back to count-only batching. Batches "
+                    "may exceed the context window — consider a model with a "
+                    "larger context window or a smaller --batch-size.[/yellow]\n"
                 )
 
         batcher = FileBatcher(max_files_per_batch=batch_size, token_budget=token_budget)
@@ -855,8 +1119,17 @@ def main(
         all_issues = []
         all_suggestions = []
         all_design_insights = []
+        # The model's own recommendations, which the prompt requires to name the
+        # issue they came from. Collected like every other report field — leaving
+        # this one out is what made the Recommendations section a count summary.
+        all_recommendations: list[str] = []
         failed_batches = 0
-        total_files = len(files)
+        # Count what the model actually receives, not what the scanner found.
+        # A file the batcher dropped as oversized (already reported above) is
+        # never sent to any provider, so counting len(files) claimed coverage
+        # the review does not have — "Analyzed 120 files" for a run that
+        # reviewed 118. Batch membership is the only authority on what was sent.
+        total_files = sum(len(batch.files) for batch in batches)
 
         # Concurrency: parallel batches give a 3-5x speedup on multi-batch runs.
         # Streaming forces sequential execution because token-by-token output
@@ -903,6 +1176,7 @@ def main(
                         report = future.result()
                         all_issues.extend(report.issues)
                         all_suggestions.extend(report.improvement_suggestions)
+                        all_recommendations.extend(report.recommendations)
                         if report.system_design_insights:
                             all_design_insights.append(report.system_design_insights)
                     except Exception as e:
@@ -1031,7 +1305,7 @@ def main(
             metrics=metrics,
             issues=all_issues,
             system_design_insights=aggregated_insights,
-            recommendations=_generate_recommendations(all_issues),
+            recommendations=_generate_recommendations(all_issues, all_recommendations),
             improvement_suggestions=all_suggestions[:5],  # Keep top 5 suggestions
         )
 
@@ -1150,6 +1424,24 @@ def main(
                 con.print(f"\n[red]✗ Failed to write report to {output}: {e}[/red]\n")
                 raise click.Abort()
 
+        # Step 7: Apply the --fail-on quality gate.
+        #
+        # Deliberately the LAST thing in the run: the report is rendered and
+        # exported first, so a CI job that fails the build still gets its
+        # artifact. SystemExit derives from BaseException, not Exception, so it
+        # passes through the `except Exception` handler below untouched while
+        # the `finally` block still cleans up the callback handlers.
+        if fail_on:
+            gate = _evaluate_fail_on(final_report.issues, fail_on)
+            if gate is not None:
+                blocking_count, threshold = gate
+                con.print(
+                    f"[red]✗ Quality gate failed: {blocking_count} issue(s) at "
+                    f"{threshold} severity or above "
+                    f"(--fail-on {fail_on.lower()}).[/red]\n"
+                )
+                raise SystemExit(EXIT_QUALITY_GATE_FAILED)
+
     except NoCredentialsError:
         con.print("\n[red]✗ AWS credentials not found[/red]\n")
         con.print("[yellow]Please configure AWS credentials:[/yellow]")
@@ -1162,19 +1454,20 @@ def main(
 
     except ClientError as e:
         error_code = e.response.get("Error", {}).get("Code", "")
-        error_msg = e.response.get("Error", {}).get("Message", "")
 
+        # Same redaction as _render_batch_error: the code names the problem,
+        # the Message can carry SCP text / ARNs / account ids into CI logs.
         con.print(
-            f"\n[red]✗ AWS Error ({escape(error_code)}): {escape(error_msg)}[/red]\n"
+            f"\n[red]✗ AWS Error ({escape(error_code)})[/red]"
+            f"{_aws_error_detail(e, verbose)}\n"
         )
 
         if error_code == "AccessDeniedException":
-            # model_display_name may be unbound if resolve_model itself raised;
-            # fall back to the raw CLI argument.
-            model_label = locals().get("model_display_name", model_name)
             con.print("[yellow]Troubleshooting:[/yellow]")
             con.print("  1. Ensure you have access to AWS Bedrock in your region")
-            con.print(f"  2. Check that {escape(model_label)} model access is enabled")
+            con.print(
+                f"  2. Check that {escape(model_display_name)} model access is enabled"
+            )
             con.print(
                 "  3. Verify your IAM permissions include 'bedrock:InvokeModel'\n"
             )
@@ -1200,6 +1493,44 @@ def main(
             streaming_handler.cleanup()
         if progress_handler:
             progress_handler.cleanup()
+
+
+def _evaluate_fail_on(
+    issues: list[ReviewIssue], fail_on: str
+) -> tuple[int, str] | None:
+    """Decide whether the --fail-on quality gate trips.
+
+    Args:
+        issues: Final, deduplicated issues from the run.
+        fail_on: Threshold severity, case-insensitive (e.g. "high").
+
+    Returns:
+        ``(blocking_count, canonical_threshold)`` when the gate should fail,
+        or None when it passes.
+
+    The threshold is inclusive and counts *upward* in severity: ``--fail-on
+    high`` trips on High **and** Critical. This mirrors ``--severity``'s
+    filtering semantics so the two flags can't be read in opposite directions,
+    but the flags are otherwise independent — ``--severity`` controls only what
+    is displayed, and filtering the display must never change the exit code.
+    That's why this counts ``report.issues`` rather than the rendered subset:
+    ``--severity critical --fail-on high`` still fails on a High finding the
+    terminal never showed.
+    """
+    threshold = fail_on.title()
+    if threshold not in SEVERITY_ORDER:
+        # Click's Choice already constrains this; defensive only.
+        return None
+    threshold_index = SEVERITY_ORDER.index(threshold)
+    blocking = sum(
+        1
+        for issue in issues
+        if issue.severity in SEVERITY_ORDER
+        and SEVERITY_ORDER.index(issue.severity) <= threshold_index
+    )
+    if blocking:
+        return blocking, threshold
+    return None
 
 
 def _dedupe_issues(issues: list[ReviewIssue]) -> list[ReviewIssue]:
@@ -1251,15 +1582,52 @@ def _dedupe_design_insights(insights: list[str]) -> list[str]:
     return out
 
 
-def _generate_recommendations(issues: list[ReviewIssue]) -> list[str]:
-    """Generate top recommendations based on issue severity and category distribution.
+def _generate_recommendations(
+    issues: list[ReviewIssue], model_recommendations: list[str] | None = None
+) -> list[str]:
+    """Pick the report's top recommendations, preferring the model's own.
+
+    ``SYSTEM_PROMPT`` asks for recommendations "DERIVED FROM the issues you
+    reported. Reference issue titles, not new ideas… (concrete, traceable to an
+    issue)", and the model returns them per batch in
+    ``CodeReviewReport.recommendations``. Aggregation used to drop that field on
+    the floor — every other one (``issues``, ``improvement_suggestions``,
+    ``system_design_insights``) is collected, this one wasn't — and substitute
+    the severity/category counts below. So a run that found an SQL injection at
+    ``views.py:42`` recommended "🔒 Resolve 1 security issue(s)": no file, no
+    line, no title, and the same counts the Metrics section already prints. The
+    one part of the report meant to say *what to do next* said nothing the rest
+    of it didn't.
+
+    The counts remain as the fallback, for two cases that do happen: a run where
+    every batch failed to emit recommendations, and an issue list with no
+    recommendations attached (``--severity`` filtering never reaches here, but
+    partial-failure runs do). A generic pointer beats an empty section.
 
     Args:
-        issues: List of ReviewIssue objects from analysis
+        issues: Aggregated issues, used for the count-based fallback.
+        model_recommendations: Recommendations the model returned, in batch
+            order. Deduplicated and truncated to 5; when empty, the fallback
+            applies.
 
     Returns:
-        Up to 5 prioritized recommendations based on severity and category counts
+        Up to 5 recommendations — the model's where available.
     """
+    if model_recommendations:
+        # Concurrent batches independently recommend the same fix (each sees the
+        # same shared helper), so collapse on the same coarse normalization
+        # _dedupe_design_insights uses: lowercased alphanumerics.
+        seen: set[str] = set()
+        deduped: list[str] = []
+        for text in model_recommendations:
+            normalized = "".join(c.lower() for c in text if c.isalnum())
+            if not normalized or normalized in seen:
+                continue
+            seen.add(normalized)
+            deduped.append(text)
+        if deduped:
+            return deduped[:5]
+
     critical = [i for i in issues if i.severity == "Critical"]
     high = [i for i in issues if i.severity == "High"]
 
@@ -1273,9 +1641,12 @@ def _generate_recommendations(issues: list[ReviewIssue]) -> list[str]:
     if high:
         recommendations.append(f"⚠️  Fix {len(high)} high-priority issue(s)")
 
-    # Category-based recommendations (ordered by impact)
+    # Category-based recommendations, ordered by impact. Mirrors the prompt's
+    # stated priority (security > correctness > maintainability > performance),
+    # so Correctness sits directly below Security.
     category_configs = [
         ("Security", "🔒 Resolve {n} security issue(s)"),
+        ("Correctness", "🐛 Fix {n} correctness issue(s)"),
         ("Performance", "⚡ Investigate {n} performance issue(s)"),
         ("Testing", "🧪 Address {n} testing issue(s)"),
         ("Code Quality", "🔧 Review {n} code quality issue(s)"),
@@ -1326,6 +1697,16 @@ def _render_dry_run(
     ValidationRenderer(console).render(validation)
     console.print()
 
+    # Estimate from batch membership, not from the scan. A file the batcher
+    # dropped as oversized is never sent to the provider, so billing it made
+    # --dry-run — whose entire purpose is "what will this cost?" — quote a
+    # figure for tokens no request will contain. One skipped 5 MB file can
+    # dominate the estimate: a probe of a 50-line file plus one oversized file
+    # quoted ~1,000,350 input tokens for a run that sends 300. Overstating the
+    # cost is not the harmless direction; it is the number people decide on.
+    batched_files = [file_path for batch in batches for file_path in batch.files]
+    skipped_from_batching = len(files) - len(batched_files)
+
     # Build file table
     table = Table(title="Files to Analyze", show_header=True, header_style="bold cyan")
     table.add_column("File", style="cyan")
@@ -1333,7 +1714,7 @@ def _render_dry_run(
     table.add_column("Est. Tokens", justify="right")
 
     total_tokens = 0
-    for file_path in files:
+    for file_path in batched_files:
         try:
             size_kb = file_path.stat().st_size / 1024
         except OSError:
@@ -1369,7 +1750,12 @@ def _render_dry_run(
     # Summary
     console.print("[bold]💰 Estimated Cost Summary[/bold]")
     console.print(f"   Model: {model_display_name}")
-    console.print(f"   Files: {len(files)}")
+    console.print(f"   Files: {len(batched_files)}")
+    if skipped_from_batching:
+        console.print(
+            f"   [dim](excludes {skipped_from_batching} file(s) skipped as too "
+            "large; they are not sent and not billed)[/dim]"
+        )
     console.print(f"   Batches: {len(batches)}")
     console.print(f"   Est. input tokens: ~{total_input_tokens:,}")
     console.print(f"   Est. output tokens: ~{estimated_output_tokens:,}")

@@ -43,7 +43,7 @@ Comprehensive guide for using the Code Review CLI tool effectively.
 **For AWS Bedrock (default):**
 - [ ] AWS credentials configured
 - [ ] Bedrock access enabled in AWS Console
-- [ ] Claude Opus 4.6 model access approved
+- [ ] Claude Opus 5 model access approved (the default model)
 - [ ] IAM permissions include `bedrock:InvokeModel`
 - [ ] Tool installed and `codereview` command available
 
@@ -121,31 +121,58 @@ codereview ./their-feature --output onboarding-feedback.md --verbose
 Automate code reviews in your pipeline:
 
 ```bash
-# Option 1: JSON output for programmatic parsing (recommended)
+# Recommended: let --fail-on gate the build. Exits 2 when any Critical or
+# High issue is found; the report is still written first.
 codereview ./src \
+  --fail-on high \
   --output review-report.json \
   --format json \
-  --severity high \
-  --max-files 100
+  --max-files 100 \
+  --quiet
+```
 
+Exit codes:
+
+| Code | Meaning | CI should |
+|---|---|---|
+| `0` | Nothing at or above the threshold | pass |
+| `1` | The **run** failed (credentials, API error, no results) | fail — investigate the tool/config |
+| `2` | The review found blocking issues | fail — fix the code |
+
+Because `1` and `2` are distinct, a pipeline can tell an infrastructure problem
+apart from a genuine review failure:
+
+```bash
+codereview ./src --fail-on high --output review.json --format json --quiet
+status=$?
+case $status in
+  0) echo "Review clean" ;;
+  2) echo "Blocking issues found — see review.json"; exit 1 ;;
+  *) echo "codereview itself failed (exit $status)"; exit $status ;;
+esac
+```
+
+`--fail-on` is independent of `--severity`: `--severity` filters only what is
+*printed*, so hiding low-severity noise from the terminal never weakens the
+gate.
+
+<details>
+<summary>Before <code>--fail-on</code>: manual parsing (still valid for custom thresholds)</summary>
+
+```bash
 # Parse JSON to check for critical issues
-CRITICAL_COUNT=$(jq '.metrics.critical // 0' review-report.json)
+codereview ./src --output review-report.json --format json --max-files 100
+CRITICAL_COUNT=$(jq '.metrics.critical_issues // 0' review-report.json)
 if [ "$CRITICAL_COUNT" -gt 0 ]; then
   echo "Found $CRITICAL_COUNT critical issues!"
   exit 1
 fi
-
-# Option 2: Markdown output with grep
-codereview ./src \
-  --output review-report.md \
-  --severity high \
-  --max-files 100
-
-if grep -q "Critical" review-report.md; then
-  echo "Critical issues found!"
-  exit 1
-fi
 ```
+
+Use this when your gate needs a rule `--fail-on` can't express — e.g. "fail on
+more than 5 Medium issues" or "fail only on Security-category findings".
+
+</details>
 
 **When to use**: As part of automated quality gates in CI/CD.
 
@@ -346,7 +373,7 @@ Provides:
 
 Match the model to your use case:
 
-**Opus 4.6** - Critical reviews (AWS Bedrock):
+**Opus 5** - Critical reviews (AWS Bedrock, default):
 ```bash
 codereview ./src/auth --model opus
 ```
@@ -371,11 +398,6 @@ codereview ./src --model gpt
 codereview ./src --model gpt-pro
 ```
 
-**DeepSeek-V4-Pro (Azure)** - 1M context, prompt-based JSON parsing (Azure OpenAI):
-```bash
-codereview ./src --model dsv4-azure
-```
-
 **Mistral Medium 3.5 128B** - Free tier, 77.6% SWE-Bench, reasoning_effort (NVIDIA NIM):
 ```bash
 codereview ./src --model mistral-medium
@@ -386,19 +408,14 @@ codereview ./src --model mistral-medium
 codereview ./src --model mistral-small
 ```
 
-**Gemini 3.1 Pro** - Most advanced reasoning, 1M context (Google GenAI):
+**Gemini 3.1 Pro** - Most advanced reasoning, 1M context (Google GenAI; `gemini-3-pro` routes here after Google retired 3 Pro 2026-03-09):
 ```bash
 codereview ./src --model gemini-3.1-pro
 ```
 
-**Gemini 3.1 Pro** - Large context, strong reasoning (Google GenAI; `gemini-3-pro` now routes here after Google retired 3 Pro 2026-03-09):
+**Gemini 3.6 Flash** - GA workhorse, 1M context, thinking on by default (Google GenAI; owns `gemini-flash` and the retired `gemini-3-flash` names):
 ```bash
-codereview ./src --model gemini-3.1-pro
-```
-
-**Gemini 3 Flash** - Fast and cost-efficient (Google GenAI):
-```bash
-codereview ./src --model gemini-3-flash
+codereview ./src --model gemini-3.6-flash
 ```
 
 **MiniMax M2.5 (Bedrock)** - 196K context, agent-native:
@@ -412,16 +429,10 @@ codereview ./src --model deepseek-v4-pro     # Flagship
 codereview ./src --model deepseek-v4-flash   # 12x cheaper input
 ```
 
-**GLM-5.2 (Z.AI)** - flagship, 1M-token context (default Z.AI model):
+**GLM-5.2 (Z.AI)** - flagship, 1M-token context (only Z.AI model; supersedes GLM-5.1 at the same price):
 ```bash
 codereview ./src --model zhipuai/glm-5.2
 codereview ./src --model glm        # short alias
-```
-
-**GLM-5.1 (Z.AI)** - long-horizon coding, 203K context:
-```bash
-codereview ./src --model zhipuai/glm-5.1
-codereview ./src --model zai-glm   # short alias
 ```
 
 **Kimi K2.6 (Moonshot)** - 1T MoE, 32B active, 256K context, agentic:
@@ -435,22 +446,18 @@ codereview ./src --model kimi   # canonical short alias
 Be aware of costs and choose models accordingly:
 
 **AWS Bedrock:**
-- **Opus 4.8**: Latest reasoning, default model, 1M context ($5/M input, $25/M output)
-- **Opus 4.7**: Reasoning, 200K context ($5/M input, $25/M output)
-- **Opus 4.6**: Highest quality ($5/M input, $25/M output)
+- **Opus 5**: Latest reasoning, default model, best for code review, 1M context ($5/M input, $25/M output)
+- **Opus 4.8**: Reasoning, 1M context ($5/M input, $25/M output)
 - **Sonnet 4.6**: Balanced option for daily use ($3/M input, $15/M output)
 - **Haiku 4.5**: Economical for large codebases ($1/M input, $5/M output)
 
 **Azure OpenAI:**
 - **GPT-5.4**: Frontier reasoning, 1.05M context, default Azure ($2.50/M input, $15/M output)
 - **GPT-5.4 Pro**: Deeper reasoning ($30/M input, $180/M output)
-- **DeepSeek-V4-Pro (Azure)**: 1M context, no tool calling on Foundry ($1.74/M input, $3.48/M output)
-- **Kimi K2.5 (Azure)**: Multimodal MoE, 256K context ($0.60/M input, $3/M output)
 
 **Google Generative AI:**
 - **Gemini 3.1 Pro**: Most advanced reasoning ($2/M input, $12/M output)
-- **Gemini 3 Pro**: Flagship model ($2/M input, $12/M output)
-- **Gemini 3 Flash**: Cost-efficient ($0.50/M input, $3/M output)
+- **Gemini 3.6 Flash**: GA workhorse, thinking on by default ($1.50/M input, $7.50/M output)
 
 **DeepSeek direct:**
 - **DeepSeek-V4-Pro**: Flagship, 1M context, native tool calling ($1.74/M input, $3.48/M output)
@@ -458,13 +465,12 @@ Be aware of costs and choose models accordingly:
 
 **Z.AI direct:**
 - **GLM-5.2**: Flagship, 1M-token context, long-horizon engineering, thinking mode ($1.40/M input, $4.40/M output)
-- **GLM-5.1**: Long-horizon coding, 203K context ($1.40/M input, $4.40/M output)
 
 **Moonshot direct (Kimi):**
 - **Kimi K2.6**: 1T MoE, 32B active, 256K context, agentic ($0.60/M input, $2.50/M output)
 
 **NVIDIA NIM (Free Tier):**
-- **Mistral Small 4, Mistral Medium 3.5, MiniMax M2.7, MiniMax M3, Kimi K2.6, Qwen3 Coder, Qwen3.5, DeepSeek-V4-Pro/Flash, GLM-5.1, Step 3.5/3.7 Flash**: Currently free
+- **Mistral Small 4, Mistral Medium 3.5, MiniMax M3, Kimi K2.6, Qwen3.5, DeepSeek-V4-Pro/Flash, GLM-5.2, Step 3.7 Flash**: Currently free
 
 **Cost optimization tips:**
 - Use `--max-files` to limit scope
@@ -554,6 +560,37 @@ NO_COLOR=1 codereview ./src
 - In CI/CD environments where color codes aren't needed
 - When piping output to non-terminal destinations
 
+### Static Analysis on Untrusted Repositories
+
+`--static-analysis` runs real linters against the reviewed tree, and three of
+them execute code the *repository* supplies: mypy imports the module named by a
+`plugins =` entry, an `eslint.config.js` **is** JavaScript, and Prettier loads
+the modules named in its `plugins` key. That code runs with your privileges
+before any review output exists.
+
+So the tool detects those configs and skips the affected tool, saying so:
+
+```
+✗ Skipped mypy: mypy.ini in the analyzed repository would make it load and
+  execute code from the tree with your privileges. Its findings are missing
+  from this review. Pass --trust-repo-config to run it anyway (only for a
+  repository you trust).
+```
+
+Detection is on content: a `pyproject.toml` with a `[tool.mypy]` section but no
+`plugins` entry runs normally, because matching a project's own lint config is
+the point of running its linters. Unreadable or oversized (>512 KB) configs are
+treated as risky — fail closed.
+
+```bash
+# Trusted repository (your own code): run everything
+codereview ./src --static-analysis --trust-repo-config
+
+# Untrusted repository (a contractor's PR, a dependency you're auditing):
+# leave the default on and accept the missing findings
+codereview /tmp/third-party --static-analysis
+```
+
 ### Region Selection
 
 ```bash
@@ -583,54 +620,60 @@ codereview ./src --aws-profile production
 
 ### Model Selection
 
-Choose the right model for your needs. Use short model names (aliases supported):
+Choose the right model for your needs. Use short model names (aliases supported).
+
+`--list-models` advertises only the current, recommended aliases. A handful of
+version-*neutral* names inherited from removed models (`glm5`, `kimi-azure`,
+`gemini-3-flash`, `qwen-bedrock`, …) still resolve to their successor and are shown
+as `+N deprecated`; add `--verbose` to see them spelled out. Version-*explicit*
+aliases of removed models (`opus4.6`, `glm51`, `mm25`, `kimi25`, `step35`,
+`gpt5.4-bedrock`, …) were deleted in the 2026-07-25 cleanup and now fail fast —
+see [Migrating Deleted Aliases](../README.md#migrating-deleted-aliases) for the
+full replacement table.
 
 ```bash
 # List all available models
 codereview --list-models
 
+# ...including deprecated back-compat aliases
+codereview --list-models --verbose
+
 # AWS Bedrock - Claude models
-codereview ./src --model opus4.8  # Claude Opus 4.8 (default, reasoning model, 1M context)
-codereview ./src --model opus4.7  # Claude Opus 4.7 (reasoning model, 200K context)
-codereview ./src --model opus     # Claude Opus 4.6 (highest quality, temperature control)
+codereview ./src --model opus     # Claude Opus 5 (default, reasoning model, 1M context)
+codereview ./src --model opus4.8  # Claude Opus 4.8 (reasoning model, 1M context)
 codereview ./src --model sonnet5  # Claude Sonnet 5 (Claude 5 gen, 1M context)
 codereview ./src --model sonnet   # Claude Sonnet 4.6 (balanced)
 codereview ./src --model haiku    # Claude Haiku 4.5 (fastest)
 
 # AWS Bedrock - Other models
 codereview ./src --model minimax-m2.5-bedrock  # MiniMax M2.5 (196K context, agent-native)
-codereview ./src --model qwen-bedrock          # Qwen3 Coder 480B
+codereview ./src --model qwen-next-bedrock      # Qwen3 Coder Next (owns `qwen`/`qwen-bedrock`)
 codereview ./src --model kimi-k2.5-bedrock     # Kimi K2.5 (262K context)
 
 # Azure OpenAI
 codereview ./src --model gpt           # GPT-5.4 (frontier reasoning, default Azure)
 codereview ./src --model gpt-pro       # GPT-5.4 Pro (deeper reasoning variant)
-codereview ./src --model dsv4-azure    # DeepSeek-V4-Pro (1M context, prompt-based JSON)
-codereview ./src --model kimi-azure    # Kimi K2.5 (256K context)
 
 # NVIDIA NIM (free tier)
 codereview ./src --model mistral-medium     # Mistral Medium 3.5 128B (77.6% SWE-Bench)
 codereview ./src --model mistral-small      # Mistral Small 4 119B
-codereview ./src --model minimax-m2.7       # MiniMax M2.7 (agent-native; supersedes retired M2.5)
-codereview ./src --model minimax-m3         # MiniMax M3 (multimodal MoE, 1M context, thinking)
+codereview ./src --model minimax-m3         # MiniMax M3 (multimodal MoE, 1M context, thinking; supersedes M2.7)
 codereview ./src --model dsv4-nvidia        # DeepSeek-V4-Pro on NVIDIA (free)
 codereview ./src --model dsv4-flash-nvidia  # DeepSeek-V4-Flash on NVIDIA (free, 1M context, fast)
-codereview ./src --model glm52              # GLM-5.2 (753B MoE, 1M context; supersedes deprecated glm51/glm5)
+codereview ./src --model glm52              # GLM-5.2 (753B MoE, 1M context; owns `glm5`/`glm-5`)
 codereview ./src --model kimi-nvidia-26     # Kimi K2.6 on NVIDIA (free; supersedes retired K2.5)
-codereview ./src --model step-3.5-flash     # Step 3.5 Flash
-codereview ./src --model step-3.7-flash     # Step 3.7 Flash (256K, multimodal, newer)
+codereview ./src --model step-3.7-flash     # Step 3.7 Flash (256K, multimodal; owns `step-flash`)
 
 # Google Generative AI
 codereview ./src --model gemini-3.1-pro     # Gemini 3.1 Pro (1M context; supersedes retired 3 Pro)
-codereview ./src --model gemini-3-flash     # Gemini 3 Flash (fast, cheap)
+codereview ./src --model gemini-3.6-flash   # Gemini 3.6 Flash (GA workhorse, thinking on; owns `gemini-flash`/`gemini-3-flash`)
 
 # DeepSeek direct API (paid, native tool calling)
 codereview ./src --model deepseek-v4-pro    # Flagship, 1M context
 codereview ./src --model deepseek-v4-flash  # 12x cheaper input than V4-Pro
 
 # Z.AI (Zhipu international)
-codereview ./src --model zhipuai/glm-5.2    # Flagship, 1M-token context
-codereview ./src --model zhipuai/glm-5.1    # Long-horizon coding, 203K context
+codereview ./src --model zhipuai/glm-5.2    # Flagship, 1M-token context (owns `glm`/`zai-glm`)
 
 # Moonshot direct API (Kimi)
 codereview ./src --model kimi-k2.6          # Canonical Kimi, 256K context
@@ -639,50 +682,44 @@ codereview ./src --model kimi               # Short alias
 # OpenAI-on-Bedrock (bedrock-mantle OpenAI-compatible endpoint; Bedrock API-key auth)
 codereview ./src --model gpt5.6             # GPT-5.6 Sol (OpenAI flagship, best coding model, 272K)
 codereview ./src --model grok               # Grok 4.3 (xAI, reasoning-first, 1M context)
-codereview ./src --model gpt5.5-bedrock     # GPT-5.5 on Bedrock
-codereview ./src --model gpt5.4-bedrock     # GPT-5.4 on Bedrock
+codereview ./src --model gpt5.5-bedrock     # GPT-5.5 on Bedrock (or `gpt-bedrock`)
 ```
 
 **When to use each model:**
 
 | Model | Provider | Use Case | Pricing |
 |-------|----------|----------|---------|
-| **Opus 4.8** (default) | AWS Bedrock | Latest reasoning, critical reviews, 1M context | $5/M input, $25/M output |
-| **Opus 4.7** | AWS Bedrock | Reasoning, 200K context | $5/M input, $25/M output |
-| **Opus 4.6** | AWS Bedrock | Critical code reviews, security audits | $5/M input, $25/M output |
+| **Opus 5** (default) | AWS Bedrock | Latest reasoning, critical reviews, best code review / bug finding, 1M context | $5/M input, $25/M output |
+| **Opus 4.8** | AWS Bedrock | Reasoning, 1M context | $5/M input, $25/M output |
 | **Sonnet 5** | AWS Bedrock | Claude 5 gen, near-Opus at Sonnet price, 1M context | $3/M input, $15/M output |
 | **Sonnet 4.6** | AWS Bedrock | Daily development, PR reviews | $3/M input, $15/M output |
 | **Haiku 4.5** | AWS Bedrock | Large codebases, CI/CD integration | $1/M input, $5/M output |
 | **GPT-5.4** | Azure OpenAI | Frontier reasoning, default Azure, 1.05M context | $2.50/M input, $15/M output |
 | **GPT-5.4 Pro** | Azure OpenAI | Deeper reasoning, hardest problems | $30/M input, $180/M output |
-| **DeepSeek-V4-Pro (Azure)** | Azure OpenAI | 1M context, no tool calling on Foundry | $1.74/M input, $3.48/M output |
-| **Kimi K2.5 (Azure)** | Azure OpenAI | Multimodal MoE, 256K context | $0.60/M input, $3/M output |
 | **Mistral Small 4** | NVIDIA NIM | Free tier, MoE architecture, 256K context | Free* |
 | **Mistral Medium 3.5** | NVIDIA NIM | Free tier, 128B dense, 77.6% SWE-Bench | Free* |
-| **MiniMax M2.7** | NVIDIA NIM | Free tier, agent-native, 204K context (M2.5 retired 2026-05-12) | Free* |
-| **MiniMax M3** | NVIDIA NIM | Free tier, multimodal MoE (428B/22B active), 1M context, thinking, long-horizon coding | Free* |
+| **MiniMax M3** | NVIDIA NIM | Free tier, multimodal MoE (428B/22B active), 1M context, thinking (supersedes M2.7) | Free* |
 | **DeepSeek-V4-Pro (NVIDIA)** | NVIDIA NIM | Free tier, 1M context, three reasoning modes | Free* |
 | **DeepSeek-V4-Flash (NVIDIA)** | NVIDIA NIM | Free tier, 1M context, fast/cheap sibling of V4-Pro | Free* |
 | **GLM-5.2** | NVIDIA NIM | Free tier, 753B MoE, 1M context, thinking (GLM-5.1/GLM-5 deprecated) | Free* |
 | **Kimi K2.6** | NVIDIA NIM | Free tier, 262K context (K2.5 retired 2026-05-20) | Free* |
 | **Gemini 3.1 Pro** | Google GenAI | Most advanced reasoning, 1M context (3 Pro retired 2026-03-09) | $2/M input, $12/M output |
-| **Gemini 3 Flash** | Google GenAI | Fast and cheap, 1M context | $0.50/M input, $3/M output |
+| **Gemini 3.6 Flash** | Google GenAI | GA workhorse, 1M context, 64K output, thinking on by default (owns `gemini-flash`/`gemini-3-flash`) | $1.50/M input, $7.50/M output |
 | **DeepSeek-V4-Pro** | DeepSeek direct | 1M context, three reasoning modes, native tool calling | $1.74/M input, $3.48/M output |
 | **DeepSeek-V4-Flash** | DeepSeek direct | 1M context, cheapest paid option with tool calling | $0.14/M input, $0.28/M output |
-| **GLM-5.2** | Z.AI direct | Flagship, 1M-token context, long-horizon engineering, thinking mode | $1.40/M input, $4.40/M output |
-| **GLM-5.1** | Z.AI direct | Long-horizon coding, 203K context, function calling | $1.40/M input, $4.40/M output |
+| **GLM-5.2** | Z.AI direct | Flagship, 1M-token context, long-horizon engineering, thinking mode (only Z.AI entry) | $1.40/M input, $4.40/M output |
 | **Kimi K2.6** | Moonshot direct | 1T MoE, 32B active, 256K context, agentic | $0.60/M input, $2.50/M output |
 | **GPT-5.6 Sol (Bedrock)** | OpenAI-on-Bedrock | OpenAI flagship, best coding model, 272K context, `bedrock-mantle` endpoint | $5/M input, $30/M output |
 | **Grok 4.3 (Bedrock)** | OpenAI-on-Bedrock | xAI reasoning-first, 1M context, `bedrock-mantle` endpoint | $1.25/M input, $2.50/M output |
-| **GPT-5.5 / GPT-5.4 (Bedrock)** | OpenAI-on-Bedrock | Frontier reasoning, `bedrock-mantle` endpoint | $2.50/M input, $15/M output |
+| **GPT-5.5 (Bedrock)** | OpenAI-on-Bedrock | Frontier reasoning, `bedrock-mantle` endpoint | $2.50/M input, $15/M output |
 
 *NVIDIA NIM models are currently in free preview tier.
 
 **Model Selection Strategy:**
 
 ```bash
-# Production-critical code → Opus 4.8
-codereview ./src/auth --model opus4.8
+# Production-critical code → Opus 5
+codereview ./src/auth --model opus5
 
 # Daily development → Sonnet or GPT-5.4
 codereview ./src --model sonnet
@@ -761,9 +798,15 @@ Don't ignore these - they often reveal systemic issues.
 ### Recommendations
 
 Priority actions based on analysis:
-- Usually 3-5 top items
-- Ordered by impact
-- Actionable next steps
+- Up to 5 top items, in the order the model raised them
+- Traceable to a specific finding — they reference issue titles and locations
+  ("Fix the SQL injection in views.py:42"), not new ideas
+- Deduplicated across batches, since concurrent batches that both see a shared
+  helper will each recommend the same fix
+
+When a run produces no model recommendations at all (every batch failed to emit
+them), the section falls back to a severity/category count summary so it is
+never blank.
 
 ## Performance Tuning
 
@@ -812,12 +855,12 @@ For projects with 1000+ files:
 
 | Scenario | Recommended Model | Provider | Estimated Cost* |
 |----------|-------------------|----------|-----------------|
-| 100 files, critical review | Opus 4.6 | AWS Bedrock | $0.30-$1.50 |
+| 100 files, critical review | Opus 5 | AWS Bedrock | $0.30-$1.50 |
 | 100 files, daily review | Sonnet 4.6 | AWS Bedrock | $0.10-$0.40 |
 | 1000 files, bulk scan | Haiku 4.5 | AWS Bedrock | $0.10-$0.50 |
 | Development/testing | Mistral Medium 3.5 | NVIDIA NIM | Free |
 | Advanced reasoning (1M) | Gemini 3.1 Pro | Google GenAI | $2.00-$12.00/M |
-| Large context (1M) | Gemini 3 Flash | Google GenAI | $0.50-$3.00/M |
+| Large context (1M) | Gemini 3.6 Flash | Google GenAI | $1.50-$7.50/M |
 | Large context needed | Kimi K2.5 | NVIDIA NIM | Free |
 
 *Actual costs depend on file size and complexity

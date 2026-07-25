@@ -1,7 +1,7 @@
 import pytest
 
 from codereview.models import CodeReviewReport, ReviewIssue, ReviewMetrics
-from codereview.renderer import MarkdownExporter
+from codereview.renderer import MarkdownExporter, balance_code_fences
 
 
 @pytest.fixture
@@ -284,3 +284,203 @@ def test_audit_trail_zero_linter_tools_emits_negative_line(sample_report, tmp_pa
     assert "## Audit Trail" in content
     assert "Linter findings injected:" in content
     assert "none" in content
+
+
+# ---------------------------------------------------------------------------
+# Code-fence balancing in model-generated prose
+#
+# A model that opens a ``` fence in a free-text field without closing it would
+# otherwise swallow every following section of the report into one code block —
+# the exported artifact silently loses its issues, recommendations, and metrics.
+# balance_code_fences closes the block instead.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "text,expected",
+    [
+        ("no fences here", "no fences here"),
+        ("```python\nx = 1\n```", "```python\nx = 1\n```"),  # balanced, untouched
+        ("```python\nx = 1", "```python\nx = 1\n```"),  # unclosed -> closed
+        ("````\n```\n````", "````\n```\n````"),  # nested, balanced
+        ("````md\n```py\nx\n```", "````md\n```py\nx\n```\n````"),  # outer unclosed
+        ("use ``` inline mid-sentence", "use ``` inline mid-sentence"),  # not a fence
+    ],
+)
+def test_balance_code_fences(text, expected):
+    """Only fence *lines* count; unbalanced blocks get a closer appended."""
+    assert balance_code_fences(text) == expected
+
+
+def _fence_runs(markdown: str) -> int:
+    """Count fence-opening/closing lines in a rendered document."""
+    return sum(1 for line in markdown.splitlines() if line.strip().startswith("```"))
+
+
+def _inside_code_block(markdown: str, marker: str | None) -> bool:
+    """Is *marker* inside a fenced code block per CommonMark's closing rule?
+
+    Fence parity is the wrong model when fence widths vary: a block opened with
+    N backticks closes only on a fence line of **at least N** backticks *and*
+    with no info string, so a wider inner fence neither closes the block nor
+    opens one of its own. A document whose fence lines balance numerically can
+    still leave later text inside a block. ``marker=None`` asks whether the
+    document *ends* inside one.
+    """
+    open_width = 0
+    for line in markdown.splitlines():
+        if marker is not None and marker in line:
+            return open_width > 0
+        stripped = line.strip()
+        if not stripped.startswith("```"):
+            continue
+        width = len(stripped) - len(stripped.lstrip("`"))
+        info = stripped[width:].strip()
+        if open_width == 0:
+            open_width = width
+        elif width >= open_width and not info:
+            open_width = 0
+    return open_width > 0
+
+
+def test_unclosed_fence_in_description_does_not_swallow_report(tmp_path):
+    """An unclosed fence in issue.description must not eat later sections."""
+    report = CodeReviewReport(
+        summary="One issue found",
+        metrics=ReviewMetrics(files_analyzed=1, total_issues=1),
+        issues=[
+            ReviewIssue(
+                category="Security",
+                severity="High",
+                file_path="a.py",
+                line_start=1,
+                line_end=1,
+                title="Unsafe eval",
+                description="Bad code:\n```python\neval(x)",  # never closed
+                rationale="eval executes arbitrary input",
+            )
+        ],
+        system_design_insights="MARKER_DESIGN",
+        recommendations=["MARKER_RECOMMENDATION"],
+    )
+    output_file = tmp_path / "report.md"
+    MarkdownExporter().export(report, output_file)
+    content = output_file.read_text()
+
+    assert _fence_runs(content) % 2 == 0, "odd number of fences: document is broken"
+    # The sections after the offending field must still be real Markdown,
+    # not trapped inside an open code block.
+    design_index = content.index("MARKER_DESIGN")
+    assert content.count("```", 0, design_index) % 2 == 0
+    assert "MARKER_RECOMMENDATION" in content
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("summary", "Overview:\n```text\nunclosed"),
+        ("system_design_insights", "Layers:\n```\nunclosed"),
+    ],
+)
+def test_unclosed_fence_in_prose_fields_is_balanced(tmp_path, field, value):
+    """summary and system_design_insights get the same treatment."""
+    kwargs = {
+        "summary": "ok",
+        "metrics": ReviewMetrics(files_analyzed=1),
+        "issues": [],
+        "system_design_insights": "ok",
+        field: value,
+    }
+    output_file = tmp_path / "report.md"
+    MarkdownExporter().export(CodeReviewReport(**kwargs), output_file)
+    assert _fence_runs(output_file.read_text()) % 2 == 0
+
+
+def test_unclosed_fence_in_list_fields_is_balanced(tmp_path):
+    """recommendations / improvement_suggestions are model-generated too."""
+    report = CodeReviewReport(
+        summary="ok",
+        metrics=ReviewMetrics(files_analyzed=1),
+        issues=[],
+        system_design_insights="ok",
+        recommendations=["Do this:\n```sh\nmake fix"],
+        improvement_suggestions=["And this:\n```sh\nmake lint"],
+    )
+    output_file = tmp_path / "report.md"
+    MarkdownExporter().export(report, output_file)
+    assert _fence_runs(output_file.read_text()) % 2 == 0
+
+
+# ---------------------------------------------------------------------------
+# suggested_code wrapping: the fence must be wider than anything inside it
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "code,expected",
+    [
+        ("x = 1", "```"),  # no fences inside
+        ("```py\nx\n```", "````"),  # 3 inside -> 4 outside
+        ("````md\n```py\nx\n```\n````", "`````"),  # 4 inside -> 5 outside
+        ("`````\nx\n`````", "``````"),  # 5 inside -> 6 outside
+        ("use ``` inline", "```"),  # inline span can't close a block
+        ("  ```py\n  x\n  ```", "````"),  # indented fence lines still count
+    ],
+)
+def test_enclosing_fence_is_wider_than_every_inner_fence(code, expected):
+    """CommonMark closes on the first fence at least as long as the opener."""
+    from codereview.renderer import enclosing_fence
+
+    assert enclosing_fence(code) == expected
+
+
+def test_four_backtick_snippet_does_not_swallow_the_rest_of_the_report(tmp_path):
+    """A suggested_code snippet containing ```` must not truncate the export.
+
+    The wrapper used to be a hardcoded four backticks, chosen for the common
+    "snippet contains ```" case. A snippet holding a *four*-backtick fence (real
+    whenever the reviewed file is Markdown, or code that emits fenced blocks)
+    then closed the wrapper early, and the wrapper's own closing fence opened a
+    new block that ran to the end of the document — silently eating References,
+    every later issue, System Design Insights, Recommendations and Metrics. The
+    export still "succeeded", which is what makes this worse than a hard error.
+    """
+    snippet = "Docs example:\n````markdown\n```python\nprint(1)\n```\n````"
+    report = CodeReviewReport(
+        summary="One issue found",
+        metrics=ReviewMetrics(files_analyzed=1, total_issues=1),
+        issues=[
+            ReviewIssue(
+                category="Documentation",
+                severity="Low",
+                file_path="README.md",
+                line_start=1,
+                line_end=1,
+                title="Nested fence example is wrong",
+                description="See the fix",
+                rationale="The example does not render",
+                suggested_code=snippet,
+            )
+        ],
+        system_design_insights="MARKER_DESIGN",
+        recommendations=["MARKER_RECOMMENDATION"],
+        improvement_suggestions=["MARKER_SUGGESTION"],
+    )
+    output_file = tmp_path / "report.md"
+    MarkdownExporter().export(report, output_file)
+    content = output_file.read_text()
+
+    # Counting fence *lines* for parity is not enough here: this snippet's own
+    # fences happen to balance, so a naive even/odd check passes on a document
+    # CommonMark still renders wrong. The width rule is what decides it, so the
+    # assertion has to apply the width rule.
+    for marker in ("MARKER_DESIGN", "MARKER_RECOMMENDATION", "MARKER_SUGGESTION"):
+        assert not _inside_code_block(content, marker), (
+            f"{marker} is trapped inside a code block; the snippet's own fence "
+            "closed the wrapper early"
+        )
+    assert not _inside_code_block(content, None), "document ends mid-code-block"
+
+    # And the snippet itself must survive verbatim — an early close corrupts it
+    # into prose even when nothing later is swallowed.
+    assert snippet in content

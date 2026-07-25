@@ -3,7 +3,13 @@
 from typing import Any
 
 from botocore.config import Config as BotocoreConfig  # type: ignore[import-untyped]
-from botocore.exceptions import ClientError  # type: ignore[import-untyped]
+from botocore.exceptions import (  # type: ignore[import-untyped]
+    ClientError,
+    ConnectionClosedError,
+    ConnectTimeoutError,
+    EndpointConnectionError,
+    ReadTimeoutError,
+)
 from langchain_aws import ChatBedrockConverse
 from langchain_core.callbacks import BaseCallbackHandler
 
@@ -16,6 +22,51 @@ from codereview.providers.base import (
     ValidationResult,
 )
 from codereview.providers.mixins import TokenTrackingMixin
+
+# Botocore transport failures that clear on their own. botocore's internal
+# retries are switched off (``retries={"max_attempts": 0}``) so this provider's
+# retry loop owns every attempt — which means these have to be named here or a
+# DNS blip aborts a whole batch on the first try.
+BOTOCORE_TRANSIENT_ERRORS = (
+    ConnectTimeoutError,
+    ReadTimeoutError,
+    EndpointConnectionError,
+    ConnectionClosedError,
+)
+
+# Bedrock/AWS error codes worth another attempt. Throttling clears in a couple
+# of seconds; the rest are the service reporting a fault on its own side.
+# Config errors (AccessDenied, Validation, ResourceNotFound) are absent on
+# purpose — retrying those only delays the message the user needs to read.
+RETRYABLE_BEDROCK_ERROR_CODES = frozenset(
+    {
+        "ThrottlingException",
+        "TooManyRequestsException",
+        "ServiceUnavailableException",
+        "InternalServerException",
+        "InternalFailure",
+        "ServiceInternalError",
+        "ModelTimeoutException",
+        "ModelNotReadyException",
+        "RequestTimeout",
+        "RequestTimeoutException",
+    }
+)
+
+# Cross-region inference-profile prefixes. An inference profile id is the base
+# foundation-model id with a routing prefix; ``ListFoundationModels`` returns the
+# *base* ids only, so the prefix has to come off before comparing. Every prefix
+# AWS defines is listed — stripping only ``global.`` left ``us.``-prefixed ids
+# (which is most of our registry) matching by luck, via a substring test.
+CROSS_REGION_PREFIXES = ("global.", "us-gov.", "us.", "eu.", "apac.", "jp.", "au.")
+
+
+def strip_cross_region_prefix(model_id: str) -> str:
+    """Return *model_id* without its cross-region inference-profile prefix."""
+    for prefix in CROSS_REGION_PREFIXES:
+        if model_id.startswith(prefix):
+            return model_id[len(prefix) :]
+    return model_id
 
 
 class BedrockProvider(TokenTrackingMixin, ModelProvider):
@@ -54,7 +105,7 @@ class BedrockProvider(TokenTrackingMixin, ModelProvider):
         self.region = model_config.region or provider_config.region
 
         # Determine temperature; allow_none preserves opt-out for reasoning
-        # models (e.g. Opus 4.7) that set inference_params.temperature = None.
+        # models (e.g. Opus 5) that set inference_params.temperature = None.
         self.temperature = self._resolve_temperature(
             override=temperature,
             model_config=model_config,
@@ -133,10 +184,40 @@ class BedrockProvider(TokenTrackingMixin, ModelProvider):
         return self._apply_structured_output(base_model)
 
     def _is_retryable_error(self, error: Exception) -> bool:
-        """Check if error is a retryable AWS throttling error."""
+        """Check if error is a retryable AWS throttling or transport failure.
+
+        botocore's own retries are disabled (``max_attempts: 0`` in
+        ``_create_model``) so that this loop owns every attempt — which means
+        the transport failures botocore would normally absorb have to be named
+        here or they abort the batch on attempt 1. A read timeout on a
+        think-heavy batch, a DNS blip, or a Bedrock 503 is exactly the
+        transient class the retry framework exists for; treating only
+        throttling as retryable threw away a whole batch's work (and the tokens
+        already spent on it) on a failure that clears by itself.
+
+        Retryable:
+        - throttling: ``ThrottlingException`` / ``TooManyRequestsException``
+        - service-side transients: ``ServiceUnavailableException``,
+          ``InternalServerException``, ``ModelTimeoutException``,
+          ``ModelNotReadyException``, plus any 5xx ``ClientError``
+        - transport: connect/read timeouts, endpoint connection errors
+
+        Deliberately NOT retryable: ``AccessDeniedException``,
+        ``ValidationException``, ``ResourceNotFoundException`` — a config
+        problem that retrying only makes slower.
+        """
+        if isinstance(error, BOTOCORE_TRANSIENT_ERRORS):
+            return True
         if isinstance(error, ClientError):
             error_code = error.response.get("Error", {}).get("Code", "")
-            return error_code in ["ThrottlingException", "TooManyRequestsException"]
+            if error_code in RETRYABLE_BEDROCK_ERROR_CODES:
+                return True
+            status_code = error.response.get("ResponseMetadata", {}).get(
+                "HTTPStatusCode", 0
+            )
+            # A 5xx is the server's own admission that the failure is on its
+            # side; the code list above can't enumerate every service's naming.
+            return isinstance(status_code, int) and 500 <= status_code < 600
         return False
 
     def _extract_token_usage(self, result: Any) -> tuple[int, int]:
@@ -154,7 +235,7 @@ class BedrockProvider(TokenTrackingMixin, ModelProvider):
         batch_number: int,
         total_batches: int,
         files_content: dict[str, str],
-        max_retries: int = 3,
+        max_retries: int | None = None,
     ) -> CodeReviewReport:
         """Analyze a batch of files using AWS Bedrock.
 
@@ -162,7 +243,8 @@ class BedrockProvider(TokenTrackingMixin, ModelProvider):
             batch_number: Current batch number
             total_batches: Total number of batches
             files_content: Dictionary mapping file paths to file contents
-            max_retries: Maximum number of retries for rate limiting
+            max_retries: Maximum number of retries for rate limiting (None uses
+                this provider's default of 3 — Bedrock throttling clears fast)
 
         Returns:
             CodeReviewReport with findings
@@ -170,6 +252,8 @@ class BedrockProvider(TokenTrackingMixin, ModelProvider):
         Raises:
             ClientError: If AWS API call fails after all retries
         """
+        retries = self._resolve_max_retries(max_retries, self.provider_config, 3)
+
         batch_context = self._prepare_batch_context(
             batch_number, total_batches, files_content, self.project_context
         )
@@ -179,7 +263,7 @@ class BedrockProvider(TokenTrackingMixin, ModelProvider):
             "batch_context": batch_context,
         }
 
-        retry_config = RetryConfig(max_retries=max_retries, base_wait=1.0)
+        retry_config = RetryConfig(max_retries=retries, base_wait=1.0)
         return self._execute_with_retry(chain_input, retry_config, batch_context)
 
     def validate_credentials(self) -> ValidationResult:
@@ -274,26 +358,39 @@ class BedrockProvider(TokenTrackingMixin, ModelProvider):
                 byOutputModality="TEXT",
             )
 
-            # Check if our model is in the list
+            # Drop summaries with no modelId — an id-less entry carries no
+            # information, and under the old substring test "" matched
+            # everything and reported every model as available.
             model_id = self.model_config.full_id or ""
-            available_models = [
-                m.get("modelId", "") for m in response.get("modelSummaries", [])
-            ]
+            available_models = {
+                model_summary_id
+                for m in response.get("modelSummaries", [])
+                if (model_summary_id := m.get("modelId", ""))
+            }
 
-            # For cross-region inference, check base model ID
-            base_model_id: str = model_id
-            if model_id.startswith("global."):
-                # Extract base model from global inference ID
-                # e.g., "global.anthropic.claude-opus-4-6-v1"
-                # -> "anthropic.claude-opus-4-6-v1"
-                parts = model_id.split(".", 1)
-                if len(parts) > 1:
-                    base_model_id = parts[1]
+            # ListFoundationModels returns base foundation-model ids, so compare
+            # against the id with its cross-region routing prefix removed.
+            base_model_id = strip_cross_region_prefix(model_id)
 
-            # Check if model or a variant is available
-            model_found = any(
-                base_model_id in m or m in base_model_id for m in available_models
-            )
+            # Exact match, not substring. The predicate used to be
+            # ``any(base in m or m in base for m in available)``, which confirms
+            # access whenever either id is a prefix/infix of the other — so a
+            # *version* difference read as a match: with only
+            # ``minimax.minimax-m2`` and ``minimax.minimax-m2.1`` enabled in the
+            # account, ``minimax.minimax-m2.5`` reported a green "Model Access"
+            # check (verified against the live us-west-2 catalog), and the run
+            # then failed with AccessDeniedException on the first real call.
+            # `zai.glm-5` against a catalog holding only `zai.glm-5.2` did the
+            # same. That is the one failure mode --validate exists to catch, and
+            # a false green is worse than the inconclusive warning below: the
+            # warning at least says "could not confirm".
+            #
+            # This check is deliberately allowed to be inconclusive rather than
+            # wrong. It only reads the catalog, which lists what the *region*
+            # offers, not what this account has been granted, so a real match is
+            # necessary-but-not-sufficient for access — hence the miss path is a
+            # warning, never a hard failure.
+            model_found = bool(base_model_id) and base_model_id in available_models
 
             if model_found:
                 result.add_check(

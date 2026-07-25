@@ -38,6 +38,71 @@ SEVERITY_ICONS: dict[str, str] = {
 }
 
 
+def balance_code_fences(text: str) -> str:
+    """Close any code fence a model-generated prose field left open.
+
+    Prose fields (``summary``, ``description``, ``rationale``,
+    ``recommendations``, ``improvement_suggestions``,
+    ``system_design_insights``) routinely contain fenced examples, and a model
+    that emits an opening ```` ``` ```` without its closing partner would
+    otherwise swallow every following section of the exported report into one
+    code block. Counting fence lines and appending the missing closer keeps the
+    document structurally valid.
+
+    Only *fence* lines count — a line whose first non-whitespace run is three or
+    more backticks. Inline triple-backtick spans mid-sentence are left alone
+    because they don't open a block. ``_format_issue`` handles
+    ``suggested_code`` separately, wrapping it in an :func:`enclosing_fence`.
+    """
+    if "```" not in text:
+        return text
+
+    open_fence: str | None = None
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("```"):
+            continue
+        run = len(stripped) - len(stripped.lstrip("`"))
+        marker = "`" * run
+        if open_fence is None:
+            open_fence = marker
+        elif run >= len(open_fence) and stripped == marker:
+            # A closing fence carries no info string and is at least as long
+            # as the one that opened the block.
+            open_fence = None
+
+    if open_fence is None:
+        return text
+    suffix = "" if text.endswith("\n") else "\n"
+    return f"{text}{suffix}{open_fence}"
+
+
+def enclosing_fence(text: str) -> str:
+    """Return a backtick fence long enough to wrap *text* verbatim.
+
+    CommonMark closes a fenced block on the first fence line at least as long as
+    the opener, so a wrapper is only safe when it is *longer* than every fence
+    line inside. A hardcoded ```` ```` ```` was safe for the common
+    "snippet contains ```" case and wrong for the next one up: reviewing
+    Markdown (or any code that emits four-backtick fences) put a ```` ```` ````
+    line inside a ```` ```` ```` wrapper, which closed the block early — and
+    then the wrapper's own closing fence *opened* a new block that swallowed
+    every following section of the export. Same silent-truncation failure
+    ``balance_code_fences`` exists to prevent, arrived at from the other side.
+
+    Only fence *lines* are measured (first non-whitespace run of >=3 backticks),
+    matching ``balance_code_fences``; an inline span mid-sentence cannot close a
+    block. The result is never shorter than three backticks.
+    """
+    longest = 0
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("```"):
+            continue
+        longest = max(longest, len(stripped) - len(stripped.lstrip("`")))
+    return "`" * max(3, longest + 1)
+
+
 def metrics_to_dict(report: CodeReviewReport) -> dict[str, Any]:
     """Convert a report's metrics to a dict.
 
@@ -657,7 +722,7 @@ class MarkdownExporter:
 
     def _summary(self, report: CodeReviewReport) -> str:
         """Generate summary section."""
-        return f"## Executive Summary\n\n{report.summary}"
+        return f"## Executive Summary\n\n{balance_code_fences(report.summary)}"
 
     def _metrics(self, report: CodeReviewReport) -> str:
         """Generate metrics section."""
@@ -809,17 +874,17 @@ class MarkdownExporter:
             f"#### [{issue.category}] {issue.title}",
             f"**File:** `{issue.file_path}:{issue.line_start}`",
             f"**Severity:** {issue.severity}\n",
-            f"**Description:**\n{issue.description}\n",
-            f"**Rationale:**\n{issue.rationale}\n",
+            f"**Description:**\n{balance_code_fences(issue.description)}\n",
+            f"**Rationale:**\n{balance_code_fences(issue.rationale)}\n",
         ]
 
         if issue.suggested_code:
             lang = self._detect_language(issue.file_path)
-            # Use a longer fence when the snippet itself contains ``` (e.g.
-            # reviewing Markdown, heredocs, or code that emits fenced blocks),
-            # so the embedded backticks don't close the block early and corrupt
-            # the rest of the report.
-            fence = "````" if "```" in issue.suggested_code else "```"
+            # Fence wider than anything inside the snippet (reviewing Markdown,
+            # heredocs, or code that emits fenced blocks), so the embedded
+            # backticks can't close the block early and corrupt the rest of the
+            # report. Computed rather than fixed at four — see enclosing_fence.
+            fence = enclosing_fence(issue.suggested_code)
             lines.append("**Suggested Fix:**")
             lines.append(f"{fence}{lang}\n{issue.suggested_code}\n{fence}\n")
 
@@ -834,7 +899,8 @@ class MarkdownExporter:
 
     def _system_design(self, report: CodeReviewReport) -> str:
         """Generate system design section."""
-        return f"## System Design Insights\n\n{report.system_design_insights}"
+        insights = balance_code_fences(report.system_design_insights)
+        return f"## System Design Insights\n\n{insights}"
 
     def _recommendations(self, report: CodeReviewReport) -> str:
         """Generate recommendations section."""
@@ -844,7 +910,7 @@ class MarkdownExporter:
         lines = ["## Top Recommendations\n"]
 
         for i, rec in enumerate(report.recommendations, 1):
-            lines.append(f"{i}. {rec}")
+            lines.append(f"{i}. {balance_code_fences(rec)}")
 
         return "\n".join(lines)
 
@@ -859,6 +925,6 @@ class MarkdownExporter:
         )
 
         for i, suggestion in enumerate(report.improvement_suggestions, 1):
-            lines.append(f"{i}. {suggestion}")
+            lines.append(f"{i}. {balance_code_fences(suggestion)}")
 
         return "\n".join(lines)

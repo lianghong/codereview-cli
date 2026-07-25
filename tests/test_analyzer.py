@@ -87,7 +87,8 @@ def test_analyzer_legacy_model_id_mapping(mock_provider):
 
         analyzer = CodeAnalyzer(model_id="global.anthropic.claude-opus-4-6-v1")
 
-        # Should map to "opus" (Opus 4.6 legacy ID)
+        # The legacy Opus 4.6 wire id maps to the "opus" alias, which now
+        # resolves to Opus 5 (generation-neutral alias convention).
         assert analyzer.model_name == "opus"
         mock_factory.return_value.create_provider.assert_called_once_with(
             "opus", None, callbacks=None, project_context=None
@@ -107,7 +108,9 @@ def test_analyzer_delegates_to_provider(mock_provider, sample_batch):
         call_args = mock_provider.analyze_batch.call_args
         assert call_args[1]["batch_number"] == 1
         assert call_args[1]["total_batches"] == 1
-        assert call_args[1]["max_retries"] == 3
+        # None, not a number: the analyzer has no opinion on retries, so the
+        # provider's own default applies (see _resolve_max_retries).
+        assert call_args[1]["max_retries"] is None
         # Verify file content was passed
         files_content = call_args[1]["files_content"]
         assert len(files_content) == 1

@@ -27,6 +27,28 @@ uv run codereview /path/to/code --static-analysis
 uv run codereview ./src -m sonnet --static-analysis --output report.md
 ```
 
+### Repo-Supplied Configs That Execute Code
+
+Three of these tools load code the *reviewed repository* provides:
+
+| Tool | Config | What it executes |
+|---|---|---|
+| **Mypy** | `mypy.ini`, `.mypy.ini`, `setup.cfg`, `pyproject.toml` with a `plugins =` entry in the mypy section | imports the named Python module |
+| **ESLint** | `eslint.config.{js,mjs,cjs,ts}`, `.eslintrc.{js,cjs,mjs}` | the config file *is* JavaScript |
+| **ESLint / Prettier** | `.eslintrc.json`/`.eslintrc.yaml`, `.prettierrc*`, `package.json` with a `plugins` key | loads the named plugin module |
+
+Reviewing an untrusted repository would otherwise run that code with your
+privileges. By default the affected tool is **skipped** with a visible reason;
+`--trust-repo-config` opts back in:
+
+```bash
+uv run codereview ./src --static-analysis --trust-repo-config
+```
+
+Detection is on content, not filename: an ordinary `pyproject.toml` with a
+`[tool.mypy]` section but no `plugins` entry still runs mypy. Configs that can't
+be read, or that exceed 512 KB, are treated as risky.
+
 ---
 
 ## Python Tools

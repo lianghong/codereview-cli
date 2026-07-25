@@ -8,26 +8,30 @@
 
 ## 🎉 What's New (Unreleased)
 
-- ✅ **3 new providers**: DeepSeek direct API (`deepseek-v4-pro`, `deepseek-v4-flash`), Z.AI (`zhipuai/glm-5.1`), Moonshot/Kimi (`kimi-k2.6`). 8 providers total now (incl. OpenAI-on-Bedrock).
-- ✅ **GPT-5.6 Sol (Bedrock)** — OpenAI's flagship and best coding model, on the OpenAI-compatible `bedrock-mantle` endpoint, 272K context, Responses API (`--model gpt5.6` / `sol`)
+- ✅ **3 new providers**: DeepSeek direct API (`deepseek-v4-pro`, `deepseek-v4-flash`), Z.AI (`zhipuai/glm-5.2`), Moonshot/Kimi (`kimi-k2.6`). 8 providers total now (incl. OpenAI-on-Bedrock).
+- ✅ **GPT-5.6 Sol (Bedrock)** — OpenAI's flagship and best coding model, on the OpenAI-compatible `bedrock-mantle` endpoint, 272K context, Responses API (`--model gpt5.6`)
 - ✅ **Grok 4.3 (Bedrock)** — xAI reasoning-first model on the new OpenAI-compatible `bedrock-mantle` endpoint, 1M context (`--model grok`)
-- ✅ **GLM-5.2 (NVIDIA)** — Zhipu flagship, 753B MoE, 1M context (`--model glm52`); supersedes the deprecated GLM-5.1 NVIDIA endpoint, whose aliases now route here
+- ✅ **GLM-5.2 (NVIDIA + Z.AI)** — Zhipu flagship, 753B MoE, 1M context (`--model glm52` / `glm`); supersedes GLM-5.1 on both providers
 - ✅ **GPT-5.4 (Azure)** — frontier reasoning model, 1.05M context, default Azure model
-- ✅ **DeepSeek-V4-Pro (Azure)** — 1M context with prompt-based JSON parsing for tool-use-less Foundry deployments (`supports_tool_use: false` now wired into the Azure provider)
+- ✅ **Registry cleanup (11 entries removed)** — every model probed against its live provider endpoint; superseded, region-unavailable, and dead entries dropped. 30 models remain.
+- ⚠️ **Alias cleanup (40 aliases deleted)** — `--list-models` now advertises only current names. Version-explicit aliases of removed models (`opus4.6`, `glm51`, `mm25`, `kimi25`, `step35`, `gpt5.4-bedrock`, …) were **deleted**, not redirected: they now fail fast instead of silently resolving to a newer model with different pricing and behavior. Version-neutral names (`glm5`, `kimi-azure`, `gemini-3-flash`, …) still resolve and are listed under `--list-models --verbose`. See [Migrating deleted aliases](#migrating-deleted-aliases).
+- ✅ **`--fail-on <severity>`** — CI merge gate: exits 2 when issues at that severity or above are found, distinct from exit 1 (the run itself failed). Independent of `--severity`, and applied after the report is written
+- ✅ **New `Correctness` category** — logic errors, edge cases, error paths, race conditions, and resource leaks are no longer filed as "Code Quality" next to naming nits
 - ✅ **`--tool-timeout`** — override the static-analysis subprocess timeout (default 120s) for slow C++/mypy runs
+- 🔒 **`--trust-repo-config`** — static analysis no longer runs mypy/ESLint/Prettier when the *reviewed* repository ships a config that makes them load code from the tree (a mypy `plugins =` entry, a JavaScript `eslint.config.*`). Those tools are skipped with a visible reason; pass the flag to opt back in for a repository you trust
 - ✅ **`--include-hidden`** — opt-in scanning of `.github/scripts`, `.config/`, etc.
 - ✅ **Reproducible static analysis** — file lists sorted before truncation so CI runs are deterministic (locked in by regression test)
 - ✅ **Accurate issue counts** — ruff/mypy/bandit summary-line parsing replaces the old substring-match heuristic
 - ✅ **Supply-chain hardening** — static-analysis tools resolved via `shutil.which()`; binaries inside the analyzed directory are refused (gofmt cache-bypass also fixed)
 - ✅ **AWS error redaction** — STS/Bedrock validation errors no longer leak SCP fragments or IAM policy details
-- ✅ **All 572 tests passing**, ruff/format/mypy clean
+- ✅ **All 1041 tests passing**, ruff/format/mypy clean
 
 A LangChain-based CLI tool that provides comprehensive, intelligent code reviews for Python, Go, Shell Script, C++, Java, JavaScript, and TypeScript projects using Claude, GPT-5.4, Grok 4.3, Gemini, DeepSeek-V4-Pro, Kimi K2.6, GLM-5.2, and other leading models through AWS Bedrock, Azure OpenAI, NVIDIA NIM, Google Generative AI, DeepSeek, Z.AI, and Moonshot.
 
 ## Features
 
-- **Multi-Provider Support** (8 providers): AWS Bedrock (Claude, Minimax, Kimi, Qwen), Azure OpenAI (GPT-5.4, GPT-5.4 Pro, DeepSeek-V4-Pro, Kimi K2.5), NVIDIA NIM (Mistral, MiniMax, Kimi, Qwen, DeepSeek-V4-Pro, GLM-5.2, Step), Google GenAI (Gemini 3.1 Pro / 3 Pro / 3 Flash), DeepSeek direct (V4-Pro, V4-Flash), Z.AI (GLM-5.2, GLM-5.1), Moonshot direct (Kimi K2.6), and OpenAI-on-Bedrock (GPT-5.6 Sol, GPT-5.5/5.4, Grok 4.3 via the `bedrock-mantle` OpenAI-compatible endpoint)
-- **AI-Powered Analysis**: Leverages Claude Opus 4.8, Claude Sonnet 5, GPT-5.4, Grok 4.3, DeepSeek-V4-Pro, Kimi K2.6, GLM-5.2, Gemini 3.1 Pro, and other leading models for deep code understanding
+- **Multi-Provider Support** (8 providers): AWS Bedrock (Claude, Minimax, Kimi, Qwen), Azure OpenAI (GPT-5.4, GPT-5.4 Pro), NVIDIA NIM (Mistral, MiniMax, Kimi, Qwen, DeepSeek-V4-Pro, GLM-5.2, Step), Google GenAI (Gemini 3.1 Pro / 3.6 Flash), DeepSeek direct (V4-Pro, V4-Flash), Z.AI (GLM-5.2), Moonshot direct (Kimi K2.6), and OpenAI-on-Bedrock (GPT-5.6 Sol, GPT-5.5, Grok 4.3 via the `bedrock-mantle` OpenAI-compatible endpoint)
+- **AI-Powered Analysis**: Leverages Claude Opus 5, Claude Sonnet 5, GPT-5.4, Grok 4.3, DeepSeek-V4-Pro, Kimi K2.6, GLM-5.2, Gemini 3.1 Pro, Gemini 3.6 Flash, and other leading models for deep code understanding
 - **Multi-Language Support**: Reviews Python, Go, Shell Script, C++, Java, JavaScript, and TypeScript codebases
 - **Smart Batching**: Automatically groups files for efficient token usage
 - **Structured Output**: Get categorized issues with severity levels and actionable suggestions
@@ -47,13 +51,13 @@ A LangChain-based CLI tool that provides comprehensive, intelligent code reviews
 - Python 3.14+
 - **At least one of the following:**
   - AWS account with Bedrock access (Claude, Minimax, Kimi, Qwen models)
-  - Azure OpenAI resource with model deployment (GPT-5.4, GPT-5.4 Pro, DeepSeek-V4-Pro, Kimi K2.5) — `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`
+  - Azure OpenAI resource with model deployment (GPT-5.4, GPT-5.4 Pro) — `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`
   - NVIDIA API key from [build.nvidia.com](https://build.nvidia.com) — `NVIDIA_API_KEY` (Mistral, MiniMax, Kimi, Qwen, DeepSeek-V4-Pro, GLM-5.2, Step; free tier available)
-  - Google API key from [AI Studio](https://aistudio.google.com/apikey) — `GOOGLE_API_KEY` (Gemini 3.1 Pro / 3 Pro / 3 Flash)
+  - Google API key from [AI Studio](https://aistudio.google.com/apikey) — `GOOGLE_API_KEY` (Gemini 3.1 Pro / 3.6 Flash)
   - DeepSeek API key from [platform.deepseek.com](https://platform.deepseek.com/api_keys) — `DEEPSEEK_API_KEY` (V4-Pro, V4-Flash)
-  - Z.AI API key from [z.ai](https://z.ai) — `ZAI_API_KEY` (GLM-5.2, GLM-5.1; international)
+  - Z.AI API key from [z.ai](https://z.ai) — `ZAI_API_KEY` (GLM-5.2; international)
   - Moonshot/Kimi API key from [platform.moonshot.cn](https://platform.moonshot.cn) — `KIMI_API_KEY` (Kimi K2.6; international keys from `platform.moonshot.ai` work too — override `base_url`)
-  - Amazon Bedrock API key (bearer token) for OpenAI-on-Bedrock — `OPENAI_API_KEY` + `OPENAI_BASE_URL` (GPT-5.6 Sol, GPT-5.5/5.4, Grok 4.3 via the `bedrock-mantle` OpenAI-compatible endpoint)
+  - Amazon Bedrock API key (bearer token) for OpenAI-on-Bedrock — `OPENAI_API_KEY` + `OPENAI_BASE_URL` (GPT-5.6 Sol, GPT-5.5, Grok 4.3 via the `bedrock-mantle` OpenAI-compatible endpoint)
 
 ### Install with uv (recommended)
 
@@ -102,7 +106,7 @@ codereview /path/to/code --aws-profile your-profile
 
 1. Go to AWS Console > Bedrock
 2. Navigate to "Model access" in your region
-3. Request access to "Anthropic Claude Opus 4.6"
+3. Request access to "Anthropic Claude Opus 5" (the default model)
 4. Wait for approval (usually instant for supported regions)
 
 ### 3. Verify IAM Permissions
@@ -127,7 +131,7 @@ Ensure your IAM user/role has the following permissions:
 
 ## Azure OpenAI Configuration (Alternative to AWS)
 
-Azure OpenAI provides access to GPT-5.4, GPT-5.4 Pro, DeepSeek-V4-Pro, and Kimi K2.5 via Microsoft Azure AI Foundry.
+Azure OpenAI provides access to GPT-5.4 and GPT-5.4 Pro via Microsoft Azure AI Foundry.
 
 ### 1. Set Environment Variables
 
@@ -142,8 +146,6 @@ export AZURE_OPENAI_API_KEY="your-api-key"
 2. Deploy models from Azure AI Foundry catalog:
    - **GPT-5.4** (deployment name: `gpt-5.4`) - Frontier reasoning model, 1.05M context, 128K output
    - **GPT-5.4 Pro** (deployment name: `gpt-5.4-pro`) - Deeper reasoning variant, 1.05M context
-   - **DeepSeek-V4-Pro** (deployment name: `DeepSeek-V4-Pro`) - 1M context, chain-of-thought reasoning (no tool calling on Foundry)
-   - **Kimi K2.5** (deployment name: `Kimi-K2.5`) - Moonshot AI's multimodal MoE model
 3. Note your deployment name, endpoint, and API key
 
 ### 3. Use Azure Models
@@ -154,12 +156,6 @@ codereview /path/to/code --model gpt
 
 # GPT-5.4 Pro - Deeper reasoning variant, 1.05M context
 codereview /path/to/code --model gpt-pro
-
-# DeepSeek-V4-Pro - 1M context, prompt-based JSON parsing
-codereview /path/to/code --model dsv4-azure
-
-# Kimi K2.5 - Multimodal MoE, 256K context
-codereview /path/to/code --model kimi-azure
 ```
 
 ### 4. Test Connection
@@ -168,11 +164,11 @@ codereview /path/to/code --model kimi-azure
 codereview --list-models  # Should show Azure models
 ```
 
-**Note:** Azure OpenAI models require you to deploy them in your Azure resource first. The deployment names in your configuration must match your actual Azure deployments. Kimi K2.5 and DeepSeek-V4-Pro are available as "Direct from Azure" models in the Azure AI Foundry catalog. DeepSeek-V4-Pro on Foundry doesn't support tool calling, so the provider falls back to prompt-based JSON parsing automatically (`supports_tool_use: false` in `models.yaml`).
+**Note:** Azure OpenAI models require you to deploy them in your Azure resource first — unlike the Bedrock/NVIDIA catalogs, an entry only works if a deployment with that exact name exists on your resource. The Kimi K2.5 and DeepSeek-V4-Pro Azure entries were removed in the 2026-07-25 registry cleanup for that reason (`DeploymentNotFound`); their aliases now route to the direct Moonshot and DeepSeek APIs. If you deploy a Foundry model that doesn't support tool calling, add it back with `supports_tool_use: false` in `models.yaml` and the provider falls back to prompt-based JSON parsing automatically.
 
 ## NVIDIA NIM Configuration (Alternative Provider)
 
-NVIDIA NIM provides access to Mistral Small 4, Mistral Medium 3.5, MiniMax M2.7, MiniMax M3, Kimi K2.6, Qwen3 Coder, Qwen3.5, DeepSeek-V4-Pro/Flash, GLM-5.2, Step 3.5/3.7 Flash, and more — with a free tier for development.
+NVIDIA NIM provides access to Mistral Small 4, Mistral Medium 3.5, MiniMax M3, Kimi K2.6, Qwen3.5, DeepSeek-V4-Pro/Flash, GLM-5.2, Step 3.7 Flash, and more — with a free tier for development.
 
 ### 1. Get API Key
 
@@ -201,39 +197,32 @@ codereview /path/to/code --model dsv4-nvidia
 # DeepSeek-V4-Flash - 1M context, fast/cheap sibling of V4-Pro (free on NVIDIA)
 codereview /path/to/code --model dsv4-flash-nvidia
 
-# Qwen3 Coder - Ultra-large coding model with thinking mode
-codereview /path/to/code --model qwen-nvidia
-
 # Qwen3.5 - Next-gen Qwen reasoning model with thinking mode (262K context)
+# (NVIDIA's Qwen3 Coder 480B endpoint is gone; qwen-nvidia/qwen3-nvidia route here)
 codereview /path/to/code --model qwen3.5
 
-# MiniMax M2.7 - Agent-native model with thinking mode (56.22% SWE-Pro, 204K context)
-# (NVIDIA retired the M2.5 endpoint 2026-05-12; minimax-m2.5/mm25 now route here)
-codereview /path/to/code --model minimax-m2.7
-
 # MiniMax M3 - Multimodal MoE (428B/22B active), 1M context, thinking, long-horizon coding
+# (supersedes M2.7 and the retired M2.5, whose version-explicit aliases were deleted)
 codereview /path/to/code --model minimax-m3
 
 # Kimi K2.6 - 262K context, thinking mode
-# (NVIDIA shut down the K2.5 endpoint 2026-05-20; kimi-k2.5/kimi25 now route here)
+# (NVIDIA shut down the K2.5 endpoint 2026-05-20; its K2.5 aliases were deleted)
 codereview /path/to/code --model kimi-k2.6
 
 # GLM-5.2 - Zhipu flagship, 753B MoE, 1M context
-# (NVIDIA deprecated the GLM-5.1 endpoint ~2026-07; glm51/glm5/glm-5 now route to GLM-5.2)
+# (NVIDIA deprecated the GLM-5.1 endpoint ~2026-07; glm5/glm-5 still route here, glm51 does not)
 codereview /path/to/code --model glm52
 
-# Step 3.5 Flash - Cost-efficient reasoning, fast
-codereview /path/to/code --model step-3.5-flash
-
-# Step 3.7 Flash - Newer 256K multimodal sibling with reasoning levels
+# Step 3.7 Flash - 256K multimodal reasoning model with effort levels
+# (supersedes Step 3.5 Flash; step-flash routes here, the 3.5-explicit aliases were deleted)
 codereview /path/to/code --model step-3.7-flash
 ```
 
-**Note:** NVIDIA NIM models are currently in free tier. No charges apply during the preview period. Models with thinking mode enabled (MiniMax M2.7, MiniMax M3, Qwen3.5, DeepSeek-V4-Pro/Flash, Qwen3 Coder, GLM-5.2, Kimi K2.6) provide deeper reasoning for complex code analysis.
+**Note:** NVIDIA NIM models are currently in free tier. No charges apply during the preview period. Models with thinking mode enabled (MiniMax M3, Qwen3.5, DeepSeek-V4-Pro/Flash, GLM-5.2, Kimi K2.6, Step 3.7 Flash) provide deeper reasoning for complex code analysis.
 
 ## Google Generative AI Configuration (Alternative Provider)
 
-Google Generative AI provides access to Gemini 3.1 Pro and Gemini 3 models with 1M token context windows.
+Google Generative AI provides access to Gemini 3.1 Pro and Gemini 3.6 Flash, both with 1M token context windows.
 
 ### 1. Get API Key
 
@@ -254,8 +243,10 @@ export GOOGLE_API_KEY="your-api-key-here"
 # (Google shut down gemini-3-pro 2026-03-09; gemini-3-pro now routes here)
 codereview /path/to/code --model gemini-3.1-pro
 
-# Gemini 3 Flash - Fast and cost-efficient (1M context)
-codereview /path/to/code --model gemini-3-flash
+# Gemini 3.6 Flash - GA workhorse, thinking on by default (1M context)
+# (supersedes the deprecated gemini-3-flash-preview; gemini-flash, gemini-3-flash,
+#  gemini3-flash, and g3flash all resolve here)
+codereview /path/to/code --model gemini-3.6-flash
 ```
 
 ## DeepSeek Direct API Configuration (Alternative Provider)
@@ -284,7 +275,7 @@ codereview /path/to/code --model deepseek-v4-flash
 
 ## Z.AI (Zhipu) Configuration (Alternative Provider)
 
-Z.AI is Zhipu's international platform exposing GLM-5.2 (current flagship — long-horizon engineering model, 1M-token context) and GLM-5.1 via an OpenAI-compatible endpoint. The CLI integrates via `langchain-openai`'s `ChatOpenAI` with a custom base URL — no langchain-community dependency.
+Z.AI is Zhipu's international platform exposing GLM-5.2 (current flagship — long-horizon engineering model, 1M-token context) via an OpenAI-compatible endpoint. The CLI integrates via `langchain-openai`'s `ChatOpenAI` with a custom base URL — no langchain-community dependency.
 
 ### 1. Get API Key
 
@@ -299,13 +290,10 @@ export ZAI_API_KEY="your-zai-key"
 ### 3. Use Z.AI Models
 
 ```bash
-# GLM-5.2 - flagship, 1M-token context (default Z.AI model)
+# GLM-5.2 - flagship, 1M-token context (only Z.AI model)
+# (supersedes GLM-5.1 at the same price; zai-glm and glm-zai route here)
 codereview /path/to/code --model zhipuai/glm-5.2
 codereview /path/to/code --model glm        # short alias
-
-# GLM-5.1 - long-horizon coding, 203K context
-codereview /path/to/code --model zhipuai/glm-5.1
-codereview /path/to/code --model zai-glm  # short alias
 ```
 
 ## Moonshot AI (Kimi) Configuration (Alternative Provider)
@@ -342,7 +330,7 @@ moonshot:
 
 ## OpenAI-on-Bedrock Configuration (Alternative Provider)
 
-Amazon Bedrock hosts OpenAI's frontier models (GPT-5.6 Sol, GPT-5.5, GPT-5.4) **and xAI's Grok 4.3** on an OpenAI-compatible `bedrock-mantle` endpoint. This is a **different path** from the SigV4 `bedrock` provider above: it authenticates with an **Amazon Bedrock API key (a bearer token, not AWS creds)** and is driven with `ChatOpenAI` + a custom `base_url` — no new dependency.
+Amazon Bedrock hosts OpenAI's frontier models (GPT-5.6 Sol, GPT-5.5) **and xAI's Grok 4.3** on an OpenAI-compatible `bedrock-mantle` endpoint. This is a **different path** from the SigV4 `bedrock` provider above: it authenticates with an **Amazon Bedrock API key (a bearer token, not AWS creds)** and is driven with `ChatOpenAI` + a custom `base_url` — no new dependency.
 
 ### 1. Get an Amazon Bedrock API Key
 
@@ -362,15 +350,15 @@ export OPENAI_BASE_URL="https://bedrock-mantle.us-west-2.api.aws/openai/v1"
 ```bash
 # GPT-5.6 Sol - OpenAI flagship, best coding model, 272K context (Responses API)
 codereview /path/to/code --model gpt5.6
-codereview /path/to/code --model sol        # or gpt5.6-sol, gpt5.6-bedrock
+codereview /path/to/code --model gpt5.6-bedrock   # or gpt-5.6, gpt5.6-sol-bedrock
 
 # Grok 4.3 - xAI reasoning-first, 1M context, accepts temperature/top_p
 codereview /path/to/code --model grok
 codereview /path/to/code --model grok-4.3   # or grok43, grok-bedrock
 
-# GPT-5.5 / GPT-5.4 on Bedrock (reasoning models, Responses API)
+# GPT-5.5 on Bedrock (reasoning model, Responses API)
+# (supersedes GPT-5.4 at the same price; the gpt5.4-bedrock alias was deleted)
 codereview /path/to/code --model gpt5.5-bedrock
-codereview /path/to/code --model gpt5.4-bedrock
 ```
 
 > **Tip:** GPT-5.6 also ships cheaper tiers — Terra (`openai.gpt-5.6-terra`, $2.50/$15) for balanced everyday work and Luna (`openai.gpt-5.6-luna`, $1/$6) for high-volume/CI. Add either the same way as the Sol entry in `models.yaml` if you want a lower-cost run.
@@ -380,54 +368,51 @@ codereview /path/to/code --model gpt5.4-bedrock
 ### Basic Usage
 
 ```bash
-# Uses Claude Opus 4.8 by default
+# Uses Claude Opus 5 by default
 codereview /path/to/your/codebase
 ```
 
 ### Choose Your Model
 
 ```bash
-# List all available models
+# List all available models (advertised aliases only)
 codereview --list-models
+
+# Also show deprecated aliases — back-compat names that resolve to a successor model
+codereview --list-models --verbose
 
 # AWS Bedrock Models (Claude family)
 codereview /path/to/code --model fable5    # Claude Fable 5 (Mythos-class, 1M context)
-codereview /path/to/code --model opus4.8   # Claude Opus 4.8 (latest, default, 1M context)
-codereview /path/to/code --model opus4.7   # Claude Opus 4.7 (reasoning, 200K context)
-codereview /path/to/code --model opus      # Claude Opus 4.6
+codereview /path/to/code --model opus      # Claude Opus 5 (latest, default, 1M context)
+codereview /path/to/code --model opus4.8   # Claude Opus 4.8 (reasoning, 1M context)
 codereview /path/to/code --model sonnet5   # Claude Sonnet 5 (Claude 5 gen, 1M context)
 codereview /path/to/code --model sonnet    # Claude Sonnet 4.6 (balanced)
 codereview /path/to/code --model haiku     # Claude Haiku 4.5 (fastest)
 
 # AWS Bedrock (other providers)
 codereview /path/to/code --model kimi-k2.5-bedrock  # Kimi K2.5 (262K context)
-codereview /path/to/code --model qwen-bedrock       # Qwen3 Coder 480B
-codereview /path/to/code --model qwen-next-bedrock  # Qwen3 Coder Next (80B MoE)
+codereview /path/to/code --model qwen-next-bedrock  # Qwen3 Coder Next (80B MoE; owns `qwen`)
 codereview /path/to/code --model minimax-m2.5-bedrock  # MiniMax M2.5 (196K context)
 codereview /path/to/code --model glm5-bedrock       # GLM 5 (Bedrock)
 
 # Azure OpenAI Models
 codereview /path/to/code --model gpt              # GPT-5.4 (1.05M context, frontier reasoning)
 codereview /path/to/code --model gpt-pro          # GPT-5.4 Pro (deeper reasoning variant)
-codereview /path/to/code --model dsv4-azure       # DeepSeek-V4-Pro (1M context, no tool use)
-codereview /path/to/code --model kimi-azure       # Kimi K2.5 (256K context)
 
 # NVIDIA NIM Models (free tier)
 codereview /path/to/code --model mistral-small      # Mistral Small 4 119B
 codereview /path/to/code --model mistral-medium     # Mistral Medium 3.5 128B (77.6% SWE-Bench)
-codereview /path/to/code --model minimax-m2.7       # MiniMax M2.7 (thinking, agent-native)
+codereview /path/to/code --model minimax-m3         # MiniMax M3 (1M context; supersedes M2.7/M2.5)
 codereview /path/to/code --model dsv4-nvidia        # DeepSeek-V4-Pro on NVIDIA (free)
 codereview /path/to/code --model dsv4-flash-nvidia  # DeepSeek-V4-Flash on NVIDIA (free, 1M context, fast)
-codereview /path/to/code --model qwen-nvidia        # Qwen3 Coder 480B (thinking)
-codereview /path/to/code --model qwen3.5            # Qwen3.5 397B (262K context)
-codereview /path/to/code --model glm52              # GLM-5.2 (753B MoE, 1M context; supersedes deprecated glm51/glm5)
+codereview /path/to/code --model qwen3.5            # Qwen3.5 397B (262K context; owns `qwen*-nvidia`)
+codereview /path/to/code --model glm52              # GLM-5.2 (753B MoE, 1M context; owns `glm5`/`glm-5`)
 codereview /path/to/code --model kimi-nvidia-26     # Kimi K2.6 on NVIDIA (free; supersedes K2.5)
-codereview /path/to/code --model step-3.5-flash     # Step 3.5 Flash
-codereview /path/to/code --model step-3.7-flash     # Step 3.7 Flash (256K, multimodal, newer)
+codereview /path/to/code --model step-3.7-flash     # Step 3.7 Flash (256K, multimodal; supersedes 3.5)
 
 # Google Generative AI Models
 codereview /path/to/code --model gemini-3.1-pro     # Gemini 3.1 Pro (1M context)
-codereview /path/to/code --model gemini-3-flash     # Gemini 3 Flash (fast, cheap)
+codereview /path/to/code --model gemini-3.6-flash   # Gemini 3.6 Flash (GA workhorse, thinking on; `gemini-flash`)
 
 # DeepSeek Direct API
 codereview /path/to/code --model deepseek-v4-pro    # Flagship, 1M context
@@ -435,8 +420,7 @@ codereview /path/to/code --model deepseek-v4-flash  # 12x cheaper input, 1M cont
 
 # Z.AI (Zhipu international)
 codereview /path/to/code --model zhipuai/glm-5.2    # Flagship, 1M-token context
-codereview /path/to/code --model zhipuai/glm-5.1    # Long-horizon coding, 203K context
-codereview /path/to/code --model zai-glm            # Short alias
+codereview /path/to/code --model glm                # Short alias
 
 # Moonshot direct API (Kimi)
 codereview /path/to/code --model kimi-k2.6          # Canonical, 256K context, 1T MoE
@@ -445,8 +429,7 @@ codereview /path/to/code --model kimi               # Short alias
 # OpenAI-on-Bedrock (bedrock-mantle OpenAI-compatible endpoint; bearer-key auth)
 codereview /path/to/code --model gpt5.6             # GPT-5.6 Sol (OpenAI flagship, best coding model)
 codereview /path/to/code --model grok               # Grok 4.3 (xAI, reasoning-first, 1M context)
-codereview /path/to/code --model gpt5.5-bedrock     # GPT-5.5 on Bedrock
-codereview /path/to/code --model gpt5.4-bedrock     # GPT-5.4 on Bedrock
+codereview /path/to/code --model gpt5.5-bedrock     # GPT-5.5 on Bedrock (or `gpt-bedrock`)
 
 # Short aliases work too
 codereview /path/to/code -m haiku
@@ -458,45 +441,35 @@ codereview /path/to/code -m kimi
 
 | Model | Provider | Use Case | Input $/M | Output $/M |
 |-------|----------|----------|-----------|------------|
-| Opus 4.8 | AWS Bedrock | Latest reasoning, default model, 1M context | $5.00 | $25.00 |
-| Opus 4.7 | AWS Bedrock | Reasoning, 200K context | $5.00 | $25.00 |
-| Opus 4.6 | AWS Bedrock | Highest quality, critical reviews | $5.00 | $25.00 |
+| Opus 5 | AWS Bedrock | Latest reasoning, default model, best for code review, 1M context | $5.00 | $25.00 |
+| Opus 4.8 | AWS Bedrock | Reasoning, 1M context | $5.00 | $25.00 |
 | Sonnet 5 | AWS Bedrock | Claude 5 gen, near-Opus at Sonnet price, 1M context | $3.00 | $15.00 |
 | Sonnet 4.6 | AWS Bedrock | Balanced performance and cost | $3.00 | $15.00 |
 | Haiku 4.5 | AWS Bedrock | Fast, economical, large codebases | $1.00 | $5.00 |
 | Kimi K2.5 (Bedrock) | AWS Bedrock | 262K context, MoE | TBD | TBD |
 | MiniMax M2.5 (Bedrock) | AWS Bedrock | 196K context, agent-native | TBD | TBD |
-| Qwen3 Coder 480B | AWS Bedrock | Ultra-large coding model | TBD | TBD |
 | GPT-5.4 | Azure OpenAI | Frontier reasoning, 1.05M context, default Azure | $2.50 | $15.00 |
 | GPT-5.4 Pro | Azure OpenAI | Deeper reasoning, hardest problems | $30.00 | $180.00 |
-| DeepSeek-V4-Pro (Azure) | Azure OpenAI | 1M context, prompt-based JSON (no tool use on Foundry) | $1.74 | $3.48 |
-| Kimi K2.5 (Azure) | Azure OpenAI | Multimodal MoE, 256K context | $0.60 | $3.00 |
 | Mistral Small 4 | NVIDIA NIM | 256K context, MoE architecture | Free* | Free* |
 | Mistral Medium 3.5 | NVIDIA NIM | 128B dense, 256K context, reasoning_effort, 77.6% SWE-Bench | Free* | Free* |
-| MiniMax M2.7 | NVIDIA NIM | 204K context, 128K output, thinking mode, agent-native (supersedes retired M2.5) | Free* | Free* |
-| MiniMax M3 | NVIDIA NIM | Multimodal MoE (428B/22B active), 1M context, 128K output, thinking, long-horizon coding | Free* | Free* |
+| MiniMax M3 | NVIDIA NIM | Multimodal MoE (428B/22B active), 1M context, 128K output, thinking, long-horizon coding (supersedes M2.7/M2.5) | Free* | Free* |
 | DeepSeek-V4-Pro (NVIDIA) | NVIDIA NIM | 1M context, three reasoning modes | Free* | Free* |
 | DeepSeek-V4-Flash (NVIDIA) | NVIDIA NIM | 1M context, fast/cheap sibling of V4-Pro | Free* | Free* |
-| Qwen3 Coder (NIM) | NVIDIA NIM | Ultra-large coding, thinking mode | Free* | Free* |
-| Qwen3.5 397B | NVIDIA NIM | Next-gen Qwen, thinking mode, 262K context | Free* | Free* |
+| Qwen3.5 397B | NVIDIA NIM | Next-gen Qwen, thinking mode, 262K context (only Qwen on NIM) | Free* | Free* |
 | GLM-5.2 | NVIDIA NIM | 753B MoE, 1M context, thinking (supersedes deprecated GLM-5.1/GLM-5) | Free* | Free* |
 | Kimi K2.6 | NVIDIA NIM | 262K context, thinking mode (supersedes retired K2.5) | Free* | Free* |
-| Step 3.5 Flash | NVIDIA NIM | Cost-efficient reasoning | Free* | Free* |
-| Step 3.7 Flash | NVIDIA NIM | 256K multimodal, reasoning levels (newer) | Free* | Free* |
+| Step 3.7 Flash | NVIDIA NIM | 256K multimodal, reasoning levels (supersedes 3.5 Flash) | Free* | Free* |
 | Gemini 3.1 Pro | Google GenAI | Most advanced reasoning, 1M context (supersedes retired 3 Pro) | $2.00 | $12.00 |
-| Gemini 3 Flash | Google GenAI | Fast and cheap, 1M context | $0.50 | $3.00 |
+| Gemini 3.6 Flash | Google GenAI | GA workhorse, 1M context, 64K output, thinking on by default (owns `gemini-flash`; supersedes 3 Flash Preview) | $1.50 | $7.50 |
 | **DeepSeek-V4-Pro** | **DeepSeek direct** | **1M context, three reasoning modes, tool calling** | **$1.74** | **$3.48** |
 | **DeepSeek-V4-Flash** | **DeepSeek direct** | **1M context, 12x cheaper input than V4-Pro** | **$0.14** | **$0.28** |
-| **GLM-5.2 (Z.AI)** | **Z.AI direct** | **Flagship, 1M-token context, long-horizon engineering, thinking mode** | **$1.40** | **$4.40** |
-| **GLM-5.1 (Z.AI)** | **Z.AI direct** | **Long-horizon coding, 203K context, function calling** | **$1.40** | **$4.40** |
+| **GLM-5.2 (Z.AI)** | **Z.AI direct** | **Flagship, 1M-token context, long-horizon engineering, thinking mode (supersedes GLM-5.1 at the same price)** | **$1.40** | **$4.40** |
 | **Kimi K2.6** | **Moonshot direct** | **1T MoE, 32B active, 256K context, agentic** | **$0.60** | **$2.50** |
-| Qwen3 Coder (Bedrock) | AWS Bedrock | Ultra-large model, deep analysis | $0.22 | $1.40 |
-| Qwen3 Coder Next (Bedrock) | AWS Bedrock | Ultra-sparse MoE, 70%+ SWE-bench | $0.50 | $1.20 |
+| Qwen3 Coder Next (Bedrock) | AWS Bedrock | Ultra-sparse MoE, 70%+ SWE-bench (owns `qwen`) | $0.50 | $1.20 |
 | GLM 5 (Bedrock) | AWS Bedrock | Zhipu next-gen reasoning | TBD | TBD |
 | **GPT-5.6 Sol (Bedrock)** | **OpenAI-on-Bedrock** | **OpenAI flagship, best coding model, 272K context, `bedrock-mantle` endpoint** | **$5.00** | **$30.00** |
 | **Grok 4.3 (Bedrock)** | **OpenAI-on-Bedrock** | **xAI reasoning-first, 1M context, `bedrock-mantle` endpoint** | **$1.25** | **$2.50** |
 | GPT-5.5 (Bedrock) | OpenAI-on-Bedrock | Frontier reasoning, `bedrock-mantle` endpoint | $2.50 | $15.00 |
-| GPT-5.4 (Bedrock) | OpenAI-on-Bedrock | Frontier reasoning, `bedrock-mantle` endpoint | $2.50 | $15.00 |
 
 *NVIDIA NIM models are currently in free preview tier. Models with thinking mode use interleaved reasoning for deeper code analysis. Several Bedrock models display "TBD" until AWS publishes official pricing — the CLI renders unpriced models as `Estimated cost: TBD` instead of `$0.0000`.
 
@@ -515,6 +488,53 @@ codereview /path/to/code --output review-report.json --format json
 ```bash
 # Show only critical and high severity issues
 codereview /path/to/code --severity high
+```
+
+### Fail the Build on Findings (CI Gate)
+
+`--fail-on` turns the review into a merge gate. It exits **2** when any issue at
+the given severity *or above* was found:
+
+```bash
+# Fail CI if any Critical or High issue exists
+codereview ./src --fail-on high
+
+# Strictest: fail on anything at all
+codereview ./src --fail-on info
+```
+
+Exit codes:
+
+| Code | Meaning |
+|---|---|
+| `0` | Review completed; nothing at or above the `--fail-on` threshold |
+| `1` | The **run** failed (no results, bad credentials, API error, unwritable output) |
+| `2` | The review **succeeded** and found blocking issues (`--fail-on` tripped) |
+
+`1` and `2` are deliberately distinct: a broken pipeline and a failing code
+review need different responses.
+
+Two things to know:
+
+- `--fail-on` is independent of `--severity`. `--severity` only filters what is
+  *displayed*; hiding a finding never changes the exit code. `--severity critical
+  --fail-on high` still fails on a High issue you never saw.
+- The gate is applied **after** the report is written, so a failing build still
+  produces its `--output` artifact.
+
+```yaml
+# GitHub Actions
+- name: AI code review
+  run: |
+    uv run codereview ./src \
+      --fail-on high \
+      --output review.json --format json \
+      --quiet
+- name: Upload review
+  if: always()          # the report exists even when the gate fails
+  uses: actions/upload-artifact@v4
+  with:
+    path: review.json
 ```
 
 ### Limit Files
@@ -575,6 +595,42 @@ codereview /path/to/code --static-analysis --tool-timeout 600
 ```
 Useful for `cppcheck --enable=all` on large C++ repos and `mypy` strict mode on big Python codebases.
 
+### Repo-Supplied Configs That Execute Code
+
+Reviewing an untrusted repository means running linters against files you did not
+write — and three of them load *code* from the tree when the repository asks them
+to:
+
+| Tool | Config | What it executes |
+|---|---|---|
+| mypy | `mypy.ini`, `setup.cfg`, `pyproject.toml` with a `plugins =` entry | imports the named Python module |
+| ESLint | `eslint.config.{js,mjs,cjs,ts}`, `.eslintrc.{js,cjs,mjs}` | the config *is* JavaScript |
+| ESLint / Prettier | `.eslintrc.json`, `.prettierrc`, `package.json` with a `plugins` key | loads the named plugin module |
+
+That code runs with your privileges, in your shell, before any review output
+exists. So by default the tool **detects those configs and skips the tool**,
+naming what it skipped and why:
+
+```
+✗ Skipped mypy: mypy.ini in the analyzed repository would make it load and
+  execute code from the tree with your privileges. Its findings are missing
+  from this review. Pass --trust-repo-config to run it anyway (only for a
+  repository you trust).
+```
+
+Detection is on **content, not presence**: an ordinary `pyproject.toml` with a
+`[tool.mypy]` section but no `plugins` entry still runs mypy normally — repo
+config is what makes linter output match that project's CI, and this project's
+own `pyproject.toml` is not flagged. An unreadable or oversized (>512 KB) config
+*is* treated as risky, since that is what an attacker would arrange if it
+bypassed the check.
+
+Opt back in for a repository you trust:
+
+```bash
+codereview /path/to/code --static-analysis --trust-repo-config
+```
+
 ### Scan Hidden Directories
 
 By default, directories starting with `.` (`.git`, `.venv`, `.github`, `.config`, etc.) are skipped. Opt in to scan them:
@@ -619,16 +675,17 @@ codereview /path/to/code \
 
 ## Review Categories
 
-The tool identifies issues across 8 categories:
+The tool identifies issues across 9 categories:
 
-1. **Code Style**: Formatting, naming conventions, code organization
-2. **Code Quality**: Complexity, duplication, maintainability
-3. **Security**: Vulnerabilities, injection risks, data exposure
-4. **Performance**: Inefficiencies, resource usage, optimization opportunities
-5. **Best Practices**: Language idioms, design patterns, modern approaches
-6. **System Design**: Architecture, modularity, scalability
-7. **Testing**: Test coverage, test quality, missing tests
-8. **Documentation**: Missing docs, unclear comments, API documentation
+1. **Correctness**: Logic errors, off-by-one, unhandled edge cases, missing error paths, race conditions, resource leaks — the code returns a wrong result or crashes
+2. **Code Style**: Formatting, naming conventions, code organization
+3. **Code Quality**: Complexity, duplication, maintainability — the code works but is hard to maintain
+4. **Security**: Vulnerabilities, injection risks, data exposure
+5. **Performance**: Inefficiencies, resource usage, optimization opportunities
+6. **Best Practices**: Language idioms, design patterns, modern approaches
+7. **System Design**: Architecture, modularity, scalability
+8. **Testing**: Test coverage, test quality, missing tests
+9. **Documentation**: Missing docs, unclear comments, API documentation
 
 ## Severity Levels
 
@@ -713,6 +770,39 @@ Error: DeploymentNotFound (Azure)
 **Solutions**:
 - **AWS**: Model may not be available in your region. Request access in AWS Bedrock Console
 - **Azure**: Ensure you have deployed the model in your Azure OpenAI resource. Check deployment name matches configuration
+
+### Migrating Deleted Aliases
+
+```
+Error: 'opus4.6' is not a valid model
+```
+
+The 2026-07-25 alias cleanup **deleted** the version-explicit aliases of removed models
+instead of pointing them at a successor. A name that says "4.6" silently resolving to a
+two-generations-newer model — with different pricing, different sampling-parameter support
+and a different structured-output path — is worse than an error you can read and fix.
+
+| Deleted alias(es) | Use instead |
+|---|---|
+| `opus4.7`, `opus-4.7`, `claude-opus-4.7`, `claude-opus-47`, `opus4.6`, `opus-4.6`, `claude-opus-4.6` | `opus5` (or `opus`) |
+| `minimax-m2.7`, `minimax-m2.7-nvidia`, `mm2.7-nvidia`, `mm27`, `minimax-m2.5-nvidia`, `mm2.5-nvidia`, `minimax-m2.5`, `mm25` | `minimax-m3` (NVIDIA) or `minimax-m2.5-bedrock` |
+| `kimi-k2.5-nvidia`, `kimi-k2.5`, `kimi25` | `kimi-k2.6` (Moonshot), `kimi-nvidia-26`, or `kimi-bedrock` |
+| `glm51`, `glm51-nvidia`, `glm-5.1`, `glm5.1`, `glm5.1-zai`, `zhipuai/glm-5.1` | `glm52` (NVIDIA) or `zhipuai/glm-5.2` / `glm` (Z.AI) |
+| `step35`, `step-3.5-flash` | `step-3.7-flash` (or `step-flash`) |
+| `gpt5.4-bedrock` | `gpt5.5-bedrock` |
+| `gpt5.6-sol`, `sol` | `gpt5.6` |
+| `gpt54p` | `gpt54-pro` (or `gpt-pro`) |
+| `glm5b` | `glm5-bedrock` |
+| `dsv4pro`, `dsv4f` | `dsv4-pro`, `dsv4-flash` |
+| `dsv4-azure` | `deepseek-v4-pro` (the Azure deployment is gone) |
+| `g31pro`, `g3pro` | `gemini31-pro` (or `gemini-pro`) |
+| `g36flash` | `gemini36-flash` (or `gemini-flash`) |
+| `mm35`, `mmed` | `mistral-medium` (or `mistral-medium-3.5`) |
+| `kimi-moonshot` | `kimi` |
+
+Version-*neutral* aliases (`glm5`, `kimi-azure`, `gemini-3-flash`, `qwen-bedrock`, …) were
+kept and still resolve to their successor — run `codereview --list-models --verbose` to see
+them.
 
 ### Rate Limiting
 
@@ -806,7 +896,7 @@ codereview-cli/
 │       ├── nvidia.py         # NVIDIA NIM provider implementation
 │       └── google_genai.py   # Google GenAI provider implementation
 ├── tests/
-│   ├── test_*.py             # Unit tests (319 tests)
+│   ├── test_*.py             # Unit tests (1041 tests)
 │   └── fixtures/             # Test fixtures
 ├── docs/
 │   ├── usage.md              # Detailed usage guide
@@ -829,7 +919,7 @@ The codebase follows strict quality standards:
 - Pydantic V2 for data validation
 - Rich for terminal UI
 - Click for CLI interface
-- Comprehensive test coverage (319 tests)
+- Comprehensive test coverage (1041 tests)
 
 **Static Analysis Tools:**
 ```bash

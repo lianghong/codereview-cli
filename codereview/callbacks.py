@@ -1,6 +1,7 @@
 """LangChain callbacks for streaming output and progress tracking."""
 
 import logging
+import threading
 from typing import Any
 from uuid import UUID
 
@@ -100,6 +101,17 @@ class StreamingCallbackHandler(BaseCallbackHandler):
             raise
         return None
 
+    @staticmethod
+    def _block_text(part: dict[str, Any]) -> str:
+        """Text of one content block, or "" when it carries none.
+
+        ``part.get("text", "")`` is not enough: a block can hold an explicit
+        ``{"text": None}``, and ``str()`` would turn that into the literal
+        ``"None"`` in the stream.
+        """
+        value = part.get("text")
+        return str(value) if value is not None else ""
+
     def on_llm_new_token(
         self, token: str | list[str | dict[str, Any]], **kwargs: Any
     ) -> None:
@@ -108,6 +120,11 @@ class StreamingCallbackHandler(BaseCallbackHandler):
         langchain-core types ``token`` as ``str | list[str | dict]`` — content
         blocks arrive as a list whose dict parts carry their text under
         ``"text"``. Coerce to plain text before appending.
+
+        A block's ``"text"`` may be present but ``None`` (some providers emit
+        that for non-text blocks such as reasoning or tool-call deltas), so the
+        value is checked rather than defaulted: ``str(None)`` would splice a
+        literal ``"None"`` into the streamed panel.
         """
         _ = kwargs  # Suppress unused parameter warning
 
@@ -116,7 +133,7 @@ class StreamingCallbackHandler(BaseCallbackHandler):
 
         if isinstance(token, list):
             text = "".join(
-                part if isinstance(part, str) else str(part.get("text", ""))
+                part if isinstance(part, str) else self._block_text(part)
                 for part in token
             )
         else:
@@ -185,6 +202,22 @@ class ProgressCallbackHandler(BaseCallbackHandler):
 
     Shows a spinner during LLM calls without streaming individual tokens.
     Lower overhead than full streaming.
+
+    **One handler instance serves every concurrent batch** — ``run_review``
+    creates a single handler and passes it to the analyzer, whose batches run in
+    a ``ThreadPoolExecutor``. So the LLM lifecycle callbacks arrive interleaved
+    from several threads and can overlap arbitrarily (batch A starts, batch B
+    starts, A ends, B ends). The display state is therefore refcounted by
+    ``run_id`` under a lock, and at most one ``Status`` exists at a time:
+
+    A single ``self._status`` slot that each ``on_llm_start`` overwrote leaked
+    the previous ``Status`` — the reference was gone, so no ``stop()`` could
+    ever reach it. Rich's ``Console.set_live`` appends to ``_live_stack`` and
+    returns whether the live is topmost rather than raising, so the overlap
+    produced no error: it left a permanently-``_started`` ``Live`` on the
+    console's stack (plus its refresh thread, and a pushed render hook), and the
+    enclosing ``Progress``'s own ``clear_live`` then popped the wrong entry.
+    Terminal state stayed corrupted for the rest of the process.
     """
 
     def __init__(self, console: Console | None = None):
@@ -195,6 +228,13 @@ class ProgressCallbackHandler(BaseCallbackHandler):
         """
         self.console = console or Console()
         self._status: Any = None
+        # Guards _status and _active_runs together: the pair must be consistent
+        # or two concurrent starts race to create two spinners.
+        self._lock = threading.Lock()
+        # Refcount by run_id rather than an int: a set makes a duplicate start
+        # idempotent and an unmatched end a no-op instead of an underflow that
+        # would stop the spinner while other batches are still running.
+        self._active_runs: set[UUID] = set()
 
     def on_llm_start(
         self,
@@ -207,15 +247,38 @@ class ProgressCallbackHandler(BaseCallbackHandler):
         metadata: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> Any:
-        """Called when LLM starts generating."""
-        _ = (serialized, prompts, run_id, parent_run_id, tags, metadata, kwargs)
+        """Called when LLM starts generating.
 
-        self._status = self.console.status(
-            "[cyan]Analyzing code...[/cyan]",
-            spinner="dots",
-        )
-        self._status.start()
+        The first concurrent run starts the spinner; later overlapping runs
+        just register themselves against it.
+        """
+        _ = (serialized, prompts, parent_run_id, tags, metadata, kwargs)
+
+        with self._lock:
+            self._active_runs.add(run_id)
+            if self._status is not None:
+                return None
+            status = self.console.status(
+                "[cyan]Analyzing code...[/cyan]",
+                spinner="dots",
+            )
+            self._status = status
+        status.start()
         return None
+
+    def _finish_run(self, run_id: UUID) -> None:
+        """Drop *run_id* and stop the spinner once no runs are left.
+
+        Stopping outside the lock keeps terminal I/O off the critical section;
+        only the thread that swapped ``_status`` to None holds a reference, so
+        exactly one ``stop()`` happens.
+        """
+        with self._lock:
+            self._active_runs.discard(run_id)
+            if self._active_runs or self._status is None:
+                return
+            status, self._status = self._status, None
+        status.stop()
 
     def on_llm_end(
         self,
@@ -226,11 +289,9 @@ class ProgressCallbackHandler(BaseCallbackHandler):
         **kwargs: Any,
     ) -> Any:
         """Called when LLM finishes generating."""
-        _ = (response, run_id, parent_run_id, kwargs)
+        _ = (response, parent_run_id, kwargs)
 
-        if self._status:
-            self._status.stop()
-            self._status = None
+        self._finish_run(run_id)
         return None
 
     def on_llm_error(
@@ -242,26 +303,32 @@ class ProgressCallbackHandler(BaseCallbackHandler):
         **kwargs: Any,
     ) -> Any:
         """Called when LLM encounters an error."""
-        _ = (error, run_id, parent_run_id, kwargs)
+        _ = (error, parent_run_id, kwargs)
 
-        if self._status:
-            self._status.stop()
-            self._status = None
+        self._finish_run(run_id)
         return None
 
     def cleanup(self) -> None:
-        """Clean up any active status display."""
-        if self._status:
-            try:
-                self._status.stop()
-            # PEP 758 syntax (Python 3.14+): unparenthesized multi-exception catch
-            except OSError, RuntimeError:
-                # OSError: terminal I/O errors; RuntimeError: shutdown threading
-                pass  # Best effort cleanup - expected failure modes
-            except Exception:
-                # cleanup() runs in a finally block during error handling; an
-                # unexpected exception here would mask the original error.
-                logging.debug(
-                    "Unexpected error during status display cleanup", exc_info=True
-                )
-            self._status = None
+        """Clean up any active status display.
+
+        Called from ``run_review``'s ``finally`` block, so it must stop the
+        spinner regardless of how many runs are still registered — an aborted
+        run never delivers its ``on_llm_end``.
+        """
+        with self._lock:
+            self._active_runs.clear()
+            status, self._status = self._status, None
+        if status is None:
+            return
+        try:
+            status.stop()
+        # PEP 758 syntax (Python 3.14+): unparenthesized multi-exception catch
+        except OSError, RuntimeError:
+            # OSError: terminal I/O errors; RuntimeError: shutdown threading
+            pass  # Best effort cleanup - expected failure modes
+        except Exception:
+            # cleanup() runs in a finally block during error handling; an
+            # unexpected exception here would mask the original error.
+            logging.debug(
+                "Unexpected error during status display cleanup", exc_info=True
+            )

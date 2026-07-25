@@ -2,6 +2,7 @@
 
 import contextlib
 import os
+import re
 import warnings
 from collections.abc import Generator
 from typing import Any
@@ -20,10 +21,22 @@ from codereview.providers.base import (
     ValidationResult,
 )
 from codereview.providers.mixins import (
+    TRANSPORT_TRANSIENT_ERRORS,
     TokenTrackingMixin,
+    is_blank,
     is_placeholder_api_key,
     require_https,
 )
+
+# NIM gateway statuses worth another attempt. 504 is the common one (the NIM
+# gateway times out on think-heavy batches); 429 is the free tier's rate limit.
+# 4xx other than 429 stays non-retryable — a bad request or key won't heal.
+#
+# Deliberately the *same set* the isinstance check named before it was found to
+# be dead, 500 included in neither: this fix makes the existing policy actually
+# execute, and widening it is a separate decision with its own evidence.
+# test_non_rate_limit_error_not_retried pins 500 as non-retryable.
+_RETRYABLE_NIM_STATUS_CODES = frozenset({429, 502, 503, 504})
 
 
 @contextlib.contextmanager
@@ -154,6 +167,11 @@ class NVIDIAProvider(TokenTrackingMixin, ModelProvider):
             "api_key": SecretStr(str(self.provider_config.api_key)),
             "max_tokens": self.max_tokens,
             "callbacks": self.callbacks if self.callbacks else None,
+            # Must be passed to the client to have any effect: an
+            # InMemoryRateLimiter is only consulted by the LangChain model it is
+            # attached to. Every other provider wires it here; NVIDIA built one
+            # and dropped it, so concurrent batches hit NIM unthrottled.
+            "rate_limiter": self.rate_limiter,
         }
 
         # Omit temperature for reasoning models that opt out (temperature=None)
@@ -212,19 +230,54 @@ class NVIDIAProvider(TokenTrackingMixin, ModelProvider):
                 return base_model.with_structured_output(CodeReviewReport)
 
     def _is_retryable_error(self, error: Exception) -> bool:
-        """Check if error is a retryable NVIDIA gateway/rate limit error."""
-        if isinstance(error, httpx.HTTPStatusError):
-            return error.response.status_code in {429, 502, 503, 504}
-        return False
+        """Check if error is a retryable NVIDIA gateway/rate limit error.
+
+        NIM's status has to be read out of the **message text**, because
+        ``langchain-nvidia-ai-endpoints`` does not raise a typed HTTP error:
+        ``_NVIDIASyncClient._try_raise`` catches ``requests.HTTPError`` and
+        re-raises ``Exception(f"[{status}] {title}\\n{body}")`` — its own source
+        carries a ``# todo: raise as an HTTPError``. So the previous
+        ``isinstance(error, httpx.HTTPStatusError)`` test matched **nothing**
+        (the client is on ``requests``, and it discards the typed error anyway),
+        and NIM's frequent gateway 504s — the exact failure this provider raises
+        ``max_retries`` to 5 for — aborted the batch on attempt 1.
+
+        Retryable: 429 (rate limit) and 502/503/504 (gateway) — the same set
+        the dead isinstance check named, so this restores the intended policy
+        rather than changing it — plus the transport failures ``requests`` raises
+        before any status exists. A bare 500 stays non-retryable. The typed
+        ``httpx``/``requests`` HTTP errors are still accepted so a future client
+        version that raises properly keeps working.
+        """
+        if isinstance(error, TRANSPORT_TRANSIENT_ERRORS):
+            return True
+        return self._nim_status_code(error) in _RETRYABLE_NIM_STATUS_CODES
+
+    @staticmethod
+    def _nim_status_code(error: Exception) -> int | None:
+        """Return the HTTP status NIM reported, from a typed error or its text.
+
+        Prefers a real response object when one is present, then falls back to
+        the ``[504] Gateway Timeout`` prefix ``_try_raise`` formats. Anchored at
+        the start so a status-like number inside a model's own error prose can't
+        be mistaken for the response status.
+        """
+        response = getattr(error, "response", None)
+        status = getattr(response, "status_code", None)
+        if isinstance(status, int):
+            return status
+        match = re.match(r"\s*\[(\d{3})\]", str(error))
+        return int(match.group(1)) if match else None
 
     def _calculate_backoff(
         self, error: Exception, attempt: int, config: RetryConfig
     ) -> float:
         """Calculate adaptive backoff: longer for 504 gateway timeouts."""
-        if isinstance(error, httpx.HTTPStatusError):
+        status = self._nim_status_code(error)
+        if status is not None:
             # For gateway timeouts (504), use longer initial wait (4, 8, 16, 32...)
             # For rate limits (429) and other gateway errors, use (2, 4, 8, 16...)
-            base = 4.0 if error.response.status_code == 504 else 2.0
+            base = 4.0 if status == 504 else 2.0
             return min(base * (2**attempt), config.max_wait)
         return min(config.base_wait * (2**attempt), config.max_wait)
 
@@ -260,7 +313,9 @@ class NVIDIAProvider(TokenTrackingMixin, ModelProvider):
             batch_number: Current batch number
             total_batches: Total number of batches
             files_content: Dictionary mapping file paths to file contents
-            max_retries: Maximum number of retries for gateway errors (uses config default if None)
+            max_retries: Maximum number of retries for gateway errors (None uses
+                ``NVIDIAConfig.max_retries``, default 5 — NIM's gateway 504s are
+                frequent and transient)
 
         Returns:
             CodeReviewReport with findings
@@ -268,9 +323,7 @@ class NVIDIAProvider(TokenTrackingMixin, ModelProvider):
         Raises:
             httpx.HTTPStatusError: If NVIDIA API gateway errors persist after all retries
         """
-        # Use configured max_retries if not overridden
-        if max_retries is None:
-            max_retries = self.provider_config.max_retries
+        retries = self._resolve_max_retries(max_retries, self.provider_config, 5)
 
         batch_context = self._prepare_batch_context(
             batch_number, total_batches, files_content, self.project_context
@@ -281,7 +334,7 @@ class NVIDIAProvider(TokenTrackingMixin, ModelProvider):
             "batch_context": batch_context,
         }
 
-        retry_config = RetryConfig(max_retries=max_retries, base_wait=2.0)
+        retry_config = RetryConfig(max_retries=retries, base_wait=2.0)
         return self._execute_with_retry(chain_input, retry_config, batch_context)
 
     def validate_credentials(self) -> ValidationResult:
@@ -300,7 +353,9 @@ class NVIDIAProvider(TokenTrackingMixin, ModelProvider):
         # Check 1: API key configured
         api_key = self.provider_config.api_key
         # "nvapi-your-key-here" is the exact string the README documents
-        if not api_key or is_placeholder_api_key(api_key, ("nvapi-your-key-here",)):
+        if is_blank(api_key) or is_placeholder_api_key(
+            api_key, ("nvapi-your-key-here",)
+        ):
             result.valid = False
             result.add_check(
                 "API Key",

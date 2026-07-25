@@ -3,6 +3,13 @@
 from unittest.mock import Mock, patch
 
 import pytest
+from botocore.exceptions import (
+    ClientError,
+    ConnectionClosedError,
+    ConnectTimeoutError,
+    EndpointConnectionError,
+    ReadTimeoutError,
+)
 
 from codereview.config.models import (
     BedrockConfig,
@@ -313,3 +320,121 @@ def test_retry_logic_on_throttling(model_config, provider_config, mock_report):
             assert mock_sleep.call_count == 2
             mock_sleep.assert_any_call(1)
             mock_sleep.assert_any_call(2)
+
+
+# ---------------------------------------------------------------------------
+# Retryable-error classification
+#
+# botocore's own retries are disabled (retries={"max_attempts": 0} in
+# _create_model) so this provider's loop owns every attempt. Any transient
+# failure botocore would normally absorb must therefore be classified here, or
+# it aborts the batch on attempt 1 while max_retries goes unused.
+# ---------------------------------------------------------------------------
+
+
+_ENDPOINT = "https://bedrock-runtime.us-west-2.amazonaws.com"
+
+
+def _client_error(code: str, status: int | None = None):
+    response: dict = {"Error": {"Code": code, "Message": "boom"}}
+    if status is not None:
+        response["ResponseMetadata"] = {"HTTPStatusCode": status}
+    return ClientError(response, "Converse")
+
+
+@pytest.fixture
+def bedrock_provider(model_config, provider_config):
+    with patch("codereview.providers.bedrock.ChatBedrockConverse"):
+        return BedrockProvider(model_config, provider_config)
+
+
+@pytest.mark.parametrize(
+    "error_factory",
+    [
+        pytest.param(
+            lambda: ReadTimeoutError(endpoint_url=_ENDPOINT), id="read-timeout"
+        ),
+        pytest.param(
+            lambda: ConnectTimeoutError(endpoint_url=_ENDPOINT), id="connect-timeout"
+        ),
+        pytest.param(
+            lambda: EndpointConnectionError(endpoint_url=_ENDPOINT),
+            id="endpoint-connection",
+        ),
+        pytest.param(
+            lambda: ConnectionClosedError(endpoint_url=_ENDPOINT),
+            id="connection-closed",
+        ),
+        pytest.param(lambda: _client_error("ThrottlingException"), id="throttling"),
+        pytest.param(
+            lambda: _client_error("TooManyRequestsException"), id="too-many-requests"
+        ),
+        pytest.param(
+            lambda: _client_error("ServiceUnavailableException"),
+            id="service-unavailable",
+        ),
+        pytest.param(
+            lambda: _client_error("InternalServerException"), id="internal-server"
+        ),
+        pytest.param(
+            lambda: _client_error("ModelTimeoutException"), id="model-timeout"
+        ),
+        pytest.param(
+            lambda: _client_error("ModelNotReadyException"), id="model-not-ready"
+        ),
+        # A 5xx the code list doesn't name: the status code alone must carry it.
+        pytest.param(
+            lambda: _client_error("SomeUndocumentedFault", status=503), id="bare-5xx"
+        ),
+    ],
+)
+def test_transient_failures_are_retryable(bedrock_provider, error_factory):
+    """Transport and service-side transients must reach the retry loop.
+
+    Regression: only the two throttling codes were retryable, so a Bedrock 503
+    or a read timeout on a think-heavy batch threw away the whole batch — and
+    the tokens already spent on it — on a failure that clears by itself.
+    """
+    assert bedrock_provider._is_retryable_error(error_factory()) is True
+
+
+@pytest.mark.parametrize(
+    "error_factory",
+    [
+        pytest.param(
+            lambda: _client_error("AccessDeniedException", status=403),
+            id="access-denied",
+        ),
+        pytest.param(
+            lambda: _client_error("ValidationException", status=400), id="validation"
+        ),
+        pytest.param(
+            lambda: _client_error("ResourceNotFoundException", status=404),
+            id="not-found",
+        ),
+        pytest.param(lambda: ValueError("bad input"), id="value-error"),
+    ],
+)
+def test_configuration_failures_are_not_retryable(bedrock_provider, error_factory):
+    """Retrying a config error only delays the message the user has to read."""
+    assert bedrock_provider._is_retryable_error(error_factory()) is False
+
+
+def test_read_timeout_is_actually_retried_end_to_end(
+    model_config, provider_config, mock_report
+):
+    """The classification has to translate into an extra attempt, not just a bool."""
+    with patch("codereview.providers.bedrock.ChatBedrockConverse"):
+        with patch("time.sleep") as mock_sleep:
+            provider = BedrockProvider(model_config, provider_config)
+            provider.chain = Mock()
+            provider.chain.invoke.side_effect = [
+                ReadTimeoutError(endpoint_url=_ENDPOINT),
+                mock_report,
+            ]
+
+            result = provider.analyze_batch(1, 1, {"test.py": "code"})
+
+            assert isinstance(result, CodeReviewReport)
+            assert provider.chain.invoke.call_count == 2
+            assert mock_sleep.call_count == 1

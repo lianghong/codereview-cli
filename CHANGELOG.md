@@ -10,6 +10,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 #### New Models
+- **Claude Opus 5 (AWS Bedrock)** — Anthropic's most capable Opus model and
+  first of the Claude 5 generation's Opus tier; **new CLI default model**
+  (released 2026-07-24)
+  - Model ID: `opus5` (`full_id: us.anthropic.claude-opus-5`, geo-US inference
+    profile; In-Region us-east-1, Geo/Global route more broadly)
+  - Aliases: `claude-opus-5`, `opus-5`, `claude-opus5`, plus the
+    generation-neutral `opus` and `claude-opus` (moved off Opus 4.6 — see
+    Changed)
+  - 1M-token context (both default and maximum), up to 128K output; pricing
+    $5/$25 per M, unchanged from Opus 4.8. Cache read $0.50/M, 5-minute cache
+    write $6.25/M; minimum cacheable prompt drops to 512 tokens (from 1,024)
+  - Step-change gains over Opus 4.8 in deep reasoning, agentic/long-horizon
+    coding, and — most relevant here — code review and bug-finding
+  - `supports_tool_use: false` (prompt-based JSON parsing). Unlike the other
+    adaptive-thinking Claude entries this is not an assume-prompt-parsing
+    guess: the Bedrock model card lists *Structured outputs: Not Supported*
+    for both the `bedrock-runtime` and `bedrock-mantle` endpoints. Thinking is
+    also **on by default** (a breaking change from Opus 4.8, where it was off
+    unless requested), reproducing the Opus 4.7/4.8
+    forced-`tool_choice`-while-thinking conflict
+  - `read_timeout: 1800` — thinking-on-by-default at default effort `high`
+    over the non-streaming Converse path emits no bytes until the full
+    response is generated, so think-heavy batches would outlast the 300s
+    provider default (same condition that forced Fable 5's override)
+  - Reasoning model: `temperature`/`top_p`/`top_k` omitted. No
+    `provider_data_share` opt-in needed (unlike Fable 5) — zero data retention
+    is on by default on Bedrock
+  - Registered from the published model card; not yet exercised against the
+    live endpoint from this repo
 - **Claude Sonnet 5 (AWS Bedrock)** — first Sonnet-tier model of the Claude 5
   generation, near-Opus-4.8 intelligence at Sonnet pricing (announced
   2026-06-30)
@@ -25,6 +54,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     forced-`tool_choice`-while-thinking conflict as Opus 4.7/4.8. Also
     rejects `temperature`/`top_p`/`top_k`. Unverified live; flip to `true`
     only if a live run proves tool-use works
+- **Gemini 3.6 Flash (Google GenAI)** — Google's new GA workhorse model
+  (released 2026-07-21), successor to Gemini 3.5 Flash: better coding and
+  multimodal work while using ~17% fewer output tokens, at a lower output price
+  - Model ID: `gemini-3.6-flash` (`full_id: gemini-3.6-flash`)
+  - Aliases: `gemini36-flash`, `gemini3.6-flash`, plus the
+    generation-neutral `gemini-flash` (moved off Gemini 3 Flash — see Changed)
+  - 1M-token context, up to 64K output; pricing $1.50/$7.50 per M (flat — no
+    >200K-prompt tier), cheaper output than the $9.00/M of the 3.5 Flash it
+    replaces
+  - Thinking on by default at level `medium`; computer-use and agentic-task
+    capable
+  - `temperature`/`top_p`/`top_k` omitted deliberately — **all three are
+    deprecated from this model onward**: Google's API ignores them today and
+    documents an HTTP 400 for future model generations. The Google provider
+    already passes `allow_none=True` to `_resolve_temperature` and drops
+    `top_p`/`top_k` when unset, so no code change was needed
+  - Keeps the tool-use path (`supports_tool_use` defaults to `true`) — Google
+    documents both structured outputs and function calling, and a live review
+    run against the endpoint confirmed it works
+  - Note there is no Gemini 3.6 **Pro**; the Pro tier remains at 3.1
 - **MiniMax M3 (NVIDIA NIM)** — multimodal MoE vision-language model
   (428B total / ~22B active, A22B), 1M-token context, text-only output,
   long-form video understanding (to 30 min) and long-horizon coding (8+ hrs)
@@ -41,9 +90,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   thinking effort levels (High/Max)
   - Model ID: `glm52` (`full_id: z-ai/glm-5.2`)
   - Aliases: `glm52-nvidia`, `glm5.2-nvidia`, `glm-5.2-nvidia`; also absorbs
-    the retired GLM-5.1 aliases (`glm51-nvidia`, `glm-5.1`, `glm5.1`) and the
-    older GLM-5 aliases (`glm5`, `glm-5`, `glm5-nvidia`) — the whole
-    GLM-5.x-on-NVIDIA lineage now resolves here
+    the version-neutral GLM-5 aliases (`glm5`, `glm-5`, `glm5-nvidia`) as
+    `deprecated_aliases`. The version-explicit GLM-5.1 names (`glm51`,
+    `glm51-nvidia`, `glm-5.1`, `glm5.1`) were deleted, not migrated
   - Free NVIDIA NIM trial endpoint → cost renders `TBD`; thinking enabled
     (temp 0.5 / top_p 0.95 for deterministic review)
   - `supports_tool_use: false` (prompt-based JSON parsing) — NIM re-host emits
@@ -55,7 +104,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   model to date (SOTA on the Artificial Analysis Coding Agent Index,
   Terminal-Bench 2.1, DeepSWE) — the code-review pick of the family.
   - Model ID: `gpt5.6-sol-bedrock` (`full_id: openai.gpt-5.6-sol`)
-  - Aliases: `gpt5.6`, `gpt-5.6`, `gpt5.6-sol`, `gpt5.6-bedrock`, `sol`
+  - Aliases: `gpt5.6`, `gpt-5.6`, `gpt5.6-bedrock`
   - 272K context; pricing $5/$30 per M (OpenAI list; cache read $0.50)
   - Reasoning model: **Responses API only** (Chat Completions not supported →
     `use_responses_api: true` required), rejects `temperature`/`top_p`
@@ -95,13 +144,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `deepseek-v4-nvidia`. Azure entry's collision comment also updated.
 - **Z.AI (Zhipu international)** — 5th provider, via OpenAI-compatible adapter
   (`ChatOpenAI` + custom `base_url`, no langchain-community heavy dep)
-  - Model: `zhipuai/glm-5.1` (203K context, $1.40/$4.40 per M, function calling)
-  - Aliases: `zai-glm`, `glm-zai`, `glm5.1-zai`
+  - Model: `zhipuai/glm-5.2` (1M context, $1.40/$4.40 per M) — shipped as
+    `zhipuai/glm-5.1` (203K context) and moved to 5.2 within this cycle;
+    the version-neutral 5.1 aliases (`zai-glm`, `glm-zai`) now resolve here
+  - Aliases: `glm`, `glm-5.2`, `glm5.2`, `glm5.2-zai`, `zai-glm`, `glm-zai`
   - Reads `${ZAI_API_KEY}`; base URL `https://api.z.ai/api/paas/v4/`
 - **Moonshot AI (Kimi)** — 7th provider, via dedicated `langchain-moonshot`
   package (extends `BaseChatOpenAI`)
   - Model: `kimi-k2.6` (1T MoE, 32B active, 256K context, $0.60/$2.50 per M)
-  - Aliases: `kimi`, `kimi26`, `kimi-moonshot`
+  - Aliases: `kimi`, `kimi26`
   - Reads `${KIMI_API_KEY}`; base URL `https://api.moonshot.cn/v1` (Chinese
     platform; override to `https://api.moonshot.ai/v1` for international keys)
   - **Naming cleanup**: NVIDIA's `kimi-k2.6-nvidia` lost aliases `kimi-k2.6`
@@ -110,12 +161,77 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     alias (now routes to canonical Moonshot K2.6); kept as `kimi-bedrock`,
     `kimi25-bedrock`.
 
+#### Review quality
+- **New `Correctness` review category** — the taxonomy had no home for "the
+  code returns a wrong result", despite the system prompt stating the review
+  priority as *security > correctness > maintainability > performance*. Two
+  concrete defects this fixes:
+  - Real bugs were filed as `Code Quality`, alongside naming and readability
+    nits, so severity was the only thing separating a race condition from a
+    typo suggestion.
+  - Every word a model naturally reaches for when it finds a bug
+    (`correctness`, `bug`, `logic`, `logic error`, `reliability`,
+    `concurrency`, `race condition`, `thread safety`, `data loss`, `crash`,
+    `edge case`) was an unmapped category → coerced to `Code Quality` **and**
+    counted in the `category_coerced` drift counter. That counter exists to
+    detect prompt/schema drift, so correct model behavior was polluting the
+    signal the CLI surfaces to users at ≥5 coercions.
+  All of those spellings now map to `Correctness` silently. `"error handling"`
+  deliberately still maps to `Code Quality` — as a bare category name it's
+  ambiguous between "this path crashes" (correctness) and "use a narrower
+  exception type" (quality).
+- **`CORRECTNESS ANALYSIS` section added to `SYSTEM_PROMPT`** — placed above
+  the architecture section to match the stated priority order. Covers logic
+  and control flow (off-by-one, inverted comparison, unreachable branch,
+  precedence), edge cases (empty/single/boundary, null, zero and negative,
+  unicode, first/last iteration), error paths (half-updated state, resource
+  not released on the error path, swallowed error, non-idempotent retry),
+  concurrency (unlocked shared mutable state, TOCTOU, deadlock, async result
+  read before completion), and resource lifecycle. Includes an explicit
+  `Correctness` vs `Code Quality` boundary rule: if the code produces a wrong
+  result or crashes for a nameable input it is Correctness; if it works but is
+  hard to maintain it is Code Quality. Constraint 10 (name the triggering
+  input or don't report) still governs.
+- `_generate_recommendations` ranks `Correctness` directly below `Security`.
+
 #### CLI Features
+- **`--fail-on <severity>`** — turn a review into a CI merge gate. Exits
+  **2** when any issue at the given severity *or above* was found
+  (`--fail-on high` trips on High **and** Critical). Opt-in: without the flag,
+  findings never affect the exit code, so existing invocations are unchanged.
+  - **Exit `2` is deliberately distinct from `1`.** `1` means the *run* failed
+    (no results, bad credentials, API error, unwritable output); `2` means the
+    review *succeeded* and the code has blocking issues. A pipeline needs to
+    respond to those differently, and previously it couldn't tell them apart —
+    a run that found 4 Critical security issues exited `0`.
+  - **Independent of `--severity`.** `--severity` filters only what is
+    displayed; the gate counts `report.issues`, so
+    `--severity critical --fail-on high` still fails on a High finding the
+    terminal never printed. Gating on the rendered subset would let a display
+    preference silently punch a hole in the gate — locked by
+    `test_severity_filter_does_not_affect_fail_on`.
+  - **Applied after export**, as the last statement of the run, so a failing
+    build still leaves its `--output` artifact for upload.
+- **`--list-models --verbose`** — expands the deprecated aliases that plain
+  `--list-models` collapses to `+N deprecated`, with a footer explaining why
+  they're hidden. Advertising a back-compat name is actively misleading:
+  `--model gemini-3-flash` resolves, but to Gemini **3.6** Flash.
+- **`deprecated_aliases` YAML key on model entries** — back-compat-only names
+  (usually inherited from a removed entry) that resolve exactly like `aliases`
+  but stay out of `--list-models`. The split is purely a display concern;
+  `ConfigLoader._register_all_names` registers both lists identically, so no
+  resolution behavior depends on which list a name is in.
 - **`--tool-timeout`** — override the static-analysis subprocess timeout
   (default 120s, range 1–3600). Useful for `cppcheck --enable=all` on
   large C++ repos and `mypy` strict on big Python codebases.
 - **`--include-hidden`** — opt-in scanning of `.github/scripts`, `.config/`,
   and other dotfile directories. Default behavior (skip hidden) is unchanged.
+- **`--trust-repo-config`** — opt back into running mypy / ESLint / Prettier
+  against a reviewed repository that ships a config making them execute code
+  from the tree (a mypy `plugins =` entry, a JavaScript `eslint.config.*`, a
+  `plugins` key in `.prettierrc` / `package.json`). Off by default: that code
+  runs with your privileges. Skipped tools say so explicitly, including that
+  their findings are absent from the review. See Fixed for the reproduction.
 - **Python version check at package import** — `RuntimeError` raised for
   Python < 3.14 before sub-modules parse. Avoids confusing `SyntaxError`
   from PEP 758 leaf modules when run under a wrong venv.
@@ -176,7 +292,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   supports 19+ tools across 6 languages).
 
 ### Changed
-- **`supports_tool_use` audit — 9 models moved to prompt-based JSON parsing**
+- **Default model is now `opus5`** (was `opus4.8`) — Claude Opus 5 supersedes
+  Opus 4.8 at identical $5/$25 pricing, with Anthropic specifically calling out
+  code review and bug-finding among its largest gains. Runs that relied on the
+  implicit default now hit Opus 5; pass `--model opus4.8` to pin the old one.
+- **The generation-neutral `opus` and `claude-opus` aliases now resolve to
+  Opus 5** (were Claude Opus 4.6). The Opus 4.6 and 4.7 entries were
+  subsequently removed (see Removed) and their version-explicit names
+  (`opus4.6`, `claude-opus-4.6`, `opus4.7`, `claude-opus-4.7`, …) were
+  **deleted** rather than pointed at Opus 5 — use `opus` or `opus5`. Note
+  `ConfigLoader._register_model` is last-write-wins
+  *within* a provider (it only warns across providers), so a superseded entry
+  must not keep a generation-neutral name as its `id` or it silently shadows
+  the newer entry's alias depending on YAML ordering.
+- **The generation-neutral `gemini-flash` alias now resolves to Gemini 3.6
+  Flash** (was Gemini 3 Flash Preview). `gemini-3-flash-preview` is deprecated
+  upstream with `gemini-3.6-flash` named as its replacement; the older entry
+  was then removed (see Removed) and its names (`gemini-3-flash`,
+  `gemini3-flash`, `g3flash`) are now `deprecated_aliases` on the 3.6 Flash
+  entry — they don't state a minor version, so they were migrated rather than
+  deleted. Same generation-neutral-alias convention as the `opus` move
+  above.
+- **`supports_tool_use` audit — 6 models moved to prompt-based JSON parsing**
   (`true` → `false`). A per-model research pass found these were on the
   forced-`tool_choice` (tool-use) path despite being thinking models and/or
   having documented tool-call breakage on their endpoints. Moving them to the
@@ -184,12 +321,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   also would); flip any back to `true` only if a live run proves tool-use.
   - Kimi K2.5 (Bedrock) `kimi-k2.5-bedrock` — Converse leaks Moonshot
     tool-call markers (`<|tool_call_begin|>…`) into text
-  - Kimi K2.5 (Azure) `kimi-k2.5-azure` — SGLang/vLLM backend rejects forced
-    `tool_choice` (needs `--enable-auto-tool-choice`)
   - Kimi K2.6 (NVIDIA) `kimi-k2.6-nvidia` — same model/behavior as Kimi K2.6
     on Moonshot (already `false`); thinking on by default
-  - MiniMax M2.7 (NVIDIA) `minimax-m2.7-nvidia` — live NIM bug: tool name
-    repeated per stream chunk → concatenated/invalid tool calls
   - Qwen3.5 397B (NVIDIA) `qwen3.5-nvidia` — tool calls emitted as XML inside
     the `<think>` block when thinking is on
   - GLM 5 (Bedrock) `glm5-bedrock` — thinking on by default (reasoning_effort
@@ -197,8 +330,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - GLM-5.2 (NVIDIA) `glm52` — NIM re-host emits malformed/truncated
     tool-call JSON; kept consistent with GLM-5.1/5.2 on Z.AI (replaces the
     now-removed GLM-5.1 NVIDIA entry, which carried the same rationale)
-  - Step 3.5 Flash (NVIDIA) `step-3.5-flash` — reasoning-only (thinking can't
-    be disabled); forced `tool_choice` while thinking unproven
   - Step 3.7 Flash (NVIDIA) `step-3.7-flash` — always-thinking backbone;
     forced `tool_choice` while thinking unproven
 - **DeepSeek V4 thinking-default rationale corrected** (docs/comments only,
@@ -206,8 +337,337 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (not "V4-Flash non-thinking by default" as previously documented). Tool-use
   works because the `deepseek` provider explicitly sends `thinking: disabled`,
   not because the model is non-thinking. Updated `deepseek.py` and CLAUDE.md.
+- **Retired model aliases: version-neutral names redirected, version-explicit
+  names deleted (2026-07-25 registry cleanup)** — the rule for what happens to
+  a removed entry's identifiers now depends on whether the name states a
+  version. A name that says "4.6" resolving to Opus **5** — different pricing,
+  different sampling-param support, a different structured-output path — is
+  worse than an error a human reads and fixes, so those are gone; a name that
+  says only "the GLM one" still gets the current GLM one. A removed entry's
+  **`id`** counts as a `--model` spelling here too, and ids are what get
+  forgotten (`glm51`, `kimi-k2.5-azure`, `deepseek-v4-pro-azure`,
+  `zhipuai/glm-5.1` had all shipped orphaned).
+  - **Redirected** (kept as `deprecated_aliases`, resolve to a live successor,
+    locked by `test_retired_model_aliases_redirect_to_live_successors`):
+    - `qwen-bedrock` → **Qwen3 Coder Next (Bedrock)** (`qwen-next-bedrock`),
+      which already owned `qwen`/`qwen-coder`
+    - `kimi-k2.5-azure`, `kimi-azure`, `kimi25-azure` → **Kimi K2.6 (Moonshot
+      direct)** (`kimi-k2.6`) — the canonical owner per the direct-API
+      convention
+    - `deepseek-v4-pro-azure`, `deepseek-v4-azure`, `ds-v4-azure` →
+      **DeepSeek-V4-Pro (DeepSeek direct)** (`deepseek-v4-pro`), likewise
+      canonical
+    - `qwen-nvidia`, `qwen3-nvidia`, `qwen-coder-nvidia` → **Qwen3.5 397B
+      (NVIDIA)** (`qwen3.5-nvidia`)
+    - `glm5`, `glm-5`, `glm5-nvidia` → **GLM-5.2 (NVIDIA)** (`glm52`)
+    - `gemini-3-pro`, `gemini3-pro` → **Gemini 3.1 Pro** (`gemini-3.1-pro`)
+    - `gemini-3-flash`, `gemini3-flash`, `g3flash` → **Gemini 3.6 Flash**
+      (`gemini-3.6-flash`)
+    - `step-flash` stays on **Step 3.7 Flash (NVIDIA)**, `zai-glm`/`glm-zai`
+      stay on **GLM-5.2 (Z.AI)** — version-neutral names that were already
+      current aliases
+  - **Deleted** — see Removed below for the full list and the README's
+    *Migrating Deleted Aliases* table for replacements.
+  - `tests/test_config.py::test_no_historical_model_id_is_orphaned` reads the
+    last 8 revisions of `models.yaml` straight from git and asserts every
+    id/alias that ever shipped either still resolves **or** appears in the
+    `RETIRED_ALIASES_DELETED_NOT_REDIRECTED` allowlist with a stated reason —
+    so a name can never be dropped by accident, only on purpose.
 
 ### Fixed
+- **⚠️ NVIDIA NIM retried nothing: every 429/502/503/504 aborted the batch on
+  attempt 1** — `_is_retryable_error` tested
+  `isinstance(error, httpx.HTTPStatusError)`, but
+  `langchain-nvidia-ai-endpoints` runs on `requests`, and its
+  `_NVIDIASyncClient._try_raise` *discards* the typed error: it catches
+  `requests.HTTPError` and re-raises a bare
+  `Exception("[504] Gateway Timeout\n…")` (the client's own source carries a
+  `# todo: raise as an HTTPError`). The isinstance test therefore matched
+  **nothing**, so NIM's frequent gateway 504s — the exact failure the
+  provider-level `max_retries` exists for — were classified as fatal and lost
+  the batch, and `NVIDIAConfig.max_retries` had no observable effect. Now
+  classified on the status code, read from `.response.status_code` when present
+  and otherwise parsed from the `[504] …` message prefix the client actually
+  produces. Retryable set is unchanged in intent — exactly the `{429, 502, 503,
+  504}` the dead check named — so this makes the existing policy execute rather
+  than widening it; a bare NIM 500 stays non-retryable. 504 keeps its 4s backoff
+  base, which also only ever applied when the status was readable.
+- **⚠️ Google GenAI retried nothing: every 429 and 503 aborted the batch on
+  attempt 1** — `_is_retryable_error` tested
+  `google.api_core.exceptions.ResourceExhausted` / `ServiceUnavailable`, types
+  belonging to the older `google-generativeai` stack.
+  `langchain-google-genai` 4.x runs on the `google-genai` SDK, which raises
+  `google.genai.errors.ClientError` / `ServerError` carrying a `.code`, so the
+  check matched nothing and Gemini's quota throttling — the failure the 10s
+  backoff base was written for — went straight to a lost batch. `api_core` is
+  still installed as a transitive dependency, which is why the dead branch
+  stayed invisible: it imported fine, and the tests constructed
+  `ResourceExhausted` by hand. Now classified on the status code (`.code`, with
+  a leading-status text fallback for the failures the langchain wrapper
+  re-raises as `ChatGoogleGenerativeAIError` with the status only in the
+  message). Retryable: `{429, 500, 503, 504}` — 429/503 restore the intended
+  policy exactly, while 500/504 are a deliberate addition (the SDK raises them
+  as plain `ServerError` with no api_core analogue, and Gemini returns them on
+  overload).
+- **Transport failures that never reached a server were treated as fatal by the
+  two providers whose SDK doesn't wrap them** — a DNS blip or read timeout on
+  NIM (`requests`) or Google (`httpx`/`requests`) carries no HTTP status, so
+  neither classifier could see it, and a whole batch (plus the tokens already
+  spent on it) was discarded on attempt 1. Both now share
+  `TRANSPORT_TRANSIENT_ERRORS` (mixins.py), which names the `httpx` and
+  `requests` timeout/connection types; the OpenAI-compatible providers already
+  covered this via `APIConnectionError`/`APITimeoutError`. Both libraries are
+  installed transitively, so no new dependency.
+- **⚠️ A whitespace-only API key passed `--validate` with every check green** —
+  each provider's presence test was a bare `if not api_key`, and Pydantic's
+  `min_length=1` accepts `"   "` (a whitespace-only string is truthy), so the
+  loader registered the provider and `validate_credentials` reported *every*
+  check as passing. The failure was deferred to a 401 on the first real API
+  call — exactly the outcome the pre-flight check exists to prevent. All seven
+  key-checking providers now share `is_blank()` (mixins.py), which strips before
+  testing, applying the same normalization `is_placeholder_api_key` already did.
+- **`--validate` hard-failed on an uppercase-scheme URL the client accepts
+  fine** — `require_https` (enforced at client construction) lowercased before
+  comparing, while every provider's `validate_credentials` did a plain
+  `startswith("https://")`. URL schemes are case-insensitive per RFC 3986 §3.1,
+  so `HTTPS://api.deepseek.com/v1` built a working client that `--validate` then
+  reported as a cleartext-endpoint failure. Two spellings of one predicate that
+  had drifted; both now call `is_https_url()` (mixins.py), so the constructor
+  and the pre-flight check cannot disagree about a URL in either direction. The
+  inline `len(api_key) < 20` short-key warning, duplicated across five
+  providers, moved to `is_short_api_key()` alongside it. Locked by
+  `tests/test_provider_result_shape_contract.py`, including
+  `test_every_url_checking_provider_uses_the_shared_https_predicate`, which
+  scans the provider modules for an inline `startswith("https://")` so a new
+  provider can't reintroduce the divergence.
+- **The per-file token memo stopped paying off on large repositories** —
+  `_TOKEN_CACHE_SIZE` was 4096, a plausible file count for a monorepo, and a
+  single run estimates every scanned file at least twice (`--dry-run`'s table,
+  then `create_batches`' packing loop). At a bound below the file count the
+  first pass evicted its own earliest entries before the second pass reached
+  them, so every file was re-encoded — the memoization silently degraded to
+  nothing exactly in the repositories it was added for. Raised to 100,000
+  entries (a run bound, not a "typical repo" bound); an entry is three ints plus
+  a path string, so the added headroom costs tens of MB at most against a file
+  list already held in memory. Locked by
+  `tests/test_batcher.py::test_token_cache_bound_exceeds_a_large_repo_file_count`.
+- **⚠️ `FileScanner` pruned directories a path-qualified exclude pattern never
+  named, silently dropping files from the review** — `_get_excluded_dir_names`
+  extracted the last literal segment of any pattern ending in a wildcard, so
+  `docs/api/*` contributed the bare name `api` to the `os.walk` prune set.
+  Pruning is by *bare name* and therefore matches at **any** depth: an
+  unrelated `app/api/` elsewhere in the tree was skipped entirely, and the
+  files were never scanned, never counted, and never reported as skipped —
+  the run simply reviewed less code than it claimed to. `a/b/c/**` had the
+  same effect on every directory named `c`. A prune name is now extracted only
+  from an **unanchored** pattern (every segment before it a wildcard, or
+  none), which is the only shape a bare-name prune can faithfully express;
+  path-qualified patterns still exclude their files through `_is_excluded`,
+  just walked rather than skipped. All 22 default patterns yield the same 14
+  prune names as before, so the traversal optimization is unchanged for the
+  default configuration. Locked by four tests in `tests/test_scanner.py`,
+  including one that derives the expected names from
+  `DEFAULT_EXCLUDE_PATTERNS` rather than hardcoding an example.
+- **`--validate` could report *every* Bedrock model as available** — the
+  model-access check tests `base_model_id in m or m in base_model_id` against
+  each `modelSummaries` entry, and `m` came from `.get("modelId", "")`. A
+  single summary without a `modelId` yields `""`, and `"" in base_model_id` is
+  always true, so one malformed entry in the API response turned the check
+  into an unconditional pass — the opposite of what a validation step is for.
+  Id-less summaries are now dropped before the membership test, and the
+  predicate is guarded on both operands. Locked by
+  `tests/test_validation.py::TestBedrockModelAvailabilityMatching`.
+- **Two `models.yaml` entries in the same provider claiming one name failed
+  silently** — `ConfigLoader._register_model` warns on *cross-provider*
+  collisions but returned quietly for intra-provider ones, leaving one entry
+  unreachable with no diagnostic. Last-write-wins resolution is deliberate
+  (it's how generation-neutral aliases like `opus` move to a newer entry), so
+  the fix is the missing warning, not a resolution change: the log now names
+  both entries, which one won, and which is now unreachable. Re-registering
+  the *same* entry stays quiet. Locked by three tests in
+  `tests/test_config.py`, one of which fails if the real registry ever
+  develops an intra-provider duplicate.
+- **Typing `yes` at the README-context prompt discarded the README** — the
+  prompt reads `[Y/n/path]` and its third option is a file path, so anything
+  unrecognized was treated as one: `yes` printed `File not found: yes` and the
+  run continued with no project context, having just been told to use it. Both
+  prompts now accept the spelled-out `yes`/`no` alongside `y`/`n`
+  (case-insensitively, after stripping).
+- **A literal `None` could appear in the streamed output** — content blocks
+  arrive as dicts and `part.get("text", "")` returns `None` when the key is
+  present but null (providers emit that for reasoning summaries and tool-call
+  deltas; the default only covers a *missing* key), so `str()` spliced `"None"`
+  into the live panel. `StreamingCallbackHandler._block_text` now checks the
+  value instead of defaulting it.
+- **Documented CI gates in `docs/examples.md` and `docs/usage.md` never
+  failed** — the GitHub Actions, GitLab CI, and shell-parsing examples read
+  `jq '.metrics.critical // 0'`, but the JSON field is `critical_issues`
+  (likewise `high_issues`, `medium_issues`, `low_issues`, `info_issues`). The
+  `// 0` fallback masked it perfectly: the expression always evaluated to `0`,
+  so `if [ "$CRITICAL" -gt 0 ]` was never true and anyone who copied these
+  snippets had a quality gate that passed unconditionally. The PR-comment
+  script in the Actions example had the same bug, rendering an all-zero
+  severity table. Fixed in all four places, and the examples now use
+  `--fail-on` instead of hand-rolled `jq` parsing so the field name isn't a
+  correctness dependency for a CI gate. The upload/artifact steps gained
+  `if: always()` / `when: always` so the report survives a failing gate.
+- **Two models listed their own `id` as an alias** — `gpt5.5-bedrock` and
+  `deepseek-v4-flash-nvidia` each repeated their id in `aliases`, so
+  `--list-models` printed the same name twice in adjacent columns. Now
+  structurally impossible: `ModelConfig._check_alias_hygiene` (a Pydantic
+  `mode="after"` validator) rejects a self-alias or a name repeated across
+  `aliases`/`deprecated_aliases` at config-load time.
+- **`--list-models` truncated long aliases into invalid spellings** — the
+  Aliases column rendered `claude-opus-4.…` and `qwen-coder-nex…`, which fail
+  as typed, so the table was advertising names that don't work. The column now
+  sets `overflow="fold"` **and** a `min_width` computed from the longest alias
+  in the registry; `fold` alone still splits a name across lines at the
+  80-column default. Locked by
+  `tests/test_cli.py::test_list_models_never_truncates_an_alias`.
+- **Eight duplicated alias-registration blocks in `ConfigLoader`** collapsed
+  into one `_register_all_names` helper. Each provider branch had its own
+  hand-rolled id-then-aliases loop, so wiring the new `deprecated_aliases` key
+  would have meant eight edits and one missed provider would have silently
+  registered half a model's names.
+- **Markdown export was corrupted by an unclosed code fence in any
+  model-generated prose field** — a model that opened a ```` ``` ```` in
+  `summary`, `description`, `rationale`, `system_design_insights`,
+  `recommendations`, or `improvement_suggestions` without closing it swallowed
+  every following section of the report into one code block, so the exported
+  artifact silently lost its issues, metrics, and recommendations. New
+  `balance_code_fences` (renderer.py) counts fence *lines* and appends the
+  missing closer; nested/longer fences and inline triple-backtick spans are
+  handled. `suggested_code` already had its own fence-widening and is
+  unchanged. Locked by the fence tests in `tests/test_markdown_export.py`.
+- **NVIDIA built a rate limiter and never used it** — `_build_rate_limiter`
+  populated `self.rate_limiter` but `_create_model` omitted it from
+  `model_params`, and an `InMemoryRateLimiter` only throttles the LangChain
+  client it is attached to. Concurrent batches therefore hit NIM unthrottled
+  (429s on the free tier). NVIDIA was the only provider with this gap; locked
+  by `tests/test_nvidia_provider.py::test_rate_limiter_is_attached_to_the_client`.
+- **Token-budget fallback was invisible without `--verbose`** — when the
+  computed budget went non-positive the CLI silently dropped to count-only
+  batching, which can overflow the model's context window mid-run. That
+  changes what the review does, so the warning now prints on every run (with
+  the computed value and a remediation hint) rather than only under
+  `--verbose`. Locked by the two `test_token_budget_fallback_*` tests in
+  `tests/test_cli.py`.
+- **OpenAI-on-Bedrock accepted the placeholder key the README documents** —
+  `validate_credentials` rejected only `your-bedrock-api-key-here`, but
+  README.md's export line is
+  `OPENAI_API_KEY="<your-amazon-bedrock-api-key>"`, so a copied-and-not-
+  replaced placeholder passed `--validate` and failed later with a 401 —
+  exactly the CLAUDE.md contract this check exists to satisfy. Both spellings
+  (with and without the angle brackets) now hard-fail. A new drift guard,
+  `test_every_readme_documented_placeholder_is_rejected`, scrapes every
+  `export *_API_KEY="..."` line out of README.md and asserts the owning
+  provider rejects it, so rewording an export line or adding a provider fails
+  the suite until the placeholder set catches up.
+- **`locals()`-based lookup for the Bedrock access-denied message** replaced
+  with a normal binding — `model_display_name` is now seeded with the raw
+  `--model` argument before the `try` block and upgraded once resolved, so the
+  handler reads a real variable instead of probing the frame dict (which
+  static analysis and refactoring tools cannot follow).
+- **⚠️ Static analysis executed code from the reviewed repository** — mypy
+  imports the module named by a `plugins =` entry, an `eslint.config.js` *is*
+  JavaScript, and Prettier loads the modules named under `plugins`. Reviewing an
+  untrusted tree ran all three with the user's privileges before any review
+  output existed. Reproduced against the installed binaries (mypy 1.19.1,
+  ESLint v10.8.0, Prettier 3.x): each ran attacker-supplied code, and mypy still
+  reported `passed: True`. `run_tool` now consults `_find_executable_config`
+  **before building the command** and returns a failed result naming the config,
+  stating that the tool's findings are missing from the review. Detection is on
+  *content*, not filename — an ordinary `pyproject.toml` with a `[tool.mypy]`
+  section but no `plugins` entry still runs mypy — and fails closed on an
+  unreadable or >512 KB config. New `--trust-repo-config` opts back in. Locked by
+  the `_CONFIG_EXECUTION_RISK` tests in `tests/test_static_analysis.py`, which
+  patch `subprocess.run` and assert it is never called (asserting on the *result*
+  would pass even if the tool had already run), plus
+  `test_this_repository_is_not_false_positived`.
+- **⚠️ Static-analysis findings were attributed to the wrong file** —
+  `_path_match_token` built a two-component `parent/basename` token and matched
+  it as a substring, so a finding in `other/api/views.py` was reported against
+  `app/api/views.py`: `api/`, `utils/`, `models/` and `tests/` are exactly the
+  directory names that repeat. The substring test additionally matched
+  mid-component (`foo.py` inside `foo.py.orig`). Both are now one mechanism:
+  the token keeps the **whole** normalized path and `_line_mentions_any_path`
+  compares component tuples from the right, at component granularity. Boundary-
+  aware substring matching would have fixed only the second shape — the
+  information the first needs was already discarded when the token was built.
+  Tolerant of absolute↔relative, `./`, `//` and `\` spellings in both
+  directions; locked by the four `condense_for_prompt` filter tests.
+- **⚠️ The model's own recommendations were collected from no batch** — the
+  aggregation loop gathered `issues`, `improvement_suggestions` and
+  `system_design_insights` but dropped `recommendations`, and
+  `_generate_recommendations` substituted severity/category counts. So a run
+  that found an SQL injection at `views.py:42` recommended "🔒 Resolve 1
+  security issue(s)": no file, no line, no title, and the same numbers the
+  Metrics section already prints — while `SYSTEM_PROMPT` explicitly asks for
+  recommendations "DERIVED FROM the issues you reported. Reference issue titles,
+  not new ideas". The model's text now wins, deduplicated across concurrent
+  batches (same normalization `_dedupe_design_insights` uses) and capped at 5;
+  the count summary remains as the fallback for runs where no batch emitted any.
+- **⚠️ A linter that couldn't run was reported as a clean pass** — exit code 2
+  from ruff/black/mypy means "bad config / missing plugin / bad arguments", not
+  "found problems", so a repository whose ruff config named a nonexistent rule
+  contributed zero coverage while reporting a tidy issue count. New
+  `_OPERATIONAL_FAILURE_EXIT_CODES` maps the distinguishable cases and yields
+  `issues_count=0` plus an explicit error. Verified against the installed
+  binaries rather than the docs: isort exits 1 for both an invalid config and a
+  mis-sorted file and vulture exits 3 for findings, so neither is classifiable
+  and neither is listed — an ambiguous exit keeps being treated as a finding.
+- **⚠️ `npm audit` reported zero vulnerabilities whenever npm printed a
+  warning** — `_count_npm_audit_issues` was fed `stdout + stderr`, and npm
+  writes routine notices (`npm warn …`) to stderr, so one warning made the
+  `--json` payload unparseable and the count silently fell to 0: a clean bill of
+  health for a repo with real advisories. Parsing now reads `result.stdout`
+  only; stderr still reaches the human-readable output.
+- **⚠️ Retryable Bedrock throttling was given up on as a hard failure** —
+  `_is_retryable_error` matched too narrow a set of spellings, so
+  `TooManyRequestsException` / `ServiceUnavailable` / `ModelTimeout` and the
+  equivalent `ClientError` codes ended the batch instead of backing off. Visible
+  only as a lost batch in a partial-results run.
+- **Tokens the provider billed but the parser rejected went unreported** —
+  `_extract_token_usage` now runs on the raw `AIMessage` even when `parsed` is
+  `None` (a schema violation, or a reasoning-only response). The provider
+  charged for them either way, so omitting them under-reported real cost by
+  exactly the retried batches — the expensive ones — while `--dry-run`
+  estimates looked accurate.
+- **`--validate` accepted a hostless `https://` endpoint** — `is_https_url`
+  checked the scheme only, and `urlparse("https://")` yields
+  `scheme == "https"` with an empty host, so a truncated or half-substituted
+  `base_url` passed the cleartext check and surfaced as a connection error
+  mid-run. A hostname is now required.
+- **`files_analyzed` counted scanned files, not reviewed ones** — the batcher
+  drops oversized files after the scan, so the metric (and the summary line)
+  claimed coverage the review didn't have: "Analyzed 120 files" for a run that
+  reviewed 118. `--dry-run` billed those bytes too, quoting ~1,000,350 input
+  tokens for a run that sends 300 when one oversized file was present. Both now
+  derive from batch membership, the only authority on what was sent.
+- **`--temperature` validated too late to help** — `_resolve_temperature`
+  enforced the 0.0–2.0 range, but it runs inside provider construction, i.e.
+  after the scan, the line count, static analysis and batching. So
+  `--temperature 99` spent all of that work (with `--static-analysis`, minutes
+  of linters) before failing with a provider error and exit 1, on an argument
+  that was invalid before anything started. The option is now
+  `click.FloatRange(0.0, 2.0)`, which rejects it at parse time with a usage
+  error; the deep check stays as the guard for callers that don't come through
+  Click.
+- **Line counts dropped the last line of any file not ending in a newline** —
+  counting `"\n"` occurrences alone undercounts by one per such file, so
+  `total_lines` drifted low across a repository.
+- **A four-backtick snippet still swallowed the rest of the Markdown report** —
+  `suggested_code` is wrapped in a *wider* fence, but a snippet already
+  containing ```` ```` ```` made that wrapper no wider than its content.
+  CommonMark closes a block only on a fence line of at least the opener's width
+  *and* with no info string, so fence **parity** is the wrong model whenever
+  widths vary: a numerically balanced document can still trap every following
+  section. The wrapper now exceeds the widest fence in the content. The
+  regression test previously asserted parity and passed under its own
+  mutation — it now runs a real CommonMark state machine and asserts no section
+  marker lands inside a code block, and that the document doesn't end inside
+  one.
+
 - **DeepSeek-V4-Pro on Azure: SGLang `null` model body** — the Foundry
   endpoint is served by SGLang, which validates `body.model` as a
   required string. langchain-openai's `AzureChatOpenAI` defaults
@@ -219,6 +679,80 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `https://api.moonshot.cn/v1` (Chinese platform) since `KIMI_API_KEY`
   almost always targets the latter. International keys can override per
   models.yaml or via `MOONSHOT_API_BASE`.
+
+### Changed
+- **`bedrock_openai` and `moonshot` no longer duplicate the base class's
+  structured-output routing** — both re-implemented the
+  `supports_tool_use` → `with_structured_output(..., include_raw=True)` branch
+  before falling through to `_apply_structured_output`, which does exactly
+  that. CLAUDE.md states the routing "lives once in `base.py`"; two copies
+  meant a future change to the tool-use path would need three edits. Both now
+  end `_create_model` with a single `return self._apply_structured_output(...)`.
+  Behavior is unchanged and was already covered on both paths by the existing
+  provider tests.
+- **Google GenAI `analyze_batch` docstring** said `max_retries` defaulted to 3
+  while the code uses 5 (preview models throttle hard); the docstring now
+  matches the code.
+- **`run_review()` extracted from `main()`** (`cli.py`) — `main` was 704 lines
+  doing Click parsing, three early-exit flags, and the entire review pipeline,
+  so every test of pipeline behavior had to go through `CliRunner.invoke` and
+  assert on rendered output. `main` now keeps only argument parsing and the
+  flags that exit before any review work (`--list-models`, `--validate`,
+  no-directory help); `run_review(directory, *, console, ...)` owns scanning
+  through the `--fail-on` gate. The 650-line pipeline body moved **verbatim** —
+  no logic changed — and the parameters are keyword-only with the same defaults
+  as the Click options, so `main` is a thin pass-through.
+  - `--fail-on` remains the last statement in the run, after export.
+    `test_run_review_applies_the_gate_after_writing_the_report` now asserts
+    that by *observed ordering* (export event, then the `SystemExit`) rather
+    than inferring it from a file existing afterwards.
+  - `test_run_review_defaults_match_the_click_option_defaults` compares what a
+    bare CLI invocation actually forwards against `run_review`'s signature, and
+    asserts every reviewable option is forwarded — so a new Click option
+    `main()` forgets to pass through fails the suite.
+- **Per-file token counts are memoized on `(path, size, mtime_ns)`**
+  (`batcher.py`) — `FileBatcher.estimate_file_tokens` ran a full tiktoken
+  encode over each file's text, and a single run estimates every file at least
+  twice (`--dry-run` builds its per-file table, then `create_batches` packs the
+  same list). On this repo's own 26 files that second pass cost ~348 ms of pure
+  re-encoding; it is now ~0.15 ms. A changed file's `(size, mtime_ns)`
+  invalidates its entry, so no stale count can survive an edit. Deliberately
+  caches only the **count**, never the file's text: batches run concurrently in
+  a `ThreadPoolExecutor`, and holding every scanned file's contents alive for a
+  whole run would trade a bounded number of re-reads for unbounded memory.
+  `clear_token_cache()` is the escape hatch for tests that rewrite a file
+  in place.
+- **⚠️ Retry counts now come from the provider, not the analyzer — a real
+  behavior change for six providers.** `CodeAnalyzer.analyze_batch` defaulted
+  `max_retries` to a hardcoded `3` and forwarded it *unconditionally*, so the
+  `None` sentinel every provider was written to honour never arrived: each
+  provider's own default was dead code and `NVIDIAConfig.max_retries` was
+  unreachable config that `--verbose` would never reflect. A Bedrock-tuned
+  count (throttling clears in a couple of attempts) was silently applied to
+  NVIDIA NIM's frequent gateway 504s, Azure's quota windows, and the
+  OpenAI-compatible endpoints. `max_retries=None` is now the "provider decides"
+  sentinel end to end.
+  - **Effective retries per batch change from 3 → 5** for Azure OpenAI, NVIDIA
+    NIM, Google GenAI, DeepSeek, Z.AI, Moonshot, and OpenAI-on-Bedrock. Bedrock
+    stays at 3. Backoff base waits are unchanged, so a fully-exhausted batch on
+    a rate-limited endpoint now takes longer before failing — which is the
+    intent: those endpoints were being given up on early.
+  - New `ModelProvider._resolve_max_retries(override, provider_config, default)`
+    mirrors the existing `_resolve_temperature` precedence
+    (`override > provider_config.max_retries > provider default`) and rejects a
+    negative override. NVIDIA's and Google's hand-rolled `if max_retries is
+    None` blocks were replaced by it.
+  - Passing an explicit `max_retries` still overrides everything, so the
+    existing error-handling tests that pin a count are unaffected.
+  - Five guards in `tests/test_provider_result_shape_contract.py`:
+    `test_none_max_retries_uses_the_providers_own_default` and
+    `test_explicit_max_retries_overrides_the_providers_default` (both
+    parametrized over all eight providers),
+    `test_nvidia_config_max_retries_is_live_config` (a non-default `9` must
+    reach `RetryConfig`), `test_analyzer_defers_the_retry_decision_to_the_provider`,
+    and `test_every_provider_analyze_batch_defaults_max_retries_to_none`, which
+    reflects over every provider class so a new one that hardcodes a signature
+    default — the exact shape of this bug — fails the suite.
 
 ### Existing entries below ↓
 - **GPT-5.4 (Azure OpenAI)** — frontier reasoning model, 1.05M context, 128K output
@@ -325,6 +859,92 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with `next(gen, None)` sentinel form.
 
 ### Removed
+- **Registry cleanup: 11 model entries pruned from `models.yaml`** (registry
+  goes 41 → 30 models). Every surviving and candidate entry was probed against
+  its **live provider endpoint** rather than judged from release notes, and only
+  entries that were dead, unreachable from the configured region, or strictly
+  superseded at equal-or-worse price/context were dropped. Each removal leaves a
+  dated comment in `models.yaml` explaining the verification result.
+  Version-neutral aliases were **migrated to a live successor**; the
+  version-explicit ones were **deleted** so a stale `--model` spelling errors
+  instead of silently running a different model (see Changed and the alias
+  deletion entry below).
+  - **AWS Bedrock — Claude Opus 4.7** (`opus4.7`) and **Claude Opus 4.6**
+    (`opus4.6`): both still ACTIVE on Bedrock, but superseded by Opus 4.8/Opus 5
+    at identical $5/$25 pricing (4.6 additionally capped at a 200K context).
+  - **AWS Bedrock — Qwen3 Coder 480B** (`qwen-bedrock`,
+    `qwen.qwen3-coder-480b-a35b-v1:0`): not offered in this provider's
+    `us-east-1` region — verified against the live `ListFoundationModels`
+    catalog, where it exists only in `us-west-2` (in which
+    `qwen-next-bedrock` is in turn absent). `qwen-next-bedrock` is the
+    supported Qwen coding model here.
+  - **Azure OpenAI — Kimi K2.5** (`kimi-k2.5-azure`) and **DeepSeek-V4-Pro**
+    (`deepseek-v4-pro-azure`): both return `DeploymentNotFound` on the
+    configured Azure resource (verified live). Unlike Bedrock/NVIDIA, an Azure
+    entry only works if someone has explicitly created a deployment with that
+    exact name, and such failures are invisible to `--list-models`. Both models
+    remain reachable via their canonical direct providers.
+  - **NVIDIA NIM — MiniMax M2.7** (`minimax-m2.7-nvidia`): endpoint still live,
+    but superseded by MiniMax M3 on the same free endpoint (1M context vs 204K,
+    multimodal).
+  - **NVIDIA NIM — Qwen3 Coder 480B** (`qwen-nvidia`,
+    `qwen/qwen3-coder-480b-a35b-instruct`): **gone from the live NIM catalog**
+    (verified against `GET /v1/models`) — a dead endpoint, not merely
+    superseded. Qwen3.5 397B is the current Qwen on NIM.
+  - **NVIDIA NIM — Step 3.5 Flash** (`step-3.5-flash`): endpoint still live,
+    superseded by Step 3.7 Flash at the same 256K context and free tier, with
+    multimodal input and reasoning levels.
+  - **Google GenAI — Gemini 3 Flash Preview** (`gemini-3-flash`,
+    `gemini-3-flash-preview`): deprecated upstream (announced 2025-12-17) with
+    `gemini-3.6-flash` named as the replacement. Still answers on the API, so
+    re-add from git history if the cheaper $0.50/$3.00 rate is worth the
+    deprecation risk.
+  - **Z.AI — GLM-5.1** (`zhipuai/glm-5.1`): superseded by GLM-5.2 at the *same*
+    $1.40/$4.40 list price with a 1M context instead of 203K — no reason to pick
+    5.1. Still live on Z.AI.
+  - **OpenAI-on-Bedrock — GPT-5.4** (`gpt5.4-bedrock`): two newer OpenAI
+    generations ride the same `bedrock-mantle` endpoint (GPT-5.5 at identical
+    $2.50/$15, and GPT-5.6 Sol), so the 5.4 entry added no capability. Still
+    responds on the endpoint (probed HTTP 200). **GPT-5.4 on *Azure* is a
+    separate entry and stays** — that's a user-created deployment and the newest
+    GPT on that resource.
+  - Guards added/updated in `tests/test_config.py`: `DEAD_UPSTREAM_FULL_IDS`
+    (dead or region-unreachable wire ids), the new
+    `DEAD_AZURE_DEPLOYMENT_NAMES` / `test_no_model_points_at_missing_azure_deployment`
+    (Azure failures only surface at invocation time), the expanded
+    retired-alias redirect test, and the new
+    `test_no_historical_model_id_is_orphaned` git-history sweep. Superseded-but-live endpoints are deliberately
+    *not* in `DEAD_UPSTREAM_FULL_IDS` — re-adding those is a judgement call, not
+    a bug.
+- **40 model aliases deleted from `models.yaml`** (registry goes 143 → 101
+  resolvable names: 84 advertised + 17 deprecated). Two separate problems:
+  version-explicit aliases of removed models that had been redirected to a
+  *successor*, and cryptic short forms of live models that were pure noise in
+  `--list-models`.
+  - **Version-explicit redirects, now failing fast** — `opus4.7`, `opus-4.7`,
+    `claude-opus-4.7`, `claude-opus-47`, `opus4.6`, `opus-4.6`,
+    `claude-opus-4.6`; `minimax-m2.7`, `minimax-m2.7-nvidia`, `mm2.7-nvidia`,
+    `mm27`, `minimax-m2.5-nvidia`, `mm2.5-nvidia`, `minimax-m2.5`, `mm25`;
+    `kimi-k2.5-nvidia`, `kimi-k2.5`, `kimi25`; `glm51`, `glm51-nvidia`,
+    `glm-5.1`, `glm5.1`, `glm5.1-zai`, `zhipuai/glm-5.1`; `step35`,
+    `step-3.5-flash`; `gpt5.4-bedrock`. **Breaking** for anyone scripting these
+    — `--model opus4.6` now errors instead of silently running Opus 5.
+  - **Redundant short forms of live models** — `gpt54p` (use `gpt54-pro`),
+    `glm5b` (`glm5-bedrock`), `gpt5.6-sol` and `sol` (`gpt5.6`), `dsv4f`
+    (`dsv4-flash`), `dsv4pro` (`dsv4-pro`), `dsv4-azure` (`deepseek-v4-pro`),
+    `g31pro`/`g3pro` (`gemini31-pro`), `g36flash` (`gemini36-flash`),
+    `mm35`/`mmed` (`mistral-medium`), `kimi-moonshot` (`kimi`).
+  - Full replacement table: **Migrating Deleted Aliases** in `README.md`.
+    Every deleted name is listed in `RETIRED_ALIASES_DELETED_NOT_REDIRECTED`
+    (`tests/test_config.py`) with a reason, and
+    `test_deleted_aliases_do_not_resolve` asserts each one raises.
+  - `test_documented_model_names_all_resolve` scrapes every `--model X` out of
+    `README.md`, `docs/usage.md` and `docs/examples.md` and resolves it through
+    the loader. Docs had been advertising deleted aliases as "route here"; now
+    prose that names a dead spelling in a runnable command fails CI.
+  - Dated notes were left in `models.yaml` at each removal site recording what
+    was deleted and what to use instead, so re-adding from git history stays a
+    judgement call with the evidence attached.
 - **12 model entries** pruned from `models.yaml`:
   - **AWS Bedrock**: DeepSeek-R1, DeepSeek V3.2, MiniMax M2.1, GLM 4.7,
     GLM 4.7 Flash
@@ -351,24 +971,75 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   long ago.
 - **GLM-5.1 (NVIDIA) entry** `glm51` (`z-ai/glm-5.1`) — NVIDIA deprecated the
   free `bedrock-mantle`/NIM endpoint (~2026-07) and superseded it with
-  `z-ai/glm-5.2`. The new GLM-5.2 (NVIDIA) entry absorbs its aliases, so
-  existing `--model glm51`/`glm-5.1`/`glm5` invocations keep working (now
-  resolving to GLM-5.2). The Z.AI-direct `zhipuai/glm-5.1` entry is a
-  separate provider path and remains available.
+  `z-ai/glm-5.2`. The new GLM-5.2 (NVIDIA) entry absorbs the version-neutral
+  `glm5`/`glm-5`/`glm5-nvidia` spellings; the version-explicit `glm51`,
+  `glm-5.1`, `glm5.1` were deleted (see Removed). The Z.AI-direct
+  `zhipuai/glm-5.1` entry was removed in the same cycle.
 
 ### Documentation
 - Trimmed overall documentation footprint from ~5,600 to ~4,500 lines
 - Updated `CLAUDE.md` and `README.md` to v0.3.1-current state: correct
-  default model (Opus 4.7), correct test count (319), new model tables
+  default model (now Opus 5), correct test count, new model tables
 - Added `.ruff_cache/` to `.gitignore` to match existing cache ignores
 
 ### Quality
-- Test suite: **572 passing** (up from 319; +2 scanner `exclude_hidden`,
+- Test suite: **1041 passing** (up from 319; +17 code-review-triage regressions
+  — markdown code-fence balancing, NVIDIA rate-limiter wiring, the
+  token-budget-fallback warning, and the README-placeholder drift guard;
+  +8 cross-provider cleartext-endpoint contract, incl. a self-checking registry
+  guard that fails when a provider calls `require_https` without appearing in
+  it; +2 Provider-Setup-table vs `models.yaml` env-var drift; +5 token-count
+  memoization; +6 `run_review` seam incl. gate-after-export ordering and the
+  `main`-is-a-pass-through default/forwarding guard;
+  +19 `max_retries` resolution contract, incl. the reflective guard against a
+  provider hardcoding a signature default;
+  +23 second-round code-review triage — scanner bare-name over-pruning (4,
+  one deriving its expectations from `DEFAULT_EXCLUDE_PATTERNS`), the Bedrock
+  empty-`modelId` substring match that confirmed every model (2), the
+  intra-provider name-conflict warning incl. a guard on the real registry (3),
+  the README prompt's spelled-out `yes`/`no` asserting on the bogus
+  "File not found" line rather than just the return value (11), and
+  `{"text": None}` content blocks (3);
+  +48 shared `validate_credentials` validator contract — the whitespace-only-key
+  false-positive across five providers (15), the uppercase-scheme URL the
+  constructor accepts but `--validate` rejected (4), a reflective guard against a
+  provider reintroducing an inline `startswith("https://")` (1), and the
+  `is_blank` / `is_https_url` / `is_short_api_key` helper units incl. the
+  `is_https_url` ≡ `require_https` agreement check (28);
+  +1 token-memo bound guarding the two-pass estimate;
+  +10 alias-hygiene / deleted-alias /
+  deprecated-alias-display / documented-model-name guards, +14 `Correctness`
+  category and
+  drift-counter guards, +8 `--fail-on` gate incl. the
+  `--severity`-must-not-weaken-the-gate regression test, +2 scanner `exclude_hidden`,
   +3 supply-chain `_resolve_tool_binary`, +5 ruff/mypy/bandit counters,
   +2 Azure `supports_tool_use=false`, +9 Z.AI provider, +11 DeepSeek
   provider, +10 Moonshot provider, +5 truncation/timeout/batcher resets,
-  plus OpenAI-on-Bedrock provider, Sonnet 5, GLM-5.2, Grok 4.3, and the
-  retired-alias / dead-upstream registry guards);
+  plus OpenAI-on-Bedrock provider, Sonnet 5, GLM-5.2, Grok 4.3, GPT-5.6 Sol,
+  Opus 5, Gemini 3.6 Flash, and the retired-alias / deleted-alias /
+  orphaned-historical-id / dead-upstream / missing-Azure-deployment registry
+  guards);
+  +33 third-round code-review triage — the repo-config code-execution gate
+  (18, incl. a `subprocess.run`-never-called assertion and a
+  this-repository-is-not-false-positived guard), component-granular path
+  matching for prompt condensation (10), model-recommendation aggregation (4),
+  and `--trust-repo-config` CLI forwarding (1);
+  +109 cross-provider retry contract (`tests/test_retry_contract.py`) — an
+  HTTP-status × provider matrix, throttling-is-always-retryable and
+  4xx-is-never-retryable sweeps, transport-failure cases, backoff bounds and
+  monotonicity, a reflective guard so a new provider can't skip retry coverage,
+  and the meta-guard that found both dead classifiers by feeding each provider
+  the 429 its *own installed client* builds. Each error is constructed the way
+  its real client constructs it — the NIM builder routes a genuine
+  `requests.Response` through `_NVIDIASyncClient._try_raise` — because the
+  previous hand-built exceptions of a type the SDK no longer raises are exactly
+  what let the dead code pass for so long;
+  +52 table-driven credential validation over the axes the per-provider
+  placeholder tests don't cover (`tests/test_placeholder_keys.py`) — blank and
+  whitespace-only keys × 7 providers × 5 spellings, cleartext and hostless URLs
+  × every URL-taking provider (fail-closed at construction, before a client
+  exists), padded-but-real keys that must be *accepted* after normalization, and
+  a reflective guard so a new `api_key`-taking provider inherits all three axes;
   two pre-existing fixtures fixed — they passed kwargs that Pydantic
   silently dropped
 - `ruff check`, `ruff format --check`, `mypy`: clean

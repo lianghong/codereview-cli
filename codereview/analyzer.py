@@ -112,13 +112,20 @@ class CodeAnalyzer:
     def analyze_batch(
         self,
         batch: FileBatch,
-        max_retries: int = 3,
+        max_retries: int | None = None,
     ) -> CodeReviewReport:
         """Analyze a batch of files with retry logic.
 
         Args:
             batch: FileBatch to analyze
-            max_retries: Maximum number of retries for rate limiting (default: 3)
+            max_retries: Maximum number of retries for rate limiting. ``None``
+                (the default) defers to the provider, which knows its own
+                endpoint's failure profile — Bedrock throttling clears in a
+                couple of attempts, while NVIDIA NIM's gateway 504s and Azure's
+                quota windows want five. This used to default to a hardcoded
+                ``3`` that was forwarded unconditionally, which silently
+                overrode every provider's default and made
+                ``NVIDIAConfig.max_retries`` dead config.
 
         Returns:
             CodeReviewReport with findings
@@ -152,7 +159,10 @@ class CodeAnalyzer:
                 issues=[],
             )
 
-        # Delegate to provider
+        # Delegate to provider. max_retries is forwarded as-is, including None:
+        # the sentinel is part of the provider contract (see
+        # ModelProvider.analyze_batch), so the provider resolves it against its
+        # own default rather than this layer picking one.
         return self.provider.analyze_batch(
             batch_number=batch.batch_number,
             total_batches=batch.total_batches,

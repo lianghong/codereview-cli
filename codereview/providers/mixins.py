@@ -2,7 +2,10 @@
 
 import threading
 from typing import Any
+from urllib.parse import urlsplit
 
+import httpx
+import requests
 from openai import (
     APIConnectionError,
     APIStatusError,
@@ -12,18 +15,107 @@ from openai import (
 
 from codereview.config.models import ModelConfig
 
+# Transport-level failures that clear on their own: the connection never
+# completed, so no request was processed and a retry is safe. Providers whose
+# SDK does *not* wrap these in its own exception type (NVIDIA NIM on
+# ``requests``, google-genai on ``httpx``/``requests``) must name them, or a
+# single DNS blip or read timeout throws away a whole batch on attempt 1.
+#
+# Both libraries are already installed transitively — ``requests`` by the NVIDIA
+# and google-genai clients, ``httpx`` by the openai client — so this adds no
+# dependency. Timeout subclasses ConnectionError in neither library, hence both.
+TRANSPORT_TRANSIENT_ERRORS = (
+    httpx.TimeoutException,
+    httpx.ConnectError,
+    httpx.ReadError,
+    httpx.RemoteProtocolError,
+    requests.exceptions.Timeout,
+    requests.exceptions.ConnectionError,
+)
+
+
+def is_https_url(url: str) -> bool:
+    """Return True when ``url`` is a well-formed HTTPS URL with a host.
+
+    The single spelling of this test, shared by ``require_https`` (which fails
+    closed at client construction) and every provider's ``validate_credentials``
+    (which reports it as a check). They must agree: a URL the constructor
+    accepts but ``--validate`` rejects makes the pre-flight check lie about a
+    config that runs fine, and the reverse would let a cleartext endpoint pass
+    validation.
+
+    Scheme comparison is case-insensitive per RFC 3986 §3.1 — ``HTTPS://host``
+    is a valid HTTPS URL, and the providers' plain ``startswith("https://")``
+    used to reject it while the constructor let it through.
+
+    A hostname is required, not just the scheme prefix. A bare ``"https://"``
+    (or ``"https:///v1"``) satisfies a ``startswith`` test but names no server,
+    so it passed ``--validate`` as a green check and then failed at client
+    construction or on the first request — the pre-flight check reporting OK on
+    a config that cannot work is the failure this prevents. Parsed with
+    ``urlsplit`` rather than string surgery so bracketed IPv6 authorities
+    (``https://[::1]/v1``) and ``user@host`` forms are read correctly.
+    """
+    try:
+        parsed = urlsplit(str(url).strip())
+    except ValueError:
+        # urlsplit raises on a malformed IPv6 authority, e.g. "https://[::1".
+        return False
+    return parsed.scheme.lower() == "https" and bool(parsed.hostname)
+
 
 def require_https(url: str, label: str) -> str:
-    """Return ``url`` if it uses HTTPS, else raise ValueError (fail closed).
+    """Return the normalized HTTPS ``url``, else raise ValueError (fail closed).
 
     Called at client construction (``_create_model``) so a provider used
     directly — without first calling ``validate_credentials`` — still cannot
     send an API key / bearer token to a cleartext ``http://`` endpoint (CWE-319).
     ``label`` names the config field for the error message (e.g. "base_url").
+
+    The return value is stripped, because :func:`is_https_url` strips before
+    testing: returning the raw string handed a padded ``"  https://host  "``
+    straight to the HTTP client, so the value validation accepted was not the
+    value the client got. Whatever this returns is what was actually checked.
     """
-    if not str(url).lower().startswith("https://"):
-        raise ValueError(f"{label} must use HTTPS, got: {url!r}")
-    return str(url)
+    normalized = str(url).strip()
+    if not is_https_url(normalized):
+        raise ValueError(f"{label} must use HTTPS and name a host, got: {url!r}")
+    return normalized
+
+
+def is_blank(value: str | None) -> bool:
+    """Return True when ``value`` is absent, empty, or only whitespace.
+
+    The presence test for credentials and endpoints in ``validate_credentials``.
+    A plain ``not value`` is not enough: Pydantic's ``min_length=1`` on every
+    provider's ``api_key`` accepts ``"   "``, and a whitespace-only string is
+    truthy — so the loader registered the provider and ``validate_credentials``
+    reported *every* check as passing, deferring the failure to a 401 on the
+    first real call. Stripping here applies the same normalization
+    :func:`is_placeholder_api_key` does, so the presence check and the
+    placeholder check can't disagree about what counts as a value.
+
+    Accepts ``None`` for configs that type a field optional (NVIDIA's
+    ``base_url``); the credential fields are all ``str``.
+    """
+    return not value or not value.strip()
+
+
+# Shortest length any provider's real key reaches. Below this the value is
+# probably a truncated paste rather than a credential — a warning, never a
+# hard failure, since it's a heuristic and no provider documents a minimum.
+MIN_PLAUSIBLE_API_KEY_LENGTH = 20
+
+
+def is_short_api_key(api_key: str) -> bool:
+    """Return True when ``api_key`` is too short to plausibly be a real key.
+
+    One spelling of the threshold, previously an inline ``len(api_key) < 20`` in
+    five providers. Strips first so surrounding whitespace doesn't pad a short
+    key past the bar — the same normalization :func:`is_blank` and
+    :func:`is_placeholder_api_key` apply.
+    """
+    return len(api_key.strip()) < MIN_PLAUSIBLE_API_KEY_LENGTH
 
 
 # Generic placeholder strings common to provider docs and READMEs. Each

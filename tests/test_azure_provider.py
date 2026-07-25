@@ -370,12 +370,17 @@ def test_responses_api_disabled_by_default(model_config, provider_config):
 
 
 def test_supports_tool_use_false_uses_prompt_parsing(provider_config):
-    """Models with supports_tool_use=False (e.g. DeepSeek-V4-Pro on Azure)
-    must skip with_structured_output and parse JSON via prompt instructions.
+    """Models with supports_tool_use=False must skip with_structured_output and
+    parse JSON via prompt instructions.
 
     Regression: previously the Azure provider always called
     with_structured_output, which crashes against models that don't expose
     tool calling on Foundry.
+
+    The config below is synthetic — the DeepSeek-V4-Pro-on-Azure registry entry
+    was removed 2026-07-25 (DeploymentNotFound on this resource), but the
+    provider behavior it exercises still applies to any tool-use-less Foundry
+    deployment, so the shape is kept as the reference case.
     """
     no_tool_use_config = ModelConfig(
         id="deepseek-v4-pro-azure",

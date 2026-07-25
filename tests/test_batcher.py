@@ -1,4 +1,5 @@
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -6,7 +7,21 @@ from codereview.batcher import (
     PER_FILE_OVERHEAD_TOKENS,
     FileBatch,
     FileBatcher,
+    clear_token_cache,
 )
+
+
+@pytest.fixture(autouse=True)
+def _isolate_token_cache():
+    """Keep the per-file token memo from leaking between tests.
+
+    tmp_path makes most path keys unique, but a test that rewrites a file or
+    swaps the encoder would otherwise observe another test's cached count.
+    """
+    clear_token_cache()
+    yield
+    clear_token_cache()
+
 
 # ---------------------------------------------------------------------------
 # Existing tests (count-only batching)
@@ -328,3 +343,152 @@ def test_estimate_file_tokens_handles_special_token_literals(tmp_path):
     )
     n = FileBatcher.estimate_file_tokens(f)
     assert n > 0
+
+
+# ---------------------------------------------------------------------------
+# Per-file token-count memoization
+#
+# A single run estimates every scanned file at least twice (--dry-run's table,
+# then create_batches' packing loop), and each estimate was a full tiktoken
+# encode over the file's text. The count is cached on (path, size, mtime).
+# ---------------------------------------------------------------------------
+
+
+def test_estimate_file_tokens_reads_the_file_once_for_repeat_calls(tmp_path):
+    """Re-estimating an unmodified file must not re-read or re-encode it."""
+    from codereview.batcher import _get_encoder
+
+    if _get_encoder() is None:
+        pytest.skip("tiktoken unavailable; the byte fallback never reads the file")
+
+    f = tmp_path / "sample.py"
+    f.write_text("def f():\n    return 42\n" * 20, encoding="utf-8")
+
+    real_read_text = Path.read_text
+    reads = []
+
+    def counting_read_text(self, *args, **kwargs):
+        reads.append(self)
+        return real_read_text(self, *args, **kwargs)
+
+    with patch.object(Path, "read_text", counting_read_text):
+        first = FileBatcher.estimate_file_tokens(f)
+        second = FileBatcher.estimate_file_tokens(f)
+        third = FileBatcher.estimate_file_tokens(f)
+
+    assert first == second == third
+    assert reads == [f], f"expected exactly one read of {f}, got {reads}"
+
+
+def test_dry_run_estimate_is_reused_by_batching(tmp_path):
+    """The batching pass reuses the counts a --dry-run-style sweep produced."""
+    from codereview.batcher import _get_encoder
+
+    if _get_encoder() is None:
+        pytest.skip("tiktoken unavailable; the byte fallback never reads the file")
+
+    files = []
+    for i in range(5):
+        f = tmp_path / f"mod{i}.py"
+        f.write_text(f"VALUE = {i}\n" * 30, encoding="utf-8")
+        files.append(f)
+
+    real_read_text = Path.read_text
+    reads = []
+
+    def counting_read_text(self, *args, **kwargs):
+        reads.append(self)
+        return real_read_text(self, *args, **kwargs)
+
+    with patch.object(Path, "read_text", counting_read_text):
+        # Pass 1: what _display_dry_run does per file.
+        sweep = [FileBatcher.estimate_file_tokens(f) for f in files]
+        # Pass 2: what _batch_by_tokens does over the same list.
+        FileBatcher(max_files_per_batch=10, token_budget=100_000).create_batches(files)
+
+    assert len(reads) == len(files), (
+        "batching re-read files the dry-run sweep already measured: "
+        f"{len(reads)} reads for {len(files)} files"
+    )
+    assert all(n > PER_FILE_OVERHEAD_TOKENS for n in sweep)
+
+
+def test_token_cache_bound_exceeds_a_large_repo_file_count():
+    """The memo's ceiling must be a *run* bound, not a "typical repo" bound.
+
+    A run estimates every scanned file at least twice — ``--dry-run``'s table,
+    then ``create_batches``' packing loop (the guarantee
+    :func:`test_batching_reuses_the_dry_run_token_estimates` locks). With a
+    ``maxsize`` below the file count, the first pass evicts its own earliest
+    entries before the second pass reaches them and every file is re-encoded:
+    the memoization silently stops paying off exactly in the large repositories
+    it exists for. The bound was 4096, a plausible file count for a monorepo.
+
+    Asserted as a constant rather than by scanning 100K files, which would make
+    the suite unusable; the mechanism it guards is the two-pass test above.
+    """
+    from codereview.batcher import _TOKEN_CACHE_SIZE, _cached_file_tokens
+
+    maxsize = _cached_file_tokens.cache_info().maxsize
+    assert maxsize == _TOKEN_CACHE_SIZE, "cache decorated with a different bound"
+    assert maxsize is not None, (
+        "an unbounded memo holds one entry per file forever; keep a ceiling"
+    )
+    assert maxsize >= 50_000, (
+        f"token memo bounded at {maxsize} entries — below the file count of a "
+        "large repository, so the second estimate pass re-encodes everything"
+    )
+
+
+def test_estimate_file_tokens_invalidates_when_the_file_changes(tmp_path):
+    """A modified file must not return its stale cached count."""
+    f = tmp_path / "growing.py"
+    f.write_text("x = 1\n", encoding="utf-8")
+    small = FileBatcher.estimate_file_tokens(f)
+
+    # A different size changes the cache key even if mtime granularity is coarse.
+    f.write_text("x = 1\n" * 500, encoding="utf-8")
+    large = FileBatcher.estimate_file_tokens(f)
+
+    assert large > small, (
+        "estimate_file_tokens returned a stale count after the file grew "
+        f"({small} -> {large})"
+    )
+
+
+def test_estimate_file_tokens_does_not_confuse_same_sized_files(tmp_path):
+    """The path is part of the cache key, so equal-sized files stay distinct."""
+    a = tmp_path / "a.py"
+    b = tmp_path / "b.py"
+    # Same byte length, very different token counts: ASCII vs CJK.
+    a.write_text("a" * 300, encoding="utf-8")
+    b.write_text("中" * 100, encoding="utf-8")
+    assert a.stat().st_size == b.stat().st_size
+
+    assert FileBatcher.estimate_file_tokens(a) != FileBatcher.estimate_file_tokens(b)
+
+
+def test_clear_token_cache_forces_a_re_read(tmp_path):
+    """clear_token_cache is the escape hatch for in-place rewrites."""
+    f = tmp_path / "same_size.py"
+    f.write_text("aaaa\n", encoding="utf-8")
+    FileBatcher.estimate_file_tokens(f)
+
+    clear_token_cache()
+
+    real_read_text = Path.read_text
+    reads = []
+
+    def counting_read_text(self, *args, **kwargs):
+        reads.append(self)
+        return real_read_text(self, *args, **kwargs)
+
+    from codereview.batcher import _get_encoder
+
+    if _get_encoder() is None:
+        pytest.skip("tiktoken unavailable; the byte fallback never reads the file")
+
+    with patch.object(Path, "read_text", counting_read_text):
+        FileBatcher.estimate_file_tokens(f)
+
+    assert reads == [f]

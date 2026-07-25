@@ -28,8 +28,11 @@ from codereview.providers.base import (
 from codereview.providers.mixins import (
     TokenTrackingMixin,
     extract_openai_token_usage,
+    is_blank,
+    is_https_url,
     is_openai_retryable_error,
     is_placeholder_api_key,
+    is_short_api_key,
     parse_retry_after,
     require_https,
 )
@@ -68,7 +71,7 @@ class DeepSeekProvider(TokenTrackingMixin, ModelProvider):
         # Set True in _create_model when thinking mode is enabled: DeepSeek's
         # thinking/reasoner path rejects the forced tool_choice that
         # with_structured_output relies on, so we fall back to prompt-based
-        # JSON parsing (same pattern as MiniMax M2.5 / GLM-5.1).
+        # JSON parsing (same pattern as MiniMax M2.5 / GLM-5.2).
 
         # DeepSeek V4 family accepts temperature; allow_none preserves
         # opt-out for any future reasoning-only variants.
@@ -194,9 +197,14 @@ class DeepSeekProvider(TokenTrackingMixin, ModelProvider):
         batch_number: int,
         total_batches: int,
         files_content: dict[str, str],
-        max_retries: int = 5,
+        max_retries: int | None = None,
     ) -> CodeReviewReport:
-        """Analyze a batch of files using DeepSeek."""
+        """Analyze a batch of files using DeepSeek.
+
+        ``max_retries=None`` uses this provider's default of 5.
+        """
+        retries = self._resolve_max_retries(max_retries, self.provider_config, 5)
+
         batch_context = self._prepare_batch_context(
             batch_number, total_batches, files_content, self.project_context
         )
@@ -206,7 +214,7 @@ class DeepSeekProvider(TokenTrackingMixin, ModelProvider):
             "batch_context": batch_context,
         }
 
-        retry_config = RetryConfig(max_retries=max_retries, base_wait=2.0)
+        retry_config = RetryConfig(max_retries=retries, base_wait=2.0)
         return self._execute_with_retry(chain_input, retry_config, batch_context)
 
     def validate_credentials(self) -> ValidationResult:
@@ -214,7 +222,7 @@ class DeepSeekProvider(TokenTrackingMixin, ModelProvider):
         result = ValidationResult(valid=True, provider="DeepSeek")
 
         api_key = self.provider_config.api_key
-        if not api_key:
+        if is_blank(api_key):
             result.valid = False
             result.add_check("API Key", False, "DEEPSEEK_API_KEY is not set")
             result.add_suggestion(
@@ -235,13 +243,15 @@ class DeepSeekProvider(TokenTrackingMixin, ModelProvider):
             )
             return result
 
-        if len(api_key) < 20:
+        if is_short_api_key(api_key):
             result.add_warning("API key seems unusually short. Verify it's correct.")
         result.add_check("API Key", True, "API key configured")
 
-        if not self.provider_config.api_base.startswith("https://"):
+        if not is_https_url(self.provider_config.api_base):
             result.valid = False
-            result.add_check("Base URL", False, "api_base must use HTTPS")
+            result.add_check(
+                "Base URL", False, "api_base must be an HTTPS URL with a host"
+            )
             return result
 
         result.add_check("Base URL", True, f"Endpoint: {self.provider_config.api_base}")

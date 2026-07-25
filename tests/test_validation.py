@@ -4,6 +4,7 @@ import os
 from unittest.mock import Mock, patch
 
 import httpx
+import pytest
 from botocore.exceptions import ClientError
 
 from codereview.providers.base import ValidationResult
@@ -313,7 +314,7 @@ class TestBedrockValidation:
                 mock_bedrock = Mock()
                 mock_bedrock.list_foundation_models.return_value = {
                     "modelSummaries": [
-                        {"modelId": "anthropic.claude-opus-4-6-v1"},
+                        {"modelId": "anthropic.claude-opus-5"},
                     ]
                 }
 
@@ -328,9 +329,9 @@ class TestBedrockValidation:
 
                 # full_id uses global. prefix for cross-region inference
                 model_config = ModelConfig(
-                    id="opus",
-                    name="Claude Opus 4.6",
-                    full_id="global.anthropic.claude-opus-4-6-v1",
+                    id="opus5",
+                    name="Claude Opus 5",
+                    full_id="global.anthropic.claude-opus-5",
                     pricing=PricingConfig(
                         input_per_million=5.0, output_per_million=25.0
                     ),
@@ -1066,3 +1067,156 @@ class TestCLIValidation:
 
             assert result.exit_code == 1
             assert "Unexpected" in result.output or "error" in result.output.lower()
+
+
+class TestBedrockModelAvailabilityMatching:
+    """The model-availability check is a two-way substring test, so "" is toxic.
+
+    ``any(base in m or m in base for m in available)`` reports a match whenever
+    either side is empty, because "" is a substring of every string. A single
+    ``modelSummaries`` entry without a ``modelId`` therefore made
+    ``--validate`` report *any* model as available.
+    """
+
+    @staticmethod
+    def _validate_against(summaries, full_id="test.model.v1"):
+        from codereview.config.models import BedrockConfig, ModelConfig, PricingConfig
+        from codereview.providers.bedrock import BedrockProvider
+
+        with patch("codereview.providers.bedrock.ChatBedrockConverse"):
+            with patch("boto3.Session") as mock_session:
+                mock_session.return_value.get_credentials.return_value = Mock()
+
+                mock_sts = Mock()
+                mock_sts.get_caller_identity.return_value = {"Account": "123456789012"}
+                mock_bedrock = Mock()
+                mock_bedrock.list_foundation_models.return_value = {
+                    "modelSummaries": summaries
+                }
+
+                def client_factory(service, **kwargs):
+                    if service == "sts":
+                        return mock_sts
+                    if service == "bedrock":
+                        return mock_bedrock
+                    return Mock()
+
+                mock_session.return_value.client.side_effect = client_factory
+
+                model_config = ModelConfig(
+                    id="test",
+                    name="Test Model",
+                    full_id=full_id,
+                    pricing=PricingConfig(
+                        input_per_million=1.0, output_per_million=5.0
+                    ),
+                )
+                provider = BedrockProvider(
+                    model_config, BedrockConfig(region="us-east-1")
+                )
+                return provider.validate_credentials()
+
+    def test_summary_without_model_id_does_not_confirm_every_model(self):
+        """An id-less summary must not make an absent model report as available."""
+        result = self._validate_against(
+            [{"modelId": ""}, {"modelName": "no id here"}, {"modelId": "amazon.titan"}]
+        )
+
+        # The model genuinely isn't in the list, so this must stay inconclusive:
+        # a warning, not a passing "Model Access" check.
+        assert not any(
+            name == "Model Access" and passed for name, passed, _ in result.checks
+        ), "an id-less modelSummaries entry falsely confirmed model access"
+        assert any("Could not confirm" in w for w in result.warnings)
+
+    def test_real_match_still_confirms_access(self):
+        """The guard must not break the normal positive case."""
+        result = self._validate_against([{"modelId": ""}, {"modelId": "test.model.v1"}])
+
+        assert any(
+            name == "Model Access" and passed for name, passed, _ in result.checks
+        )
+
+    @staticmethod
+    def _model_access_confirmed(result) -> bool:
+        return any(
+            name == "Model Access" and passed for name, passed, _ in result.checks
+        )
+
+    def test_a_neighbouring_version_does_not_confirm_access(self):
+        """A *different version* of the model must not report as available.
+
+        Reproduces a live false positive: the old two-way substring predicate
+        (``base in m or m in base``) confirms a match whenever either id is an
+        infix of the other, so with only MiniMax M2 and M2.1 enabled in the
+        account, M2.5 got a green "Model Access" check and the run then died on
+        AccessDeniedException at the first real call. Verified against the real
+        us-west-2 catalog, which lists m2, m2.1 and m2.5 as distinct ids.
+        """
+        result = self._validate_against(
+            [{"modelId": "minimax.minimax-m2"}, {"modelId": "minimax.minimax-m2.1"}],
+            full_id="minimax.minimax-m2.5",
+        )
+
+        assert not self._model_access_confirmed(result), (
+            "a neighbouring model version falsely confirmed access; --validate "
+            "reported green for a model the account cannot invoke"
+        )
+        assert any("Could not confirm" in w for w in result.warnings)
+
+    def test_a_longer_catalog_id_does_not_confirm_a_shorter_model(self):
+        """The other substring direction: our id being a prefix of a catalog id.
+
+        ``zai.glm-5`` is a real registry entry and ``zai.glm-5.2`` a real
+        catalog id; the old predicate matched them.
+        """
+        result = self._validate_against(
+            [{"modelId": "zai.glm-5.2"}], full_id="zai.glm-5"
+        )
+
+        assert not self._model_access_confirmed(result)
+
+    @pytest.mark.parametrize(
+        "prefix",
+        ["global.", "us.", "eu.", "apac.", "us-gov.", "jp.", "au."],
+    )
+    def test_every_cross_region_prefix_still_resolves_to_the_base_model(self, prefix):
+        """A cross-region inference profile must match its base foundation model.
+
+        ListFoundationModels returns base ids only, so the routing prefix has to
+        come off before an exact comparison. Only ``global.`` used to be
+        stripped, which the substring test papered over — most of the Bedrock
+        registry is ``us.``-prefixed, so exact-matching without extending this
+        list would have turned every one of those into a spurious warning.
+        """
+        result = self._validate_against(
+            [{"modelId": "anthropic.claude-opus-5"}],
+            full_id=f"{prefix}anthropic.claude-opus-5",
+        )
+
+        assert self._model_access_confirmed(result), (
+            f"a {prefix!r} inference-profile id no longer matches its base model"
+        )
+
+    def test_registry_bedrock_ids_are_all_prefix_strippable(self):
+        """Guard for new entries: every shipped id reduces to a base model id.
+
+        A future prefix AWS adds (or a typo'd one) would silently make that
+        model's access check inconclusive on every run. This asserts the
+        stripped form carries no leading routing segment left over.
+        """
+        from codereview.config import get_config_loader
+        from codereview.providers.bedrock import strip_cross_region_prefix
+
+        loader = get_config_loader()
+        bedrock_models = loader.list_models()["bedrock"]
+
+        for model in bedrock_models:
+            stripped = strip_cross_region_prefix(model.full_id)
+            assert not any(
+                stripped.startswith(p)
+                for p in ("global.", "us.", "eu.", "apac.", "us-gov.", "jp.", "au.")
+            ), f"{model.full_id} still carries a routing prefix after stripping"
+            # A base id is "<vendor>.<model>"; a leftover prefix would make it
+            # three segments deep with a region-ish first component.
+            assert "." in stripped, f"{model.full_id} stripped to a bare {stripped!r}"

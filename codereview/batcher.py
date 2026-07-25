@@ -26,6 +26,21 @@ BYTES_PER_TOKEN = 3
 # any provider's context window today.
 _TIKTOKEN_MAX_BYTES = 2 * 1024 * 1024
 
+# Cache slots for per-file token counts. One entry is three ints plus a path
+# string — a few hundred bytes — so even 100K files of headroom costs a few
+# tens of MB, and a run's working set is bounded by the number of files
+# scanned, which is already all held in memory as a list of Paths.
+#
+# Sized to swallow a whole run rather than a "typical" repo. The bound has to
+# exceed the *file count*, not some notion of a reasonable project: a single
+# run estimates every file at least twice (--dry-run's table, then
+# create_batches' packing loop), so at a bound below the file count the first
+# pass evicts its own earliest entries before the second pass reaches them and
+# every file is re-encoded — the memoization silently stops paying off exactly
+# in the large repositories it was added for. 4096 used to be the bound, which
+# is a plausible file count for a monorepo.
+_TOKEN_CACHE_SIZE = 100_000
+
 
 @lru_cache(maxsize=1)
 def _get_encoder() -> Any | None:
@@ -75,6 +90,51 @@ def count_tokens(text: str) -> int:
     return len(enc.encode(text, disallowed_special=()))
 
 
+@lru_cache(maxsize=_TOKEN_CACHE_SIZE)
+def _cached_file_tokens(path_key: str, size: int, _mtime_ns: int) -> int:
+    """Token count for a file, memoized on (path, size, mtime).
+
+    A single run estimates every file at least twice — ``--dry-run`` builds its
+    per-file table and then ``create_batches`` packs the same list — and each
+    estimate is a full tiktoken encode over the file's text. Keying on
+    ``(size, _mtime_ns)`` alongside the path means an edit between calls
+    invalidates the entry instead of returning a stale count.
+
+    ``size`` and ``_mtime_ns`` are arguments rather than looked up here so the
+    ``stat()`` happens exactly once per call in the caller, and so a caller
+    holding a stat result can't race the cache key against the value.
+    ``_mtime_ns`` is underscore-prefixed because it is *only* a cache-key
+    component — nothing in the body reads it (vulture flags it otherwise).
+
+    Only the resulting *count* is cached. Deliberately not the file's text:
+    batches run concurrently in a ``ThreadPoolExecutor``, and holding every
+    scanned file's contents alive for the duration of a run would trade a
+    bounded number of re-reads for unbounded memory.
+    """
+    path = Path(path_key)
+    encoder = _get_encoder()
+    if encoder is not None and size <= _TIKTOKEN_MAX_BYTES:
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return size // BYTES_PER_TOKEN + PER_FILE_OVERHEAD_TOKENS
+        return (
+            len(encoder.encode(text, disallowed_special=())) + PER_FILE_OVERHEAD_TOKENS
+        )
+
+    return size // BYTES_PER_TOKEN + PER_FILE_OVERHEAD_TOKENS
+
+
+def clear_token_cache() -> None:
+    """Drop all memoized per-file token counts.
+
+    Only needed by tests that rewrite a file in place fast enough for its
+    ``(size, mtime_ns)`` to be unchanged; real runs are invalidated by the
+    cache key itself.
+    """
+    _cached_file_tokens.cache_clear()
+
+
 class FileBatch(BaseModel):
     """Represents a batch of files to analyze together."""
 
@@ -121,6 +181,11 @@ class FileBatcher:
         byte-based heuristic for huge files (avoids reading 2 MB+ files that
         would be skipped anyway) and when tiktoken is unavailable.
 
+        Results are memoized per ``(path, size, mtime)`` — see
+        :func:`_cached_file_tokens` — so the second and later estimates of the
+        same unmodified file are free. ``--dry-run`` plus ``create_batches``
+        already means two full encodes of every scanned file.
+
         Args:
             file_path: Path to the file
 
@@ -128,22 +193,11 @@ class FileBatcher:
             Estimated token count (includes per-file overhead)
         """
         try:
-            size = file_path.stat().st_size
+            stat = file_path.stat()
         except OSError:
             return PER_FILE_OVERHEAD_TOKENS
 
-        encoder = _get_encoder()
-        if encoder is not None and size <= _TIKTOKEN_MAX_BYTES:
-            try:
-                text = file_path.read_text(encoding="utf-8", errors="replace")
-            except OSError:
-                return size // BYTES_PER_TOKEN + PER_FILE_OVERHEAD_TOKENS
-            return (
-                len(encoder.encode(text, disallowed_special=()))
-                + PER_FILE_OVERHEAD_TOKENS
-            )
-
-        return size // BYTES_PER_TOKEN + PER_FILE_OVERHEAD_TOKENS
+        return _cached_file_tokens(str(file_path), stat.st_size, stat.st_mtime_ns)
 
     def create_batches(self, files: list[Path]) -> list[FileBatch]:
         """

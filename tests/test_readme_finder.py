@@ -1,6 +1,10 @@
 """Tests for README finder functionality."""
 
+import io
 from pathlib import Path
+
+import pytest
+from rich.console import Console
 
 
 class TestFindReadme:
@@ -193,6 +197,11 @@ class TestReadReadmeContent:
 class TestPromptReadmeConfirmation:
     """Tests for prompt_readme_confirmation function."""
 
+    @staticmethod
+    def _recording_console() -> Console:
+        """A Console whose output can be read back with ``export_text()``."""
+        return Console(record=True, width=200, file=io.StringIO())
+
     def test_returns_path_on_yes(self, tmp_path: Path) -> None:
         """Test that prompt_readme_confirmation returns path when user confirms."""
         from unittest.mock import patch
@@ -354,3 +363,90 @@ class TestPromptReadmeConfirmation:
         with patch("codereview.readme_finder.sys.stdin.isatty", return_value=False):
             result = prompt_readme_confirmation(readme)
             assert result == readme
+
+    @pytest.mark.parametrize("answer", ["yes", "YES", "Yes", " yes "])
+    def test_spelled_out_yes_confirms_the_readme(
+        self, tmp_path: Path, answer: str
+    ) -> None:
+        """ "yes" must confirm, not be read as a file path.
+
+        Regression: the branch accepted only ("", "y"), and the third option at
+        this prompt is a path — so "yes" fell through to the path branch,
+        printed "File not found: yes", and silently dropped the README context
+        the user had just confirmed.
+        """
+        from unittest.mock import patch
+
+        from codereview.readme_finder import prompt_readme_confirmation
+
+        readme = tmp_path / "README.md"
+        readme.write_text("# Test Project")
+
+        with (
+            patch("codereview.readme_finder.sys.stdin.isatty", return_value=True),
+            patch("codereview.readme_finder._timed_input", return_value=answer),
+        ):
+            assert prompt_readme_confirmation(readme) == readme
+
+    @pytest.mark.parametrize("answer", ["no", "NO", "No", " no "])
+    def test_spelled_out_no_declines_the_readme(
+        self, tmp_path: Path, answer: str
+    ) -> None:
+        """ "no" must decline *cleanly*, not by failing to parse as a path.
+
+        Both paths return None, so the return value alone can't tell them
+        apart — the observable difference is the bogus "File not found: no"
+        error the path branch prints.
+        """
+        from unittest.mock import patch
+
+        from codereview.readme_finder import prompt_readme_confirmation
+
+        readme = tmp_path / "README.md"
+        readme.write_text("# Test Project")
+        console = self._recording_console()
+
+        with (
+            patch("codereview.readme_finder.sys.stdin.isatty", return_value=True),
+            patch("codereview.readme_finder._timed_input", return_value=answer),
+        ):
+            assert prompt_readme_confirmation(readme, console=console) is None
+
+        assert "File not found" not in console.export_text()
+
+    @pytest.mark.parametrize("answer", ["no", "NO"])
+    def test_spelled_out_no_declines_at_the_no_readme_prompt(self, answer: str) -> None:
+        """The "no README found" prompt accepts "no" too (same path-vs-word trap)."""
+        from unittest.mock import patch
+
+        from codereview.readme_finder import prompt_readme_confirmation
+
+        console = self._recording_console()
+
+        with (
+            patch("codereview.readme_finder.sys.stdin") as mock_stdin,
+            patch("codereview.readme_finder.click.prompt", return_value=answer),
+        ):
+            mock_stdin.isatty.return_value = True
+            assert prompt_readme_confirmation(None, console=console) is None
+
+        assert "File not found" not in console.export_text()
+
+    def test_a_real_path_named_like_a_word_is_still_usable(
+        self, tmp_path: Path
+    ) -> None:
+        """An explicit path is still honoured; only bare y/n/yes/no are keywords."""
+        from unittest.mock import patch
+
+        from codereview.readme_finder import prompt_readme_confirmation
+
+        readme = tmp_path / "README.md"
+        readme.write_text("# Test Project")
+        custom = tmp_path / "CONTEXT.md"
+        custom.write_text("# Context")
+
+        with (
+            patch("codereview.readme_finder.sys.stdin.isatty", return_value=True),
+            patch("codereview.readme_finder._timed_input", return_value=str(custom)),
+        ):
+            assert prompt_readme_confirmation(readme) == custom.resolve()

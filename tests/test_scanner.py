@@ -175,3 +175,89 @@ def test_directory_exclude_pattern_still_prunes(tmp_path):
     resolved = [f.resolve() for f in files]
     assert keep.resolve() in resolved
     assert all("build" not in p.parts for p in files)
+
+
+def test_path_qualified_exclude_does_not_prune_same_named_dir_elsewhere(tmp_path):
+    """``docs/api/*`` must not prune an unrelated ``app/api/``.
+
+    Regression: ``_get_excluded_dir_names`` extracted the bare name of any
+    segment followed by a wildcard, so a path-qualified pattern contributed its
+    last directory name to the prune set. Pruning is by bare name and therefore
+    matches at any depth, so ``docs/api/*`` silently skipped every ``api``
+    directory in the tree — dropping files from the review with no warning.
+    """
+    excluded = tmp_path / "docs" / "api"
+    excluded.mkdir(parents=True)
+    (excluded / "generated.py").write_text("x = 1\n")
+
+    unrelated = tmp_path / "app" / "api"
+    unrelated.mkdir(parents=True)
+    keep = unrelated / "service.py"
+    keep.write_text("y = 2\n")
+
+    scanner = FileScanner(tmp_path, exclude_patterns=["docs/api/*"])
+    resolved = [f.resolve() for f in scanner.scan()]
+
+    # The unrelated same-named directory is still reviewed...
+    assert keep.resolve() in resolved
+    # ...while the pattern's actual target is still excluded (by _is_excluded,
+    # since the directory is now walked rather than pruned).
+    assert (excluded / "generated.py").resolve() not in resolved
+
+
+def test_deeply_qualified_exclude_does_not_prune_its_leaf_name(tmp_path):
+    """``a/b/c/**`` must not prune every directory named ``c``."""
+    keep_dir = tmp_path / "x" / "c"
+    keep_dir.mkdir(parents=True)
+    keep = keep_dir / "mod.py"
+    keep.write_text("x = 1\n")
+
+    scanner = FileScanner(tmp_path, exclude_patterns=["a/b/c/**"])
+    resolved = [f.resolve() for f in scanner.scan()]
+
+    assert keep.resolve() in resolved
+
+
+def test_wildcard_prefixed_exclude_still_prunes(tmp_path):
+    """A pattern whose prefix is all wildcards is unanchored, so it may prune.
+
+    ``*/build/**`` names ``build`` at any location one level down, which a
+    bare-name prune expresses correctly — the traversal saving must survive the
+    fix above.
+    """
+    build = tmp_path / "pkg" / "build"
+    build.mkdir(parents=True)
+    (build / "out.py").write_text("x = 1\n")
+    keep = tmp_path / "pkg" / "main.py"
+    keep.write_text("y = 2\n")
+
+    scanner = FileScanner(tmp_path, exclude_patterns=["*/build/**"])
+
+    assert "build" in scanner._get_excluded_dir_names()
+    resolved = [f.resolve() for f in scanner.scan()]
+    assert keep.resolve() in resolved
+    assert all("build" not in p.parts for p in resolved)
+
+
+def test_default_patterns_all_still_prune_their_directories():
+    """Every default ``**/dir/**`` pattern must still contribute a prune name.
+
+    The prune set is a pure traversal optimization, but losing an entry for a
+    directory like ``node_modules`` would mean walking (and stat-ing) a huge
+    tree on every scan. This pins the optimization to the defaults rather than
+    to one hand-picked example.
+    """
+    from pathlib import PurePath
+
+    from codereview.config import DEFAULT_EXCLUDE_PATTERNS
+
+    pruned = FileScanner(".")._get_excluded_dir_names()
+    expected = {
+        PurePath(p).parts[1]
+        for p in DEFAULT_EXCLUDE_PATTERNS
+        if PurePath(p).parts[:1] == ("**",)
+        and len(PurePath(p).parts) == 3
+        and PurePath(p).parts[2] in ("**", "*")
+    }
+    assert expected, "no directory-style default patterns found; the scan is broken"
+    assert expected <= pruned, f"stopped pruning {sorted(expected - pruned)}"

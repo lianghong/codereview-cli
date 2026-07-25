@@ -8,7 +8,7 @@ import subprocess  # nosec B404 - required for running static analysis tools
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
-from pathlib import Path, PurePath
+from pathlib import Path
 from typing import TypedDict
 
 # Per-tool regexes that pull an authoritative issue count from the tool's
@@ -21,6 +21,14 @@ _TOOL_COUNT_PATTERNS: dict[str, re.Pattern[str]] = {
     "ruff-format": re.compile(r"^(\d+) files? would be reformatted", re.MULTILINE),
     "mypy": re.compile(r"^Found (\d+) errors? in \d+ files?", re.MULTILINE),
 }
+
+# Path-shaped runs inside a linter diagnostic line. Deliberately excludes the
+# ``:`` that every tool uses to separate the path from the line number, plus
+# quotes/brackets/commas that wrap a path in prose, so the match ends at the
+# filename instead of running into ``:12:1: E501``. Used by
+# _filter_lines_for_paths to compare whole path components rather than
+# substrings — see its docstring for the two collisions that motivated it.
+_PATH_CANDIDATE = re.compile(r"[^\s:'\"()\[\],=]+")
 
 # mypy emits one diagnostic per line as ``path:line: severity: message``
 # (the column is optional); use this when the summary line is absent.
@@ -143,6 +151,26 @@ LANGUAGE_INDICATORS: dict[str, list[str]] = {
     "javascript": JS_TS_INDICATORS,
     "typescript": JS_TS_INDICATORS,
     "python": PYTHON_INDICATORS,
+}
+
+
+# Exit codes that mean "this tool could not run", per tool. A linter's exit
+# code has to distinguish "I ran and found problems" (a finding) from "I never
+# got started" (an error) — otherwise a repository whose ruff config names a
+# rule that doesn't exist silently contributes zero coverage to the review while
+# reporting a tidy issue count.
+#
+# Verified against the installed binaries rather than taken from docs: ruff,
+# black and mypy all exit 1 for genuine findings and 2 for an unparseable
+# config / missing plugin / bad arguments. Only tools whose two meanings are
+# actually distinguishable belong here — isort exits 1 for *both* an invalid
+# config and a wrongly-sorted file, and vulture exits 3 for findings, so
+# neither can be classified this way and neither is listed. Better to keep
+# treating an ambiguous exit as a finding than to discard real findings.
+_OPERATIONAL_FAILURE_EXIT_CODES: dict[str, tuple[int, ...]] = {
+    "ruff": (2,),
+    "black": (2,),
+    "mypy": (2,),
 }
 
 
@@ -310,13 +338,104 @@ class StaticAnalyzer:
         },
     }
 
+    # Tools whose repository config can make them load and execute code from
+    # the analyzed tree, and which config files to inspect for it.
+    #
+    # Reviewing a repository must not mean *running* it. These three run it,
+    # with the reviewer's privileges and no sandbox — verified locally against
+    # the installed binaries (mypy 1.19.1, ESLint v10.8.0, Prettier 3.x), each
+    # writing a marker file from a config the repo shipped:
+    #
+    #   mypy.ini ``[mypy] plugins = ./evil.py``     -> mypy imports the module
+    #   eslint.config.mjs (config *is* JavaScript)  -> ESLint imports the config
+    #   .prettierrc ``{"plugins": ["./evil.cjs"]}`` -> Prettier requires it
+    #
+    # The mypy run then reported ``passed=True``, so nothing in the review
+    # hinted that anything had happened. Cloning an untrusted repo and pointing
+    # ``--static-analysis`` at it is a documented use case, and it is exactly
+    # the case where an attacker controls these files.
+    #
+    # Detection is on the config's *content*, not its presence: a repo config is
+    # the whole reason a linter's output matches that project's CI, so skipping
+    # every repo that merely has a ``pyproject.toml`` would trade a real feature
+    # for a threat that isn't there. What's checked is whether the config
+    # actually loads code — a ``plugins`` declaration, or a config file that is
+    # itself executable JS. Everything else runs exactly as before.
+    #
+    # ``suffixes`` are config extensions that are executable by definition (the
+    # file is a module the tool imports); ``names`` are data-format configs that
+    # are only a risk if they declare plugins.
+    _CONFIG_EXECUTION_RISK: dict[str, dict[str, tuple[str, ...]]] = {
+        "mypy": {
+            # mypy reads the first of these that exists; a `plugins =` key in
+            # any of them names Python modules mypy imports.
+            "names": ("mypy.ini", ".mypy.ini", "setup.cfg", "pyproject.toml"),
+            "suffixes": (),
+            "section": ("[mypy]", "[tool.mypy]"),
+        },
+        "eslint": {
+            # Flat config is JavaScript by definition — ESLint imports it, so
+            # its mere existence is code execution. Legacy .eslintrc.json/.yml
+            # is data and stays safe unless it names plugins.
+            "names": (".eslintrc", ".eslintrc.json", ".eslintrc.yaml", ".eslintrc.yml"),
+            "suffixes": (
+                "eslint.config.js",
+                "eslint.config.mjs",
+                "eslint.config.cjs",
+                "eslint.config.ts",
+                ".eslintrc.js",
+                ".eslintrc.cjs",
+                ".eslintrc.mjs",
+            ),
+            "section": (),
+        },
+        "prettier": {
+            "names": (
+                ".prettierrc",
+                ".prettierrc.json",
+                ".prettierrc.yaml",
+                ".prettierrc.yml",
+                ".prettierrc.json5",
+                ".prettierrc.toml",
+                "package.json",
+            ),
+            "suffixes": (
+                ".prettierrc.js",
+                ".prettierrc.cjs",
+                ".prettierrc.mjs",
+                ".prettierrc.ts",
+                "prettier.config.js",
+                "prettier.config.cjs",
+                "prettier.config.mjs",
+                "prettier.config.ts",
+            ),
+            "section": (),
+        },
+    }
+
+    # Largest config file to read when looking for a plugin declaration. A
+    # config bigger than this is not a config; reading it wholesale would be the
+    # memory problem, so it counts as risky (fail closed) rather than skipped.
+    _MAX_CONFIG_SCAN_BYTES = 512 * 1024
+
+    # Matches a ``plugins`` declaration in INI/TOML/JSON/YAML config. Broad on
+    # purpose: a false positive costs one skipped tool on a repo that really
+    # does load plugins (the risky case), a false negative executes attacker
+    # code. Erring toward detection is the only safe direction here.
+    _PLUGIN_DECLARATION = re.compile(r"""["']?plugins["']?\s*[=:]""", re.IGNORECASE)
+
     # Default per-tool subprocess timeout in seconds. Caller can override via
     # the constructor; CLI exposes this as --tool-timeout. 120s covers most
     # repos but slow runs (cppcheck --enable=all, mypy strict on large
     # codebases) need more.
     DEFAULT_TOOL_TIMEOUT_SECONDS = 120
 
-    def __init__(self, directory: Path, tool_timeout: int | None = None):
+    def __init__(
+        self,
+        directory: Path,
+        tool_timeout: int | None = None,
+        trust_repo_config: bool = False,
+    ):
         """
         Initialize static analyzer.
 
@@ -325,6 +444,12 @@ class StaticAnalyzer:
             tool_timeout: Per-tool subprocess timeout in seconds. Defaults to
                 ``DEFAULT_TOOL_TIMEOUT_SECONDS`` (120). Raise this for slow
                 cppcheck/mypy runs on large repos.
+            trust_repo_config: Run mypy/ESLint/Prettier even when the repository
+                ships a config that would make them load code from the tree.
+                Off by default: that config executes with the reviewer's
+                privileges (see ``_CONFIG_EXECUTION_RISK``). Turn it on only for
+                a repository you already trust — e.g. your own, where the repo
+                config is what makes the linter output match CI.
 
         Raises:
             ValueError: If ``directory`` does not exist, is not a directory,
@@ -337,6 +462,7 @@ class StaticAnalyzer:
                 f"tool_timeout must be a positive integer, got {tool_timeout}"
             )
         self.tool_timeout = tool_timeout or self.DEFAULT_TOOL_TIMEOUT_SECONDS
+        self.trust_repo_config = trust_repo_config
 
         # Resolve path immediately to handle symlinks and normalize
         self.directory = directory.resolve()
@@ -512,6 +638,58 @@ class StaticAnalyzer:
             return None
         return str(resolved)
 
+    def _find_executable_config(self, tool_name: str) -> Path | None:
+        """Return a repo config for *tool_name* that would execute code, if any.
+
+        The threat: ``--static-analysis`` on a cloned repository hands the
+        repository's own config to a linter that will import Python or JavaScript
+        named in it, as the user running the review. See
+        ``_CONFIG_EXECUTION_RISK`` for the three verified vectors.
+
+        Two shapes count:
+
+        1. A config file that *is* a program (``eslint.config.mjs``,
+           ``.prettierrc.cjs``) — the tool imports it, so existence is enough.
+        2. A data config (INI/TOML/JSON/YAML) that declares ``plugins`` — the
+           declaration names modules the tool then imports.
+
+        Only the analyzed directory's top level is inspected, matching where
+        these tools look for their own config when run with ``cwd=directory``.
+        A config that cannot be read counts as risky: an unreadable file is
+        exactly what an attacker would arrange if the check could be skipped by
+        making the read fail.
+
+        Returns the offending path, or None when nothing risky was found.
+        """
+        risk = self._CONFIG_EXECUTION_RISK.get(tool_name)
+        if risk is None:
+            return None
+
+        for filename in risk["suffixes"]:
+            candidate = self.directory / filename
+            if candidate.is_file():
+                return candidate
+
+        for filename in risk["names"]:
+            candidate = self.directory / filename
+            if not candidate.is_file():
+                continue
+            try:
+                if candidate.stat().st_size > self._MAX_CONFIG_SCAN_BYTES:
+                    return candidate
+                text = candidate.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                return candidate
+            # For mypy, a `plugins` key only matters inside its own section —
+            # pyproject.toml and setup.cfg are shared files and a `plugins` key
+            # belonging to some other tool is not mypy loading anything.
+            sections = risk["section"]
+            if sections and not any(section in text for section in sections):
+                continue
+            if self._PLUGIN_DECLARATION.search(text):
+                return candidate
+        return None
+
     def _check_available_tools(self) -> list[str]:
         """Check which static analysis tools are installed and available.
 
@@ -605,6 +783,29 @@ class StaticAnalyzer:
                 output="",
                 errors=[f"Tool not installed: {tool_name}"],
             )
+
+        # Refuse to hand a repo-controlled, code-loading config to the tool.
+        # Checked before the command is built, let alone run: the whole point is
+        # that the subprocess never starts. Reported as an *error* rather than a
+        # finding, the same shape as the operational-failure path below, so the
+        # review says a tool's coverage is missing instead of quietly dropping
+        # it. See _find_executable_config for the verified vectors.
+        if not self.trust_repo_config:
+            risky_config = self._find_executable_config(tool_name)
+            if risky_config is not None:
+                return StaticAnalysisResult(
+                    tool=tool_name,
+                    passed=False,
+                    issues_count=0,
+                    output="",
+                    errors=[
+                        f"Skipped {tool_name}: {risky_config.name} in the analyzed "
+                        "repository would make it load and execute code from the "
+                        "tree with your privileges. Its findings are missing from "
+                        "this review. Pass --trust-repo-config to run it anyway "
+                        "(only for a repository you trust)."
+                    ],
+                )
 
         # Directory was validated in __init__; no per-call check needed.
         tool_config = self.TOOLS[tool_name]
@@ -903,11 +1104,39 @@ class StaticAnalyzer:
                         ]
                     )
                 elif tool_name == "npm-audit":
-                    # npm audit --json outputs structured JSON; parse it
-                    # to get accurate vulnerability counts
-                    issues_count = self._count_npm_audit_issues(output)
+                    # Parse stdout ALONE, not the merged stream: this is a JSON
+                    # parse, and npm writes routine notices to stderr ("npm warn
+                    # config production ...") on runs that succeed. Concatenated,
+                    # json.loads fails, and the except branch deliberately reports
+                    # 0 rather than a fabricated count — so a single npm warning
+                    # turned a real "3 vulnerabilities" into a clean bill of
+                    # health. `output` stays merged for display; only the
+                    # machine-readable count is narrowed.
+                    issues_count = self._count_npm_audit_issues(result.stdout)
                 else:
                     issues_count = self._count_issues(tool_name, language, output)
+
+            # A tool that couldn't run is an error, not a finding. Exit 2 from
+            # these three means "I could not do my job" (unparseable config,
+            # missing mypy plugin, bad CLI arguments) while exit 1 means "I ran
+            # and found problems" — verified against the installed binaries.
+            # Reported as a finding it read as ordinary code-quality noise: the
+            # review silently lost a whole tool's coverage, and `issues_count`
+            # counted the tool's own error text as issues.
+            if not passed and result.returncode in _OPERATIONAL_FAILURE_EXIT_CODES.get(
+                tool_name, ()
+            ):
+                return StaticAnalysisResult(
+                    tool=tool_name,
+                    passed=False,
+                    issues_count=0,
+                    output=output.strip(),
+                    errors=[
+                        f"{tool_name} could not run (exit {result.returncode}); "
+                        "its findings are missing from this review. This usually "
+                        "means an invalid tool configuration in the repository."
+                    ],
+                )
 
             return StaticAnalysisResult(
                 tool=tool_name,
@@ -1087,43 +1316,103 @@ class StaticAnalyzer:
         """Keep only output lines that mention at least one allowed path token.
 
         Most linters emit one diagnostic per line as ``<path>:<line>:<col>: ...``
-        so path-substring matching is a good-enough, tool-agnostic filter. Each
-        token is a path *suffix* (``parent/basename`` where a parent exists, see
-        ``_path_match_token``) rather than a bare basename: matching the bare
-        basename would pull in diagnostics for an unrelated same-named file
-        (``src/config.py`` would also match ``tests/fixtures/config.py``).
+        so matching on the printed path is a good-enough, tool-agnostic filter.
+        Matching compares **path components**, not raw substrings, and it keeps
+        the whole token path rather than a ``parent/basename`` tail.
+
+        Both of those were substring/tail bugs, and each one put a *different*
+        file's diagnostics into a batch's prompt — telling the model that a file
+        it was handed has problems that actually live in a file it cannot see.
+        That is worse than dropping the line: the model is asked to reconcile a
+        finding against code where the finding isn't, and either invents a
+        justification or reports it against the wrong file:
+
+        - **Shared parent name.** With a ``parent/basename`` tail,
+          ``backend/api/handlers.py`` and ``frontend/api/handlers.py`` both
+          reduce to ``api/handlers.py``, so a batch holding only the backend
+          file also received the frontend file's findings. Two components
+          disambiguate *some* same-named files, but not same-named files under
+          same-named parents — and ``api/``, ``utils/``, ``models/``, ``tests/``
+          are precisely the directory names that repeat in a real tree.
+        - **Mid-component substring.** ``token in line`` also matched paths the
+          token doesn't name: ``backend/api/handlers.py`` is a substring of
+          ``vendor/backend/api/handlers.py.orig``, so a stale backup (likewise
+          ``handlers.py.bak``, ``handlers.pyi``) was attributed to the token.
+
+        The abs-vs-rel tolerance that motivated a suffix match is kept, in both
+        directions and at component granularity: a candidate matches when one
+        component sequence is a suffix of the other, so an absolute
+        ``/abs/to/src/foo.py`` matches the relative ``src/foo.py`` *and* a
+        linter run with ``cwd=directory`` printing ``src/main.go`` matches an
+        absolute entry. At least two components must agree unless the token
+        itself is a bare top-level filename — comparing one component is the
+        basename match this filter exists to avoid.
+
         Comparison is on a slash-normalized copy of the line so Windows-style
-        backslash paths still match.
+        backslash paths still match. A path containing spaces won't be
+        recognized as a single candidate; that drops the line rather than
+        misattributing it, which is the safe direction.
 
         Returns the filtered non-empty lines plus the count of dropped lines.
         Empty lines and lines without any path token are dropped (they're
         usually summary banners that get re-emitted by the section header).
         """
+        allowed = {
+            components
+            for token in allowed_tokens
+            if (components := StaticAnalyzer._path_components(token))
+        }
         kept: list[str] = []
         dropped = 0
         for ln in output.splitlines():
             if not ln.strip():
                 continue
-            line_norm = ln.replace("\\", "/")
-            if any(token in line_norm for token in allowed_tokens):
+            if StaticAnalyzer._line_mentions_any_path(ln, allowed):
                 kept.append(ln)
             else:
                 dropped += 1
         return kept, dropped
 
     @staticmethod
-    def _path_match_token(path: str) -> str:
-        """Return the match token for a file path: ``parent/basename``.
+    def _path_components(path: str) -> tuple[str, ...]:
+        """Split *path* into comparable components, slash-normalizing first.
 
-        Using the last two components disambiguates same-named files in
-        different directories while staying tolerant of whether a linter prints
-        absolute or relative paths (the trailing components appear in both).
-        Top-level files (no parent) fall back to the bare basename.
+        Backslashes become slashes (Windows-style linter output), and ``.``
+        segments and empties are dropped so ``./src/foo.py``, ``src//foo.py``
+        and ``src/foo.py`` compare equal.
         """
-        pure = PurePath(path)
-        if pure.parent.name:
-            return f"{pure.parent.name}/{pure.name}"
-        return pure.name
+        return tuple(
+            part for part in path.replace("\\", "/").split("/") if part and part != "."
+        )
+
+    @staticmethod
+    def _line_mentions_any_path(line: str, allowed: set[tuple[str, ...]]) -> bool:
+        """Does *line* name a path matching one of *allowed* by component suffix?"""
+        for candidate in _PATH_CANDIDATE.findall(line.replace("\\", "/")):
+            components = StaticAnalyzer._path_components(candidate)
+            if not components:
+                continue
+            for wanted in allowed:
+                # Compare the shared tail. One component is a bare basename
+                # match, so require two unless the token has only one to give.
+                depth = min(len(components), len(wanted))
+                if depth < 2 and len(wanted) > 1:
+                    continue
+                if components[-depth:] == wanted[-depth:]:
+                    return True
+        return False
+
+    @staticmethod
+    def _path_match_token(path: str) -> str:
+        """Return the match token for a file path: the path itself, normalized.
+
+        The token used to be just ``parent/basename``. Two components collide
+        whenever two files share both a name and a parent name, and the token is
+        what discards the information needed to tell them apart — so the whole
+        path is kept and ``_filter_lines_for_paths`` does the suffix comparison
+        instead, where a longer candidate can still match a shorter token.
+        """
+        return "/".join(StaticAnalyzer._path_components(path))
 
     @staticmethod
     def condense_for_prompt(

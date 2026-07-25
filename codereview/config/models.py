@@ -1,8 +1,9 @@
 """Pydantic data models for configuration validation."""
 
+from collections import Counter
 from typing import Literal
 
-from pydantic import BaseModel, Field, HttpUrl
+from pydantic import BaseModel, Field, HttpUrl, model_validator
 
 
 class PricingConfig(BaseModel):
@@ -80,7 +81,15 @@ class ModelConfig(BaseModel):
     Attributes:
         id: Short identifier for CLI usage (e.g., 'opus', 'sonnet').
         name: Human-readable display name.
-        aliases: Alternative names for CLI (optional).
+        aliases: Current, recommended alternative names for CLI (optional).
+            These are what ``--list-models`` advertises.
+        deprecated_aliases: Names kept solely so a previously-valid
+            ``--model`` invocation keeps working — typically the ids and
+            aliases of a removed entry that this one succeeded. They resolve
+            exactly like ``aliases`` but are hidden from ``--list-models``
+            unless ``--list-models --verbose`` is used. See the
+            "Removing a model must never break a --model invocation"
+            convention in CLAUDE.md.
         pricing: Pricing configuration for input/output tokens.
         inference_params: Default inference parameters (optional).
         full_id: Full model ID for API calls (provider-specific, optional).
@@ -96,7 +105,15 @@ class ModelConfig(BaseModel):
     id: str = Field(..., min_length=1, description="Short identifier for CLI usage")
     name: str = Field(..., min_length=1, description="Human-readable display name")
     aliases: list[str] = Field(
-        default_factory=list, description="Alternative names for CLI"
+        default_factory=list,
+        description="Current, recommended alternative names for CLI",
+    )
+    deprecated_aliases: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Back-compat-only names (usually inherited from a removed entry) "
+            "that resolve but are hidden from --list-models"
+        ),
     )
     pricing: PricingConfig = Field(..., description="Token pricing configuration")
     inference_params: InferenceParams | None = Field(
@@ -140,6 +157,39 @@ class ModelConfig(BaseModel):
             "provider-level read_timeout when unset"
         ),
     )
+
+    @model_validator(mode="after")
+    def _check_alias_hygiene(self) -> "ModelConfig":
+        """Reject self-aliases and duplicates across both alias lists.
+
+        Neither is a functional bug — ``_register_model`` is idempotent for a
+        repeated name within one provider — but both are pure noise in
+        ``--list-models``, and both shipped unnoticed (``gpt5.5-bedrock`` and
+        ``deepseek-v4-flash-nvidia`` each listed their own ``id`` as an alias).
+        Failing at load time is what keeps the displayed alias list meaning
+        "other names you can type", which is the whole reason it's shown.
+
+        An alias appearing in *both* ``aliases`` and ``deprecated_aliases`` is
+        also rejected: the split exists to decide what to display, so a name in
+        both lists has no defined answer.
+        """
+        all_names = [*self.aliases, *self.deprecated_aliases]
+
+        if self.id in all_names:
+            raise ValueError(
+                f"model {self.id!r} lists its own id as an alias; the id is "
+                "already a valid --model spelling, so remove it from the "
+                "alias list"
+            )
+
+        duplicates = sorted({n for n, c in Counter(all_names).items() if c > 1})
+        if duplicates:
+            raise ValueError(
+                f"model {self.id!r} repeats alias(es) {duplicates}; each name "
+                "must appear once, in either aliases or deprecated_aliases"
+            )
+
+        return self
 
 
 class ProviderConfig(BaseModel):

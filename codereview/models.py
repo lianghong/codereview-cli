@@ -128,6 +128,7 @@ def _warn_once(bucket: set[str], value: str, kind: str, default: str) -> None:
 
 # Valid categories for issues
 VALID_CATEGORIES = (
+    "Correctness",
     "Code Style",
     "Code Quality",
     "Security",
@@ -176,6 +177,29 @@ SEVERITY_MAPPING = {
 
 # Map common LLM category variations to valid categories
 CATEGORY_MAPPING = {
+    # Correctness variations. This is the category models reach for by
+    # default when they find an actual bug, and before it existed every
+    # one of these words was coerced to "Code Quality" *and* bumped the
+    # category_coerced drift counter — so real bugs were filed next to
+    # naming nits and the drift signal was polluted by correct behavior.
+    # Note "error handling" deliberately stays on Code Quality below: as a
+    # bare category name it's ambiguous between "this path crashes"
+    # (correctness) and "use a narrower exception type" (quality), and the
+    # existing mapping is a documented contract.
+    "correctness": "Correctness",
+    "correct": "Correctness",
+    "bug": "Correctness",
+    "bugs": "Correctness",
+    "logic": "Correctness",
+    "logic error": "Correctness",
+    "logic bug": "Correctness",
+    "reliability": "Correctness",
+    "concurrency": "Correctness",
+    "race condition": "Correctness",
+    "thread safety": "Correctness",
+    "data loss": "Correctness",
+    "crash": "Correctness",
+    "edge case": "Correctness",
     # Code Style variations
     "style": "Code Style",
     "formatting": "Code Style",
@@ -320,6 +344,7 @@ class ReviewIssue(BaseModel):
     """Represents a single code review issue."""
 
     category: Literal[
+        "Correctness",
         "Code Style",
         "Code Quality",
         "Security",

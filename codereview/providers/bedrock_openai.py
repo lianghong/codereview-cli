@@ -38,8 +38,11 @@ from codereview.providers.base import (
 from codereview.providers.mixins import (
     TokenTrackingMixin,
     extract_openai_token_usage,
+    is_blank,
+    is_https_url,
     is_openai_retryable_error,
     is_placeholder_api_key,
+    is_short_api_key,
     parse_retry_after,
     require_https,
 )
@@ -134,13 +137,9 @@ class BedrockOpenAIProvider(TokenTrackingMixin, ModelProvider):
 
         base_model = ChatOpenAI(**model_params)
 
-        if self.model_config.supports_tool_use:
-            # Tool-calling-based structured output. include_raw=True so we can
-            # extract real token counts from the AIMessage.
-            return base_model.with_structured_output(CodeReviewReport, include_raw=True)
-
-        # Tool-use-less models (GPT-5.5/5.4 adaptive thinking): routing and
-        # _create_chain live in the base class.
+        # Tool-use vs prompt-based JSON parsing is decided once in the base
+        # class from supports_tool_use; tool-use-less models here (GPT-5.x /
+        # Grok adaptive thinking) get the PydanticOutputParser path.
         return self._apply_structured_output(base_model)
 
     def _is_retryable_error(self, error: Exception) -> bool:
@@ -172,9 +171,14 @@ class BedrockOpenAIProvider(TokenTrackingMixin, ModelProvider):
         batch_number: int,
         total_batches: int,
         files_content: dict[str, str],
-        max_retries: int = 5,
+        max_retries: int | None = None,
     ) -> CodeReviewReport:
-        """Analyze a batch of files using an OpenAI model on Bedrock."""
+        """Analyze a batch of files using an OpenAI model on Bedrock.
+
+        ``max_retries=None`` uses this provider's default of 5.
+        """
+        retries = self._resolve_max_retries(max_retries, self.provider_config, 5)
+
         batch_context = self._prepare_batch_context(
             batch_number, total_batches, files_content, self.project_context
         )
@@ -184,7 +188,7 @@ class BedrockOpenAIProvider(TokenTrackingMixin, ModelProvider):
             "batch_context": batch_context,
         }
 
-        retry_config = RetryConfig(max_retries=max_retries, base_wait=2.0)
+        retry_config = RetryConfig(max_retries=retries, base_wait=2.0)
         return self._execute_with_retry(chain_input, retry_config, batch_context)
 
     def validate_credentials(self) -> ValidationResult:
@@ -192,7 +196,7 @@ class BedrockOpenAIProvider(TokenTrackingMixin, ModelProvider):
         result = ValidationResult(valid=True, provider="Bedrock OpenAI")
 
         api_key = self.provider_config.api_key
-        if not api_key:
+        if is_blank(api_key):
             result.valid = False
             result.add_check("API Key", False, "OPENAI_API_KEY is not set")
             result.add_suggestion(
@@ -201,18 +205,28 @@ class BedrockOpenAIProvider(TokenTrackingMixin, ModelProvider):
             )
             return result
 
-        if is_placeholder_api_key(api_key, ("your-bedrock-api-key-here",)):
+        # "<your-amazon-bedrock-api-key>" is the exact string README.md's export
+        # line documents (angle brackets included) — per the CLAUDE.md contract
+        # it must hard-fail --validate, not 401 on the first real call.
+        if is_placeholder_api_key(
+            api_key,
+            (
+                "your-bedrock-api-key-here",
+                "<your-amazon-bedrock-api-key>",
+                "your-amazon-bedrock-api-key",
+            ),
+        ):
             result.valid = False
             result.add_check(
                 "API Key", False, "OPENAI_API_KEY appears to be a placeholder"
             )
             return result
 
-        if len(api_key) < 20:
+        if is_short_api_key(api_key):
             result.add_warning("API key seems unusually short. Verify it's correct.")
         result.add_check("API Key", True, "API key configured")
 
-        if not self.provider_config.base_url:
+        if is_blank(self.provider_config.base_url):
             result.valid = False
             result.add_check("Base URL", False, "OPENAI_BASE_URL is not set")
             result.add_suggestion(
@@ -220,9 +234,11 @@ class BedrockOpenAIProvider(TokenTrackingMixin, ModelProvider):
             )
             return result
 
-        if not self.provider_config.base_url.startswith("https://"):
+        if not is_https_url(self.provider_config.base_url):
             result.valid = False
-            result.add_check("Base URL", False, "base_url must use HTTPS")
+            result.add_check(
+                "Base URL", False, "base_url must be an HTTPS URL with a host"
+            )
             return result
 
         result.add_check("Base URL", True, f"Endpoint: {self.provider_config.base_url}")

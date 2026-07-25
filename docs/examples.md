@@ -103,14 +103,14 @@ codereview ./src --model mistral-small    # Mistral Small 4 119B
 # GPT-5.4 - Frontier reasoning, 1.05M context (Azure default)
 codereview ./src --model gpt
 
-# Kimi K2.5 - Multimodal MoE, 256K context (Azure)
-codereview ./src --model kimi-azure
+# Kimi K2.6 - 1T MoE, 256K context (Moonshot direct; `kimi-azure` also routes here)
+codereview ./src --model kimi-k2.6
 
 # Gemini 3.1 Pro - Most advanced reasoning, 1M context (Google GenAI)
 codereview ./src --model gemini-3.1-pro
 
-# Gemini 3 Flash - Fast and cost-efficient (Google GenAI)
-codereview ./src --model gemini-3-flash
+# Gemini 3.6 Flash - GA workhorse, thinking on by default (Google GenAI)
+codereview ./src --model gemini-3.6-flash
 ```
 
 **Output with Model Information**:
@@ -200,14 +200,13 @@ codereview ./src \
 ```
 
 **Cost Comparison**:
-- Opus 4.6 (100 files): ~$1.50
+- Opus 5 (100 files): ~$1.50
 - GPT-5.4 (100 files): ~$0.75
 - Gemini 3.1 Pro (100 files): ~$0.50
-- Gemini 3 Pro (100 files): ~$0.50
+- Gemini 3.6 Flash (100 files): ~$0.32
 - Sonnet (100 files): ~$0.30
-- DeepSeek-V4-Pro Azure (100 files): ~$0.18
-- Kimi K2.5 Azure (100 files): ~$0.12
-- Gemini 3 Flash (100 files): ~$0.10
+- DeepSeek-V4-Pro direct (100 files): ~$0.18
+- Kimi K2.6 direct (100 files): ~$0.12
 - Haiku (500 files): ~$0.20
 - NVIDIA NIM models: free during preview
 
@@ -283,27 +282,28 @@ jobs:
         run: |
           codereview ./src \
             --model sonnet \
+            --fail-on critical \
             --output review-report.json \
             --format json \
-            --severity high \
             --max-files 100
+        # --fail-on critical exits 2 when a Critical issue is found, so this
+        # step fails the job on its own. The report is written before the gate
+        # is applied, so the upload step below still has its artifact.
 
       - name: Upload review report
-        uses: actions/upload-artifact@v3
+        if: always()        # keep the artifact even when the gate failed
+        uses: actions/upload-artifact@v4
         with:
           name: code-review-report
           path: review-report.json
 
-      - name: Check for critical issues
+      - name: Show critical issues
+        if: failure()
         run: |
-          CRITICAL=$(jq '.metrics.critical // 0' review-report.json)
-          HIGH=$(jq '.metrics.high // 0' review-report.json)
-          echo "Critical: $CRITICAL, High: $HIGH"
-          if [ "$CRITICAL" -gt 0 ]; then
-            echo "::error::$CRITICAL critical issues found in code review"
-            jq '.issues[] | select(.severity == "Critical")' review-report.json
-            exit 1
-          fi
+          CRITICAL=$(jq '.metrics.critical_issues // 0' review-report.json)
+          HIGH=$(jq '.metrics.high_issues // 0' review-report.json)
+          echo "::error::$CRITICAL critical, $HIGH high issues found in code review"
+          jq '.issues[] | select(.severity == "Critical")' review-report.json
 
       - name: Comment on PR
         if: github.event_name == 'pull_request'
@@ -320,11 +320,11 @@ jobs:
 
             | Severity | Count |
             |----------|-------|
-            | Critical | ${metrics.critical || 0} |
-            | High | ${metrics.high || 0} |
-            | Medium | ${metrics.medium || 0} |
-            | Low | ${metrics.low || 0} |
-            | Info | ${metrics.info || 0} |
+            | Critical | ${metrics.critical_issues || 0} |
+            | High | ${metrics.high_issues || 0} |
+            | Medium | ${metrics.medium_issues || 0} |
+            | Low | ${metrics.low_issues || 0} |
+            | Info | ${metrics.info_issues || 0} |
 
             ${report.issues?.slice(0, 5).map(i =>
               `### ${i.severity}: ${i.title}\n- **File:** ${i.file_path}:${i.line_start}\n- ${i.description}`
@@ -356,20 +356,24 @@ code-review:
     - uv pip install -e .
   script:
     - |
+      # --fail-on critical exits 2 on a Critical finding; `artifacts:` below
+      # still collects the report because it is written before the gate runs.
       codereview ./src \
         --model haiku \
+        --fail-on critical \
         --output review-report.json \
         --format json \
-        --severity high \
-        --max-files 100
-    - |
-      CRITICAL=$(jq '.metrics.critical // 0' review-report.json)
-      if [ "$CRITICAL" -gt 0 ]; then
-        echo "Critical issues found!"
-        jq '.issues[] | select(.severity == "Critical")' review-report.json
-        exit 1
-      fi
+        --max-files 100 \
+      || { status=$?;
+           if [ "$status" -eq 2 ]; then
+             echo "Critical issues found!"
+             jq '.issues[] | select(.severity == "Critical")' review-report.json
+           else
+             echo "codereview itself failed (exit $status)"
+           fi
+           exit "$status"; }
   artifacts:
+    when: always          # keep the report even when the gate failed
     paths:
       - review-report.json
     expire_in: 1 week
@@ -801,11 +805,11 @@ diff before.md after.md
    - **NVIDIA NIM free tier** (Mistral Medium 3.5, MiniMax M2.5, etc.) for development and CI experimentation
    - **DeepSeek-V4-Pro Azure** for budget-conscious production reviews ($1.74/$3.48 per M, 1M context)
    - **Haiku** for CI/CD quality gates (fastest, cheapest Bedrock option)
-   - **Gemini 3 Flash** for large-context reviews (1M context, low cost)
+   - **Gemini 3.6 Flash** for large-context reviews (1M context, thinking on by default)
    - **Gemini 3.1 Pro** for advanced reasoning reviews (1M context)
    - **Sonnet** for PR reviews (balanced)
    - **GPT-5.4** for Azure-hosted reviews ($2.50/$15 per M, 1.05M context)
-   - **Opus 4.8** for production releases only (latest reasoning model, 1M context)
+   - **Opus 5** for production releases only (latest reasoning model, 1M context)
 
 3. **Use Artifacts**: Always save review reports as build artifacts
 

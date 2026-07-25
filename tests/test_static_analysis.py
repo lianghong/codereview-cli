@@ -1,5 +1,6 @@
 """Tests for static analysis integration."""
 
+import json
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -914,6 +915,111 @@ def test_filter_lines_for_paths_drops_summary_banners():
     assert dropped == 2
 
 
+# ---------------------------------------------------------------------------
+# only_paths filtering: a batch must never be shown another file's diagnostics
+# ---------------------------------------------------------------------------
+
+
+def test_condense_for_prompt_filter_rejects_shared_parent_collision():
+    """Same basename *and* same parent name, different tree: must not match.
+
+    The token used to be ``parent/basename``, which reduces both
+    ``backend/api/handlers.py`` and ``frontend/api/handlers.py`` to
+    ``api/handlers.py`` — so a batch holding only the backend file was also
+    handed the frontend file's findings. Repeated directory names (``api``,
+    ``utils``, ``models``) make this the common case, not a corner one, and the
+    result is the model reconciling a finding against code it wasn't given.
+    """
+    output = (
+        "backend/api/handlers.py:1:1 E501 line too long\n"
+        "frontend/api/handlers.py:9:1 F401 unused import\n"
+    )
+    results = {
+        "ruff": StaticAnalysisResult(
+            tool="ruff", passed=False, issues_count=2, output=output, errors=[]
+        )
+    }
+    block = StaticAnalyzer.condense_for_prompt(
+        results, only_paths=["backend/api/handlers.py"]
+    )
+    assert "backend/api/handlers.py" in block
+    assert "frontend/api/handlers.py" not in block
+
+
+@pytest.mark.parametrize(
+    "linter_path",
+    [
+        "vendor/backend/api/handlers.py.orig",  # stale backup
+        "backend/api/handlers.py.bak",
+        "backend/api/handlers.pyi",  # stub, not the module
+    ],
+)
+def test_condense_for_prompt_filter_rejects_mid_component_substring(linter_path):
+    """A path that merely *contains* the token as a substring must not match."""
+    results = {
+        "ruff": StaticAnalysisResult(
+            tool="ruff",
+            passed=False,
+            issues_count=1,
+            output=f"{linter_path}:1:1 E501 line too long",
+            errors=[],
+        )
+    }
+    block = StaticAnalyzer.condense_for_prompt(
+        results, only_paths=["backend/api/handlers.py"]
+    )
+    assert block == "", f"{linter_path} was attributed to backend/api/handlers.py"
+
+
+@pytest.mark.parametrize(
+    "linter_path,batch_path",
+    [
+        # Abs linter output vs relative batch entry (the original motivation).
+        ("/abs/path/to/src/foo.py", "src/foo.py"),
+        # ...and the reverse: tools run with cwd=directory print relative paths
+        # while the batch carries str(Path) absolutes.
+        ("src/foo.py", "/abs/path/to/src/foo.py"),
+        # Normalization: leading ./ and doubled slashes compare equal.
+        ("./src/foo.py", "src/foo.py"),
+        ("src//foo.py", "./src/foo.py"),
+        # Windows-style separators in tool output.
+        ("src\\foo.py", "src/foo.py"),
+    ],
+)
+def test_condense_for_prompt_filter_is_tolerant_of_path_form(linter_path, batch_path):
+    """Boundary matching must not cost the abs-vs-rel tolerance it replaced."""
+    results = {
+        "ruff": StaticAnalysisResult(
+            tool="ruff",
+            passed=False,
+            issues_count=1,
+            output=f"{linter_path}:1:1 E501 line too long",
+            errors=[],
+        )
+    }
+    block = StaticAnalyzer.condense_for_prompt(results, only_paths=[batch_path])
+    assert "E501" in block, f"{linter_path} did not match {batch_path}"
+
+
+def test_condense_for_prompt_filter_still_matches_a_top_level_file():
+    """A token with no parent has only a basename to offer; it must still match.
+
+    The two-component minimum can't apply here or top-level files would never
+    match at all — the one place a bare-basename comparison is unavoidable.
+    """
+    results = {
+        "ruff": StaticAnalysisResult(
+            tool="ruff",
+            passed=False,
+            issues_count=1,
+            output="setup.py:1:1 E501 line too long",
+            errors=[],
+        )
+    }
+    block = StaticAnalyzer.condense_for_prompt(results, only_paths=["setup.py"])
+    assert "E501" in block
+
+
 def test_npm_audit_count_uses_severity_buckets_not_total():
     """metadata.vulnerabilities sums per-severity buckets, excluding `total`.
 
@@ -943,6 +1049,135 @@ def test_npm_audit_count_returns_zero_on_non_json():
     fabricated per-line count that would inflate the issue total."""
     html = "<html><body>\n" + "<p>proxy error</p>\n" * 200 + "</body></html>\n"
     assert StaticAnalyzer._count_npm_audit_issues(html) == 0
+
+
+@patch("subprocess.run")
+def test_npm_audit_count_survives_npm_writing_to_stderr(mock_subprocess, tmp_path):
+    """The JSON parse must see stdout alone, never stdout+stderr.
+
+    npm writes routine notices to stderr ("npm warn config production ...") on
+    runs that otherwise succeed. Concatenated onto the JSON body, json.loads
+    fails, and _count_npm_audit_issues deliberately reports 0 rather than a
+    fabricated count — so one npm warning turned a real vulnerability count into
+    a clean bill of health, with no error anywhere to say so.
+    """
+    (tmp_path / "package.json").write_text('{"name": "x"}\n')
+    mock_subprocess.return_value = Mock(
+        returncode=1,  # npm audit exits non-zero when vulnerabilities exist
+        stdout=json.dumps(
+            {
+                "metadata": {
+                    "vulnerabilities": {
+                        "info": 0,
+                        "low": 2,
+                        "moderate": 1,
+                        "high": 0,
+                        "critical": 0,
+                        "total": 3,
+                    }
+                }
+            }
+        ),
+        stderr="npm warn config production Use `--omit=dev` instead.\n",
+    )
+
+    analyzer = StaticAnalyzer(tmp_path)
+    analyzer.available_tools = ["npm-audit"]
+    result = analyzer.run_tool("npm-audit")
+
+    assert result.issues_count == 3, (
+        "npm's stderr notice was fed to json.loads and swallowed the real "
+        f"vulnerability count (got {result.issues_count})"
+    )
+    # The merged stream is still what a human reads, so the warning stays visible.
+    assert "npm warn config production" in result.output
+
+
+# ---------------------------------------------------------------------------
+# "The tool couldn't run" is an error, not a finding
+#
+# A linter's exit code has to distinguish "I ran and found problems" (exit 1)
+# from "I never got started" (exit 2: unparseable config, missing mypy plugin,
+# bad arguments). Classified as a finding, a repository whose ruff config names
+# a nonexistent rule contributed zero coverage to the review while reporting a
+# tidy issue count — the run looked complete and wasn't.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("tool", ["ruff", "black", "mypy"])
+@patch("subprocess.run")
+def test_exit_2_is_reported_as_an_error_not_a_finding(mock_subprocess, tool, tmp_path):
+    (tmp_path / "a.py").write_text("x = 1\n")
+    mock_subprocess.return_value = Mock(
+        returncode=2,
+        stdout="",
+        stderr=f"{tool}: failed to parse configuration: unknown key\n",
+    )
+
+    analyzer = StaticAnalyzer(tmp_path)
+    analyzer.available_tools = [tool]
+    result = analyzer.run_tool(tool)
+
+    assert result.passed is False
+    assert result.errors, (
+        f"{tool} exit 2 means it could not run; with errors=[] the caller cannot "
+        "tell this apart from a clean-but-failing lint"
+    )
+    assert result.issues_count == 0, (
+        "the tool's own error text must not be counted as code-quality issues"
+    )
+    # The user has to learn their review lost this tool's coverage.
+    assert "could not run" in result.errors[0]
+
+
+# Realistic exit-1 output per tool: the counters use tool-specific summary-line
+# regexes, so a shared fake body would only prove the guard didn't fire.
+_EXIT_1_FINDING_OUTPUT = {
+    "ruff": "a.py:1:1: F401 `os` imported but unused\nFound 1 error.\n",
+    "black": "would reformat a.py\n\n1 file would be reformatted.\n",
+    "mypy": "a.py:2: error: Incompatible return value type\nFound 1 error in 1 file (checked 1 source file)\n",
+}
+
+
+@pytest.mark.parametrize("tool", ["ruff", "black", "mypy"])
+@patch("subprocess.run")
+def test_exit_1_is_still_a_finding(mock_subprocess, tool, tmp_path):
+    """Exit 1 is the normal "found problems" path and must stay a finding.
+
+    The guard is narrow on purpose: widening it to any non-zero code would
+    silently discard every real diagnostic these tools produce.
+    """
+    (tmp_path / "a.py").write_text("x = 1\n")
+    mock_subprocess.return_value = Mock(
+        returncode=1, stdout=_EXIT_1_FINDING_OUTPUT[tool], stderr=""
+    )
+
+    analyzer = StaticAnalyzer(tmp_path)
+    analyzer.available_tools = [tool]
+    result = analyzer.run_tool(tool)
+
+    assert result.passed is False
+    assert result.errors == []
+    assert result.issues_count >= 1
+
+
+def test_only_tools_with_unambiguous_exit_codes_are_classified():
+    """isort and vulture must NOT be in the operational-failure map.
+
+    isort exits 1 for both an invalid config and a wrongly-sorted file, and
+    vulture exits 3 for ordinary findings — probed against the installed
+    binaries. Neither can distinguish the two meanings by exit code, and
+    misclassifying a finding as an error loses the finding. Keeping an ambiguous
+    tool out is the safe direction.
+    """
+    from codereview.static_analysis import _OPERATIONAL_FAILURE_EXIT_CODES
+
+    assert set(_OPERATIONAL_FAILURE_EXIT_CODES) == {"ruff", "black", "mypy"}
+    for tool, codes in _OPERATIONAL_FAILURE_EXIT_CODES.items():
+        assert 1 not in codes, (
+            f"{tool}: exit 1 is the findings path for every tool here; treating "
+            "it as an operational failure would discard real diagnostics"
+        )
 
 
 def test_safe_rglob_caches_repeated_patterns(tmp_path):
@@ -995,3 +1230,139 @@ def test_safe_rglob_suffixes_cache_key_is_order_independent(tmp_path):
 
     assert r1 == r2
     assert calls["n"] == 1
+
+
+# ---------------------------------------------------------------------------
+# Repo-controlled config must not execute code (CWE-94)
+# ---------------------------------------------------------------------------
+
+
+def _stub_available(analyzer, tool):
+    """Mark *tool* installed without needing the real binary on PATH."""
+    analyzer.available_tools = [tool]
+    analyzer._tool_paths[StaticAnalyzer.TOOLS[tool]["command"][0]] = "/usr/bin/true"
+
+
+@pytest.mark.parametrize(
+    "filename,body,tool",
+    [
+        # Verified vectors: each of these ran attacker code as the reviewer.
+        ("mypy.ini", "[mypy]\nplugins = ./evil.py\n", "mypy"),
+        (".mypy.ini", "[mypy]\nplugins = ./evil.py\n", "mypy"),
+        ("setup.cfg", "[mypy]\nplugins = ./evil.py\n", "mypy"),
+        ("pyproject.toml", '[tool.mypy]\nplugins = ["./evil.py"]\n', "mypy"),
+        # Flat config IS JavaScript — ESLint imports it, so existence is enough.
+        ("eslint.config.mjs", "export default [];\n", "eslint"),
+        ("eslint.config.js", "module.exports = [];\n", "eslint"),
+        (".eslintrc.cjs", "module.exports = {};\n", "eslint"),
+        (".prettierrc", '{"plugins": ["./evil.cjs"]}\n', "prettier"),
+        (".prettierrc.cjs", "module.exports = {};\n", "prettier"),
+        ("prettier.config.js", "module.exports = {};\n", "prettier"),
+    ],
+)
+def test_code_loading_repo_config_skips_the_tool(tmp_path, filename, body, tool):
+    """A repo config that would execute code must skip the tool, not run it.
+
+    ``--static-analysis`` on a cloned repository handed the repository's own
+    config to a linter that imports Python/JavaScript named in it, with the
+    reviewer's privileges and no sandbox. Verified locally: a mypy.ini with
+    ``plugins = ./evil.py`` wrote a marker file, and the result then reported
+    ``passed=True`` — the review gave no hint anything had happened.
+    """
+    (tmp_path / filename).write_text(body)
+    analyzer = StaticAnalyzer(tmp_path)
+    _stub_available(analyzer, tool)
+
+    # The subprocess must never start; patching it proves the gate runs first.
+    with patch("codereview.static_analysis.subprocess.run") as run:
+        result = analyzer.run_tool(tool)
+
+    run.assert_not_called()
+    assert result.passed is False
+    assert result.issues_count == 0
+    # Reported as a missing-coverage *error*, not a finding: a skipped tool that
+    # looks like a clean pass is the silent-hole failure mode.
+    assert result.errors and filename in result.errors[0]
+    assert "--trust-repo-config" in result.errors[0]
+
+
+@pytest.mark.parametrize(
+    "filename,body,tool",
+    [
+        # Data-format configs with no plugin declaration: the common case, and
+        # the repo config is what makes a linter's output match that project's
+        # CI. Skipping these would trade a real feature for an absent threat.
+        ("pyproject.toml", "[tool.mypy]\nstrict = true\n", "mypy"),
+        ("setup.cfg", "[mypy]\nignore_missing_imports = true\n", "mypy"),
+        ("mypy.ini", "[mypy]\nwarn_unused_ignores = true\n", "mypy"),
+        (".eslintrc.json", '{"rules": {}}\n', "eslint"),
+        (".prettierrc.json", '{"semi": false}\n', "prettier"),
+        (".prettierrc", '{"semi": false}\n', "prettier"),
+        ("package.json", '{"name": "x", "prettier": {"semi": false}}\n', "prettier"),
+        # A `plugins` key belonging to another tool is not mypy loading it.
+        ("pyproject.toml", '[tool.other]\nplugins = ["./x.py"]\n', "mypy"),
+    ],
+)
+def test_ordinary_repo_config_still_runs_the_tool(tmp_path, filename, body, tool):
+    """Detection is on content, not presence — a plain config must still run."""
+    (tmp_path / filename).write_text(body)
+    analyzer = StaticAnalyzer(tmp_path)
+    assert analyzer._find_executable_config(tool) is None
+
+
+def test_trust_repo_config_opts_back_in(tmp_path):
+    """The escape hatch has to actually run the tool, or it isn't one."""
+    (tmp_path / "mypy.ini").write_text("[mypy]\nplugins = ./evil.py\n")
+    analyzer = StaticAnalyzer(tmp_path, trust_repo_config=True)
+    # The config is still *detected* as risky — the flag decides what to do
+    # about it, so the detection must not be what the flag turns off.
+    assert analyzer._find_executable_config("mypy") is not None
+    _stub_available(analyzer, "mypy")
+
+    with patch("codereview.static_analysis.subprocess.run") as run:
+        run.return_value = Mock(returncode=0, stdout="Success", stderr="")
+        result = analyzer.run_tool("mypy")
+
+    run.assert_called_once()
+    assert result.passed is True
+
+
+def test_unreadable_config_is_treated_as_risky(tmp_path):
+    """A config that can't be read fails *closed*.
+
+    Otherwise the check is bypassable by whatever makes the read fail, which is
+    the one thing an attacker controlling the tree can arrange.
+    """
+    (tmp_path / "mypy.ini").write_text("[mypy]\nplugins = ./evil.py\n")
+    analyzer = StaticAnalyzer(tmp_path)
+
+    with patch.object(Path, "read_text", side_effect=OSError("denied")):
+        assert analyzer._find_executable_config("mypy") is not None
+
+
+def test_oversized_config_is_treated_as_risky(tmp_path):
+    """A multi-megabyte 'config' is not scanned into memory; it's refused."""
+    (tmp_path / "mypy.ini").write_text(
+        "[mypy]\n# " + "x" * (StaticAnalyzer._MAX_CONFIG_SCAN_BYTES + 1) + "\n"
+    )
+    analyzer = StaticAnalyzer(tmp_path)
+    assert analyzer._find_executable_config("mypy") is not None
+
+
+def test_tools_without_a_config_execution_vector_are_never_gated(tmp_path):
+    """The gate must not touch tools whose config can't load code.
+
+    ruff/black/isort/bandit read declarative config only; gating them would cost
+    coverage for no security benefit.
+    """
+    (tmp_path / "pyproject.toml").write_text('[tool.ruff]\nplugins = ["./evil.py"]\n')
+    analyzer = StaticAnalyzer(tmp_path)
+    for tool in ("ruff", "black", "isort", "bandit", "vulture", "shellcheck"):
+        assert analyzer._find_executable_config(tool) is None
+
+
+def test_this_repository_is_not_false_positived():
+    """Our own pyproject.toml must not trip the gate (regression guard)."""
+    analyzer = StaticAnalyzer(Path(__file__).resolve().parent.parent)
+    for tool in ("mypy", "eslint", "prettier"):
+        assert analyzer._find_executable_config(tool) is None

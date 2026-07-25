@@ -46,8 +46,8 @@ providers:
         context_window: 1000000
         # Adaptive thinking is always on and cannot be disabled (Bedrock model
         # card), and Anthropic forbids a forced tool_choice while thinking is
-        # active - the same incompatibility as Opus 4.7/4.8 (see opus4.8
-        # entry). Route structured output through prompt-based JSON parsing.
+        # active - the same incompatibility as Opus 4.8 (see opus4.8 entry).
+        # Route structured output through prompt-based JSON parsing.
         supports_tool_use: false
         capabilities:
           - code_review
@@ -64,6 +64,71 @@ providers:
           (Data Retention API, mode=provider_data_share) before invocation.
           Dual-use prompts fall back to Opus 4.8 server-side and are billed
           at Opus rates. Geo-US inference profile; in-region us-east-1 only.
+
+      - id: opus5
+        full_id: us.anthropic.claude-opus-5
+        name: Claude Opus 5
+        # Thinking is ON by default (breaking change from Opus 4.8, where it
+        # was off unless requested) at default effort "high", and the Converse
+        # call is non-streaming - so no bytes arrive until the full response is
+        # generated. Same condition that forced Fable 5's override; think-heavy
+        # batches outlast the provider-default read_timeout (300s).
+        read_timeout: 1800
+        # Generation-neutral aliases track the current generation, so `opus`
+        # and `claude-opus` point here. This entry also absorbed the
+        # version-explicit aliases of the removed Opus 4.7 / 4.6 entries
+        # (2026-07-25) so existing --model invocations keep resolving.
+        aliases:
+          - opus
+          - claude-opus
+          - claude-opus-5
+          - opus-5
+          - claude-opus5
+        # 2026-07-25: the Opus 4.7 / 4.6 back-compat aliases (opus4.7,
+        # opus-4.7, claude-opus-4.7, claude-opus-47, opus4.6, opus-4.6,
+        # claude-opus-4.6) were deleted, not migrated - `--model opus4.6` now
+        # fails fast rather than silently resolving to a two-generations-newer
+        # model. Use `opus` (generation-neutral) or `opus5`.
+        pricing:
+          # Verified: AWS Bedrock model card / Anthropic pricing (July 2026).
+          # Unchanged from Opus 4.8. Cache-write rate is the 5-minute TTL
+          # ($10.00/M for the 1-hour TTL, which we don't use).
+          input_per_million: 5.00
+          output_per_million: 25.00
+          cache_write_per_million: 6.25
+          cache_read_per_million: 0.50
+        inference_params:
+          # Reasoning model - temperature/top_p/top_k not supported.
+          # default_temperature omitted intentionally.
+          max_output_tokens: 128000
+        context_window: 1000000
+        # Unlike the other adaptive-thinking Claude entries, this one is not an
+        # assume-prompt-parsing guess: the Bedrock model card lists "Structured
+        # outputs: Not Supported" for both the bedrock-runtime and
+        # bedrock-mantle endpoints. Thinking-on-by-default also reproduces the
+        # Opus 4.8 conflict - Anthropic allows only tool_choice auto/none
+        # while thinking, but .with_structured_output() forces one, so the tool
+        # call comes back as literal text and CodeReviewReport.issues fails
+        # with a list_type error. Route through prompt-based JSON parsing.
+        supports_tool_use: false
+        capabilities:
+          - code_review
+          - security_analysis
+          - reasoning
+          - computer_use
+          - adaptive_thinking
+          - vision
+        notes: >-
+          Most capable Opus model (July 2026) and first of the Claude 5
+          generation's Opus tier; step-change gains in deep reasoning,
+          agentic/long-horizon coding, and code review and bug-finding at
+          Opus 4.8 pricing. 1M-token context (default and maximum), up to 128K
+          output. Thinking is on by default - effort (low/medium/high/xhigh/max,
+          default high) is the control for depth, and disabling thinking is
+          rejected above high effort. Structured output uses prompt-based JSON
+          parsing (supports_tool_use: false). Zero data retention on by default,
+          so no provider_data_share opt-in (unlike Fable 5). Geo-US inference
+          profile; In-Region us-east-1, Geo/Global route more broadly.
 
       - id: opus4.8
         full_id: us.anthropic.claude-opus-4-8
@@ -104,63 +169,9 @@ providers:
           structured output uses prompt-based JSON parsing (supports_tool_use:
           false). Geo-US inference profile; routes us-east-1/us-east-2/us-west-2.
 
-      - id: opus4.7
-        full_id: us.anthropic.claude-opus-4-7
-        name: Claude Opus 4.7
-        aliases:
-          - claude-opus-4.7
-          - opus-4.7
-          - claude-opus-47
-        pricing:
-          input_per_million: 5.00
-          output_per_million: 25.00
-          cache_write_per_million: 6.25
-          cache_read_per_million: 0.50
-        inference_params:
-          # Opus 4.7 is a reasoning model - temperature not supported
-          # default_temperature omitted intentionally
-          max_output_tokens: 128000
-        context_window: 1000000
-        # Same adaptive-thinking / forced-tool_choice incompatibility as Opus
-        # 4.8 (see that entry). Route structured output through prompt-based
-        # JSON parsing instead of .with_structured_output().
-        supports_tool_use: false
-        capabilities:
-          - code_review
-          - security_analysis
-          - reasoning
-          - computer_use
-          - adaptive_thinking
-        notes: >-
-          Opus model with enhanced reasoning and adaptive thinking.
-          1M-token context, up to 128K output (verified against the AWS
-          Bedrock model card). Reasoning model - temperature not supported.
-          Adaptive thinking is incompatible with forced tool_choice, so
-          structured output uses prompt-based JSON parsing (supports_tool_use:
-          false). Geo-US inference profile; routes us-east-1/us-east-2/us-west-2.
-
-      - id: opus
-        full_id: global.anthropic.claude-opus-4-6-v1
-        name: Claude Opus 4.6
-        aliases:
-          - claude-opus
-          - opus4.6
-          - claude-opus-4.6
-        pricing:
-          input_per_million: 5.00
-          output_per_million: 25.00
-          cache_write_per_million: 6.25
-          cache_read_per_million: 0.50
-        inference_params:
-          # Low temp for deterministic code analysis
-          default_temperature: 0.1
-          max_output_tokens: 128000
-        context_window: 200000
-        capabilities:
-          - code_review
-          - security_analysis
-          - reasoning
-          - computer_use
+      # Opus 4.7 and Opus 4.6 removed 2026-07-25: superseded by opus4.8/opus5
+      # at identical $5/$25 pricing (4.6 also had only a 200K context). Both
+      # remain ACTIVE on Bedrock, so re-add from git history if ever needed.
 
       - id: sonnet5
         full_id: us.anthropic.claude-sonnet-5
@@ -180,7 +191,7 @@ providers:
           cache_read_per_million: 0.30
         inference_params:
           # Sonnet 5 rejects temperature/top_p/top_k with a 400 (same
-          # constraint as Opus 4.7/4.8 and Fable 5) - omit all sampling params.
+          # constraint as Opus 4.8 and Fable 5) - omit all sampling params.
           # default_temperature omitted intentionally.
           max_output_tokens: 128000
         context_window: 1000000
@@ -190,7 +201,7 @@ providers:
         # .with_structured_output() sets exactly that forced tool_choice - so on
         # batches where the model thinks, the tool call comes back as literal
         # text and CodeReviewReport.issues fails with a list_type error. Same
-        # incompatibility as Opus 4.7/4.8. Route through prompt-based JSON
+        # incompatibility as Opus 4.8. Route through prompt-based JSON
         # parsing instead.
         supports_tool_use: false
         capabilities:
@@ -206,9 +217,9 @@ providers:
           Sonnet tier. Near-Opus-4.8 intelligence at Sonnet pricing. 1M-token
           context, up to 128K output. Adaptive thinking on by default; rejects
           temperature/top_p/top_k, and structured output uses prompt-based JSON
-          parsing (supports_tool_use: false), same as Opus 4.7/4.8. Uses an
+          parsing (supports_tool_use: false), same as Opus 4.8. Uses an
           updated tokenizer (~1.0-1.35x more tokens than Sonnet 4.6). Ships with
-          real-time cybersecurity safeguards (same as Opus 4.7/4.8). Geo-US
+          real-time cybersecurity safeguards (same as Opus 4.8). Geo-US
           inference profile; routes us-east-1/us-east-2/us-west-2.
 
       - id: sonnet
@@ -234,7 +245,7 @@ providers:
           - computer_use
           - reasoning
         notes: >-
-          Approaches Opus 4.6 intelligence at
+          Approaches Opus 4.8 intelligence at
           lower cost, frontier coding and agents
 
       - id: haiku
@@ -260,34 +271,11 @@ providers:
           73.3% SWE-bench Verified, fast and
           cost-effective
 
-      # Qwen3 Coder Model (Alibaba)
-      # MoE: 480B total, 35B active parameters
-      # Best for: Specialized code generation
-      - id: qwen-bedrock
-        full_id: qwen.qwen3-coder-480b-a35b-v1:0
-        name: Qwen3 Coder 480B (Bedrock)
-        aliases:
-          - qwen
-          - qwen-coder
-        pricing:
-          input_per_million: 0.22
-          output_per_million: 1.40
-        inference_params:
-          # Lower than default 0.7 for code review
-          default_temperature: 0.3
-          default_top_p: 0.8
-          default_top_k: 20
-          max_output_tokens: 65536
-        context_window: 131072
-        architecture: "MoE (480B total, 35B active)"
-        capabilities:
-          - code_generation
-          - code_review
-          - agentic_coding
-          - browser_automation
-        notes: >-
-          87.9% MultiPL-E score, specialized
-          for coding tasks
+      # Qwen3 Coder 480B (Bedrock) removed 2026-07-25: qwen.qwen3-coder-480b-a35b-v1:0
+      # is not offered in this provider's us-east-1 region (verified against the
+      # live ListFoundationModels catalog; it exists only in us-west-2, where
+      # qwen-next-bedrock in turn is absent). qwen-next-bedrock is the supported
+      # Qwen coding model here, and it carries the `qwen`/`qwen-coder` aliases.
 
       # Kimi K2.5 Model (Moonshot AI, Bedrock)
       # MoE: 1T total, 32B active parameters
@@ -315,7 +303,7 @@ providers:
         # Bedrock's Converse parsing for Moonshot models leaks internal
         # tool-call markers (<|tool_call_begin|>...) into the text field
         # instead of parsing them as tool_use — the same "tool call returned
-        # as literal text" failure as Opus 4.7/4.8. Route through prompt-based
+        # as literal text" failure as Opus 4.8. Route through prompt-based
         # JSON parsing per the assume-prompt-parsing rule.
         supports_tool_use: false
         architecture: "MoE (1T total, 32B active)"
@@ -336,10 +324,20 @@ providers:
       - id: qwen-next-bedrock
         full_id: qwen.qwen3-coder-next
         name: Qwen3 Coder Next (Bedrock)
+        # Absorbed the generation-neutral `qwen`/`qwen-coder` aliases from the
+        # removed qwen-bedrock entry (Qwen3 Coder 480B, not offered in
+        # us-east-1) - this is now the only Qwen coding model on Bedrock here.
         aliases:
           - qwen-next
           - qwen3-next
           - qwen-coder-next
+          - qwen
+          - qwen-coder
+        # Back-compat only: resolves, but hidden from --list-models
+        # (see --list-models --verbose).
+        # id of the removed Qwen3 Coder 480B (Bedrock) entry (2026-07-25).
+        deprecated_aliases:
+          - qwen-bedrock
         pricing:
           # Verified: AWS Bedrock (Feb 2026)
           input_per_million: 0.50
@@ -411,7 +409,6 @@ providers:
         name: GLM 5 (Bedrock)
         aliases:
           - glm-5-bedrock
-          - glm5b
         pricing:
           # TBD - update when AWS publishes
           input_per_million: 0.00
@@ -426,7 +423,7 @@ providers:
         # GLM-5 is a thinking model with reasoning on by default
         # (reasoning_effort defaults to max), so a forced tool_choice is
         # auto-downgraded / returned as text while thinking — the same
-        # incompatibility the GLM-5.1/5.2-on-Z.AI entries route around.
+        # incompatibility the GLM-5.2-on-Z.AI entry routes around.
         # Assume prompt-based JSON parsing until a live run proves tool-use.
         supports_tool_use: false
         capabilities:
@@ -507,7 +504,6 @@ providers:
         aliases:
           - gpt54-pro
           - gpt-pro
-          - gpt54p
         pricing:
           input_per_million: 30.00
           output_per_million: 180.00
@@ -531,88 +527,13 @@ providers:
           uses more compute for harder problems,
           supports reasoning.effort medium/high/xhigh
 
-      # Kimi K2.5 (Azure AI Foundry)
-      # MoE: 1T total, 32B active parameters
-      # Best for: Reasoning, multimodal analysis
-      - id: kimi-k2.5-azure
-        deployment_name: Kimi-K2.5
-        name: Kimi K2.5 (Azure)
-        aliases:
-          - kimi25-azure
-          - kimi-azure
-        pricing:
-          # Microsoft Foundry (Feb 2026)
-          input_per_million: 0.60
-          output_per_million: 3.00
-        inference_params:
-          # Lowered from 0.6 for code review
-          default_temperature: 0.5
-          default_top_p: 0.95
-          max_output_tokens: 65536
-        context_window: 262144
-        # K2.5 is a thinking model, and on Azure Foundry the SGLang/vLLM
-        # backend rejects a forced tool_choice ("tool choice requires
-        # --enable-auto-tool-choice ...") — the same backend limitation as
-        # DeepSeek-V4-Pro on Azure below. Route through prompt-based JSON
-        # parsing per the assume-prompt-parsing rule.
-        supports_tool_use: false
-        capabilities:
-          - reasoning
-          - multimodal
-          - code_review
-          - tool_use
-          - agentic_tasks
-        notes: >-
-          1T MoE multimodal, 96.1% AIME 2025,
-          Agent Swarm support. Prompt-based JSON parsing on Azure Foundry.
-
-      # DeepSeek-V4-Pro (Azure AI Foundry)
-      # Reasoning model with chain-of-thought
-      # Best for: Complex reasoning, deep code analysis
-      # Note: No tool use on Foundry → prompt-based JSON
-      #   (see CLAUDE.md: same pattern as MiniMax M2.5 on Bedrock;
-      #   supports_tool_use: false routes to PydanticOutputParser
-      #   instead of with_structured_output)
-      - id: deepseek-v4-pro-azure
-        deployment_name: DeepSeek-V4-Pro
-        name: DeepSeek-V4-Pro (Azure)
-        # Azure-suffixed aliases only — base names like
-        # `deepseek-v4`, `deepseek-v4-pro`, `dsv4` are claimed by
-        # the direct DeepSeek API provider (canonical owner).
-        aliases:
-          - dsv4-azure
-          - deepseek-v4-azure
-          - ds-v4-azure
-        pricing:
-          # DeepSeek list price (Azure Foundry pricing page
-          # is JS-rendered and shows "$-" for DeepSeek tiers
-          # at the time of this entry; update once Azure
-          # publishes per-token rates). 75% promo through
-          # 2026-05-31 brings effective rate to $0.435/$0.87.
-          input_per_million: 1.74
-          output_per_million: 3.48
-          # 1/10 of cache-miss input per DeepSeek docs
-          cached_input_per_million: 0.174
-        inference_params:
-          # Reasoning model: temperature/top_p NOT supported.
-          # Foundry caps output at 384K; we keep a conservative
-          # max_output_tokens to bound per-batch cost while still
-          # leaving room for the chain-of-thought.
-          max_output_tokens: 32000
-        context_window: 1000000
-        # Foundry: "Tool calling: No" → use prompt-based JSON
-        supports_tool_use: false
-        architecture: "MoE (DeepSeek V4 family)"
-        capabilities:
-          - reasoning
-          - code_review
-          - security_analysis
-          - thinking
-          - structured_output
-        notes: >-
-          1M-token context, 384K max output, chain-of-thought
-          reasoning, no tool calling on Azure Foundry,
-          en/zh languages
+      # Kimi K2.5 (Azure) and DeepSeek-V4-Pro (Azure) removed 2026-07-25: both
+      # deployments return DeploymentNotFound on this Azure resource (verified
+      # live), and unlike Bedrock/NVIDIA an Azure entry only works if someone
+      # has explicitly created a deployment with that exact name. Both models
+      # stay reachable via their canonical direct providers: `kimi-k2.6`
+      # (Moonshot) and `deepseek-v4-pro` (DeepSeek direct). Re-add from git
+      # history if you deploy them on Foundry again.
 
   # NVIDIA NIM API Provider
   # Models available via build.nvidia.com
@@ -670,8 +591,6 @@ providers:
         aliases:
           - mistral-medium
           - mistral-medium-3.5
-          - mm35
-          - mmed
         pricing:
           input_per_million: 0.00
           output_per_million: 0.00
@@ -701,54 +620,11 @@ providers:
       # 204,800 input context length
       # Best for: Complex software engineering,
       # agentic tool use, long-horizon workflows
-      - id: minimax-m2.7-nvidia
-        full_id: minimaxai/minimax-m2.7
-        name: MiniMax M2.7 (NVIDIA)
-        aliases:
-          - mm2.7-nvidia
-          - minimax-m2.7
-          - mm27
-          # Absorbed from minimax-m2.5-nvidia (NVIDIA deprecated the M2.5
-          # endpoint 2026-05-12). Old invocations now resolve to M2.7.
-          - minimax-m2.5-nvidia
-          - mm2.5-nvidia
-          - minimax-m2.5
-          - mm25
-        pricing:
-          input_per_million: 0.00
-          output_per_million: 0.00
-        inference_params:
-          # NVIDIA model card recommends
-          # temperature=1.0, top_p=0.95, top_k=40
-          default_temperature: 1.0
-          default_top_p: 0.95
-          default_top_k: 40
-          max_output_tokens: 128000
-          # Interleaved thinking for deeper
-          # code analysis (matches M2.5 behavior)
-          enable_thinking: true
-          clear_thinking: false
-        # Input Context Length (ISL): 204,800
-        context_window: 204800
-        # Always-on interleaved thinking, and the NVIDIA NIM endpoint has a
-        # live tool-call bug: the tool name is emitted in every stream chunk,
-        # producing invalid concatenated tool calls (search_filessearch_files).
-        # Route through prompt-based JSON parsing (same path as MiniMax M3).
-        supports_tool_use: false
-        architecture: "MoE (230B total, 10B active)"
-        capabilities:
-          - coding
-          - reasoning
-          - agentic_tasks
-          - code_review
-          - thinking
-          - tool_use
-        notes: >-
-          56.22% SWE-Pro, 57.0% Terminal Bench 2,
-          1495 ELO GDPval-AA (highest among
-          open-source), agent-native model for
-          long-horizon engineering workflows.
-          Prompt-based JSON parsing on NVIDIA NIM.
+      # MiniMax M2.7 (NVIDIA) removed 2026-07-25: superseded by MiniMax M3
+      # below (1M context vs 204K, multimodal, same free endpoint). The M2.7
+      # endpoint is still live on NIM, so re-add from git history if needed.
+      # M3 is the only MiniMax on NIM; the M2.7/M2.5 aliases were deleted
+      # 2026-07-25 rather than migrated onto it.
 
       # MiniMax M3 Preview (via NVIDIA)
       # Multimodal MoE vision-language model:
@@ -764,10 +640,17 @@ providers:
       - id: minimax-m3-nvidia
         full_id: minimaxai/minimax-m3
         name: MiniMax M3 (NVIDIA)
+        # Generation-neutral `minimax`/`mm` names track the current generation.
+        # M3-only names. The inherited M2.7/M2.5 aliases were deleted
+        # 2026-07-25 (see the note below the alias list).
         aliases:
           - minimax-m3
           - mm3-nvidia
           - mm3
+        # 2026-07-25: the M2.5 / M2.7 back-compat aliases (minimax-m2.5,
+        # mm25, minimax-m2.5-nvidia, mm2.5-nvidia, minimax-m2.7,
+        # minimax-m2.7-nvidia, mm2.7-nvidia, mm27) were deleted, not migrated -
+        # they named models whose NIM endpoints are gone. Use `minimax-m3`.
         pricing:
           # Free/non-commercial NVIDIA NIM trial endpoint
           input_per_million: 0.00
@@ -802,39 +685,10 @@ providers:
           30 min, long-horizon coding (8+ hrs). Non-commercial
           NVIDIA NIM trial endpoint. Prompt-based JSON parsing.
 
-      # Qwen3 Coder 480B (via NVIDIA)
-      # MoE: 480B total, 35B active parameters
-      # Best for: Code generation, code review
-      - id: qwen-nvidia
-        full_id: >-
-          qwen/qwen3-coder-480b-a35b-instruct
-        name: Qwen3 Coder 480B (NVIDIA)
-        aliases:
-          - qwen3-nvidia
-          - qwen-coder-nvidia
-        pricing:
-          input_per_million: 0.00
-          output_per_million: 0.00
-        inference_params:
-          # Matches Bedrock Qwen config
-          default_temperature: 0.3
-          default_top_p: 0.8
-          default_top_k: 20
-          # For detailed reports
-          max_output_tokens: 16384
-          # Deeper code analysis
-          enable_thinking: true
-          clear_thinking: false
-        context_window: 131072
-        architecture: "MoE (480B total, 35B active)"
-        capabilities:
-          - code_generation
-          - code_review
-          - agentic_coding
-          - thinking
-        notes: >-
-          87.9% MultiPL-E, specialized
-          for coding tasks via NVIDIA NIM
+      # Qwen3 Coder 480B (NVIDIA) removed 2026-07-25: qwen/qwen3-coder-480b-a35b-instruct
+      # is GONE from the live NIM catalog (verified against GET /v1/models) —
+      # a dead endpoint, not merely superseded. Qwen3.5 397B below is the
+      # current Qwen on NIM and absorbed its aliases.
 
       # Qwen3.5 397B A17B (via NVIDIA)
       # MoE: 397B total, 17B active parameters
@@ -842,10 +696,19 @@ providers:
       - id: qwen3.5-nvidia
         full_id: qwen/qwen3.5-397b-a17b
         name: Qwen3.5 397B A17B (NVIDIA)
+        # Absorbed from the removed qwen-nvidia entry (Qwen3 Coder 480B, whose
+        # NIM endpoint no longer exists) — the only Qwen on NIM now.
         aliases:
           - qwen3.5
           - qwen35
           - qwen35-nvidia
+          - qwen-nvidia
+        # Back-compat only: resolves, but hidden from --list-models
+        # (see --list-models --verbose).
+        # Named the Qwen3 Coder 480B NIM endpoint, which is gone.
+        deprecated_aliases:
+          - qwen3-nvidia
+          - qwen-coder-nvidia
         pricing:
           input_per_million: 0.00
           output_per_million: 0.00
@@ -934,7 +797,6 @@ providers:
         aliases:
           - dsv4-flash-nvidia
           - ds-v4-flash-nvidia
-          - deepseek-v4-flash-nvidia
         pricing:
           # Free endpoint on build.nvidia.com
           input_per_million: 0.00
@@ -972,11 +834,9 @@ providers:
         aliases:
           - kimi-nvidia-26
           - kimi26-nvidia
-          # Absorbed from kimi-k2.5-nvidia (NVIDIA fully shut down the K2.5
-          # endpoint 2026-05-20). Old invocations now resolve to K2.6.
-          - kimi-k2.5-nvidia
-          - kimi-k2.5
-          - kimi25
+        # 2026-07-25: the K2.5 back-compat aliases (kimi-k2.5,
+        # kimi-k2.5-nvidia, kimi25) were deleted, not migrated - NVIDIA shut
+        # the K2.5 endpoint down 2026-05-20. Use `kimi-nvidia-26`.
         pricing:
           input_per_million: 0.00
           output_per_million: 0.00
@@ -1022,13 +882,16 @@ providers:
           - glm52-nvidia
           - glm5.2-nvidia
           - glm-5.2-nvidia
-          # Absorbed from glm51 (NVIDIA deprecated the z-ai/glm-5.1 free
-          # endpoint ~2026-07 and points users to z-ai/glm-5.2). That entry
-          # had itself absorbed glm5 (deprecated 2026-04-20), so the whole
-          # GLM-5.x-on-NVIDIA lineage now resolves here.
-          - glm51-nvidia
-          - glm-5.1
-          - glm5.1
+        # Back-compat only: resolves, but hidden from --list-models
+        # (see --list-models --verbose).
+        # The GLM-5.x-on-NVIDIA lineage: glm5 -> GLM-5.1 (free endpoint
+        # deprecated ~2026-07) -> GLM-5.2. The GLM-5.1 names themselves
+        # (glm51 - the removed entry's id - plus glm51-nvidia, glm-5.1, glm5.1)
+        # were deleted 2026-07-25, not kept. What remains resolves only because
+        # `glm5`/`glm-5` predate GLM-5.1; note they name GLM *5*, a different
+        # live model on Bedrock (glm5-bedrock), which is why they aren't
+        # advertised.
+        deprecated_aliases:
           - glm5-nvidia
           - glm5
           - glm-5
@@ -1039,7 +902,7 @@ providers:
         inference_params:
           # Model card evaluates reasoning at temperature=1.0/top_p=0.95;
           # lowered to 0.5 for deterministic code review (same rationale as
-          # GLM-5 and GLM-5.1 below).
+          # the GLM-5.2-on-Z.AI entry below).
           default_temperature: 0.5
           default_top_p: 0.95
           max_output_tokens: 16384
@@ -1049,8 +912,8 @@ providers:
         context_window: 1000000
         # Thinking model with effort levels (enable_thinking above). On the
         # NIM re-host GLM-5.x emits malformed/truncated tool-call JSON that
-        # fails strict parsing (see glm51 below); both GLM-5.1 and GLM-5.2 on
-        # Z.AI direct are already supports_tool_use: false. Keep this re-host
+        # fails strict parsing (as the retired glm51 entry did); GLM-5.2 on
+        # Z.AI direct is already supports_tool_use: false. Keep this re-host
         # consistent and route through prompt-based JSON parsing per the
         # assume-prompt-parsing rule (flip to true only if a live run proves
         # tool-use).
@@ -1068,41 +931,10 @@ providers:
           levels (High/Max). Free NVIDIA NIM trial endpoint.
           Prompt-based JSON parsing on NVIDIA NIM.
 
-      # Step-3.5-Flash (via NVIDIA) - StepFun
-      # 256K context, optimized for fast inference
-      # Best for: General code review, agentic
-      - id: step-3.5-flash
-        full_id: stepfun-ai/step-3.5-flash
-        name: Step 3.5 Flash (NVIDIA)
-        aliases:
-          - step-flash
-          - step35
-          - step-nvidia
-        pricing:
-          input_per_million: 0.00
-          output_per_million: 0.00
-        inference_params:
-          # Lowered from 0.6 for code review
-          default_temperature: 0.3
-          default_top_p: 0.95
-          default_top_k: 40
-          # For detailed reports
-          max_output_tokens: 16384
-        context_window: 256000
-        # Step-3.5-Flash only supports reasoning mode (thinking always on,
-        # cannot be disabled), so a forced tool_choice while thinking is
-        # unproven on this endpoint — the same always-thinking risk profile as
-        # Opus 4.7/4.8. Route through prompt-based JSON parsing per the
-        # assume-prompt-parsing rule until a live run proves tool-use.
-        supports_tool_use: false
-        capabilities:
-          - code_review
-          - reasoning
-          - general_intelligence
-        notes: >-
-          Cost-efficient 256K context model,
-          good coherence at temperature 0.6.
-          Prompt-based JSON parsing (reasoning-only model).
+      # Step 3.5 Flash (NVIDIA) removed 2026-07-25: superseded by Step 3.7 Flash
+      # below (same 256K context and free endpoint, but multimodal with
+      # reasoning levels). The 3.5 endpoint is still live on NIM, so re-add from
+      # git history if needed. 3.7 absorbed its aliases.
 
       # Step-3.7-Flash (via NVIDIA) - StepFun
       # MoE: 198B total, ~11B active, 256K context, multimodal
@@ -1111,10 +943,17 @@ providers:
       - id: step-3.7-flash
         full_id: stepfun-ai/step-3.7-flash
         name: Step 3.7 Flash (NVIDIA)
+        # Generation-neutral `step-flash`/`step-nvidia` names absorbed from the
+        # removed step-3.5-flash entry - the only Step model on NIM now.
         aliases:
           - step-3.7
           - step37
           - step37-nvidia
+          - step-flash
+          - step-nvidia
+        # 2026-07-25: the Step 3.5 Flash back-compat aliases (step35,
+        # step-3.5-flash) were deleted, not migrated. Use `step-flash`
+        # (generation-neutral) or `step-3.7`.
         pricing:
           input_per_million: 0.00
           output_per_million: 0.00
@@ -1157,14 +996,13 @@ providers:
         name: Gemini 3.1 Pro Preview
         aliases:
           - gemini31-pro
-          - g31pro
-          # Absorbed from gemini-3-pro (Google shut down gemini-3-pro-preview
-          # 2026-03-09; that id now soft-aliases to gemini-3.1-pro-preview
-          # upstream). Old invocations now resolve here.
-          - gemini-3-pro
           - gemini-pro
+        # Back-compat only: resolves, but hidden from --list-models
+        # (see --list-models --verbose).
+        # Named Gemini 3 Pro, whose endpoint shut down 2026-03-09.
+        deprecated_aliases:
+          - gemini-3-pro
           - gemini3-pro
-          - g3pro
         pricing:
           input_per_million: 2.00
           output_per_million: 12.00
@@ -1184,27 +1022,61 @@ providers:
           2x reasoning over Gemini 3 Pro,
           Deep Think with 3 levels
 
-      # Gemini 3 Flash Preview - Fast, efficient
-      # 1M token context, Flash-tier pricing
-      - id: gemini-3-flash
-        full_id: gemini-3-flash-preview
-        name: Gemini 3 Flash Preview
+      # Gemini 3.6 Flash - GA workhorse model (July 2026)
+      # 1M token context, 64K output, thinking on by default (level: medium)
+      - id: gemini-3.6-flash
+        full_id: gemini-3.6-flash
+        name: Gemini 3.6 Flash
+        # Generation-neutral `gemini-flash` tracks the current Flash
+        # generation, and Google names gemini-3.6-flash as the recommended
+        # replacement for the deprecated gemini-3-flash-preview.
         aliases:
           - gemini-flash
+          - gemini36-flash
+          - gemini3.6-flash
+        # Back-compat only: resolves, but hidden from --list-models
+        # (see --list-models --verbose).
+        # Absorbed from the removed Gemini 3 Flash Preview entry (2026-07-25).
+        deprecated_aliases:
+          - gemini-3-flash
           - gemini3-flash
           - g3flash
         pricing:
-          input_per_million: 0.50
-          output_per_million: 3.00
+          # Verified: ai.google.dev/gemini-api/docs/pricing (July 2026).
+          # Cheaper output than the 3.5 Flash it replaces ($9.00/M).
+          # Flat rate - no >200K-prompt tier (unlike Gemini 3.1 Pro).
+          input_per_million: 1.50
+          output_per_million: 7.50
         inference_params:
-          default_temperature: 0.1
-          default_top_p: 0.95
+          # temperature/top_p/top_k are DEPRECATED as of this model: the API
+          # ignores them today and Google documents an HTTP 400 for future
+          # model generations, so all three are omitted deliberately. The
+          # Google provider passes allow_none=True to _resolve_temperature, so
+          # an absent default_temperature means no temperature is sent at all.
+          # This applies to every Gemini model released from 3.6 Flash onward.
           max_output_tokens: 65536
         context_window: 1000000
         capabilities:
           - code_review
           - reasoning
           - multimodal
+          - tool_use
+          - agentic_tasks
+          - computer_use
+          - thinking
+        notes: >-
+          GA workhorse model (July 2026), successor to Gemini 3.5 Flash.
+          Better coding and multimodal work than 3.5 Flash while using ~17%
+          fewer output tokens, at a lower output price. 1M-token context, up to
+          64K output. Thinking on by default at level "medium". Sampling params
+          (temperature/top_p/top_k) are deprecated and omitted. Structured
+          outputs and function calling are both documented as supported, and a
+          live run confirmed the tool-use path works.
+
+      # Gemini 3 Flash Preview removed 2026-07-25: DEPRECATED upstream
+      # (announced 2025-12-17) with gemini-3.6-flash named as its replacement,
+      # which absorbed its aliases. Still live on the API, so re-add from git
+      # history if you need the cheaper $0.50/$3.00 rate.
 
   # DeepSeek Direct API Provider
   # Uses langchain-deepseek's ChatDeepSeek (purpose-built single-purpose
@@ -1226,7 +1098,15 @@ providers:
         aliases:
           - dsv4-pro
           - ds-v4-pro
-          - dsv4pro
+        # Back-compat only: resolves, but hidden from --list-models
+        # (see --list-models --verbose).
+        # Absorbed from the removed DeepSeek-V4-Pro (Azure) entry, whose Foundry
+        # deployment is gone (2026-07-25). DeepSeek direct is the canonical
+        # owner of this family, so no -azure name is advertised.
+        deprecated_aliases:
+          - deepseek-v4-pro-azure
+          - deepseek-v4-azure
+          - ds-v4-azure
         pricing:
           # DeepSeek list price (https://api-docs.deepseek.com/quick_start/pricing).
           # Per DeepSeek docs, the 75% launch promo ends 2026-05-31 15:59 UTC,
@@ -1263,7 +1143,6 @@ providers:
         aliases:
           - dsv4-flash
           - ds-v4-flash
-          - dsv4f
         pricing:
           input_per_million: 0.14
           output_per_million: 0.28
@@ -1308,7 +1187,14 @@ providers:
         aliases:
           - kimi
           - kimi26
-          - kimi-moonshot
+        # Back-compat only: resolves, but hidden from --list-models
+        # (see --list-models --verbose).
+        # Absorbed from the removed Kimi K2.5 (Azure) entry, whose Foundry
+        # deployment is gone (2026-07-25).
+        deprecated_aliases:
+          - kimi-k2.5-azure
+          - kimi-azure
+          - kimi25-azure
         pricing:
           # Moonshot list price (https://platform.moonshot.ai/pricing)
           # Update if upstream changes; treat as a starting estimate
@@ -1370,6 +1256,11 @@ providers:
           - glm-5.2
           - glm5.2
           - glm5.2-zai
+          - zai-glm
+          - glm-zai
+        # 2026-07-25: the GLM-5.1 back-compat names (zhipuai/glm-5.1 - the
+        # removed entry's id - and glm5.1-zai) were deleted, not migrated.
+        # Use `glm` (generation-neutral) or `glm-5.2`.
         pricing:
           # Official docs.z.ai pricing page: $1.40 / $4.40 per 1M tokens
           # (same list price as GLM-5.1).
@@ -1381,7 +1272,7 @@ providers:
           # deterministic code review we take the LOWER documented value (0.6):
           # it curbs variance/hallucinated line numbers without starving the
           # reasoning pass — pushing lower (<=0.3) tends to destabilize thinking
-          # models. top_p mirrors the GLM-5.1 entry. NOTE: thinking is governed
+          # models. top_p matches the model card. NOTE: thinking is governed
           # server-side on Z.AI's OpenAI-compat endpoint; ZAIProvider does not
           # forward enable_thinking/reasoning_effort, so they're omitted here.
           default_temperature: 0.6
@@ -1389,10 +1280,11 @@ providers:
           max_output_tokens: 16384
         # Docs: "truly usable 1M-token context" (1024*1024 tokens).
         context_window: 1048576
-        # Same path as GLM-5.1: Z.AI's OpenAI-compat endpoint ignores OpenAI's
-        # json_schema response_format that .with_structured_output() sets and
-        # returns markdown-fenced JSON, which the json_schema parser rejects
-        # with "Invalid JSON: expected value at line 1 column 1". GLM-5.2 is
+        # Same path the retired GLM-5.1 entry used: Z.AI's OpenAI-compat
+        # endpoint ignores the json_schema response_format that
+        # .with_structured_output() sets and returns markdown-fenced JSON,
+        # which the json_schema parser rejects with
+        # "Invalid JSON: expected value at line 1 column 1". GLM-5.2 is
         # additionally a thinking model, so per the "assume prompt-parsing until
         # a live run proves tool-use" rule it stays on the PydanticOutputParser
         # path regardless. (PydanticOutputParser strips the ```json fences.)
@@ -1410,51 +1302,15 @@ providers:
           OpenAI-compatible endpoint; structured output via prompt-based JSON
           parsing (supports_tool_use: false) — Z.AI returns markdown-fenced JSON.
 
-      # GLM-5.1 (Z.AI)
-      # Long-horizon coding model: can plan/execute on a single task
-      # autonomously for hours. 203K context, function calling supported.
-      - id: zhipuai/glm-5.1
-        full_id: glm-5.1
-        name: GLM-5.1 (Z.AI)
-        aliases:
-          - zai-glm
-          - glm-zai
-          - glm5.1-zai
-        pricing:
-          # Z.AI direct list price (per third-party aggregators; the
-          # official docs.z.ai pricing page wasn't fetchable at config
-          # time — update if you have the canonical rate).
-          input_per_million: 1.40
-          output_per_million: 4.40
-        inference_params:
-          # Lower temperature for deterministic code review
-          default_temperature: 0.3
-          default_top_p: 0.95
-          max_output_tokens: 16384
-        context_window: 202752
-        # Z.AI's OpenAI-compat endpoint does not honor OpenAI's json_schema
-        # response_format that .with_structured_output() sets — GLM-5.1 returns
-        # markdown-fenced JSON (```json ... ```), which the json_schema parser
-        # rejects with "Invalid JSON: expected value at line 1 column 1". Route
-        # through prompt-based JSON parsing (PydanticOutputParser strips the
-        # fences), same pattern as Kimi K2.6 on Moonshot.
-        supports_tool_use: false
-        capabilities:
-          - reasoning
-          - code_review
-          - code_generation
-          - long_horizon_agentic
-          - tool_use
-          - structured_output
-        notes: >-
-          Long-horizon coding model with sustained autonomous execution.
-          OpenAI-compatible endpoint. Structured output via prompt-based JSON
-          parsing (supports_tool_use: false) — Z.AI ignores OpenAI's
-          json_schema response_format and returns markdown-fenced JSON.
+      # GLM-5.1 (Z.AI) removed 2026-07-25: superseded by GLM-5.2 above at the
+      # SAME $1.40/$4.40 list price, with a 1M context instead of 203K — no
+      # reason to pick 5.1. Still live on Z.AI, so re-add from git history if
+      # needed. GLM-5.2 absorbed its aliases.
 
   # OpenAI-on-Bedrock Provider (OpenAI-compatible endpoint)
-  # AWS hosts OpenAI's frontier models (GPT-5.5, GPT-5.4, Codex) on Amazon
-  # Bedrock. This is a DIFFERENT path from the SigV4-based "bedrock" provider
+  # AWS hosts OpenAI's frontier models (GPT-5.5, GPT-5.6 Sol) and xAI's Grok
+  # on Amazon Bedrock.
+  # This is a DIFFERENT path from the SigV4-based "bedrock" provider
   # above: the OpenAI-compatible surface authenticates with an Amazon Bedrock
   # API KEY (a bearer token, NOT AWS creds) and is driven with langchain-openai's
   # ChatOpenAI + custom base_url — same mechanism as the Z.AI provider.
@@ -1486,7 +1342,7 @@ providers:
       # no `parsed` field, so the forced tool_choice that .with_structured_output()
       # sets has nothing to parse ("Structured Output response does not have a
       # 'parsed' field"). This is intermittent — it fails exactly on the
-      # think-heavy batches — the same failure mode as Opus 4.7/4.8 on Bedrock.
+      # think-heavy batches — the same failure mode as Opus 4.8 on Bedrock.
       # Route through prompt-based JSON parsing (PydanticOutputParser) instead.
       - id: gpt5.5-bedrock
         # TODO: replace with the exact model id from your Bedrock console /
@@ -1494,8 +1350,10 @@ providers:
         full_id: openai.gpt-5.5
         name: GPT-5.5 (Bedrock)
         aliases:
-          - gpt5.5-bedrock
           - gpt-bedrock
+        # 2026-07-25: the GPT-5.4-on-Bedrock back-compat alias
+        # (gpt5.4-bedrock) was deleted, not migrated. Use `gpt-bedrock`
+        # (generation-neutral) or the id `gpt5.5-bedrock`.
         pricing:
           # TODO: confirm Bedrock-hosted rates from the AWS pricing page.
           # Placeholder mirrors OpenAI-direct GPT-5 family list pricing.
@@ -1519,36 +1377,13 @@ providers:
           JSON parsing — adaptive thinking returns reasoning-only responses that
           break forced tool_choice (supports_tool_use: false).
 
-      # GPT-5.4 — sibling frontier reasoning model, also GA on Bedrock.
-      # supports_tool_use: false for the same reason as GPT-5.5 above — adaptive
-      # server-side thinking yields reasoning-only responses that break the
-      # forced tool_choice. (Note: GPT-5.4 on *Azure* keeps supports_tool_use:
-      # true because Azure's deployment doesn't exhibit this; the Bedrock
-      # OpenAI-compatible endpoint does.)
-      - id: gpt5.4-bedrock
-        # TODO: replace with the exact Bedrock model id for GPT-5.4.
-        full_id: openai.gpt-5.4
-        name: GPT-5.4 (Bedrock)
-        aliases:
-          - gpt5.4-bedrock
-        pricing:
-          input_per_million: 2.50
-          output_per_million: 15.00
-        inference_params:
-          max_output_tokens: 128000
-        use_responses_api: true
-        context_window: 400000
-        supports_tool_use: false
-        capabilities:
-          - reasoning
-          - code_review
-          - security_analysis
-          - structured_output
-        notes: >-
-          OpenAI GPT-5.4 hosted on Amazon Bedrock via the OpenAI-compatible
-          endpoint. Reasoning model: Responses API, no temperature/top_p.
-          Structured output via prompt-based JSON parsing (supports_tool_use:
-          false) — see GPT-5.5 above.
+      # GPT-5.4 (Bedrock) removed 2026-07-25: two newer OpenAI generations ride
+      # the same bedrock-mantle endpoint (GPT-5.5 above at identical $2.50/$15,
+      # and GPT-5.6 Sol below), so the 5.4 entry added no capability. Still
+      # responds on the endpoint (probed HTTP 200), so re-add from git history
+      # if a specific comparison needs it. GPT-5.5 absorbed its alias.
+      # NOTE: GPT-5.4 on *Azure* is a separate entry and stays — that's a
+      # user-created deployment, and it's the newest GPT on that resource.
 
       # GPT-5.6 Sol — OpenAI's flagship of the GPT-5.6 family (Sol/Terra/Luna),
       # GA on Amazon Bedrock (launched 2026-07-13) via the same OpenAI-compatible
@@ -1571,9 +1406,7 @@ providers:
         aliases:
           - gpt5.6
           - gpt-5.6
-          - gpt5.6-sol
           - gpt5.6-bedrock
-          - sol
         pricing:
           # OpenAI list price for Sol (per the GPT-5.6 launch): $5 in / $30 out
           # per 1M. Cache reads get the 90% discount ($0.50); cache writes bill
@@ -1673,7 +1506,7 @@ providers:
 
 # Default model configuration
 defaults:
-  bedrock_default: opus4.8
+  bedrock_default: opus5
   azure_default: gpt-5.4
   nvidia_default: mistral-medium-nvidia
   zai_default: zhipuai/glm-5.2

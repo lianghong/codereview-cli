@@ -5,7 +5,14 @@ import pytest
 from pydantic import ValidationError
 
 from codereview import models
-from codereview.models import CodeReviewReport, ReviewIssue, ReviewMetrics
+from codereview.models import (
+    VALID_CATEGORIES,
+    CodeReviewReport,
+    ReviewIssue,
+    ReviewMetrics,
+    get_drift_counters,
+    reset_drift_counters,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -223,6 +230,62 @@ def test_valid_severity_does_not_log(caplog):
     assert issue.severity == "Critical"
     assert issue.category == "Security"
     assert not caplog.records
+
+
+def test_correctness_is_a_valid_category():
+    """Correctness must be accepted verbatim, not coerced.
+
+    The prompt states the review priority as "security > correctness >
+    maintainability > performance", so a correctness bug needs a category to
+    land in. Before this existed, a race condition was filed as Code Quality
+    next to naming nits.
+    """
+    assert "Correctness" in VALID_CATEGORIES
+    assert _minimal_issue(category="Correctness").category == "Correctness"
+
+
+@pytest.mark.parametrize(
+    "spelling",
+    [
+        "correctness",
+        "bug",
+        "bugs",
+        "logic",
+        "logic error",
+        "reliability",
+        "concurrency",
+        "race condition",
+        "thread safety",
+        "data loss",
+        "crash",
+        "edge case",
+    ],
+)
+def test_correctness_variations_map_without_drift(spelling, caplog):
+    """The words models actually use for bugs must map to Correctness silently.
+
+    Two regressions in one: these all used to coerce to "Code Quality" *and*
+    bump the ``category_coerced`` drift counter. The counter exists to detect
+    prompt/schema drift, so a model using the natural word for a bug must not
+    register as drift — that pollutes the signal the CLI surfaces to users.
+    """
+    reset_drift_counters()
+    with caplog.at_level(logging.WARNING, logger="codereview.models"):
+        issue = _minimal_issue(category=spelling)
+    assert issue.category == "Correctness"
+    assert not caplog.records
+    assert get_drift_counters()["category_coerced"] == 0
+
+
+def test_error_handling_still_maps_to_code_quality():
+    """`error handling` deliberately stays on Code Quality.
+
+    As a bare category name it's ambiguous between "this path crashes"
+    (Correctness) and "use a narrower exception type" (Code Quality), and the
+    existing mapping is a documented contract in CLAUDE.md. Adding Correctness
+    must not silently repoint it.
+    """
+    assert _minimal_issue(category="error handling").category == "Code Quality"
 
 
 def test_unknown_severity_warning_is_deduped(caplog):

@@ -685,3 +685,19 @@ def test_nvidia_non_https_custom_base_url_fails_closed(model_config):
     with patch("codereview.providers.nvidia.ChatNVIDIA"):
         with pytest.raises(ValueError, match="must use HTTPS"):
             NVIDIAProvider(model_config, config)
+
+
+def test_rate_limiter_is_attached_to_the_client(model_config, provider_config):
+    """The built InMemoryRateLimiter must reach ChatNVIDIA.
+
+    A rate limiter only throttles the LangChain model it is attached to.
+    Building one in __init__ and not passing it to the client leaves concurrent
+    batches hitting NIM unthrottled — the free tier 429s. Every other provider
+    wires it through _create_model; this asserts NVIDIA does too.
+    """
+    with patch("codereview.providers.nvidia.ChatNVIDIA") as mock_client:
+        provider = NVIDIAProvider(model_config, provider_config)
+
+    kwargs = mock_client.call_args.kwargs
+    assert kwargs["rate_limiter"] is provider.rate_limiter
+    assert provider.rate_limiter is not None
