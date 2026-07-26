@@ -33,6 +33,7 @@ from codereview.providers.mixins import (
     is_openai_retryable_error,
     is_placeholder_api_key,
     is_short_api_key,
+    openai_stream_params,
     parse_retry_after,
     require_https,
 )
@@ -68,11 +69,6 @@ class DeepSeekProvider(TokenTrackingMixin, ModelProvider):
         self.provider_config = provider_config
         self.project_context = project_context
 
-        # Set True in _create_model when thinking mode is enabled: DeepSeek's
-        # thinking/reasoner path rejects the forced tool_choice that
-        # with_structured_output relies on, so we fall back to prompt-based
-        # JSON parsing (same pattern as MiniMax M2.5 / GLM-5.2).
-
         # DeepSeek V4 family accepts temperature; allow_none preserves
         # opt-out for any future reasoning-only variants.
         self.temperature = self._resolve_temperature(
@@ -102,6 +98,15 @@ class DeepSeekProvider(TokenTrackingMixin, ModelProvider):
         # fall back to id if full_id is not set.
         wire_model = self.model_config.full_id or self.model_config.id
 
+        # Built once and reused for both the client payload and the routing
+        # decision below. Calling _build_extra_body() twice worked but meant the
+        # thinking state the client is configured with and the state the routing
+        # reads were two independent computations — a future override that
+        # consults anything mutable would let them disagree, and a disagreement
+        # here silently sends a forced tool_choice to a thinking-mode request
+        # (HTTP 400 on every batch).
+        extra_body = self._build_extra_body()
+
         # ChatDeepSeek uses `api_base` (not `base_url`) and `model_name`
         # (aliased `model`); keep the aliased form for readability.
         model_params: dict[str, Any] = {
@@ -113,8 +118,11 @@ class DeepSeekProvider(TokenTrackingMixin, ModelProvider):
             "max_tokens": self.max_tokens,
             "rate_limiter": self.rate_limiter,
             "callbacks": self.callbacks if self.callbacks else None,
-            "streaming": bool(self.callbacks),
             "timeout": self.provider_config.request_timeout,
+            # streaming only for a handler that actually consumes tokens, and
+            # stream_usage alongside it so the billed counts survive the
+            # streaming path. Both halves live in openai_stream_params.
+            **openai_stream_params(self.callbacks),
             # Both DeepSeek-V4-Pro and V4-Flash default to thinking/reasoner
             # mode server-side, which rejects a forced tool_choice (what
             # with_structured_output pins) with HTTP 400 "Thinking mode does
@@ -124,7 +132,7 @@ class DeepSeekProvider(TokenTrackingMixin, ModelProvider):
             # sending thinking:disabled. Operators who want chain-of-thought
             # can override via `inference_params.thinking: enabled` in
             # models.yaml (which flips this entry to prompt parsing below).
-            "extra_body": self._build_extra_body(),
+            "extra_body": extra_body,
         }
 
         if self.temperature is not None:
@@ -141,7 +149,7 @@ class DeepSeekProvider(TokenTrackingMixin, ModelProvider):
         # with_structured_output sets is rejected server-side, so fall back to
         # prompt-based JSON parsing (PydanticOutputParser) instead — otherwise
         # the documented override would make every analyze_batch call fail.
-        if self._build_extra_body()["thinking"]["type"] == "enabled":
+        if extra_body["thinking"]["type"] == "enabled":
             self._use_prompt_parsing = True
             return base_model
 
@@ -182,9 +190,7 @@ class DeepSeekProvider(TokenTrackingMixin, ModelProvider):
         """Exponential backoff honoring DeepSeek's Retry-After header."""
         wait = parse_retry_after(error, config.max_wait)
         if wait is not None:
-            logging.info(
-                "DeepSeek rate limit: waiting %.1fs (Retry-After header)", wait
-            )
+            logging.info("DeepSeek backoff: waiting %.1fs (Retry-After header)", wait)
             return wait
         return min(config.base_wait * (2**attempt), config.max_wait)
 

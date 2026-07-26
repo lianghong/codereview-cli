@@ -46,6 +46,13 @@ def _rate_limit_error_with_retry_after(value: str) -> RateLimitError:
     return RateLimitError("rl", response=response, body=None)
 
 
+def _status_error_with_retry_after(status: int, value: str) -> APIStatusError:
+    """An APIStatusError of ``status`` carrying a Retry-After header."""
+    req = httpx.Request("POST", "https://example.test/")
+    response = httpx.Response(status, headers={"retry-after": value}, request=req)
+    return APIStatusError("boom", response=response, body=None)
+
+
 def test_parse_retry_after_reads_valid_header():
     """A valid Retry-After is returned, capped at max_wait."""
     from codereview.providers.mixins import parse_retry_after
@@ -78,8 +85,36 @@ def test_parse_retry_after_none_without_header():
     req = httpx.Request("POST", "https://example.test/")
     err = RateLimitError("rl", response=httpx.Response(429, request=req), body=None)
     assert parse_retry_after(err, 60.0) is None
-    # A non-rate-limit error is never parsed for Retry-After.
+    # An error that carries no HTTP response is never parsed for Retry-After.
     assert parse_retry_after(ValueError("x"), 60.0) is None
+    assert parse_retry_after(APITimeoutError(request=req), 60.0) is None
+
+
+def test_parse_retry_after_honors_the_header_on_a_retryable_5xx():
+    """Retry-After is defined for 503 (RFC 9110 §10.2.3), not only for 429.
+
+    Every provider on the OpenAI client already retries 5xx
+    (``is_openai_retryable_error``), so reading the header only for
+    ``RateLimitError`` meant a server that said "come back in 30s" during a
+    capacity window got blind exponential backoff instead — the openai SDK's
+    own ``_calculate_retry_timeout`` honours it on every retryable status.
+    """
+    from codereview.providers.mixins import (
+        is_openai_retryable_error,
+        parse_retry_after,
+    )
+
+    for status in (500, 502, 503, 504):
+        err = _status_error_with_retry_after(status, "30")
+        # Precondition: these are the statuses the provider actually retries.
+        assert is_openai_retryable_error(err), status
+        assert parse_retry_after(err, 60.0) == 30.0, status
+
+    # Still bounded by max_wait, and still rejects an unusable header, so a
+    # hostile or broken value on a 503 cannot stall or crash a run.
+    assert parse_retry_after(_status_error_with_retry_after(503, "999"), 60.0) == 60.0
+    assert parse_retry_after(_status_error_with_retry_after(503, "-1"), 60.0) is None
+    assert parse_retry_after(_status_error_with_retry_after(503, "soon"), 60.0) is None
 
 
 # ---------------------------------------------------------------------------
@@ -764,6 +799,106 @@ def test_output_parser_exception_not_retried_when_output_fixing_disabled():
             batch_context="y",
         )
     assert provider.invocations == 1  # no retry
+
+
+def test_rejected_prompt_parsed_output_is_billed():
+    """A parser-rejected attempt on the prompt-parsing path is charged for too.
+
+    The include_raw path bills its ``parsed is None`` branch from the raw
+    AIMessage. The prompt-parsing chain is ``prompt | model | parser``, so the
+    exception comes from the parser and the AIMessage is already gone — only the
+    rejected text on ``llm_output`` remains. Without estimating from it, exactly
+    the batches that burn the most output tokens (reasoning models emitting
+    invalid JSON on think-heavy batches) contributed nothing to the cost report.
+    """
+    from langchain_core.exceptions import OutputParserException
+
+    from codereview.providers.base import RetryConfig
+
+    rejected = "z" * 4000  # the model's malformed answer, in full
+    provider = _BilledUsageProvider(
+        results=[
+            OutputParserException("Invalid json output", llm_output=rejected),
+            CodeReviewReport(
+                summary="ok",
+                metrics=ReviewMetrics(files_analyzed=1),
+                issues=[],
+                system_design_insights="No design issues found",
+                recommendations=[],
+                improvement_suggestions=[],
+            ),
+        ],
+        enable_output_fixing=True,
+    )
+
+    result = provider._execute_with_retry(
+        chain_input={"system_prompt": "sys", "batch_context": "ctx"},
+        retry_config=RetryConfig(max_retries=3, validation_retry_sleep=0.0),
+        batch_context="ctx",
+    )
+
+    assert isinstance(result, CodeReviewReport)
+    # Both attempts billed: the rejected one (estimated from llm_output) plus
+    # the successful one (estimated from the parsed report — a CodeReviewReport
+    # carries no usage metadata, so the success path estimates as well).
+    assert provider.total_output_tokens > provider._estimate_tokens(rejected), (
+        "the rejected attempt's output tokens were generated, charged, and "
+        "left out of the run's totals"
+    )
+    assert provider.total_input_tokens > 0
+
+
+def test_every_rejected_prompt_parse_is_billed_when_retries_are_exhausted():
+    """A batch that never parses still bills every attempt on this path."""
+    from langchain_core.exceptions import OutputParserException
+
+    from codereview.providers.base import RetryConfig
+
+    rejected = "z" * 3000
+    provider = _BilledUsageProvider(
+        results=[
+            OutputParserException("Invalid json output", llm_output=rejected),
+            OutputParserException("Invalid json output", llm_output=rejected),
+        ],
+        enable_output_fixing=True,
+    )
+
+    with pytest.raises(OutputParserException):
+        provider._execute_with_retry(
+            chain_input={"system_prompt": "sys", "batch_context": "ctx"},
+            retry_config=RetryConfig(max_retries=1, validation_retry_sleep=0.0),
+            batch_context="ctx",
+        )
+
+    assert provider.invocations == 2
+    assert provider.total_output_tokens == 2 * provider._estimate_tokens(rejected)
+
+
+def test_parser_error_without_llm_output_bills_only_the_input():
+    """No rejected text on the exception → no fabricated output count.
+
+    Some parsers raise without ``llm_output``. The input was still sent and
+    billed, so it counts; inventing an output figure would put a made-up number
+    in the cost report.
+    """
+    from langchain_core.exceptions import OutputParserException
+
+    from codereview.providers.base import RetryConfig
+
+    provider = _BilledUsageProvider(
+        results=[OutputParserException("Invalid json output")],
+        enable_output_fixing=False,
+    )
+
+    with pytest.raises(OutputParserException):
+        provider._execute_with_retry(
+            chain_input={"system_prompt": "s" * 3000, "batch_context": "c" * 3000},
+            retry_config=RetryConfig(max_retries=3, validation_retry_sleep=0.0),
+            batch_context="c" * 3000,
+        )
+
+    assert provider.total_input_tokens > 0
+    assert provider.total_output_tokens == 0
 
 
 # ---------------------------------------------------------------------------

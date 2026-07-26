@@ -24,6 +24,7 @@ from codereview.providers.mixins import (
     is_openai_retryable_error,
     is_placeholder_api_key,
     is_short_api_key,
+    openai_stream_params,
     parse_retry_after,
     require_https,
 )
@@ -110,18 +111,22 @@ class AzureOpenAIProvider(TokenTrackingMixin, ModelProvider):
             "max_tokens": self.max_tokens,
             "rate_limiter": self.rate_limiter,
             "callbacks": self.callbacks if self.callbacks else None,
-            "streaming": bool(self.callbacks),  # Enable streaming if callbacks provided
             "timeout": self.provider_config.request_timeout,  # Request timeout in seconds
+            # streaming + stream_usage together: only a handler that consumes
+            # tokens turns streaming on, and turning it on requires asking for
+            # the usage chunk or the billed counts vanish. See
+            # openai_stream_params (mixins.py) for both halves.
+            **openai_stream_params(self.callbacks),
         }
 
-        # Enable Responses API if model requires it (e.g., GPT-5.3 Codex)
-        # Models using Responses API don't support temperature/top_p parameters
+        # Enable Responses API if the model entry requires it (the GPT-5.x
+        # deployments do). Those models don't accept temperature/top_p.
         if self.model_config.use_responses_api:
             model_params["use_responses_api"] = True
         else:
             # Only add temperature/top_p for models that support them.
-            # Reasoning models (DeepSeek-V4-Pro, GPT-5.4 family) keep
-            # self.temperature == None and skip both params.
+            # Reasoning models keep self.temperature == None (no
+            # default_temperature in the YAML) and skip both params.
             if self.temperature is not None:
                 model_params["temperature"] = self.temperature
             if self.top_p is not None:
@@ -150,11 +155,12 @@ class AzureOpenAIProvider(TokenTrackingMixin, ModelProvider):
         Azure 429 responses include a Retry-After header indicating the
         seconds to wait before the rate limit window resets. Using this
         value instead of short exponential backoff prevents wasting all
-        retries within the same rate limit window.
+        retries within the same rate limit window. Azure sends the same header
+        on 503s, which ``parse_retry_after`` also reads.
         """
         wait = parse_retry_after(error, config.max_wait)
         if wait is not None:
-            logging.info("Azure rate limit: waiting %.1fs (Retry-After header)", wait)
+            logging.info("Azure backoff: waiting %.1fs (Retry-After header)", wait)
             return wait
 
         # Fallback: longer base wait for Azure (rate limit windows are ~60s).
@@ -163,7 +169,13 @@ class AzureOpenAIProvider(TokenTrackingMixin, ModelProvider):
         return min(10.0 * (2**attempt), config.max_wait)
 
     def _extract_token_usage(self, result: Any) -> tuple[int, int]:
-        """Extract token usage from Azure's OpenAI-shaped response metadata."""
+        """Extract token usage from Azure's OpenAI-shaped response.
+
+        The shared helper reads ``usage_metadata`` first, which matters most
+        here: the ``use_responses_api`` models (gpt-5.4 / gpt-5.4-pro) are the
+        ones whose raw ``response_metadata["token_usage"]`` is never populated,
+        and the ones whose reasoning tokens an estimate cannot recover.
+        """
         return extract_openai_token_usage(result)
 
     def analyze_batch(

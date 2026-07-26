@@ -35,6 +35,7 @@ from codereview.providers.mixins import (
     is_openai_retryable_error,
     is_placeholder_api_key,
     is_short_api_key,
+    openai_stream_params,
     parse_retry_after,
     require_https,
 )
@@ -113,8 +114,11 @@ class ZAIProvider(TokenTrackingMixin, ModelProvider):
             "max_tokens": self.max_tokens,
             "rate_limiter": self.rate_limiter,
             "callbacks": self.callbacks if self.callbacks else None,
-            "streaming": bool(self.callbacks),
             "timeout": self.provider_config.request_timeout,
+            # streaming only for a handler that actually consumes tokens, and
+            # stream_usage alongside it so the billed counts survive the
+            # streaming path. Both halves live in openai_stream_params.
+            **openai_stream_params(self.callbacks),
         }
 
         if self.temperature is not None:
@@ -145,7 +149,7 @@ class ZAIProvider(TokenTrackingMixin, ModelProvider):
         """Exponential backoff for Z.AI, honoring a Retry-After header."""
         wait = parse_retry_after(error, config.max_wait)
         if wait is not None:
-            logging.info("Z.AI rate limit: waiting %.1fs (Retry-After header)", wait)
+            logging.info("Z.AI backoff: waiting %.1fs (Retry-After header)", wait)
             return wait
         return min(config.base_wait * (2**attempt), config.max_wait)
 

@@ -615,3 +615,48 @@ def test_every_api_key_provider_is_covered_by_the_validation_table():
         "_VALIDATION_PROVIDERS. Add one so the blank / malformed-URL / "
         "normalized axes apply to them too."
     )
+
+
+# ---------------------------------------------------------------------------
+# Every key-taking provider must warn on an implausibly short key.
+#
+# `is_short_api_key` exists once in mixins.py precisely because five providers
+# had spelled `len(api_key) < 20` inline; Google GenAI was then the one provider
+# that never adopted it at all, so a truncated GOOGLE_API_KEY reported every
+# check green and 401'd on the first batch instead. Driving this off
+# _VALIDATION_PROVIDERS makes the omission impossible to repeat for a new
+# provider.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("provider_key", sorted(_VALIDATION_PROVIDERS))
+def test_short_api_key_warns_without_failing(provider_key):
+    """A short-but-not-placeholder key is a warning, never a hard failure.
+
+    Both halves matter. No provider documents a minimum key length, so
+    rejecting one outright would send a user with an unusual-but-valid key
+    debugging a non-problem — but staying silent hides the single most common
+    copy-paste error there is.
+    """
+    provider = _make_provider(provider_key, api_key="sk-short")
+    result = provider.validate_credentials()
+
+    assert result.valid is True, (
+        "an unusually short key is a heuristic, not a known-bad credential; "
+        "hard-failing it rejects configurations that work"
+    )
+    assert any("short" in warning.lower() for warning in result.warnings), (
+        f"{provider_key} never warns about a short api_key — use "
+        "is_short_api_key() from mixins.py"
+    )
+
+
+@pytest.mark.parametrize("provider_key", sorted(_VALIDATION_PROVIDERS))
+def test_plausible_api_key_does_not_warn_about_length(provider_key):
+    """The warning must not fire on a normal key, or it means nothing."""
+    provider = _make_provider(provider_key, api_key=_REAL_KEY)
+    result = provider.validate_credentials()
+
+    assert not any("short" in warning.lower() for warning in result.warnings), (
+        f"{provider_key} warns about a {len(_REAL_KEY)}-character key"
+    )

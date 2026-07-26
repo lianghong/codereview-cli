@@ -19,6 +19,7 @@ from codereview.providers.mixins import (
     TokenTrackingMixin,
     is_blank,
     is_placeholder_api_key,
+    is_short_api_key,
 )
 
 # Status codes worth another attempt: quota exhaustion and transient server-side
@@ -174,6 +175,21 @@ class GoogleGenAIProvider(TokenTrackingMixin, ModelProvider):
             return min(10.0 * (2**attempt), config.max_wait)
         return min(config.base_wait * (2**attempt), config.max_wait)
 
+    @classmethod
+    def supports_token_streaming(cls) -> bool:
+        """False — ``streaming`` is deliberately not passed to the client.
+
+        ``ChatGoogleGenerativeAI`` accepts ``streaming=True`` and its streaming
+        path does accumulate usage, so this *could* be enabled — but the Gemini
+        entry here runs structured output through ``method="json_schema"``, and
+        whether that survives the streaming wire path is unproven against the
+        live endpoint. This project's rule for exactly that situation is
+        assume-not-until-a-live-run-proves-it (the same rule that governs
+        ``supports_tool_use``), so ``--stream`` keeps its concurrency here
+        instead of paying for a path that renders nothing.
+        """
+        return False
+
     def _extract_token_usage(self, result: Any) -> tuple[int, int]:
         """Extract token usage from Google GenAI response metadata.
 
@@ -246,6 +262,12 @@ class GoogleGenAIProvider(TokenTrackingMixin, ModelProvider):
             )
             return result
 
+        # Every other key-taking provider emits this warning; Google was the
+        # one omission, so a truncated GOOGLE_API_KEY reported all-green and
+        # then 401'd on the first batch. Deliberately a warning, not a failure —
+        # Google documents no minimum length.
+        if is_short_api_key(api_key):
+            result.add_warning("API key seems unusually short. Verify it's correct.")
         result.add_check("API Key", True, "API key configured")
 
         # Check 2: Model ID

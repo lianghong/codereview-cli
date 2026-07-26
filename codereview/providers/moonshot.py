@@ -36,6 +36,7 @@ from codereview.providers.mixins import (
     is_openai_retryable_error,
     is_placeholder_api_key,
     is_short_api_key,
+    openai_stream_params,
     parse_retry_after,
     require_https,
 )
@@ -111,8 +112,11 @@ class MoonshotProvider(TokenTrackingMixin, ModelProvider):
             "max_tokens": self.max_tokens,
             "rate_limiter": self.rate_limiter,
             "callbacks": self.callbacks if self.callbacks else None,
-            "streaming": bool(self.callbacks),
             "timeout": self.provider_config.request_timeout,
+            # streaming only for a handler that actually consumes tokens, and
+            # stream_usage alongside it so the billed counts survive the
+            # streaming path. Both halves live in openai_stream_params.
+            **openai_stream_params(self.callbacks),
         }
 
         if self.temperature is not None:
@@ -141,17 +145,16 @@ class MoonshotProvider(TokenTrackingMixin, ModelProvider):
         """Exponential backoff honoring Moonshot's Retry-After header."""
         wait = parse_retry_after(error, config.max_wait)
         if wait is not None:
-            logging.info(
-                "Moonshot rate limit: waiting %.1fs (Retry-After header)", wait
-            )
+            logging.info("Moonshot backoff: waiting %.1fs (Retry-After header)", wait)
             return wait
         return min(config.base_wait * (2**attempt), config.max_wait)
 
     def _extract_token_usage(self, result: Any) -> tuple[int, int]:
-        """Extract token usage from Moonshot's OpenAI-shaped response metadata.
+        """Extract token usage from Moonshot's OpenAI-shaped response.
 
-        ChatMoonshot extends BaseChatOpenAI, so usage lands in
-        ``response_metadata.token_usage`` like the other OpenAI-compat providers.
+        ChatMoonshot extends BaseChatOpenAI, so usage lands in the same two
+        places as the other OpenAI-compat providers — see
+        :func:`extract_openai_token_usage` for which one is authoritative.
         """
         return extract_openai_token_usage(result)
 

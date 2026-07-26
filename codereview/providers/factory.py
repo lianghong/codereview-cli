@@ -1,5 +1,8 @@
 """Factory for creating provider instances with auto-detection."""
 
+from importlib import import_module
+from typing import NamedTuple
+
 from langchain_core.callbacks import BaseCallbackHandler
 
 from codereview.config import ConfigLoader, get_config_loader
@@ -11,9 +14,64 @@ from codereview.config.models import (
     GoogleGenAIConfig,
     MoonshotConfig,
     NVIDIAConfig,
+    ProviderConfig,
     ZAIConfig,
 )
 from codereview.providers.base import ModelProvider
+
+
+class _ProviderEntry(NamedTuple):
+    """How to build one provider: its config type and where its class lives.
+
+    ``module``/``class_name`` are strings rather than the class itself so the
+    import stays lazy. Each provider module imports its vendor's LangChain
+    client at module scope, so eagerly importing all eight here would pull
+    every client package into every run — including ``--list-models``, which
+    touches no provider at all.
+    """
+
+    config_type: type[ProviderConfig]
+    module: str
+    class_name: str
+
+
+# The single source of truth for provider dispatch. Adding a provider means
+# adding one row: the config-type guard, the lazy import, the constructor call
+# and the "supported providers" list in the error message are all derived from
+# it, so they cannot disagree. Previously each provider had a ~15-line
+# if/elif branch and the error message hand-listed the eight names — prose that
+# a ninth provider would have silently left stale, exactly the drift the
+# Provider Setup table in cli.py has tests for.
+_PROVIDER_REGISTRY: dict[str, _ProviderEntry] = {
+    "bedrock": _ProviderEntry(
+        BedrockConfig, "codereview.providers.bedrock", "BedrockProvider"
+    ),
+    "azure_openai": _ProviderEntry(
+        AzureOpenAIConfig,
+        "codereview.providers.azure_openai",
+        "AzureOpenAIProvider",
+    ),
+    "nvidia": _ProviderEntry(
+        NVIDIAConfig, "codereview.providers.nvidia", "NVIDIAProvider"
+    ),
+    "google_genai": _ProviderEntry(
+        GoogleGenAIConfig,
+        "codereview.providers.google_genai",
+        "GoogleGenAIProvider",
+    ),
+    "zai": _ProviderEntry(ZAIConfig, "codereview.providers.zai", "ZAIProvider"),
+    "deepseek": _ProviderEntry(
+        DeepSeekConfig, "codereview.providers.deepseek", "DeepSeekProvider"
+    ),
+    "moonshot": _ProviderEntry(
+        MoonshotConfig, "codereview.providers.moonshot", "MoonshotProvider"
+    ),
+    "bedrock_openai": _ProviderEntry(
+        BedrockOpenAIConfig,
+        "codereview.providers.bedrock_openai",
+        "BedrockOpenAIProvider",
+    ),
+}
 
 
 class ProviderFactory:
@@ -47,9 +105,8 @@ class ProviderFactory:
             project_context: Optional project README/documentation content
 
         Returns:
-            Instantiated provider — one of BedrockProvider, AzureOpenAIProvider,
-            NVIDIAProvider, GoogleGenAIProvider, ZAIProvider, DeepSeekProvider,
-            MoonshotProvider, or BedrockOpenAIProvider.
+            An instance of the provider class ``_PROVIDER_REGISTRY`` names for
+            the model's provider section.
 
         Raises:
             ValueError: If model name not found or provider unknown
@@ -57,144 +114,59 @@ class ProviderFactory:
         # Resolve model name to provider and config
         provider_name, model_config = self.config_loader.resolve_model(model_name)
 
+        try:
+            entry = _PROVIDER_REGISTRY[provider_name]
+        except KeyError:
+            raise ValueError(
+                f"Unknown provider: {provider_name}. Supported providers: "
+                f"{', '.join(_PROVIDER_REGISTRY)}"
+            ) from None
+
         # Get provider-specific configuration
         provider_config = self.config_loader.get_provider_config(provider_name)
 
-        # Create appropriate provider
-        if provider_name == "bedrock":
-            if not isinstance(provider_config, BedrockConfig):
-                raise ValueError(
-                    f"Expected BedrockConfig for bedrock provider, "
-                    f"got {type(provider_config).__name__}"
-                )
-            from codereview.providers.bedrock import BedrockProvider
-
-            return BedrockProvider(
-                model_config,
-                provider_config,
-                temperature,
-                callbacks=callbacks,
-                project_context=project_context,
-            )
-
-        elif provider_name == "azure_openai":
-            if not isinstance(provider_config, AzureOpenAIConfig):
-                raise ValueError(
-                    f"Expected AzureOpenAIConfig for azure_openai provider, "
-                    f"got {type(provider_config).__name__}"
-                )
-            from codereview.providers.azure_openai import AzureOpenAIProvider
-
-            return AzureOpenAIProvider(
-                model_config,
-                provider_config,
-                temperature,
-                callbacks=callbacks,
-                project_context=project_context,
-            )
-
-        elif provider_name == "nvidia":
-            if not isinstance(provider_config, NVIDIAConfig):
-                raise ValueError(
-                    f"Expected NVIDIAConfig for nvidia provider, "
-                    f"got {type(provider_config).__name__}"
-                )
-            from codereview.providers.nvidia import NVIDIAProvider
-
-            return NVIDIAProvider(
-                model_config,
-                provider_config,
-                temperature,
-                callbacks=callbacks,
-                project_context=project_context,
-            )
-
-        elif provider_name == "google_genai":
-            if not isinstance(provider_config, GoogleGenAIConfig):
-                raise ValueError(
-                    f"Expected GoogleGenAIConfig for google_genai provider, "
-                    f"got {type(provider_config).__name__}"
-                )
-            from codereview.providers.google_genai import GoogleGenAIProvider
-
-            return GoogleGenAIProvider(
-                model_config,
-                provider_config,
-                temperature,
-                callbacks=callbacks,
-                project_context=project_context,
-            )
-
-        elif provider_name == "zai":
-            if not isinstance(provider_config, ZAIConfig):
-                raise ValueError(
-                    f"Expected ZAIConfig for zai provider, "
-                    f"got {type(provider_config).__name__}"
-                )
-            from codereview.providers.zai import ZAIProvider
-
-            return ZAIProvider(
-                model_config,
-                provider_config,
-                temperature,
-                callbacks=callbacks,
-                project_context=project_context,
-            )
-
-        elif provider_name == "deepseek":
-            if not isinstance(provider_config, DeepSeekConfig):
-                raise ValueError(
-                    f"Expected DeepSeekConfig for deepseek provider, "
-                    f"got {type(provider_config).__name__}"
-                )
-            from codereview.providers.deepseek import DeepSeekProvider
-
-            return DeepSeekProvider(
-                model_config,
-                provider_config,
-                temperature,
-                callbacks=callbacks,
-                project_context=project_context,
-            )
-
-        elif provider_name == "moonshot":
-            if not isinstance(provider_config, MoonshotConfig):
-                raise ValueError(
-                    f"Expected MoonshotConfig for moonshot provider, "
-                    f"got {type(provider_config).__name__}"
-                )
-            from codereview.providers.moonshot import MoonshotProvider
-
-            return MoonshotProvider(
-                model_config,
-                provider_config,
-                temperature,
-                callbacks=callbacks,
-                project_context=project_context,
-            )
-
-        elif provider_name == "bedrock_openai":
-            if not isinstance(provider_config, BedrockOpenAIConfig):
-                raise ValueError(
-                    f"Expected BedrockOpenAIConfig for bedrock_openai provider, "
-                    f"got {type(provider_config).__name__}"
-                )
-            from codereview.providers.bedrock_openai import BedrockOpenAIProvider
-
-            return BedrockOpenAIProvider(
-                model_config,
-                provider_config,
-                temperature,
-                callbacks=callbacks,
-                project_context=project_context,
-            )
-
-        else:
+        # The loader picks the config class per provider section, so a mismatch
+        # here means loader and factory disagree about a provider — a wiring bug,
+        # not bad user input. Check it anyway: every provider's __init__ reads
+        # fields off provider_config, so passing the wrong type would surface as
+        # an AttributeError deep inside a constructor instead of here.
+        if not isinstance(provider_config, entry.config_type):
             raise ValueError(
-                f"Unknown provider: {provider_name}. "
-                f"Supported providers: bedrock, azure_openai, nvidia, "
-                f"google_genai, zai, deepseek, moonshot, bedrock_openai"
+                f"Expected {entry.config_type.__name__} for {provider_name} "
+                f"provider, got {type(provider_config).__name__}"
             )
+
+        provider_class = getattr(import_module(entry.module), entry.class_name)
+        provider: ModelProvider = provider_class(
+            model_config,
+            provider_config,
+            temperature,
+            callbacks=callbacks,
+            project_context=project_context,
+        )
+        return provider
+
+    def supports_token_streaming(self, model_name: str) -> bool:
+        """Whether the provider behind ``model_name`` streams tokens.
+
+        Answered from the provider *class*, without constructing it: the CLI
+        needs this before it decides worker count and which callback handler to
+        attach, and both of those feed the provider's constructor. Building a
+        provider here would also require credentials, which ``--stream`` has no
+        business demanding earlier than the run itself.
+
+        Falls back to ``True`` for an unresolvable model so this never becomes
+        the thing that fails a run — the real resolution error surfaces from
+        ``create_provider`` with its full message.
+        """
+        try:
+            provider_name, _ = self.config_loader.resolve_model(model_name)
+            entry = _PROVIDER_REGISTRY[provider_name]
+        except ValueError, KeyError:
+            return True
+        provider_class = getattr(import_module(entry.module), entry.class_name)
+        supports: bool = provider_class.supports_token_streaming()
+        return supports
 
     def list_available_models(self) -> dict[str, list[dict[str, str]]]:
         """List all available models grouped by provider.

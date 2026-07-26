@@ -25,6 +25,7 @@ from codereview.providers.mixins import (
     TokenTrackingMixin,
     is_blank,
     is_placeholder_api_key,
+    is_short_api_key,
     require_https,
 )
 
@@ -281,6 +282,18 @@ class NVIDIAProvider(TokenTrackingMixin, ModelProvider):
             return min(base * (2**attempt), config.max_wait)
         return min(config.base_wait * (2**attempt), config.max_wait)
 
+    @classmethod
+    def supports_token_streaming(cls) -> bool:
+        """False — ``ChatNVIDIA`` has no ``streaming`` model field.
+
+        There is nothing to set: the class exposes ``disable_streaming`` but no
+        ``streaming``, and neither callback handler this project ships satisfies
+        langchain-core's ``_StreamingCallbackHandler`` protocol, so
+        ``_should_stream`` can never return True on this client. ``--stream``
+        would only cost the multi-batch concurrency.
+        """
+        return False
+
     def _extract_token_usage(self, result: Any) -> tuple[int, int]:
         """Extract token usage from NVIDIA response metadata (dual format fallback)."""
         if hasattr(result, "response_metadata"):
@@ -321,7 +334,16 @@ class NVIDIAProvider(TokenTrackingMixin, ModelProvider):
             CodeReviewReport with findings
 
         Raises:
-            httpx.HTTPStatusError: If NVIDIA API gateway errors persist after all retries
+            Exception: Whatever the NIM client raised last, re-raised once
+                retries are exhausted. Deliberately not narrowed to a type:
+                ``langchain-nvidia-ai-endpoints`` runs on ``requests``, and
+                ``_NVIDIASyncClient._try_raise`` *discards* the typed error to
+                re-raise a bare ``Exception("[504] Gateway Timeout…")``. The
+                docstring used to promise ``httpx.HTTPStatusError``, which this
+                path can never raise — and naming the wrong type here is what
+                let ``_is_retryable_error``'s dead ``isinstance`` check against
+                that same type go unnoticed (see the retry-classification
+                comment above ``_RETRYABLE_STATUS_CODES``).
         """
         retries = self._resolve_max_retries(max_retries, self.provider_config, 5)
 
@@ -375,6 +397,11 @@ class NVIDIAProvider(TokenTrackingMixin, ModelProvider):
                 "Verify it's a valid NVIDIA API key from build.nvidia.com"
             )
 
+        # The prefix check above doesn't subsume this: a truncated key keeps its
+        # "nvapi-" prefix, so it passed every check and 401'd on the first call.
+        if is_short_api_key(api_key):
+            result.add_warning("API key seems unusually short. Verify it's correct.")
+
         result.add_check("API Key", True, "API key configured")
 
         # Check 3: Model ID
@@ -413,10 +440,18 @@ class NVIDIAProvider(TokenTrackingMixin, ModelProvider):
         if env_skip_test not in ("1", "true", "yes"):
             try:
                 # Quick request to check API is reachable
+                # rstrip the trailing slash: a base_url of ".../v1/" (a
+                # perfectly ordinary way to write it, and what copying from a
+                # docs page gives you) built ".../v1//models". A doubled path
+                # segment is not equivalent — gateways route it to a different
+                # path or 404 it — so the connection test reported "API
+                # responded (status: 404)" as a *passing* check for a config
+                # that works fine at run time. A green check for the wrong URL
+                # is worse than no check.
                 base_url = (
                     self.provider_config.base_url
                     or "https://integrate.api.nvidia.com/v1"
-                )
+                ).rstrip("/")
                 test_url = f"{base_url}/models"
 
                 with httpx.Client(timeout=5.0) as client:

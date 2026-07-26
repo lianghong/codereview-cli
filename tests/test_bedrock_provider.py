@@ -1,5 +1,6 @@
 """Tests for BedrockProvider."""
 
+import logging
 from unittest.mock import Mock, patch
 
 import pytest
@@ -118,6 +119,55 @@ def test_no_model_read_timeout_uses_provider_read_timeout(
         assert botocore_config.read_timeout == provider_config.read_timeout
 
 
+def test_disable_streaming_is_passed_explicitly(model_config, provider_config):
+    """The provider must state ``disable_streaming`` rather than let
+    langchain-aws infer it.
+
+    Upstream gates its "Streaming disabled for model ..." advisory on the key
+    being *absent* from the constructor values, so present-ness — not the
+    value — is the invariant. Asserting on presence keeps the test honest if a
+    future live run flips this to False.
+    """
+    with patch("codereview.providers.bedrock.ChatBedrockConverse") as mock_bedrock:
+        BedrockProvider(model_config, provider_config)
+        assert "disable_streaming" in mock_bedrock.call_args.kwargs
+
+
+def test_real_client_emits_no_streaming_advisory(model_config, provider_config, caplog):
+    """Drive the *real* ChatBedrockConverse with the kwargs the provider builds.
+
+    langchain-aws 1.6.3 warns whenever it has to infer ``disable_streaming``,
+    which it does for every model outside its hardcoded streaming allowlist —
+    and ``claude-opus-5``, this CLI's default model, is outside it. The warning
+    went to stderr as the first line of every run, above the Rich UI, telling
+    the user to pass a kwarg only this code can pass.
+
+    Asserting the kwarg is present (test above) can't catch upstream changing
+    *which* key suppresses the advisory, so this one asserts the observable
+    outcome instead: construct the actual client and require silence. The AWS
+    client factory is patched out so no credential resolution or network I/O
+    happens (a real construction spends ~4s in the IMDS credential chain).
+    """
+    with patch("codereview.providers.bedrock.ChatBedrockConverse") as mock_bedrock:
+        BedrockProvider(model_config, provider_config)
+        kwargs = mock_bedrock.call_args.kwargs
+
+    from langchain_aws.chat_models.bedrock_converse import ChatBedrockConverse
+
+    logger = "langchain_aws.chat_models.bedrock_converse"
+    with (
+        patch(
+            "langchain_aws.chat_models.bedrock_converse.create_aws_client",
+            return_value=Mock(),
+        ),
+        caplog.at_level(logging.WARNING, logger=logger),
+    ):
+        ChatBedrockConverse(**kwargs)
+
+    advisories = [r for r in caplog.records if "treaming" in r.getMessage()]
+    assert not advisories, advisories[0].getMessage() if advisories else ""
+
+
 def test_validate_credentials_uses_model_region(provider_config):
     """validate_credentials must check Bedrock access in the model's
     effective region, not the provider default."""
@@ -184,8 +234,9 @@ def test_token_tracking(model_config, provider_config, mock_report):
     with patch("codereview.providers.bedrock.ChatBedrockConverse") as mock_bedrock:
         # Setup mock with usage metadata
         mock_report_with_metadata = Mock(spec=CodeReviewReport)
-        mock_report_with_metadata.response_metadata = {
-            "usage": {"input_tokens": 100, "output_tokens": 50}
+        mock_report_with_metadata.usage_metadata = {
+            "input_tokens": 100,
+            "output_tokens": 50,
         }
         mock_report_with_metadata.model_dump_json.return_value = "{}"
 
@@ -224,8 +275,9 @@ def test_cost_estimation(model_config, provider_config, mock_report):
     """Test cost estimation."""
     with patch("codereview.providers.bedrock.ChatBedrockConverse") as mock_bedrock:
         mock_report_with_metadata = Mock(spec=CodeReviewReport)
-        mock_report_with_metadata.response_metadata = {
-            "usage": {"input_tokens": 100000, "output_tokens": 50000}
+        mock_report_with_metadata.usage_metadata = {
+            "input_tokens": 100000,
+            "output_tokens": 50000,
         }
 
         mock_instance = Mock()
@@ -251,12 +303,59 @@ def test_cost_estimation(model_config, provider_config, mock_report):
         assert cost["total_cost"] == 1.75
 
 
+def test_token_usage_is_read_from_a_real_converse_response(
+    model_config, provider_config
+):
+    """Build the AIMessage the way langchain-aws builds it, not by hand.
+
+    ``_extract_token_usage`` used to read ``response_metadata["usage"]`` with
+    snake_case keys, which can never hit: ``_extract_usage_metadata`` **pops**
+    ``usage`` off the raw response before ``_extract_response_metadata`` sees
+    it, and Converse spells the fields ``inputTokens``/``outputTokens``. Both
+    misses returned 0 silently, so every Bedrock run reported $0.0000 while
+    being billed in full. Routing a real Converse payload through the client's
+    own parser is what makes that regression impossible to reintroduce.
+    """
+    from langchain_aws.chat_models.bedrock_converse import _parse_response
+
+    converse_response = {
+        "output": {"message": {"role": "assistant", "content": [{"text": "{}"}]}},
+        "stopReason": "end_turn",
+        "usage": {"inputTokens": 1234, "outputTokens": 567, "totalTokens": 1801},
+        "metrics": {"latencyMs": 42},
+    }
+    message = _parse_response(converse_response)
+
+    with patch("codereview.providers.bedrock.ChatBedrockConverse"):
+        provider = BedrockProvider(model_config, provider_config)
+
+    assert provider._extract_token_usage(message) == (1234, 567)
+
+
+def test_token_usage_falls_back_to_camel_case_converse_metadata(
+    model_config, provider_config
+):
+    """A raw Converse ``usage`` dict left on response_metadata still counts.
+
+    Covers a hand-built response or a future client that stops popping the key,
+    so the camelCase spelling never silently reads as zero tokens again.
+    """
+    with patch("codereview.providers.bedrock.ChatBedrockConverse"):
+        provider = BedrockProvider(model_config, provider_config)
+
+    raw = Mock(spec=["response_metadata"])
+    raw.response_metadata = {"usage": {"inputTokens": 10, "outputTokens": 3}}
+
+    assert provider._extract_token_usage(raw) == (10, 3)
+
+
 def test_reset_state(model_config, provider_config, mock_report):
     """Test reset_state clears token counters."""
     with patch("codereview.providers.bedrock.ChatBedrockConverse") as mock_bedrock:
         mock_report_with_metadata = Mock(spec=CodeReviewReport)
-        mock_report_with_metadata.response_metadata = {
-            "usage": {"input_tokens": 100, "output_tokens": 50}
+        mock_report_with_metadata.usage_metadata = {
+            "input_tokens": 100,
+            "output_tokens": 50,
         }
 
         mock_instance = Mock()

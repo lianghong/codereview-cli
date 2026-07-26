@@ -701,3 +701,58 @@ def test_rate_limiter_is_attached_to_the_client(model_config, provider_config):
     kwargs = mock_client.call_args.kwargs
     assert kwargs["rate_limiter"] is provider.rate_limiter
     assert provider.rate_limiter is not None
+
+
+# ---------------------------------------------------------------------------
+# Connection-test URL construction
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "configured_base_url, expected",
+    [
+        # The default, when no base_url is configured at all.
+        (None, "https://integrate.api.nvidia.com/v1/models"),
+        ("https://nim.example.com/v1", "https://nim.example.com/v1/models"),
+        # Trailing slash: an ordinary way to write a base URL, and what copying
+        # from a docs page gives you. It used to build ".../v1//models".
+        ("https://nim.example.com/v1/", "https://nim.example.com/v1/models"),
+        ("https://nim.example.com/v1///", "https://nim.example.com/v1/models"),
+    ],
+)
+def test_connection_test_url_has_no_doubled_slash(
+    model_config, configured_base_url, expected
+):
+    """The probe URL must be well-formed for any spelling of base_url.
+
+    A doubled path segment is not equivalent to a single one: a gateway routes
+    ".../v1//models" elsewhere or 404s it. Since a non-200, non-401/403 status
+    is recorded as a *passing* check ("API responded (status: 404)"), the
+    malformed URL produced a green check that proved nothing about the endpoint
+    the review will actually call.
+    """
+    config = (
+        NVIDIAConfig(api_key="nvapi-" + "x" * 30)
+        if configured_base_url is None
+        else NVIDIAConfig(api_key="nvapi-" + "x" * 30, base_url=configured_base_url)
+    )
+
+    with (
+        patch("codereview.providers.nvidia.ChatNVIDIA"),
+        patch("codereview.providers.nvidia.httpx.Client") as mock_client,
+    ):
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_client_instance = Mock()
+        mock_client_instance.__enter__ = Mock(return_value=mock_client_instance)
+        mock_client_instance.__exit__ = Mock(return_value=False)
+        mock_client_instance.get.return_value = mock_response
+        mock_client.return_value = mock_client_instance
+
+        provider = NVIDIAProvider(model_config, config)
+        provider.validate_credentials()
+
+        requested_url = mock_client_instance.get.call_args.args[0]
+
+    assert requested_url == expected
+    assert "//models" not in requested_url

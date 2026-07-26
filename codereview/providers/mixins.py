@@ -6,6 +6,7 @@ from urllib.parse import urlsplit
 
 import httpx
 import requests
+from langchain_core.callbacks import BaseCallbackHandler
 from openai import (
     APIConnectionError,
     APIStatusError,
@@ -145,33 +146,133 @@ def is_placeholder_api_key(api_key: str, extra: tuple[str, ...] = ()) -> bool:
     }
 
 
+def wants_token_streaming(callbacks: list[Any] | None) -> bool:
+    """Return True only when a callback actually consumes streamed tokens.
+
+    Providers used to pass ``streaming=bool(self.callbacks)``, but the two
+    handlers this project ships are not equivalent: ``StreamingCallbackHandler``
+    overrides ``on_llm_new_token`` and renders each chunk, while
+    ``ProgressCallbackHandler`` (the ``--verbose`` handler) does not override it
+    at all — it only reacts to start/end. So ``--verbose`` switched every
+    OpenAI-compatible provider onto the streaming wire path to feed a handler
+    that cannot observe a single token, and the switch is not free: see
+    ``openai_stream_params`` for the token-accounting cost. Deciding on the
+    handler's actual capability instead of on list-emptiness keeps ``--verbose``
+    on the non-streaming path.
+
+    Checked by attribute rather than by importing the concrete handler classes:
+    ``codereview.callbacks`` imports Rich, this module is imported by every
+    provider, and the real contract is LangChain's — any handler overriding
+    ``on_llm_new_token`` wants tokens, including one a caller supplies.
+    """
+    if not callbacks:
+        return False
+    base = BaseCallbackHandler.on_llm_new_token
+    return any(
+        getattr(type(handler), "on_llm_new_token", base) is not base
+        for handler in callbacks
+    )
+
+
+def openai_stream_params(callbacks: list[Any] | None) -> dict[str, Any]:
+    """Build the ``streaming``/``stream_usage`` kwargs for an OpenAI-compat client.
+
+    ``stream_usage`` is what makes the client send ``stream_options:
+    {"include_usage": true}``, and **without it a streaming response carries no
+    usage at all**: OpenAI-compatible servers omit the final usage chunk unless
+    asked, so ``usage_metadata`` comes back ``None``, ``extract_openai_token_usage``
+    returns ``(0, 0)``, and ``base.py`` silently falls back to its byte-heuristic
+    estimate — which cannot see reasoning tokens. That is the same failure this
+    project already measured on Azure's Responses API path (~13x under-report on
+    a think-heavy batch), reached by a different route.
+
+    langchain-openai auto-enables ``stream_usage`` only when no ``base_url`` is
+    configured and ``OPENAI_BASE_URL`` is unset (it assumes a non-OpenAI endpoint
+    may not support the option). Every provider here passes an explicit
+    ``base_url``/``api_base``, so the auto-enable never fires and the flag has to
+    be set by hand. ``AzureChatOpenAI`` is the exception — it keys off
+    ``base_url`` being None, which is true for a deployment-routed client, so it
+    already defaults to True; passing it again is harmless and keeps the five
+    providers identical.
+
+    Only meaningful on the streaming path: ``_stream`` is the sole place that
+    turns ``stream_usage`` into ``stream_options``, and ``_get_request_payload``
+    for a non-streaming call omits it, so the flag is inert when
+    ``streaming`` is False.
+    """
+    streaming = wants_token_streaming(callbacks)
+    params: dict[str, Any] = {"streaming": streaming}
+    if streaming:
+        params["stream_usage"] = True
+    return params
+
+
 def extract_openai_token_usage(result: Any) -> tuple[int, int]:
-    """Extract (prompt_tokens, completion_tokens) from an OpenAI-shaped result.
+    """Extract (input_tokens, output_tokens) from an OpenAI-shaped result.
 
     Shared by every provider on the OpenAI client (Azure, DeepSeek, Moonshot,
-    Z.AI, OpenAI-on-Bedrock), which all surface usage under
-    ``response_metadata.token_usage``. Returns ``(0, 0)`` when metadata is
-    absent so callers fall back to estimation.
+    Z.AI, OpenAI-on-Bedrock). Returns ``(0, 0)`` when no usage is present at
+    all, so callers fall back to estimation.
+
+    ``AIMessage`` carries usage in **two independent places** and only one of
+    them is populated on every path:
+
+    - ``usage_metadata`` — LangChain's normalized
+      ``input_tokens``/``output_tokens``, set by *both* the Chat Completions and
+      the Responses API converters.
+    - ``response_metadata["token_usage"]`` — the vendor's raw
+      ``prompt_tokens``/``completion_tokens``, which **only** the Chat
+      Completions converter copies through.
+
+    Reading the raw dict first therefore returned ``(0, 0)`` for every
+    ``use_responses_api: true`` model, and ``.get(..., 0)`` made that silent:
+    ``base.py`` fell back to *estimating* the counts, and estimation cannot see
+    reasoning tokens at all. Azure ``gpt-5.4``/``gpt-5.4-pro`` (Responses API,
+    tool-use path, where real vendor counts *were* available) under-reported by
+    ~13x on a think-heavy batch — 40,000 in / 9,000 out billed, 6,211 / 145
+    recorded, $0.2350 of spend reported as $0.0177.
+
+    Prefer the normalized field; keep the raw dict as the fallback so a
+    hand-built or future response that carries only ``token_usage`` still
+    reports real numbers.
     """
-    if hasattr(result, "response_metadata"):
-        token_usage = result.response_metadata.get("token_usage", {})
-        return (
-            token_usage.get("prompt_tokens", 0),
-            token_usage.get("completion_tokens", 0),
-        )
+    usage = getattr(result, "usage_metadata", None)
+    if isinstance(usage, dict):
+        input_tokens = usage.get("input_tokens", 0) or 0
+        output_tokens = usage.get("output_tokens", 0) or 0
+        if input_tokens or output_tokens:
+            return (input_tokens, output_tokens)
+
+    metadata = getattr(result, "response_metadata", None)
+    if isinstance(metadata, dict):
+        token_usage = metadata.get("token_usage") or {}
+        if isinstance(token_usage, dict):
+            return (
+                token_usage.get("prompt_tokens", 0) or 0,
+                token_usage.get("completion_tokens", 0) or 0,
+            )
     return (0, 0)
 
 
 def parse_retry_after(error: Exception, max_wait: float) -> float | None:
     """Return the Retry-After wait (seconds, capped at ``max_wait``) or None.
 
-    Reads the ``retry-after`` header from a rate-limit error's response. Returns
-    ``None`` when the error has no usable header, so each provider keeps its own
+    Reads the ``retry-after`` header off the error's response. Returns ``None``
+    when the error has no usable header, so each provider keeps its own
     exponential-backoff fallback (and its own base-wait policy) — Azure, for
     example, uses a longer fixed base than the OpenAI-compat default.
+
+    Accepts any ``APIStatusError``, not just ``RateLimitError``. ``Retry-After``
+    is defined for 503 (RFC 9110 §10.2.3) and every provider here already
+    *retries* 5xx (:func:`is_openai_retryable_error`), so narrowing the header
+    read to 429 meant a server that said "come back in 30s" during a capacity
+    window got blind exponential backoff instead — the openai SDK's own
+    ``_calculate_retry_timeout`` honours the header on every retryable status.
+    The value is still bounded by ``max_wait``, so a hostile or broken header
+    cannot stall a run.
     """
     response = getattr(error, "response", None)
-    if isinstance(error, RateLimitError) and response is not None:
+    if isinstance(error, APIStatusError) and response is not None:
         retry_after = response.headers.get("retry-after")
         if retry_after:
             try:

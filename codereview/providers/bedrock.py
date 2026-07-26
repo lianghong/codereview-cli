@@ -171,6 +171,22 @@ class BedrockProvider(TokenTrackingMixin, ModelProvider):
             "additional_model_request_fields": (
                 additional_fields if additional_fields else None
             ),
+            # State the non-streaming choice instead of inheriting it. This
+            # provider never passes `streaming=True`, so `_should_stream` is
+            # already False for every entry and the value changes no behavior —
+            # but langchain-aws 1.6.3 added a `logger.warning` whenever it has
+            # to *infer* `disable_streaming`, and it fires for any model absent
+            # from its hardcoded streaming allowlist. `claude-opus-5` is absent
+            # (the list has claude-opus-4 / fable-5 / sonnet-5), so the CLI's
+            # own default model printed a paragraph of upstream advice above
+            # the Rich UI on every run, as did kimi-k2.5 / minimax-m2.5 / glm-5.
+            # Passing any explicit value suppresses it (upstream gates the
+            # warning on the key being absent), and the explicit `True` is also
+            # what the `read_timeout: 1800` overrides on fable5/opus5 assume:
+            # non-streaming Converse emits no bytes until generation completes.
+            # Do NOT change this to False to "enable streaming" without a live
+            # run — ConverseStream is a different wire path.
+            "disable_streaming": True,
         }
 
         # Only add temperature if model supports it (reasoning models don't)
@@ -220,14 +236,48 @@ class BedrockProvider(TokenTrackingMixin, ModelProvider):
             return isinstance(status_code, int) and 500 <= status_code < 600
         return False
 
+    @classmethod
+    def supports_token_streaming(cls) -> bool:
+        """False — ``_create_model`` passes ``disable_streaming=True``.
+
+        Every Converse call here is non-streaming, so ``--stream`` would render
+        nothing token-by-token while still dropping the run to one worker. The
+        flag is also load-bearing for the ``read_timeout: 1800`` overrides on
+        the always-thinking entries, so this can't flip without a live run on
+        the ConverseStream wire path.
+        """
+        return False
+
     def _extract_token_usage(self, result: Any) -> tuple[int, int]:
-        """Extract token usage from AWS Bedrock response metadata."""
-        if hasattr(result, "response_metadata"):
-            usage = result.response_metadata.get("usage", {})
-            return (
-                usage.get("input_tokens", 0),
-                usage.get("output_tokens", 0),
-            )
+        """Extract token usage from a Bedrock Converse response.
+
+        Read ``AIMessage.usage_metadata``, not ``response_metadata["usage"]``.
+        Two independent reasons the latter never worked:
+
+        1. ``langchain_aws``'s ``_extract_usage_metadata`` **pops** ``usage``
+           off the raw response before ``_extract_response_metadata`` runs, so
+           the key is gone by the time it reaches ``response_metadata``.
+        2. Converse itself spells the fields ``inputTokens``/``outputTokens``
+           (camelCase); ``input_tokens``/``output_tokens`` is LangChain's
+           normalized ``usage_metadata`` spelling.
+
+        Both misses are silent — ``.get(..., 0)`` returns zeros — so every
+        Bedrock run reported 0 tokens and $0.0000 while being billed in full.
+        The camelCase fallback covers a raw Converse dict reaching us
+        unnormalized (e.g. a hand-built response or a future client change).
+        """
+        usage = getattr(result, "usage_metadata", None)
+        if isinstance(usage, dict):
+            return (usage.get("input_tokens", 0), usage.get("output_tokens", 0))
+
+        metadata = getattr(result, "response_metadata", None)
+        if isinstance(metadata, dict):
+            raw = metadata.get("usage") or {}
+            if isinstance(raw, dict):
+                return (
+                    raw.get("inputTokens", raw.get("input_tokens", 0)) or 0,
+                    raw.get("outputTokens", raw.get("output_tokens", 0)) or 0,
+                )
         return (0, 0)
 
     def analyze_batch(

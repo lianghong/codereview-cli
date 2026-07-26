@@ -15,7 +15,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from codereview.config import get_config_loader
-from codereview.providers.factory import ProviderFactory
+from codereview.providers.factory import _PROVIDER_REGISTRY, ProviderFactory
 
 # Provider env vars (dummy values) so every provider section in the real
 # models.yaml registers and is resolvable. Endpoints must look like URLs.
@@ -152,3 +152,38 @@ def test_every_registered_provider_name_is_constructible(all_provider_env):
         for provider_name, model_id in rep_by_provider.items():
             provider = factory.create_provider(model_id)
             assert provider is not None, f"{provider_name} via {model_id!r} failed"
+
+
+def test_registry_covers_every_provider_models_yaml_configures(all_provider_env):
+    """``_PROVIDER_REGISTRY`` and the loader must agree on the provider set.
+
+    The registry replaced an if/elif chain plus a hand-written "Supported
+    providers: ..." list in the error message. Deriving that list from the
+    registry removed one drift source; this closes the other — a provider
+    section the loader parses but the registry has no row for now fails here
+    instead of at ``create_provider`` time for whoever picks that model first.
+    """
+    loader = get_config_loader()
+
+    assert set(_PROVIDER_REGISTRY) == set(loader._providers), (
+        "add a _PROVIDER_REGISTRY row for every provider config the loader "
+        "builds (and drop rows for providers it no longer builds)"
+    )
+
+
+@pytest.mark.parametrize("provider_name", sorted(_PROVIDER_REGISTRY))
+def test_registry_names_an_importable_provider_class(provider_name):
+    """Each row's module/class strings must resolve to a ModelProvider subclass.
+
+    The lazy import is what keeps ``--list-models`` from loading eight vendor
+    SDKs, but it also means a typo in either string survives until a user
+    selects that provider's model. Resolving them here makes it a test failure.
+    """
+    from importlib import import_module
+
+    from codereview.providers.base import ModelProvider
+
+    entry = _PROVIDER_REGISTRY[provider_name]
+    provider_class = getattr(import_module(entry.module), entry.class_name)
+
+    assert issubclass(provider_class, ModelProvider)

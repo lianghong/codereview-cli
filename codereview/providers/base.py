@@ -178,6 +178,31 @@ class ModelProvider(ABC):
         """
         ...
 
+    @classmethod
+    def supports_token_streaming(cls) -> bool:
+        """Whether this provider actually streams tokens to its callbacks.
+
+        A ``classmethod`` on purpose: the CLI has to decide *before* building
+        the provider, because the two halves of the decision are coupled. A
+        ``StreamingCallbackHandler`` attached while ``max_workers > 1`` is
+        exactly the concurrent-``Live`` overlap ``callbacks.py`` documents as
+        corrupting terminal state, so "how many workers" and "which handler"
+        must be answered together, in one place, from the class alone.
+
+        ``--stream`` forces ``max_workers=1`` (token-by-token output from
+        parallel batches interleaves incomprehensibly), and on three providers
+        it never streams anyway: Bedrock passes ``disable_streaming=True``,
+        ``ChatNVIDIA`` has no ``streaming`` field at all, and Google's is left
+        off because structured output through the streaming wire path is
+        unproven live. On those, the flag bought a 3-5x multi-batch slowdown for
+        output that cannot appear.
+
+        Default True; those three override it to False. The CLI reads this to
+        keep concurrency (and to say so) instead of paying for streaming that
+        won't occur.
+        """
+        return True
+
     def get_model_display_name(self) -> str:
         """Get human-readable model name.
 
@@ -596,6 +621,44 @@ class ModelProvider(ABC):
         if input_tokens or output_tokens:
             self._track_tokens(input_tokens, output_tokens)
 
+    def _track_usage_from_parse_failure(
+        self, error: OutputParserException, input_estimate_text: str
+    ) -> None:
+        """Bill an attempt the ``PydanticOutputParser`` rejected.
+
+        The prompt-parsing chain is ``prompt | model | parser``, so a parse
+        failure raises from the *parser* and the ``AIMessage`` is gone by the
+        time we see the exception — there is no usage metadata to read, only
+        the rejected text the parser attached as ``llm_output``. Estimation is
+        therefore not a shortcut here, it is the same accounting the success
+        branch on this path already uses: a ``CodeReviewReport`` carries no
+        metadata either, so both its token counts are estimated too.
+
+        This matters most where it hurts most. Reasoning models on the
+        prompt-parsing path (GPT-5.5/5.6 on Bedrock, Opus 5) intermittently
+        emit invalid JSON on think-heavy batches, and ``enable_output_fixing``
+        can burn several attempts on one batch. Every one of those attempts is
+        billed by the vendor; recording none of them made the batches with the
+        most expensive output the ones the cost report treated as free.
+
+        Failures are swallowed for the same reason as
+        ``_track_usage_from_raw``: this runs on the way to a retry or a raise,
+        and an accounting problem must not mask the parse error.
+        """
+        try:
+            input_tokens = self._estimate_tokens(input_estimate_text)
+            llm_output = getattr(error, "llm_output", None)
+            output_tokens = (
+                self._estimate_tokens(llm_output)
+                if isinstance(llm_output, str) and llm_output
+                else 0
+            )
+        except Exception:  # pragma: no cover - defensive; estimation is arithmetic
+            logging.debug("Token usage unavailable for rejected output", exc_info=True)
+            return
+        if input_tokens or output_tokens:
+            self._track_tokens(input_tokens, output_tokens)
+
     def _invoke_chain(self, chain_input: dict[str, str]) -> Any:
         """Invoke the LLM chain. Override for provider-specific wrappers.
 
@@ -780,6 +843,13 @@ class ModelProvider(ABC):
                 #     without naming it here it would fall into the generic
                 #     except below and abort the batch on attempt 1.
                 last_error = e
+
+                # Bill the rejected attempt. The include_raw path already does
+                # this at its `parsed is None` branch; the prompt-parsing path
+                # raises from the parser, past the AIMessage, so the rejected
+                # text on the exception is the only record of what was charged.
+                if isinstance(e, OutputParserException):
+                    self._track_usage_from_parse_failure(e, input_estimate_text)
 
                 enable_fixing = getattr(self, "enable_output_fixing", False)
                 if enable_fixing and attempt < retry_config.max_retries:
