@@ -683,6 +683,58 @@ def test_documented_model_names_all_resolve():
     )
 
 
+def test_every_pricing_and_inference_key_in_the_yaml_is_actually_read():
+    """A key the loader never reads is a silent lie about what the tool does.
+
+    ``PricingConfig`` and ``InferenceParams`` are not ``extra="forbid"``, and
+    ``_parse_model_config`` copies fields across **by name, one at a time** — so
+    a YAML key nobody reads loads without error, is dropped on the floor, and
+    still reads to a human as configuration. Ten such keys shipped:
+    ``cache_read_per_million``/``cache_write_per_million`` on six Claude entries
+    and ``cached_input_per_million`` on four more, advertising prompt-caching
+    rates that could never reach a cost figure. The same shape as the
+    ``NVIDIAConfig.max_retries`` bug (CLAUDE.md, ConfigLoader gotcha), one level
+    down: present in the YAML, absent from the constructor.
+
+    Scoped to ``pricing`` and ``inference_params`` because those are pure data
+    blocks — unlike ``capabilities``/``architecture``/``notes``, which CLAUDE.md
+    documents as deliberately informational.
+
+    The expected key set is scraped from ``loader.py`` rather than listed here:
+    the YAML spelling differs from the field name (``default_temperature`` →
+    ``temperature``), so the loader is the only place the mapping exists, and a
+    hand-copied list here would just be a second thing to forget.
+    """
+    repo_root = Path(__file__).resolve().parent.parent
+    loader_src = (repo_root / "codereview" / "config" / "loader.py").read_text()
+    read_keys = set(
+        re.findall(r'(?:pricing_data|params_data)(?:\.get\(|\[)"([^"]+)"', loader_src)
+    )
+    assert "input_per_million" in read_keys and "max_output_tokens" in read_keys, (
+        "the scrape found no recognisable keys — _parse_model_config was "
+        "restructured and this test is now vacuous"
+    )
+
+    doc = yaml.safe_load(
+        (repo_root / "codereview" / "config" / "models.yaml").read_text()
+    )
+    unread: list[str] = []
+    for provider, provider_cfg in (doc.get("providers") or {}).items():
+        for model in provider_cfg.get("models") or []:
+            for block in ("pricing", "inference_params"):
+                for key in model.get(block) or {}:
+                    if key not in read_keys:
+                        unread.append(f"{provider}/{model['id']}: {block}.{key}")
+
+    assert not unread, (
+        "models.yaml sets keys that ConfigLoader never reads, so they affect "
+        "nothing while looking like they do:\n  "
+        + "\n  ".join(unread)
+        + "\nEither wire the key through _parse_model_config (and the Pydantic "
+        "model) or delete it."
+    )
+
+
 def test_adaptive_thinking_claude_models_disable_tool_use():
     """Adaptive-thinking Claude models must NOT use tool-based structured output.
 
@@ -1070,3 +1122,220 @@ def test_every_declared_provider_config_field_is_forwarded_by_the_loader(tmp_pat
             f"forward it in loader.py's {provider} branch) so the YAML key "
             "cannot be silently inert"
         )
+
+
+# ---------------------------------------------------------------------------
+# Config-error diagnostics
+#
+# ConfigLoader runs from __init__, so a malformed models.yaml surfaces on
+# *every* command — including --list-models, which needs no credentials. The
+# raw exceptions Pydantic and dict indexing raise name neither the file nor the
+# entry, which is useless when the file holds ~30 model entries and the user
+# may be editing a copy in a different directory.
+# ---------------------------------------------------------------------------
+
+
+def _config_file(tmp_path: Path, body: str) -> Path:
+    path = tmp_path / "models.yaml"
+    path.write_text(body, encoding="utf-8")
+    return path
+
+
+def test_missing_model_key_names_the_file_and_the_entry(tmp_path):
+    """A missing required key must be a ValueError naming file *and* entry.
+
+    Regression: this escaped as a bare ``KeyError: 'pricing'`` from inside
+    ``_parse_model_config``. With one line of traceback pointing at the loader,
+    the user learns neither which YAML file was read (it can be a copy, or an
+    overridden path) nor which of ~30 entries lacks the key.
+    """
+    path = _config_file(
+        tmp_path,
+        """
+providers:
+  bedrock:
+    models:
+      - id: broken-entry
+        name: Broken
+        full_id: vendor.broken
+""",
+    )
+
+    with pytest.raises(ValueError) as excinfo:
+        ConfigLoader(path)
+
+    message = str(excinfo.value)
+    assert "broken-entry" in message
+    assert str(path) in message
+    assert "pricing" in message
+
+
+def test_invalid_model_value_names_the_file_and_the_entry(tmp_path):
+    """A schema violation must be a ValueError, not a raw ValidationError.
+
+    Pydantic's message says *which field* but not which entry or file, and
+    ``ValidationError`` is not a ``ValueError`` subclass callers can rely on
+    catching alongside the loader's other failures.
+    """
+    path = _config_file(
+        tmp_path,
+        """
+providers:
+  bedrock:
+    models:
+      - id: ""
+        name: Nameless Id
+        full_id: vendor.x
+        pricing:
+          input_per_million: 1.0
+          output_per_million: 2.0
+""",
+    )
+
+    with pytest.raises(ValueError) as excinfo:
+        ConfigLoader(path)
+
+    message = str(excinfo.value)
+    # `id` is the broken field, so the entry is identified by its name.
+    assert "Nameless Id" in message
+    assert str(path) in message
+
+
+def test_entry_with_no_identifier_at_all_still_reports_the_file(tmp_path):
+    """An entry missing every identifying key must not crash the reporter.
+
+    The label falls back id → name → full_id → placeholder precisely because a
+    missing ``id`` is one of the failures being reported.
+    """
+    path = _config_file(
+        tmp_path,
+        """
+providers:
+  bedrock:
+    models:
+      - pricing:
+          input_per_million: 1.0
+          output_per_million: 2.0
+""",
+    )
+
+    with pytest.raises(ValueError) as excinfo:
+        ConfigLoader(path)
+
+    message = str(excinfo.value)
+    assert str(path) in message
+    assert "unnamed entry" in message
+
+
+def test_invalid_non_model_section_names_the_file(tmp_path):
+    """A bad value outside the models list must also name the config file.
+
+    ``scanning:`` is parsed by its own method, so it needs the top-level
+    ``_load_config`` net rather than ``_parse_model_config``'s.
+    """
+    path = _config_file(tmp_path, 'scanning:\n  max_file_size_kb: "not a number"\n')
+
+    with pytest.raises(ValueError) as excinfo:
+        ConfigLoader(path)
+
+    assert str(path) in str(excinfo.value)
+
+
+def test_malformed_yaml_names_the_file(tmp_path):
+    """The YAML branch named the parse error but not which file failed."""
+    path = _config_file(tmp_path, "providers: [unterminated\n")
+
+    with pytest.raises(ValueError) as excinfo:
+        ConfigLoader(path)
+
+    assert str(path) in str(excinfo.value)
+
+
+def test_the_shipped_config_loads_without_diagnostics(tmp_path):
+    """The error paths above must not have made the real config unloadable."""
+    loader = ConfigLoader(Path("codereview/config/models.yaml"))
+    assert loader.list_models()
+
+
+# ---------------------------------------------------------------------------
+# Legacy module-level constants
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "name, accessor_name",
+    [
+        ("DEFAULT_EXCLUDE_PATTERNS", "get_default_exclude_patterns"),
+        ("DEFAULT_EXCLUDE_EXTENSIONS", "get_default_exclude_extensions"),
+        ("MAX_FILE_SIZE_KB", "get_max_file_size_kb"),
+        ("WARN_FILE_SIZE_KB", "get_warn_file_size_kb"),
+        ("MODEL_ALIASES", "get_model_aliases"),
+    ],
+)
+def test_legacy_constant_agrees_with_its_accessor_after_a_cache_clear(
+    tmp_path, monkeypatch, name, accessor_name
+):
+    """The legacy names must follow ``get_config_loader.cache_clear()``.
+
+    Regression: these five were assigned once at package import
+    (``MAX_FILE_SIZE_KB = get_max_file_size_kb()``), so a test or caller that
+    reloaded config via the documented ``cache_clear()`` reset got the *new*
+    value from the accessor and the *old* value from the constant — two
+    spellings of one setting silently disagreeing, with no error to notice.
+    """
+    import codereview.config as config_pkg
+    from codereview.config import get_config_loader
+
+    raw = yaml.safe_load(
+        Path("codereview/config/models.yaml").read_text(encoding="utf-8")
+    )
+    raw["scanning"]["max_file_size_kb"] = 42
+    raw["scanning"]["warn_file_size_kb"] = 7
+    raw["scanning"]["exclude_patterns"] = ["**/only_this/**"]
+    raw["scanning"]["exclude_extensions"] = [".only"]
+    # A single model entry, so MODEL_ALIASES is unmistakably different too.
+    raw["providers"] = {
+        "bedrock": {
+            "models": [
+                {
+                    "id": "solo",
+                    "name": "Solo",
+                    "full_id": "vendor.solo",
+                    "pricing": {"input_per_million": 1.0, "output_per_million": 2.0},
+                }
+            ]
+        }
+    }
+    alternate = tmp_path / "models.yaml"
+    alternate.write_text(yaml.safe_dump(raw), encoding="utf-8")
+
+    original_init = ConfigLoader.__init__
+
+    def init_from_alternate(self, config_path=None):
+        original_init(self, alternate)
+
+    monkeypatch.setattr(ConfigLoader, "__init__", init_from_alternate)
+    get_config_loader.cache_clear()
+    try:
+        expected = getattr(config_pkg, accessor_name)()
+        assert getattr(config_pkg, name) == expected
+    finally:
+        monkeypatch.undo()
+        get_config_loader.cache_clear()
+
+
+def test_unknown_config_attribute_still_raises_attribute_error():
+    """The module __getattr__ must not turn typos into something else."""
+    import codereview.config as config_pkg
+
+    with pytest.raises(AttributeError, match="no attribute 'NOT_A_SETTING'"):
+        _ = config_pkg.NOT_A_SETTING
+
+
+def test_legacy_constants_stay_visible_to_dir():
+    """Lazy attributes are invisible to dir() unless __dir__ lists them."""
+    import codereview.config as config_pkg
+
+    listing = dir(config_pkg)
+    for name in config_pkg.__all__:
+        assert name in listing, f"{name} is exported but not discoverable"

@@ -82,10 +82,23 @@ class ConfigLoader:
         except FileNotFoundError as e:
             raise ValueError(f"Configuration file not found: {self.config_path}") from e
         except yaml.YAMLError as e:
-            raise ValueError(f"Invalid YAML in configuration file: {e}") from e
+            raise ValueError(
+                f"Invalid YAML in configuration file {self.config_path}: {e}"
+            ) from e
         except PermissionError as e:
             raise ValueError(
                 f"Permission denied reading configuration: {self.config_path}"
+            ) from e
+        except (KeyError, ValidationError) as e:
+            # Structurally-valid YAML that doesn't match the schema. Every
+            # other branch here names the file; these two used to escape raw,
+            # so a typo'd key surfaced as a bare `KeyError: 'models'` from
+            # inside a loader the user has no reason to know exists. Model
+            # entries are handled closer to the data (see _parse_model_config,
+            # which names the offending entry) and arrive as ValueError, which
+            # this deliberately does not catch.
+            raise ValueError(
+                f"Invalid configuration in {self.config_path}: {type(e).__name__}: {e}"
             ) from e
 
     def _expand_env_var_string(self, text: str) -> str:
@@ -463,45 +476,73 @@ class ConfigLoader:
 
         Returns:
             Validated ModelConfig
-        """
-        # Parse pricing
-        pricing_data = model_data["pricing"]
-        pricing = PricingConfig(
-            input_per_million=pricing_data["input_per_million"],
-            output_per_million=pricing_data["output_per_million"],
-        )
 
-        # Parse inference params
-        inference_params = None
-        if "inference_params" in model_data:
-            params_data = model_data["inference_params"]
-            inference_params = InferenceParams(
-                temperature=params_data.get("default_temperature"),
-                top_p=params_data.get("default_top_p"),
-                top_k=params_data.get("default_top_k"),
-                max_output_tokens=params_data.get("max_output_tokens"),
-                enable_thinking=params_data.get("enable_thinking"),
-                clear_thinking=params_data.get("clear_thinking"),
-                thinking=params_data.get("thinking"),
-                reasoning_effort=params_data.get("reasoning_effort"),
+        Raises:
+            ValueError: If the entry is missing a required key or fails
+                validation. The message names the config file and the offending
+                entry — a bare ``KeyError: 'pricing'`` or a Pydantic
+                ``ValidationError`` propagating out of here tells the user
+                neither *which* file nor *which* of ~30 model entries to edit,
+                and this runs from ``__init__`` so it surfaces on every command,
+                including ``--list-models``.
+        """
+        # Anything identifying enough to locate the entry in the YAML. Falls
+        # back through id → name → full_id because a missing `id` is itself one
+        # of the failures being reported.
+        label = (
+            model_data.get("id")
+            or model_data.get("name")
+            or model_data.get("full_id")
+            or "<unnamed entry>"
+        )
+        try:
+            # Parse pricing
+            pricing_data = model_data["pricing"]
+            pricing = PricingConfig(
+                input_per_million=pricing_data["input_per_million"],
+                output_per_million=pricing_data["output_per_million"],
             )
 
-        # Create ModelConfig
-        return ModelConfig(
-            id=model_data["id"],
-            name=model_data["name"],
-            aliases=model_data.get("aliases", []),
-            deprecated_aliases=model_data.get("deprecated_aliases", []),
-            pricing=pricing,
-            inference_params=inference_params,
-            full_id=model_data.get("full_id"),
-            deployment_name=model_data.get("deployment_name"),
-            use_responses_api=model_data.get("use_responses_api"),
-            supports_tool_use=model_data.get("supports_tool_use", True),
-            context_window=model_data.get("context_window"),
-            region=model_data.get("region"),
-            read_timeout=model_data.get("read_timeout"),
-        )
+            # Parse inference params
+            inference_params = None
+            if "inference_params" in model_data:
+                params_data = model_data["inference_params"]
+                inference_params = InferenceParams(
+                    temperature=params_data.get("default_temperature"),
+                    top_p=params_data.get("default_top_p"),
+                    top_k=params_data.get("default_top_k"),
+                    max_output_tokens=params_data.get("max_output_tokens"),
+                    enable_thinking=params_data.get("enable_thinking"),
+                    clear_thinking=params_data.get("clear_thinking"),
+                    thinking=params_data.get("thinking"),
+                    reasoning_effort=params_data.get("reasoning_effort"),
+                )
+
+            # Create ModelConfig
+            return ModelConfig(
+                id=model_data["id"],
+                name=model_data["name"],
+                aliases=model_data.get("aliases", []),
+                deprecated_aliases=model_data.get("deprecated_aliases", []),
+                pricing=pricing,
+                inference_params=inference_params,
+                full_id=model_data.get("full_id"),
+                deployment_name=model_data.get("deployment_name"),
+                use_responses_api=model_data.get("use_responses_api"),
+                supports_tool_use=model_data.get("supports_tool_use", True),
+                context_window=model_data.get("context_window"),
+                region=model_data.get("region"),
+                read_timeout=model_data.get("read_timeout"),
+            )
+        except KeyError as e:
+            raise ValueError(
+                f"Model entry {label!r} in {self.config_path} is missing "
+                f"required key {e.args[0]!r}."
+            ) from e
+        except (ValidationError, TypeError) as e:
+            raise ValueError(
+                f"Model entry {label!r} in {self.config_path} is invalid: {e}"
+            ) from e
 
     def resolve_model(self, name: str) -> tuple[str, ModelConfig]:
         """Resolve model name to provider and config.

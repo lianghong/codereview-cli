@@ -129,7 +129,7 @@ class ModelConfig(BaseModel):
     )
     use_responses_api: bool | None = Field(
         None,
-        description="Use OpenAI Responses API instead of ChatCompletion (required for some models like GPT-5.3 Codex)",
+        description="Use OpenAI Responses API instead of ChatCompletion (required by the GPT-5.x reasoning entries)",
     )
     supports_tool_use: bool = Field(
         True,
@@ -423,9 +423,10 @@ class ZAIConfig(ProviderConfig):
 
 
 class BedrockOpenAIConfig(ProviderConfig):
-    """Configuration for OpenAI models hosted on Amazon Bedrock.
+    """Configuration for Bedrock's OpenAI-compatible ``bedrock-mantle`` endpoint.
 
-    AWS exposes OpenAI's frontier models (GPT-5.5, GPT-5.4, Codex) on Amazon
+    AWS exposes several vendors' frontier models (OpenAI's GPT-5.x *and* xAI's
+    Grok — the name is historical, not a restriction) on Amazon
     Bedrock through an OpenAI-compatible surface. Unlike every other Bedrock
     model in this project — which goes through ``ChatBedrockConverse`` and the
     AWS SigV4 credential chain — the OpenAI-compatible endpoint authenticates

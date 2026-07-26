@@ -1,6 +1,8 @@
 """Configuration package for model and provider configuration management."""
 
+from collections.abc import Callable
 from functools import lru_cache
+from typing import TYPE_CHECKING
 
 # Import Pydantic models
 # Import ConfigLoader
@@ -62,13 +64,60 @@ def get_model_aliases() -> dict[str, str]:
     return get_config_loader().get_model_aliases()
 
 
-# Legacy compatibility exports
-# These are provided for backward compatibility during migration
-DEFAULT_EXCLUDE_PATTERNS = get_default_exclude_patterns()
-DEFAULT_EXCLUDE_EXTENSIONS = get_default_exclude_extensions()
-MAX_FILE_SIZE_KB = get_max_file_size_kb()
-WARN_FILE_SIZE_KB = get_warn_file_size_kb()
-MODEL_ALIASES = get_model_aliases()
+# Legacy compatibility exports.
+#
+# Resolved lazily through the module-level __getattr__ (PEP 562) rather than
+# assigned at import time, so each name re-reads the *current* config on every
+# attribute access.
+#
+# The bug this fixes: the eager snapshot was taken once, at first import, so it
+# could not follow `get_config_loader.cache_clear()` — the documented way to
+# reset config in tests (CLAUDE.md). Every accessor above picked up the
+# reloaded config while these five names kept the values from the first import,
+# a silent disagreement between two spellings of the same setting.
+#
+# What it does *not* fix: importing this package can still run the YAML load
+# eagerly, because `scanner.py` and `cli.py` bind some of these names with a
+# module-level `from codereview.config import ...`. A `from ... import` copies
+# the value at the *importing* module's import time, which no amount of
+# laziness here can defer. That's why the accessor functions above remain the
+# preferred spelling for new code.
+_LEGACY_ACCESSORS: dict[str, Callable[[], object]] = {
+    "DEFAULT_EXCLUDE_PATTERNS": get_default_exclude_patterns,
+    "DEFAULT_EXCLUDE_EXTENSIONS": get_default_exclude_extensions,
+    "MAX_FILE_SIZE_KB": get_max_file_size_kb,
+    "WARN_FILE_SIZE_KB": get_warn_file_size_kb,
+    "MODEL_ALIASES": get_model_aliases,
+}
+
+if TYPE_CHECKING:
+    # A module-level __getattr__ returns one type for every name, so without
+    # these declarations mypy infers `object` for all five and every use site
+    # downstream fails (`MAX_FILE_SIZE_KB` as an int default, iterating the
+    # pattern lists, `MODEL_ALIASES.keys()`). Type-checking-only: at runtime
+    # these names must stay absent from the module globals or __getattr__ is
+    # never consulted and the laziness is undone. Keep the annotations in step
+    # with the accessors' return types above.
+    DEFAULT_EXCLUDE_PATTERNS: list[str]
+    DEFAULT_EXCLUDE_EXTENSIONS: list[str]
+    MAX_FILE_SIZE_KB: int
+    WARN_FILE_SIZE_KB: int
+    MODEL_ALIASES: dict[str, str]
+
+
+def __getattr__(name: str) -> object:
+    """Resolve the legacy module-level constants on first access."""
+    try:
+        accessor = _LEGACY_ACCESSORS[name]
+    except KeyError:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}") from None
+    return accessor()
+
+
+def __dir__() -> list[str]:
+    """Keep the lazy names discoverable by dir() and tab completion."""
+    return sorted({*globals(), *_LEGACY_ACCESSORS})
+
 
 __all__ = [
     # Pydantic models

@@ -36,8 +36,6 @@ providers:
         pricing:
           input_per_million: 10.00
           output_per_million: 50.00
-          cache_write_per_million: 12.50
-          cache_read_per_million: 1.00
         inference_params:
           # Fable 5 requires temperature to be 1.0-or-unset, top_p to be
           # >=0.99-or-unset, and rejects top_k entirely (Bedrock model card,
@@ -91,12 +89,9 @@ providers:
         # model. Use `opus` (generation-neutral) or `opus5`.
         pricing:
           # Verified: AWS Bedrock model card / Anthropic pricing (July 2026).
-          # Unchanged from Opus 4.8. Cache-write rate is the 5-minute TTL
-          # ($10.00/M for the 1-hour TTL, which we don't use).
+          # Unchanged from Opus 4.8.
           input_per_million: 5.00
           output_per_million: 25.00
-          cache_write_per_million: 6.25
-          cache_read_per_million: 0.50
         inference_params:
           # Reasoning model - temperature/top_p/top_k not supported.
           # default_temperature omitted intentionally.
@@ -140,8 +135,6 @@ providers:
         pricing:
           input_per_million: 5.00
           output_per_million: 25.00
-          cache_write_per_million: 6.25
-          cache_read_per_million: 0.50
         inference_params:
           # Opus 4.8 is a reasoning model - temperature not supported
           # default_temperature omitted intentionally
@@ -187,8 +180,6 @@ providers:
           # the promo lapses (matches Sonnet 4.6's rates).
           input_per_million: 3.00
           output_per_million: 15.00
-          cache_write_per_million: 3.75
-          cache_read_per_million: 0.30
         inference_params:
           # Sonnet 5 rejects temperature/top_p/top_k with a 400 (same
           # constraint as Opus 4.8 and Fable 5) - omit all sampling params.
@@ -232,8 +223,6 @@ providers:
         pricing:
           input_per_million: 3.00
           output_per_million: 15.00
-          cache_write_per_million: 3.75
-          cache_read_per_million: 0.30
         inference_params:
           default_temperature: 0.1
           max_output_tokens: 64000
@@ -257,8 +246,6 @@ providers:
         pricing:
           input_per_million: 1.00
           output_per_million: 5.00
-          cache_write_per_million: 1.25
-          cache_read_per_million: 0.10
         inference_params:
           default_temperature: 0.1
           max_output_tokens: 64000
@@ -463,12 +450,10 @@ providers:
           # Confirmed by Microsoft staff (Q&A 2026-03-28),
           # matches OpenAI direct pricing 1:1.
           # >272K long-context tier costs 2x input / 1.5x output:
-          # $5.00 / $0.50 cached / $22.50 — apply manually if you
-          # routinely send prompts larger than 272K.
+          # $5.00 / $22.50 — apply manually if you routinely send
+          # prompts larger than 272K.
           input_per_million: 2.50
           output_per_million: 15.00
-          # 90% discount on cached input
-          cached_input_per_million: 0.25
         inference_params:
           # No default_temperature / default_top_p: GPT-5 reasoning
           # models reject these parameters. Reasoning effort defaults
@@ -507,7 +492,6 @@ providers:
         pricing:
           input_per_million: 30.00
           output_per_million: 180.00
-          cached_input_per_million: 3.00
         inference_params:
           # Temperature/top_p NOT supported with
           # reasoning models (GPT-5.4 Pro always
@@ -1115,8 +1099,6 @@ providers:
           # steady-state rate.
           input_per_million: 0.435
           output_per_million: 0.87
-          # Cache hit at 1/10 of cache miss
-          cached_input_per_million: 0.0435
         inference_params:
           # Lower temp for code review determinism (model default 1.0)
           default_temperature: 0.3
@@ -1146,7 +1128,6 @@ providers:
         pricing:
           input_per_million: 0.14
           output_per_million: 0.28
-          cached_input_per_million: 0.014
         inference_params:
           default_temperature: 0.3
           default_top_p: 0.95
@@ -1574,8 +1555,12 @@ scanning:
 # - Use top_p 0.8-0.95 for controlled output
 # - Prefer models with strong SWE-bench scores
 #
-# Model selection by use case:
-# - Quick: Haiku ($1/$5) or Qwen ($0.22/$1.40)
-# - Standard: Sonnet 4.6 ($3/$15) or Gemini ($2/$12)
-# - Complex: Opus ($5/$25) or GPT-5.3 ($1.75/$14)
-# - Budget: Qwen ($0.22/$1.40) or Grok ($0.20)
+# Model selection by use case. Prices are input/output per million tokens and
+# WILL drift — `codereview --list-models` prints them from the entries below and
+# is the authoritative view. Every figure that used to be quoted here had gone
+# stale, and one named a model that no longer exists at all.
+# - Free: any NVIDIA NIM entry (free tier; $0/$0 above)
+# - Quick: Haiku 4.5, Qwen3 Coder Next (Bedrock)
+# - Standard: Sonnet 4.6 / Sonnet 5, Gemini 3.6 Flash, Grok 4.3 (Bedrock)
+# - Complex: Opus 5 (the CLI default), GPT-5.6 Sol (Bedrock)
+# - Budget-with-a-key: DeepSeek-V4-Flash, Kimi K2.6 (Moonshot)
