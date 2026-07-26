@@ -290,8 +290,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   static-analysis section previously claimed "ruff, mypy, black, isort
   (when available)" regardless of what actually ran (the codebase now
   supports 19+ tools across 6 languages).
+- **Model-profile drift detection** — new `tests/test_model_profile_drift.py`
+  (9 tests) cross-checks `models.yaml` against the `_MODEL_PROFILES` tables the
+  LangChain partner packages now ship, catching a `context_window` or
+  `max_output_tokens` above the model's real cap and any `supports_tool_use`
+  that disagrees with the profile's `structured_output`. 15 of 30 registry
+  entries resolve a profile today (re-hosts — all of NVIDIA, Z.AI, Bedrock's
+  OpenAI-compatible endpoint — carry ids the tables don't know).
+
+  It is a **warn-with-allowlist** check, never a source to overwrite the YAML
+  from, for two reasons: the tables are generated from the community-curated
+  models.dev, and our `supports_tool_use` is *empirical* — the whole
+  structured-output matrix in CLAUDE.md exists because models advertising
+  `structured_output: true` fail on the forced `tool_choice` anyway. Eight
+  deliberate divergences are allowlisted with a one-line reason each; the
+  assertions are one-directional where a direction exists (a *conservative*
+  limit is a valid cost choice, only exceeding the cap is a bug), and a separate
+  test fails when an allowlist entry stops diverging so it can't accumulate
+  permission for problems already fixed. The one behavioural fact that makes the
+  profiles worth checking against: langchain-aws *acts* on its own table at
+  runtime, dropping `temperature`/`top_p` whenever `profile["temperature"] is
+  False`.
+
+  Two meta-guards keep it from passing vacuously — the same failure the retry and
+  token-usage contracts were written against. `_get_default_model_profile` is
+  private API, so one test asserts it still resolves something rather than
+  letting every check degrade to "no profile found", and a per-provider coverage
+  pin fails when a provider drops from "some coverage" to "none".
 
 ### Changed
+- **The ruff rule set is now pinned in `pyproject.toml`** (`[tool.ruff.lint]
+  select = ["E4", "E7", "E9", "F"]`) instead of inheriting ruff's defaults.
+  Those defaults are not stable across releases — ruff 0.16.0 enables ~400
+  rules where 0.15.22 enabled `E4/E7/E9/F` — and the `ruff>=…` floor is
+  resolved by `uv pip install -e .` without consulting `uv.lock`. The
+  documented pre-commit gate therefore reported 135 errors on an unmodified
+  checkout purely because of which ruff the venv happened to install, which
+  left it unable to distinguish "this change is clean" from "the toolchain
+  moved". The pinned value is ruff's own historical default, i.e. what this
+  codebase was written and reviewed against, so no verdict changes; both
+  0.15.22 and 0.16.0 now agree. Widening the set remains a fine idea to do
+  deliberately, in a commit that also lands the resulting fixes.
+- **`ProviderFactory` dispatch is now a registry table** — `_PROVIDER_REGISTRY`
+  maps each provider name to its config type, module and class name, replacing
+  an eight-branch if/elif chain (~130 lines) plus a hand-written
+  `Supported providers: …` list in the error message. That list is now derived
+  from the table, so it can't go stale when a ninth provider lands; adding a
+  provider is one row. Module/class stay **strings** to keep the import lazy —
+  each provider module imports its vendor's LangChain client at module scope,
+  so an eager table would pull all eight client packages into every run,
+  including `--list-models`. Two new tests in `tests/test_factory_smoke.py`
+  pin the table to the loader's provider set and resolve every row's
+  module/class, since a typo in a lazily-imported name would otherwise survive
+  until a user selected that provider's model. No behavior change beyond
+  ordering: an unknown provider now reports the factory's message rather than
+  the loader's, which names the supported set.
 - **Default model is now `opus5`** (was `opus4.8`) — Claude Opus 5 supersedes
   Opus 4.8 at identical $5/$25 pricing, with Anthropic specifically calling out
   code review and bug-finding among its largest gains. Runs that relied on the
@@ -374,7 +427,213 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `RETIRED_ALIASES_DELETED_NOT_REDIRECTED` allowlist with a stated reason —
     so a name can never be dropped by accident, only on purpose.
 
+### Removed
+- **Sixteen inert prompt-caching pricing keys deleted from `models.yaml`** — six
+  `cache_write_per_million` / `cache_read_per_million` pairs (Claude Fable 5,
+  Opus 5, Opus 4.8, Sonnet 5, Sonnet 4.6, Haiku 4.5) and four
+  `cached_input_per_million` keys (Azure GPT-5.4, GPT-5.4 Pro, DeepSeek-V4-Pro,
+  DeepSeek-V4-Flash). `PricingConfig` declares only `input_per_million` and
+  `output_per_million`; `ConfigLoader._parse_model_config` copies pricing across
+  **field by field, by name**; and neither model is `extra="forbid"`. So each of
+  these loaded without error, was dropped on the floor, and could never reach a
+  cost figure — while still reading to a human as configuration. Nothing
+  referenced them: no `.py`, no doc, no test. This is the
+  `NVIDIAConfig.max_retries` bug one level down (present in the YAML, absent
+  from the constructor), with a worse failure mode: an unread *pricing* number
+  is exactly the kind of thing a future reader trusts, and none of these had
+  ever been checked against a billing statement.
+
+  Deleted rather than kept as documentation. Implementing prompt caching is a
+  real optimization — a `cache_control` block on the system prompt cuts the
+  per-batch input cost ~10x on repeated reviews — but it is a feature with its
+  own correctness surface (TTL windows, minimum cacheable length, a second
+  token counter in the report), not a YAML edit. The rates can come back
+  alongside it, re-verified.
+
+  New guard: `tests/test_config.py::test_every_pricing_and_inference_key_in_the_yaml_is_actually_read`
+  scrapes the keys `_parse_model_config` actually reads out of `loader.py` and
+  fails on any `pricing`/`inference_params` key in the YAML that isn't among
+  them. Scraped rather than hand-listed because the YAML spelling differs from
+  the field name (`default_temperature` → `temperature`), so the loader is the
+  only place that mapping exists — and the test asserts the scrape found
+  something first, so a restructure of `_parse_model_config` fails loudly
+  instead of making the check vacuous. It catches both directions: a new dead
+  key added to the YAML, *and* a key the loader stops forwarding.
+
+  Also dropped the two now-dangling pricing comments: Opus 5's explained a
+  5-minute-TTL cache-write rate the file no longer states, and Azure GPT-5.4's
+  long-context tier note quoted a cached rate alongside the input/output pair.
+
 ### Fixed
+- **⚠️ Retried parse failures were billed by the vendor and recorded as free**
+  — `_execute_with_retry` tracked token usage from the raw `AIMessage` (including
+  its `parsed is None` branch), but an `OutputParserException` raises from the
+  *parser*, past the message, so the prompt-parsing path recorded nothing at all
+  for a rejected attempt. That is the path every reasoning model here takes
+  (`supports_tool_use: false` — Opus 5, GPT-5.5/5.6 Sol on Bedrock, Grok 4.3,
+  GLM-5.2, Kimi K2.6, …), and it is precisely those models that intermittently
+  emit invalid JSON on think-heavy batches, so `enable_output_fixing` can burn
+  several vendor-billed attempts on one batch and the cost report would show the
+  successful attempt only. New `_track_usage_from_parse_failure` estimates the
+  attempt from the prompt text and the rejected output the parser attaches as
+  `llm_output`. Estimation is not a shortcut here — a `CodeReviewReport` carries
+  no usage metadata either, so both counts on the success branch of this path are
+  already estimates; the change makes the failures accounted the same way as the
+  successes instead of not at all. Failures are swallowed to `logging.debug`, on
+  the rule that an accounting problem must never mask the parse error it is
+  reporting on.
+- **A paragraph of upstream advice printed above the Rich UI on every run with
+  the default model** — langchain-aws 1.6.3 added a `logger.warning` whenever it
+  has to *infer* `disable_streaming`, which it does for any model absent from its
+  hardcoded streaming allowlist. `claude-opus-5` is absent (the list carries
+  `claude-opus-4` / `fable-5` / `sonnet-5`), so `opus5` — the CLI's own default —
+  tripped it, as did `kimi-k2.5`, `minimax-m2.5` and `glm-5`. The Bedrock
+  provider now passes `disable_streaming=True` explicitly. Upstream gates the
+  warning on the key being *absent*, so stating any value silences it, and the
+  explicit `True` is what the `read_timeout: 1800` overrides on `fable5`/`opus5`
+  already assumed: non-streaming Converse emits no bytes until generation
+  completes. Behavior is unchanged — this provider never passed
+  `streaming=True`, so `_should_stream()` was already `False` for every entry.
+  Locked by `tests/test_bedrock_provider.py::test_disable_streaming_is_passed_explicitly`,
+  which asserts the key is *present* rather than asserting its value, since
+  presence is what suppresses the warning.
+- **⚠️ `--stream` cost a 3-5x slowdown on providers that never stream a token**
+  — the flag drops the run to one worker (token-by-token output from concurrent
+  batches interleaves), but Bedrock passes `disable_streaming=True`, `ChatNVIDIA`
+  has no `streaming` field at all, and Google's is deliberately off, so on all
+  three the serialization bought output that cannot appear — including on
+  `opus5`, the default model. `run_review` now asks the new
+  `ProviderFactory.supports_token_streaming(model_name)` and downgrades the flag
+  with an explicit notice, keeping the parallel batches. A `classmethod` on
+  `ModelProvider` answers it from the class — no credentials, no client — because
+  worker count and which callback handler to attach are one decision (a
+  `StreamingCallbackHandler` under `max_workers > 1` is the concurrent-`Live`
+  overlap `callbacks.py` documents as corrupting terminal state) and both feed
+  the provider constructor. A downgraded run still gets the concurrency-safe
+  spinner handler.
+- **⚠️ `--verbose` alone moved five providers onto the streaming wire path, and
+  streaming lost the billed token counts** — two coupled bugs in
+  `streaming=bool(self.callbacks)`. `ProgressCallbackHandler` (the `--verbose`
+  handler) does not override `on_llm_new_token`, so it cannot observe a single
+  streamed token: every `--verbose` run on an OpenAI-compatible provider paid for
+  streaming to feed a handler that ignores it. And when streaming *is* wanted,
+  `stream_options={"include_usage": True}` is only sent if `stream_usage` is set
+  — langchain-openai auto-enables it only when no `base_url` is configured, and
+  all five of these providers configure one. Without it a real server sends no
+  usage chunk, `usage_metadata` is `None`, `extract_openai_token_usage` returns
+  `(0, 0)` and `base.py` substitutes the byte-heuristic estimate, i.e. the same
+  silent under-reporting fixed above, reintroduced by the flag meant to show more
+  detail. New `wants_token_streaming(callbacks)` and
+  `openai_stream_params(callbacks)` in `mixins.py` replace the expression in all
+  five providers; detection compares `on_llm_new_token` against
+  `BaseCallbackHandler`'s, not class identity, so third-party handlers work and
+  `mixins.py` need not import Rich. Locked by the new
+  `tests/test_streaming_contract.py` (31 tests), including one that drives a real
+  `ChatOpenAI` and asserts `_should_stream()` actually flips.
+- **⚠️ Every Responses-API model reported an *estimated* token count as if it
+  were the vendor's** — `extract_openai_token_usage` read only
+  `response_metadata["token_usage"]`, which **only** langchain-openai's Chat
+  Completions converter populates. `AIMessage` carries usage in two independent
+  places, and the Responses API path fills just the other one
+  (`usage_metadata`), so the helper returned `(0, 0)` for every
+  `use_responses_api: true` entry — Azure `gpt-5.4` / `gpt-5.4-pro`, GPT-5.5 and
+  GPT-5.6 Sol on Bedrock. `.get(..., 0)` made that indistinguishable from "no
+  usage reported", so `base.py` silently substituted its byte-heuristic
+  estimate, which cannot see reasoning tokens at all. On a think-heavy Azure
+  `gpt-5.4` batch (the tool-use path, where real vendor counts *were* sitting in
+  the message) that under-reported by ~13x: 40,000 in / 9,000 out billed,
+  6,211 / 145 recorded, $0.2350 of spend printed as $0.0177 — and the reasoning
+  models are exactly the expensive ones. The helper now prefers the normalized
+  `usage_metadata` and keeps the raw dict as a fallback, so responses carrying
+  only `token_usage` still report real numbers. Affects all five OpenAI-client
+  providers (Azure, DeepSeek, Moonshot, Z.AI, OpenAI-on-Bedrock); the Bedrock
+  Converse, NVIDIA and Google extractors were already correct. Locked by the new
+  `tests/test_token_usage_contract.py` (23 tests), which drives each provider's
+  extractor with a message built by the **real vendor client** from a recorded
+  wire payload — the existing hand-built-`AIMessage` tests passed for exactly as
+  long as the extractor was wrong, because they invented the one field it read.
+  Two reflective meta-guards keep the coverage from lapsing: every
+  `ModelProvider` subclass must appear in the usage matrix, and every provider
+  whose module mentions `use_responses_api` must be exercised on that path.
+- **`Retry-After` was read on 429 only, so a 503 capacity window got blind
+  exponential backoff** — `parse_retry_after` guarded on `RateLimitError`, but
+  the header is defined for 503 (RFC 9110 §10.2.3), every OpenAI-client
+  provider already *retries* 5xx via `is_openai_retryable_error`, and the openai
+  SDK's own `_calculate_retry_timeout` honours the header on every retryable
+  status. A server that said "come back in 30s" was ignored and retried on the
+  provider's own schedule instead. The guard is now `APIStatusError`, still
+  bounded by `max_wait` so a hostile or broken header can't stall a run. The
+  five providers' log line reads "backoff" rather than "rate limit" now that a
+  503 can reach that branch.
+- **⚠️ Recursive exclude patterns silently under-excluded, leaving vendored
+  trees eligible for review** — `FileScanner._is_excluded` used
+  `PurePath.match` alone, which treats `**` as a *single* segment. Every entry
+  in `DEFAULT_EXCLUDE_PATTERNS` has the shape `**/node_modules/**`, so `match`
+  read it as literally "one segment, `node_modules`, one segment":
+  `a/node_modules/x.py` matched, but `node_modules/x.py` (no leading segment)
+  and `a/b/node_modules/deep/x.py` (too many) did not. The `os.walk` prune set
+  masked this for an ordinary scan — the directory was never walked — but not
+  when a pattern is path-qualified and so contributes no prune name, nor for
+  any caller reaching `_is_excluded` directly. Now tests `match` **or**
+  `full_match`: `full_match` recurses `**` correctly but requires the whole
+  relative path to match, so it cannot replace `match` (it rejects `*.py`
+  against `a/b/x.py`) — the union is what covers both spellings. Safe rather
+  than merely convenient: with no `**` in the pattern `full_match` is
+  *stricter* than `match`, so it can only add matches in the recursive case,
+  and it does not widen a path-qualified pattern into another subtree
+  (`docs/api/**` still doesn't match `app/api/views.py`). Side effect worth
+  knowing: `docs/api/**` now excludes `docs/api/sub/x.py`, which it previously
+  did not.
+- **⚠️ A failed markdown export printed a bare `✗ Error:` with no diagnosis** —
+  `run_review`'s export handler caught only `OSError`, but
+  `MarkdownExporter.export` converts `OSError` into `RuntimeError` as its
+  documented contract, so only the JSON path was covered. A markdown export to
+  an unwritable path fell through to the generic `except Exception`, which lost
+  the `escape()` on a repository-controlled path and printed a traceback under
+  `--verbose` for a plain permissions problem. The handler now catches both
+  spellings and reports `e.__cause__` when present, so the message names the
+  actual failure ("Permission denied") rather than repeating the path. A
+  companion `except click.Abort: raise` stops the generic handler from
+  overwriting an already-printed diagnosis with an empty `✗ Error:` —
+  `click.Abort` subclasses `RuntimeError` and its `str()` is empty.
+- **A bad `models.yaml` entry raised a bare `KeyError`/`ValidationError` naming
+  neither the file nor the entry** — `ConfigLoader._parse_model_config` let
+  both propagate raw, so a typo'd key in one model surfaced as
+  `KeyError: 'pricing'` with no indication of which of 30 entries was at fault.
+  Both are now re-raised as `ValueError` naming the config path and the
+  offending entry (by `id`, falling back to `name`/`full_id`), and the
+  top-level YAML load names the file too.
+- **The five legacy `codereview.config` constants ignored
+  `get_config_loader.cache_clear()`** — `DEFAULT_EXCLUDE_PATTERNS`,
+  `DEFAULT_EXCLUDE_EXTENSIONS`, `MAX_FILE_SIZE_KB`, `WARN_FILE_SIZE_KB` and
+  `MODEL_ALIASES` were eager module-level snapshots taken at first import, so
+  after the documented test-reset every accessor function returned the reloaded
+  config while these five kept the original values — two spellings of the same
+  setting silently disagreeing. Now resolved lazily through a module-level
+  `__getattr__` (PEP 562), with `__dir__` keeping them discoverable and a
+  `TYPE_CHECKING` block preserving their concrete types for mypy. This does
+  **not** defer the YAML load itself: `scanner.py` and `cli.py` bind some of
+  these names with a module-level `from codereview.config import …`, which
+  copies the value at the importing module's import time.
+- **A truncated `GOOGLE_API_KEY` or `NVIDIA_API_KEY` reported all-green from
+  `--validate`, then 401'd on the first batch** — both providers omitted the
+  "unusually short" warning that the other five emit. NVIDIA's `nvapi-` prefix
+  check does not subsume it: a truncated key keeps its prefix. Both now call
+  the shared `is_short_api_key`, and the check is enforced across every
+  key-taking provider by a parametrized contract test rather than per-provider.
+  Deliberately a warning, not a hard failure — no vendor documents a minimum
+  length.
+- **NVIDIA's `--validate` connection test probed a doubled-slash URL and
+  reported the result as a passing check** — the base URL was concatenated
+  without normalizing a trailing slash, producing `…/v1//models`. Because a
+  non-200/401/403 status is recorded as *inconclusive but passing*, the green
+  "Connection" check described a URL the run would never use. Now `rstrip("/")`
+  before building the probe URL.
+- **DeepSeek computed its `extra_body` twice** — once for the client payload
+  and once for the `thinking: enabled` test that routes structured output to
+  the prompt-parsing path. Two independent computations of the same value can
+  disagree, which here would mean sending a forced `tool_choice` to a
+  thinking-mode request (HTTP 400). Computed once and reused.
 - **⚠️ NVIDIA NIM retried nothing: every 429/502/503/504 aborted the batch on
   attempt 1** — `_is_retryable_error` tested
   `isinstance(error, httpx.HTTPStatusError)`, but
@@ -983,7 +1242,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added `.ruff_cache/` to `.gitignore` to match existing cache ignores
 
 ### Quality
-- Test suite: **1041 passing** (up from 319; +17 code-review-triage regressions
+- Test suite: **1156 passing** (up from 319; +17 code-review-triage regressions
   — markdown code-fence balancing, NVIDIA rate-limiter wiring, the
   token-budget-fallback warning, and the README-placeholder drift guard;
   +8 cross-provider cleartext-endpoint contract, incl. a self-checking registry
@@ -1040,12 +1299,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   × every URL-taking provider (fail-closed at construction, before a client
   exists), padded-but-real keys that must be *accepted* after normalization, and
   a reflective guard so a new `api_key`-taking provider inherits all three axes;
+  +91 fourth-round code-review triage — recursive-`**` exclusion matching, the
+  markdown-export `RuntimeError` handler, `models.yaml` parse errors naming the
+  offending entry, the five legacy `codereview.config` constants going lazy,
+  short-key warnings on Google/NVIDIA, NVIDIA's doubled-slash probe URL, the
+  `ProviderFactory` registry table, and the `--temperature` range moving to
+  parse time;
+  +24 token-usage contract (`tests/test_token_usage_contract.py`) — an
+  extractor × provider matrix in which every `AIMessage` is built by the **real
+  vendor client** from a recorded wire payload (Chat Completions and Responses
+  API through `BaseChatOpenAI`, `_parse_response` for Bedrock Converse, a
+  genuine `requests.Response` for NIM, `_response_to_result` for Google), an
+  end-to-end assertion that the counts survive `_execute_with_retry` into the
+  provider's totals, two reflective guards (every provider in the matrix; every
+  `use_responses_api`-capable provider exercised on that path), and the
+  `Retry-After`-on-5xx case. Same reasoning as the retry contract: the
+  pre-existing hand-built `AIMessage` tests invented the one field the broken
+  extractor read, so they passed for exactly as long as it was wrong;
   two pre-existing fixtures fixed — they passed kwargs that Pydantic
   silently dropped
+- **The `slow` pytest marker is now registered** (`[tool.pytest.ini_options]
+  markers`). An unregistered mark only warns, and that warning was the *only*
+  signal distinguishing correct usage from a typo — `@pytest.mark.slwo` marks
+  nothing and looks identical. Registering it also clears the suite's one
+  self-inflicted warning; the remaining one is upstream
+  (`google.genai.types` / `_UnionGenericAlias` under Python 3.14).
 - `ruff check`, `ruff format --check`, `mypy`: clean
 - New runtime dependencies: `langchain-deepseek>=1.0.1`,
   `langchain-moonshot>=0.1.0` (both small single-purpose packages, not
   the heavy `langchain-community`)
+- **Dependency floors raised to the current latest release** and the lockfile
+  upgraded (`uv lock --upgrade` + `uv sync`): langchain-core 1.4.9 → 1.5.1,
+  langchain-openai 1.3.5 → 1.4.1, langchain-aws 1.6.2 → 1.6.3,
+  langchain-google-genai 4.2.7 → 4.3.1, langchain-deepseek 1.0.1 → 1.1.0,
+  google-api-core 2.32.0 → 2.33.0, boto3 1.43.51 → 1.43.56,
+  pydantic 2.13.2 → 2.13.4, pyyaml 6.0 → 6.0.3, tiktoken 0.12.0 → 0.13.0;
+  static-analysis black 26.3.1 → 26.5.1, ruff 0.15.22 → 0.16.0,
+  types-PyYAML → 6.0.12.20260724; dev pytest 9.0.3 → 9.1.1, pytest-mock
+  3.15.0 → 3.15.1. Transitive upgrades come with the lockfile (openai
+  2.46.0 → 2.48.0, google-genai 2.11.0 → 2.14.0, langsmith, aiohttp, …).
+  `<major` caps and the exact `langchain-moonshot==0.1.0` pin are unchanged.
+  Raising the `ruff` floor to 0.16.0 is safe *because* the rule set is now
+  pinned in `[tool.ruff.lint]` — the floor no longer decides the gate's verdict.
+  Verified on the upgraded stack: all 1156 tests plus all five gates clean,
+  `--list-models` and `--dry-run` smoke-tested. `pydantic-core` and `websockets`
+  stay behind their latest on purpose — pinned by `pydantic` and `google-genai`
+  respectively.
 
 ## [0.3.1] - 2026-04-18
 
