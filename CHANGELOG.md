@@ -927,6 +927,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   marker lands inside a code block, and that the document doesn't end inside
   one.
 
+- **Corrected the documented reason for `supports_tool_use: false` on the Bedrock
+  Claude entries** — `CLAUDE.md`, `models.yaml` (fable5 and opus5), and two tests
+  all asserted "Anthropic allows only `tool_choice: auto/none` while thinking".
+  That rule is real but **scoped to *manual* `thinking: {type: "enabled"}`**.
+  Anthropic's thinking documentation states the opposite for the models this
+  project actually ships: *"Adaptive thinking, including on models where thinking
+  is on by default, supports forced tool use."* langchain-aws encodes the same
+  scoping — `thinking_forced_tool_use_unsupported()` returns `False` for
+  `claude-opus-4-8` outright and never listed Opus 5 / Sonnet 5 / Fable 5, and it
+  engages only when a `thinking` key is present in the request.
+
+  **No behavior change**: the observed failure is real and reproduced live on
+  Opus 4.8 (`de5e2fc`) — a forced `tool_choice` returns the tool call as literal
+  `<invoke name="issues">…` markup, so `CodeReviewReport.issues` fails Pydantic
+  validation with a `list_type` error on think-heavy batches — and Opus 5 has
+  independent vendor confirmation (its model card lists *Structured outputs: Not
+  Supported*). `supports_tool_use: false` stays correct on all four entries. What
+  changed is that the flag is now described as **empirical**, with the vendor rule
+  it was misattributed to explicitly disclaimed at each site, so the next reader
+  doesn't build on it. This nearly became a langchain-aws bug report against
+  behavior that is upstream-correct by design.
+
 - **DeepSeek-V4-Pro on Azure: SGLang `null` model body** — the Foundry
   endpoint is served by SGLang, which validates `body.model` as a
   required string. langchain-openai's `AzureChatOpenAI` defaults

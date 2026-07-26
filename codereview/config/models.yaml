@@ -43,8 +43,13 @@ providers:
           max_output_tokens: 128000
         context_window: 1000000
         # Adaptive thinking is always on and cannot be disabled (Bedrock model
-        # card), and Anthropic forbids a forced tool_choice while thinking is
-        # active - the same incompatibility as Opus 4.8 (see opus4.8 entry).
+        # card), so it should reproduce the Opus 4.8 failure constantly rather
+        # than intermittently - see the opus4.8 entry for what was observed
+        # there. Unverified live on this model: assume-prompt-parsing rule.
+        # Note Anthropic documents forced tool use as SUPPORTED with adaptive
+        # thinking (the auto/none-only rule is specific to manual
+        # thinking.type: "enabled"), so the cause is not a documented API
+        # restriction; the empirical Opus 4.8 failure is what drives this flag.
         # Route structured output through prompt-based JSON parsing.
         supports_tool_use: false
         capabilities:
@@ -101,10 +106,13 @@ providers:
         # assume-prompt-parsing guess: the Bedrock model card lists "Structured
         # outputs: Not Supported" for both the bedrock-runtime and
         # bedrock-mantle endpoints. Thinking-on-by-default also reproduces the
-        # Opus 4.8 conflict - Anthropic allows only tool_choice auto/none
-        # while thinking, but .with_structured_output() forces one, so the tool
-        # call comes back as literal text and CodeReviewReport.issues fails
-        # with a list_type error. Route through prompt-based JSON parsing.
+        # Opus 4.8 failure: .with_structured_output() forces a tool_choice, the
+        # tool call comes back as literal text, and CodeReviewReport.issues
+        # fails with a list_type error. That failure is observed, not a
+        # documented API restriction - Anthropic states forced tool use IS
+        # supported with adaptive thinking, and only manual
+        # thinking.type: "enabled" is limited to auto/none.
+        # Route through prompt-based JSON parsing.
         supports_tool_use: false
         capabilities:
           - code_review

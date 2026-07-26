@@ -52,11 +52,13 @@ from codereview.providers.bedrock import strip_cross_region_prefix
 # ---------------------------------------------------------------------------
 _ALLOWED_DIVERGENCES: dict[tuple[str, str, str], str] = {
     # supports_tool_use is empirical here; see CLAUDE.md's structured-output
-    # matrix. Anthropic allows only tool_choice auto/none while thinking, so a
-    # forced tool_choice comes back as literal text on these.
+    # matrix. A forced tool_choice comes back as literal text on these — an
+    # observed failure, not a documented API restriction: Anthropic limits
+    # tool_choice to auto/none only under manual thinking.type: "enabled", and
+    # documents forced tool use as supported with adaptive thinking.
     ("bedrock", "sonnet5", "structured_output"): (
-        "first Sonnet tier with adaptive thinking on by default — forced "
-        "tool_choice while thinking returns the tool call as literal text"
+        "first Sonnet tier with adaptive thinking on by default — inherits the "
+        "Opus 4.8 literal-text failure under a forced tool_choice"
     ),
     ("bedrock", "kimi-k2.5-bedrock", "structured_output"): (
         "Bedrock Converse leaks Moonshot tool-call markers "

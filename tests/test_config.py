@@ -740,12 +740,21 @@ def test_adaptive_thinking_claude_models_disable_tool_use():
 
     Opus 4.7/4.8 only support ``thinking.type: "adaptive"`` and engage thinking
     server-side per request; Opus 5 goes further and has thinking on by
-    default. Anthropic forbids a forced ``tool_choice`` while thinking is
-    active, but ``with_structured_output()`` sets exactly that — so these
-    models must route through prompt-based JSON parsing
-    (``supports_tool_use: false``), same as Kimi K2.6 on Moonshot. Without
-    this, batches where the model thinks return tool-call markup as text and
-    fail CodeReviewReport validation with a list_type error on ``issues``.
+    default. ``with_structured_output()`` sets a forced ``tool_choice``, and on
+    the batches where these models think, the tool call comes back as markup
+    *text* — failing CodeReviewReport validation with a list_type error on
+    ``issues``. So they must route through prompt-based JSON parsing
+    (``supports_tool_use: false``), same as Kimi K2.6 on Moonshot.
+
+    That failure is **empirical, not a documented API restriction**: Anthropic
+    limits ``tool_choice`` to auto/none only under *manual*
+    ``thinking.type: "enabled"``, and explicitly documents forced tool use as
+    supported with adaptive thinking, "including on models where thinking is on
+    by default". langchain-aws agrees — its
+    ``thinking_forced_tool_use_unsupported()`` excludes ``claude-opus-4-8`` and
+    never listed the 5-generation models. The observation is what stands here
+    (it was reproduced live on Opus 4.8, see commit de5e2fc); the mechanism is
+    not established.
     Opus 5 has independent confirmation: its Bedrock model card lists
     "Structured outputs: Not Supported" on bedrock-runtime and bedrock-mantle.
     """
