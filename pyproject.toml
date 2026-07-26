@@ -25,24 +25,24 @@ dependencies = [
     # because we use its primitives directly (rate_limiters, callbacks, outputs,
     # exceptions, output_parsers, prompts).
     "langchain>=1.3.14,<2",
-    "langchain-core>=1.4.9,<2",
-    "langchain-aws>=1.6.2,<2",
-    "langchain-openai>=1.3.5,<2",
+    "langchain-core>=1.5.1,<2",
+    "langchain-aws>=1.6.3,<2",
+    "langchain-openai>=1.4.1,<2",
     "langchain-nvidia-ai-endpoints>=1.4.3,<2",
     # langchain-google-genai is on its own 4.x major line — cap at <5, not <2.
-    "langchain-google-genai>=4.2.7,<5",
-    "langchain-deepseek>=1.0.1,<2",
+    "langchain-google-genai>=4.3.1,<5",
+    "langchain-deepseek>=1.1.0,<2",
     # langchain-moonshot is a community, single-maintainer, pre-1.0 package whose
     # 0.1.0 was already a breaking rewrite. Pin it exactly — pre-1.0 is not semver.
     "langchain-moonshot==0.1.0",
-    "google-api-core>=2.32.0",
-    "boto3>=1.43.51",
+    "google-api-core>=2.33.0",
+    "boto3>=1.43.56",
     "click>=8.4.2",
     "rich>=15.0.0",
     # Pydantic v3 is on the roadmap (deprecated-in-v2 items get removed) — cap <3.
-    "pydantic>=2.13.2,<3",
-    "pyyaml>=6.0",
-    "tiktoken>=0.12.0",
+    "pydantic>=2.13.4,<3",
+    "pyyaml>=6.0.3",
+    "tiktoken>=0.13.0",
 ]
 
 [project.urls]
@@ -63,19 +63,44 @@ packages = ["codereview"]
 [project.optional-dependencies]
 static-analysis = [
     "bandit>=1.9.4",
-    "black>=26.3.1",
+    "black>=26.5.1",
     "isort>=8.0.1",
     "mypy>=2.3.0",
-    "ruff>=0.15.22",
-    "types-PyYAML>=6.0.12.20260408",
+    # The rule set is pinned below, so a floor bump can't move the gate's verdict.
+    "ruff>=0.16.0",
+    "types-PyYAML>=6.0.12.20260724",
     "vulture>=2.16",
 ]
 
 [dependency-groups]
 dev = [
-    "pytest>=9.0.3",
-    "pytest-mock>=3.15.0",
+    "pytest>=9.1.1",
+    "pytest-mock>=3.15.1",
 ]
+
+[tool.pytest.ini_options]
+# Register every custom mark. An unregistered one only warns, so a typo'd
+# `@pytest.mark.slwo` silently marks nothing — the warning is the only signal,
+# and it is indistinguishable from this (correct) usage until it's registered.
+markers = [
+    "slow: test makes many calls or scans a large tree; not run by default in CI",
+]
+
+[tool.ruff.lint]
+# Pin the rule set instead of inheriting ruff's defaults. Those defaults are not
+# stable across releases: ruff 0.16.0 enables ~400 rules where 0.15.22 enabled
+# E4/E7/E9/F, so `uv run ruff check` — the gate CLAUDE.md says to run before
+# committing — reported 135 errors on an unmodified checkout purely because of
+# which ruff the venv happened to resolve (the `ruff>=…` line above is a floor,
+# and `uv pip install -e .` does not consult uv.lock). A gate whose verdict depends
+# on the installed tool version cannot distinguish "this change is clean" from
+# "the toolchain moved", which is the one thing it exists to do.
+#
+# This is ruff's own historical default, i.e. exactly what this codebase was
+# written and reviewed against — enabling it explicitly changes no verdict.
+# Widening the set is a deliberate policy choice: make it here, in one commit,
+# with the resulting fixes.
+select = ["E4", "E7", "E9", "F"]
 
 [tool.mypy]
 ignore_missing_imports = true
