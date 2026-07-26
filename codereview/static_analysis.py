@@ -2,6 +2,7 @@
 
 import json
 import logging
+import os
 import re
 import shutil
 import subprocess  # nosec B404 - required for running static analysis tools
@@ -9,7 +10,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TypedDict
+from typing import Any, TypedDict
 
 # Per-tool regexes that pull an authoritative issue count from the tool's
 # own summary line. Falling back to substring counting (BASE_INDICATORS
@@ -39,12 +40,22 @@ _MYPY_DIAGNOSTIC = re.compile(
 # Maximum number of files to pass to command line tools.
 # Prevents "Argument list too long" errors on large repos.
 #
-# DESIGN GUARANTEE: when truncation triggers, the file list MUST be sorted
-# before slicing. Filesystem walk order is non-deterministic across runs
-# (and across hosts), so an unsorted [:N] would silently change the
-# analyzed subset between runs and break CI reproducibility. Test:
-# tests/test_static_analysis.py::test_truncation_is_deterministic.
+# DESIGN GUARANTEE: file lists passed to a tool MUST be sorted, not only when
+# truncation triggers. Filesystem walk order is non-deterministic across runs
+# (and across hosts), so unsorted arguments make tools emit diagnostics in a
+# host-dependent order — and condense_for_prompt keeps only the first
+# max_lines_per_tool of them, so *which* diagnostics reach the LLM varies
+# between runs on an identical tree. Sorting only before [:N] left the common,
+# untruncated case non-reproducible, which is the case CI actually hits. Tests:
+# tests/test_static_analysis.py::test_truncation_is_deterministic and
+# ::test_tool_file_arguments_are_sorted_without_truncation.
 MAX_FILES_PER_TOOL = 500
+
+# Prefix of the error string ``run_tool`` returns when it refuses to run a tool
+# because the repository's config would execute code. Named once so the
+# all-failed heuristic in ``run_all`` can tell a deliberate skip from an
+# infrastructure failure without re-spelling the message.
+_SKIPPED_ERROR_PREFIX = "Skipped "
 
 # Issue detection indicators for counting problems in tool output
 # Base indicators common to all tools
@@ -365,13 +376,33 @@ class StaticAnalyzer:
     # ``suffixes`` are config extensions that are executable by definition (the
     # file is a module the tool imports); ``names`` are data-format configs that
     # are only a risk if they declare plugins.
-    _CONFIG_EXECUTION_RISK: dict[str, dict[str, tuple[str, ...]]] = {
+    #
+    # ``tree_wide`` says *where* to look, and it is not cosmetic. mypy and
+    # golangci-lint resolve config from the working directory (which is
+    # ``self.directory``), so the top level is the whole search path. ESLint and
+    # Prettier resolve config **per linted file**, walking up from each file's
+    # own directory — and ``run_tool`` hands Prettier explicit paths from
+    # anywhere in the tree. Verified against Prettier 3.x and ESLint v10.8.0: a
+    # repo shipping only ``packages/app/.prettierrc.cjs`` (no top-level config)
+    # passed a top-level-only check, and Prettier then ``require()``d it while
+    # formatting ``packages/app/index.js`` — then reported "All files formatted
+    # correctly". A control an attacker bypasses by moving one file down a
+    # directory is not a control.
+    #
+    # ``declaration`` is the regex that makes a *data* config risky, per tool:
+    # ``plugins`` for mypy/ESLint/Prettier, ``custom`` for golangci-lint. It is
+    # deliberately not one global pattern — widening the shared regex to
+    # ``(plugins|custom)`` would make any ``custom`` key in a repo's
+    # ``pyproject.toml``/``setup.cfg`` skip mypy, and those are shared files
+    # whose other sections have nothing to do with mypy loading code.
+    _CONFIG_EXECUTION_RISK: dict[str, dict[str, Any]] = {
         "mypy": {
             # mypy reads the first of these that exists; a `plugins =` key in
             # any of them names Python modules mypy imports.
             "names": ("mypy.ini", ".mypy.ini", "setup.cfg", "pyproject.toml"),
             "suffixes": (),
             "section": ("[mypy]", "[tool.mypy]"),
+            "tree_wide": False,
         },
         "eslint": {
             # Flat config is JavaScript by definition — ESLint imports it, so
@@ -383,11 +414,18 @@ class StaticAnalyzer:
                 "eslint.config.mjs",
                 "eslint.config.cjs",
                 "eslint.config.ts",
+                # .mts/.cts are loaded as modules exactly like .mjs/.cjs;
+                # omitting them left a bypass in an allowlist whose failure
+                # mode is arbitrary code execution (verified: Prettier ran a
+                # prettier.config.mts).
+                "eslint.config.mts",
+                "eslint.config.cts",
                 ".eslintrc.js",
                 ".eslintrc.cjs",
                 ".eslintrc.mjs",
             ),
             "section": (),
+            "tree_wide": True,
         },
         "prettier": {
             "names": (
@@ -404,14 +442,49 @@ class StaticAnalyzer:
                 ".prettierrc.cjs",
                 ".prettierrc.mjs",
                 ".prettierrc.ts",
+                ".prettierrc.mts",
+                ".prettierrc.cts",
                 "prettier.config.js",
                 "prettier.config.cjs",
                 "prettier.config.mjs",
                 "prettier.config.ts",
+                "prettier.config.mts",
+                "prettier.config.cts",
             ),
             "section": (),
+            "tree_wide": True,
+        },
+        "golangci-lint": {
+            # golangci-lint's custom-linter support loads a Go plugin from a
+            # repo-relative `path:` under `linters.settings.custom.<name>`
+            # (v1: `linters-settings.custom`), i.e. the analyzed repository
+            # names a shared object the linter loads into its own process.
+            # Verified against golangci-lint 2.12.2: the run reached
+            # "unable to load custom analyzer" — it had already accepted the
+            # repo's config and tried to load the named object.
+            "names": (
+                ".golangci.yml",
+                ".golangci.yaml",
+                ".golangci.toml",
+                ".golangci.json",
+            ),
+            "suffixes": (),
+            "section": (),
+            "declaration": re.compile(r"""["']?custom["']?\s*[=:]""", re.IGNORECASE),
+            "tree_wide": False,
         },
     }
+
+    # Directories never descended when hunting for a risky config. ESLint and
+    # Prettier both ignore ``node_modules`` by default (verified: a
+    # ``node_modules/*/eslint.config.mjs`` was not loaded), so a config in there
+    # is not a vector — but a stock global ``node_modules`` ships 13 of them, and
+    # counting those would skip eslint/prettier on every real JS repo. That
+    # trades the whole feature away for a threat that isn't there, which is the
+    # same bargain ``_CONFIG_EXECUTION_RISK`` refuses to make on content.
+    _CONFIG_SCAN_PRUNE_DIRS = frozenset(
+        {"node_modules", ".git", ".hg", ".svn", ".venv", "venv", ".tox"}
+    )
 
     # Largest config file to read when looking for a plugin declaration. A
     # config bigger than this is not a config; reading it wholesale would be the
@@ -421,7 +494,8 @@ class StaticAnalyzer:
     # Matches a ``plugins`` declaration in INI/TOML/JSON/YAML config. Broad on
     # purpose: a false positive costs one skipped tool on a repo that really
     # does load plugins (the risky case), a false negative executes attacker
-    # code. Erring toward detection is the only safe direction here.
+    # code. Erring toward detection is the only safe direction here. Per-tool
+    # overrides live in ``_CONFIG_EXECUTION_RISK["<tool>"]["declaration"]``.
     _PLUGIN_DECLARATION = re.compile(r"""["']?plugins["']?\s*[=:]""", re.IGNORECASE)
 
     # Default per-tool subprocess timeout in seconds. Caller can override via
@@ -653,8 +727,14 @@ class StaticAnalyzer:
         2. A data config (INI/TOML/JSON/YAML) that declares ``plugins`` — the
            declaration names modules the tool then imports.
 
-        Only the analyzed directory's top level is inspected, matching where
-        these tools look for their own config when run with ``cwd=directory``.
+        How far to look is per tool, from ``tree_wide``. mypy and golangci-lint
+        read config from the working directory, so the top level is the entire
+        search path. ESLint and Prettier resolve config **per linted file**,
+        walking up from each file's own directory, so a config anywhere in the
+        tree executes — ``run_tool`` hands Prettier explicit paths from
+        anywhere. A top-level-only check there was bypassable by moving one
+        file down a directory (verified against Prettier 3.x / ESLint v10.8.0).
+
         A config that cannot be read counts as risky: an unreadable file is
         exactly what an attacker would arrange if the check could be skipped by
         making the read fail.
@@ -665,15 +745,18 @@ class StaticAnalyzer:
         if risk is None:
             return None
 
-        for filename in risk["suffixes"]:
-            candidate = self.directory / filename
-            if candidate.is_file():
-                return candidate
+        candidates = self._config_candidates(
+            set(risk["suffixes"]) | set(risk["names"]),
+            tree_wide=bool(risk.get("tree_wide")),
+        )
 
-        for filename in risk["names"]:
-            candidate = self.directory / filename
-            if not candidate.is_file():
-                continue
+        executable_by_existing = set(risk["suffixes"])
+        declaration = risk.get("declaration") or self._PLUGIN_DECLARATION
+        sections = risk["section"]
+
+        for candidate in candidates:
+            if candidate.name in executable_by_existing:
+                return candidate
             try:
                 if candidate.stat().st_size > self._MAX_CONFIG_SCAN_BYTES:
                     return candidate
@@ -683,12 +766,51 @@ class StaticAnalyzer:
             # For mypy, a `plugins` key only matters inside its own section —
             # pyproject.toml and setup.cfg are shared files and a `plugins` key
             # belonging to some other tool is not mypy loading anything.
-            sections = risk["section"]
             if sections and not any(section in text for section in sections):
                 continue
-            if self._PLUGIN_DECLARATION.search(text):
+            if declaration.search(text):
                 return candidate
         return None
+
+    def _config_candidates(self, filenames: set[str], *, tree_wide: bool) -> list[Path]:
+        """Config files named in *filenames* that exist, in deterministic order.
+
+        ``tree_wide=False`` inspects only the analyzed directory's top level.
+        ``tree_wide=True`` walks the tree, pruning ``_CONFIG_SCAN_PRUNE_DIRS``
+        — the directories the tools themselves ignore, so a config inside one
+        is not a vector and counting it would cost real coverage.
+
+        Sorted so the reported path (and therefore the skip message) is the
+        same on every run, matching the determinism guarantee the file-list
+        truncation makes.
+        """
+        if not tree_wide:
+            top = [self.directory / name for name in filenames]
+            return sorted(p for p in top if p.is_file())
+
+        found: list[Path] = []
+        try:
+            for dirpath, dirnames, files in os.walk(self.directory):
+                dirnames[:] = [
+                    d for d in dirnames if d not in self._CONFIG_SCAN_PRUNE_DIRS
+                ]
+                base = Path(dirpath)
+                for name in files:
+                    if name in filenames:
+                        candidate = base / name
+                        # A symlinked config could point outside the tree; the
+                        # tools would still load it, but _validate_file_path is
+                        # the established boundary for what this repo owns.
+                        if candidate.is_symlink():
+                            continue
+                        found.append(candidate)
+        except OSError as e:
+            # Fail closed: a tree we cannot enumerate is not a tree we can
+            # clear. Report the directory itself so the skip message names
+            # something real.
+            logging.warning("Error scanning for risky configs: %s", e)
+            return [self.directory]
+        return sorted(found)
 
     def _check_available_tools(self) -> list[str]:
         """Check which static analysis tools are installed and available.
@@ -799,10 +921,10 @@ class StaticAnalyzer:
                     issues_count=0,
                     output="",
                     errors=[
-                        f"Skipped {tool_name}: {risky_config.name} in the analyzed "
-                        "repository would make it load and execute code from the "
-                        "tree with your privileges. Its findings are missing from "
-                        "this review. Pass --trust-repo-config to run it anyway "
+                        f"{_SKIPPED_ERROR_PREFIX}{tool_name}: {risky_config.name} in "
+                        "the analyzed repository would make it load and execute code "
+                        "from the tree with your privileges. Its findings are missing "
+                        "from this review. Pass --trust-repo-config to run it anyway "
                         "(only for a repository you trust)."
                     ],
                 )
@@ -862,8 +984,11 @@ class StaticAnalyzer:
             # shellcheck/bashate: Do NOT support directory scanning.
             # We must explicitly pass each shell script file as an argument.
             shell_files = self._safe_rglob("*.sh") + self._safe_rglob("*.bash")
-            # Validate files are within analysis directory (security measure)
-            shell_files = self._filter_safe_files(shell_files)
+            # Validate files are within analysis directory (security measure),
+            # then sort: argument order decides diagnostic order, and
+            # condense_for_prompt keeps only the head of it (see
+            # MAX_FILES_PER_TOOL's design guarantee).
+            shell_files = sorted(self._filter_safe_files(shell_files))
             if not shell_files:
                 return StaticAnalysisResult(
                     tool=tool_name,
@@ -879,17 +1004,15 @@ class StaticAnalyzer:
                     MAX_FILES_PER_TOOL,
                     len(shell_files),
                 )
-                # Sort before truncating: rglob order is filesystem-dependent
-                # and would otherwise make the analyzed subset non-reproducible
-                # across runs (problematic for CI quality gates).
-                shell_files = sorted(shell_files)[:MAX_FILES_PER_TOOL]
+                shell_files = shell_files[:MAX_FILES_PER_TOOL]
             command = base_command + [str(f) for f in shell_files]
             cwd = self.directory
         elif tool_name in ("clang-tidy", "clang-format"):
             # C++ tools that need explicit file list (single tree walk)
             cpp_files = self._safe_rglob_suffixes({".cpp", ".cc", ".cxx", ".h", ".hpp"})
-            # Validate files are within analysis directory (security measure)
-            cpp_files = self._filter_safe_files(cpp_files)
+            # Validate files are within analysis directory (security measure),
+            # then sort — see MAX_FILES_PER_TOOL's design guarantee.
+            cpp_files = sorted(self._filter_safe_files(cpp_files))
             if not cpp_files:
                 return StaticAnalysisResult(
                     tool=tool_name,
@@ -905,7 +1028,7 @@ class StaticAnalyzer:
                     MAX_FILES_PER_TOOL,
                     len(cpp_files),
                 )
-                cpp_files = sorted(cpp_files)[:MAX_FILES_PER_TOOL]
+                cpp_files = cpp_files[:MAX_FILES_PER_TOOL]
             command = base_command + [str(f) for f in cpp_files]
             cwd = self.directory
         elif tool_name == "cppcheck":
@@ -915,8 +1038,9 @@ class StaticAnalyzer:
         elif tool_name == "checkstyle":
             # Checkstyle needs explicit Java file list
             java_files = self._safe_rglob("*.java")
-            # Validate files are within analysis directory (security measure)
-            java_files = self._filter_safe_files(java_files)
+            # Validate files are within analysis directory (security measure),
+            # then sort — see MAX_FILES_PER_TOOL's design guarantee.
+            java_files = sorted(self._filter_safe_files(java_files))
             if not java_files:
                 return StaticAnalysisResult(
                     tool=tool_name,
@@ -932,7 +1056,7 @@ class StaticAnalyzer:
                     MAX_FILES_PER_TOOL,
                     len(java_files),
                 )
-                java_files = sorted(java_files)[:MAX_FILES_PER_TOOL]
+                java_files = java_files[:MAX_FILES_PER_TOOL]
             command = base_command + [str(f) for f in java_files]
             cwd = self.directory
         elif tool_name == "eslint":
@@ -955,8 +1079,9 @@ class StaticAnalyzer:
             prettier_files = self._safe_rglob_suffixes(
                 {".js", ".jsx", ".mjs", ".ts", ".tsx", ".css", ".html", ".json", ".md"}
             )
-            # Validate files are within analysis directory (security measure)
-            prettier_files = self._filter_safe_files(prettier_files)
+            # Validate files are within analysis directory (security measure),
+            # then sort — see MAX_FILES_PER_TOOL's design guarantee.
+            prettier_files = sorted(self._filter_safe_files(prettier_files))
             if not prettier_files:
                 return StaticAnalysisResult(
                     tool=tool_name,
@@ -973,7 +1098,7 @@ class StaticAnalyzer:
                     MAX_FILES_PER_TOOL,
                     len(prettier_files),
                 )
-                prettier_files = sorted(prettier_files)[:MAX_FILES_PER_TOOL]
+                prettier_files = prettier_files[:MAX_FILES_PER_TOOL]
             command = base_command + [str(f) for f in prettier_files]
             cwd = self.directory
         elif tool_name == "tsc":
@@ -984,8 +1109,9 @@ class StaticAnalyzer:
                 ts_files = self._safe_rglob("*.ts") + self._safe_rglob("*.tsx")
                 # Filter out .d.ts declaration files
                 ts_files = [f for f in ts_files if not str(f).endswith(".d.ts")]
-                # Validate files are within analysis directory (security measure)
-                ts_files = self._filter_safe_files(ts_files)
+                # Validate files are within analysis directory (security
+                # measure), then sort — see MAX_FILES_PER_TOOL's guarantee.
+                ts_files = sorted(self._filter_safe_files(ts_files))
                 if not ts_files:
                     return StaticAnalysisResult(
                         tool=tool_name,
@@ -1002,7 +1128,7 @@ class StaticAnalyzer:
                         MAX_FILES_PER_TOOL,
                         len(ts_files),
                     )
-                    ts_files = sorted(ts_files)[:MAX_FILES_PER_TOOL]
+                    ts_files = ts_files[:MAX_FILES_PER_TOOL]
                 command = base_command + [str(f) for f in ts_files]
             else:
                 # tsconfig.json exists, tsc will use it
@@ -1268,38 +1394,65 @@ class StaticAnalyzer:
         if not self.available_tools:
             return {}
 
+        results: dict[str, StaticAnalysisResult] = {}
         if not parallel or len(self.available_tools) == 1:
             # Sequential execution
-            return {tool: self.run_tool(tool) for tool in self.available_tools}
+            results = {tool: self.run_tool(tool) for tool in self.available_tools}
+        else:
+            # Parallel execution using ThreadPoolExecutor. Cap workers to
+            # prevent resource exhaustion in containerized environments.
+            max_workers = min(len(self.available_tools), 8)
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                future_to_tool = {
+                    executor.submit(self.run_tool, tool): tool
+                    for tool in self.available_tools
+                }
+                for future in as_completed(future_to_tool):
+                    tool_name = future_to_tool[future]
+                    try:
+                        results[tool_name] = future.result()
+                    except Exception as e:
+                        # Log full exception for debugging, summary in result
+                        logging.exception("Unexpected error running tool %s", tool_name)
+                        results[tool_name] = StaticAnalysisResult(
+                            tool=tool_name,
+                            passed=False,
+                            issues_count=0,
+                            output="",
+                            errors=[f"Execution error: {type(e).__name__}: {e}"],
+                        )
 
-        # Parallel execution using ThreadPoolExecutor
-        # Cap workers to prevent resource exhaustion in containerized environments
-        results = {}
-        max_workers = min(len(self.available_tools), 8)
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            future_to_tool = {
-                executor.submit(self.run_tool, tool): tool
-                for tool in self.available_tools
-            }
-            for future in as_completed(future_to_tool):
-                tool_name = future_to_tool[future]
-                try:
-                    results[tool_name] = future.result()
-                except Exception as e:
-                    # Log full exception for debugging, store summary in result
-                    logging.exception("Unexpected error running tool %s", tool_name)
-                    results[tool_name] = StaticAnalysisResult(
-                        tool=tool_name,
-                        passed=False,
-                        issues_count=0,
-                        output="",
-                        errors=[f"Execution error: {type(e).__name__}: {e}"],
-                    )
+        self._warn_if_every_tool_failed(results)
+        return results
 
-        # Distinguish "lots of code-quality issues" from "every tool blew up
-        # on infrastructure problems" (deadlock, disk full, ulimit, etc.).
-        # CI pipelines reading `passed` would otherwise treat both the same.
-        if results and all(not r.output and r.errors for r in results.values()):
+    @staticmethod
+    def _warn_if_every_tool_failed(results: dict[str, StaticAnalysisResult]) -> None:
+        """Log when every tool failed to produce output for an infra reason.
+
+        Distinguishes "lots of code-quality issues" from "every tool blew up on
+        infrastructure problems" (deadlock, disk full, ulimit); CI pipelines
+        reading ``passed`` would otherwise treat both the same.
+
+        An intentional risky-config skip has exactly this shape (no output, one
+        error) and must not count: a JS repo shipping ``eslint.config.mjs`` with
+        only eslint+prettier installed would otherwise be told to debug resource
+        limits instead of reading the skip reason it already got.
+
+        Runs for sequential runs too. It used to be reachable only from the
+        parallel branch, which returned early — so the single-tool case never
+        warned, and that is precisely the case the message itself recommends
+        ("Run a single tool with --verbose to debug").
+        """
+        if not results:
+            return
+        non_skip_failures = [
+            r
+            for r in results.values()
+            if not r.output
+            and r.errors
+            and not any(e.startswith(_SKIPPED_ERROR_PREFIX) for e in r.errors)
+        ]
+        if len(non_skip_failures) == len(results):
             logging.error(
                 "All %d static analysis tool(s) failed without producing output. "
                 "This usually indicates an infrastructure problem (resource limits, "
@@ -1307,7 +1460,6 @@ class StaticAnalyzer:
                 "code-quality issues. Run a single tool with --verbose to debug.",
                 len(results),
             )
-        return results
 
     @staticmethod
     def _filter_lines_for_paths(
@@ -1433,9 +1585,12 @@ class StaticAnalyzer:
             results: Mapping from tool name to its StaticAnalysisResult
             max_chars: Hard cap on the returned string length
             max_lines_per_tool: Truncate each tool's output to this many lines
-            only_paths: When set, keep only lines mentioning one of these
-                file paths' basenames. Used to slice global linter output
-                down to the files in a single batch.
+            only_paths: When set, keep only lines whose printed path matches
+                one of these paths by trailing path *components* (see
+                ``_filter_lines_for_paths``). Used to slice global linter
+                output down to the files in a single batch. Not basename
+                matching, and not ``parent/basename`` — both of those
+                misattributed one file's diagnostics to another.
 
         Returns:
             A formatted block ready to splice into batch context, or an empty
@@ -1454,8 +1609,9 @@ class StaticAnalyzer:
 
         allowed_tokens: set[str] | None = None
         if only_paths is not None:
-            # parent/basename tokens (slash-normalized) so same-named files in
-            # different directories don't cross-match — see _path_match_token.
+            # Whole normalized paths (see _path_match_token); the component
+            # comparison in _filter_lines_for_paths is what lets a shorter
+            # token still match a longer printed path.
             allowed_tokens = {
                 StaticAnalyzer._path_match_token(p) for p in only_paths if p
             }

@@ -1,6 +1,7 @@
 """Tests for static analysis integration."""
 
 import json
+import logging
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -774,6 +775,85 @@ def test_truncation_is_deterministic(mock_subprocess, tmp_path):
     assert files_in_cmd == expected_prefix
 
 
+@patch("codereview.static_analysis.subprocess.run")
+def test_tool_file_arguments_are_sorted_without_truncation(mock_subprocess, tmp_path):
+    """Argument order must be stable even when well under MAX_FILES_PER_TOOL.
+
+    Sorting only inside the truncation branch left the common case
+    (a handful of files) in filesystem order, so the tool emitted diagnostics
+    in a host-dependent order and condense_for_prompt's ``lines[:25]`` kept a
+    different subset run to run — non-reproducible prompts on an identical tree.
+    """
+    mock_subprocess.return_value = Mock(returncode=0, stdout="", stderr="")
+
+    files = [tmp_path / f"s_{i}.sh" for i in range(6)]
+    for f in files:
+        f.write_text("#!/bin/sh\necho hi\n")
+
+    analyzer = StaticAnalyzer(tmp_path)
+    analyzer.available_tools = ["shellcheck"]
+    analyzer._tool_paths = {"shellcheck": "/usr/bin/shellcheck"}
+
+    with patch.object(
+        StaticAnalyzer, "_safe_rglob", side_effect=lambda pattern: list(reversed(files))
+    ):
+        analyzer.run_tool("shellcheck")
+    reverse_args = mock_subprocess.call_args[0][0][1:]
+
+    with patch.object(
+        StaticAnalyzer, "_safe_rglob", side_effect=lambda pattern: list(files)
+    ):
+        analyzer.run_tool("shellcheck")
+    forward_args = mock_subprocess.call_args[0][0][1:]
+
+    assert reverse_args == forward_args
+    assert reverse_args == sorted(reverse_args)
+
+
+def test_intentional_skip_is_not_reported_as_infrastructure_failure(tmp_path, caplog):
+    """A risky-config skip has the same shape as a crash; it must not read as one.
+
+    ``not r.output and r.errors`` is exactly what the skip returns, so a JS repo
+    shipping eslint.config.mjs with only eslint+prettier installed used to be
+    told to debug resource limits instead of reading the skip reason it got.
+    """
+    (tmp_path / "eslint.config.mjs").write_text("export default [];\n")
+    (tmp_path / "app.js").write_text("const x = 1;\n")
+
+    analyzer = StaticAnalyzer(tmp_path)
+    analyzer.available_tools = ["eslint", "prettier"]
+    analyzer._tool_paths = {
+        "eslint": "/usr/bin/eslint",
+        "prettier": "/usr/bin/prettier",
+    }
+
+    with caplog.at_level(logging.ERROR):
+        results = analyzer.run_all(parallel=False)
+
+    assert set(results) == {"eslint", "prettier"}
+    assert all(not r.passed and not r.output and r.errors for r in results.values())
+    assert "infrastructure problem" not in caplog.text
+
+
+def test_genuine_all_tool_failure_still_warns(tmp_path, caplog):
+    """The infrastructure diagnostic must survive — only skips are excluded."""
+    (tmp_path / "app.py").write_text("x = 1\n")
+
+    analyzer = StaticAnalyzer(tmp_path)
+    analyzer.available_tools = ["ruff"]
+    analyzer._tool_paths = {"ruff": "/usr/bin/ruff"}
+
+    with patch(
+        "codereview.static_analysis.subprocess.run",
+        side_effect=OSError("cannot allocate memory"),
+    ):
+        with caplog.at_level(logging.ERROR):
+            results = analyzer.run_all(parallel=False)
+
+    assert results["ruff"].errors
+    assert "infrastructure problem" in caplog.text
+
+
 def test_condense_for_prompt_skips_passing_tools():
     """Tools with passed=True and 0 issues produce no block."""
     results = {
@@ -1364,5 +1444,144 @@ def test_tools_without_a_config_execution_vector_are_never_gated(tmp_path):
 def test_this_repository_is_not_false_positived():
     """Our own pyproject.toml must not trip the gate (regression guard)."""
     analyzer = StaticAnalyzer(Path(__file__).resolve().parent.parent)
-    for tool in ("mypy", "eslint", "prettier"):
+    for tool in ("mypy", "eslint", "prettier", "golangci-lint"):
         assert analyzer._find_executable_config(tool) is None
+
+
+@pytest.mark.parametrize(
+    "relpath,tool",
+    [
+        # Verified against Prettier 3.x: a repo shipping ONLY this nested config
+        # (no top-level one) had it require()d while formatting a sibling file,
+        # and Prettier still reported "All files formatted correctly".
+        ("packages/app/.prettierrc.cjs", "prettier"),
+        ("packages/app/prettier.config.mjs", "prettier"),
+        # Verified against ESLint v10.8.0: same shape, config loaded from the
+        # linted file's own directory.
+        ("packages/app/eslint.config.mjs", "eslint"),
+        (".eslintrc.js", "eslint"),
+        ("a/b/c/d/.eslintrc.cjs", "eslint"),
+    ],
+)
+def test_nested_executable_config_is_detected(tmp_path, relpath, tool):
+    """ESLint/Prettier resolve config per-file, so any depth is a vector.
+
+    A top-level-only check was bypassable by moving one config file down a
+    directory — the control reported the tool as having run cleanly while the
+    repo's code executed as the reviewer.
+    """
+    target = tmp_path / relpath
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("module.exports = {};\n")
+
+    analyzer = StaticAnalyzer(tmp_path)
+    found = analyzer._find_executable_config(tool)
+    assert found is not None
+    assert found.name == target.name
+
+
+def test_nested_plugin_declaration_is_detected(tmp_path):
+    """The data-config path must be tree-wide too, not just the suffix path."""
+    nested = tmp_path / "packages" / "app" / ".prettierrc"
+    nested.parent.mkdir(parents=True)
+    nested.write_text('{"plugins": ["./evil.cjs"]}\n')
+
+    analyzer = StaticAnalyzer(tmp_path)
+    assert analyzer._find_executable_config("prettier") is not None
+
+
+def test_config_scan_ignores_node_modules(tmp_path):
+    """A config the tool itself ignores is not a vector, and counting it costs coverage.
+
+    Verified: ESLint did not load ``node_modules/*/eslint.config.mjs``. A stock
+    global node_modules ships 13 such files, so treating them as risky would
+    permanently skip eslint/prettier on every real JS repo — trading the feature
+    away for a threat that isn't there.
+    """
+    for pruned in ("node_modules", ".git", ".venv"):
+        cfg = tmp_path / pruned / "dep" / "eslint.config.mjs"
+        cfg.parent.mkdir(parents=True)
+        cfg.write_text("export default [];\n")
+
+    analyzer = StaticAnalyzer(tmp_path)
+    assert analyzer._find_executable_config("eslint") is None
+    assert analyzer._find_executable_config("prettier") is None
+
+
+def test_mypy_config_lookup_stays_top_level(tmp_path):
+    """mypy reads config from the cwd only, so a nested file is not its config.
+
+    Scanning tree-wide for mypy would skip it on any repo vendoring a
+    ``setup.cfg`` in a subpackage, which is not a vector.
+    """
+    nested = tmp_path / "subpkg" / "mypy.ini"
+    nested.parent.mkdir()
+    nested.write_text("[mypy]\nplugins = ./evil.py\n")
+
+    analyzer = StaticAnalyzer(tmp_path)
+    assert analyzer._find_executable_config("mypy") is None
+
+
+@pytest.mark.parametrize(
+    "filename",
+    [".golangci.yml", ".golangci.yaml", ".golangci.toml", ".golangci.json"],
+)
+def test_golangci_custom_plugin_config_skips_the_tool(tmp_path, filename):
+    """golangci-lint loads a repo-named Go plugin into its own process.
+
+    Verified against golangci-lint 2.12.2: the run reached "unable to load
+    custom analyzer" — it had already accepted the repo's config and tried to
+    load the object the repo named.
+    """
+    (tmp_path / filename).write_text(
+        'version: "2"\nlinters:\n  settings:\n    custom:\n'
+        "      evil:\n        path: ./evil.so\n"
+    )
+    analyzer = StaticAnalyzer(tmp_path)
+    _stub_available(analyzer, "golangci-lint")
+
+    with patch("codereview.static_analysis.subprocess.run") as run:
+        result = analyzer.run_tool("golangci-lint")
+
+    run.assert_not_called()
+    assert result.passed is False
+    assert result.errors and filename in result.errors[0]
+
+
+def test_golangci_config_without_custom_still_runs(tmp_path):
+    """Detection is on content: an ordinary .golangci.yml must not be gated."""
+    (tmp_path / ".golangci.yml").write_text(
+        'version: "2"\nlinters:\n  enable:\n    - errcheck\n'
+    )
+    analyzer = StaticAnalyzer(tmp_path)
+    assert analyzer._find_executable_config("golangci-lint") is None
+
+
+def test_golangci_declaration_regex_does_not_widen_mypy(tmp_path):
+    """``custom`` must stay golangci-lint's trigger, not a global one.
+
+    pyproject.toml/setup.cfg are shared files; a ``custom`` key in some other
+    tool's section has nothing to do with mypy loading code, and gating on it
+    would skip mypy on ordinary repositories.
+    """
+    (tmp_path / "pyproject.toml").write_text(
+        "[tool.mypy]\nstrict = true\n\n[tool.other]\ncustom = ['./x.py']\n"
+    )
+    analyzer = StaticAnalyzer(tmp_path)
+    assert analyzer._find_executable_config("mypy") is None
+
+
+def test_risky_config_report_is_deterministic(tmp_path):
+    """Two risky configs must always report the same one.
+
+    The skip message names the path; a filesystem-order pick would make the
+    review's own output differ run to run on the same tree.
+    """
+    for rel in ("z/last/eslint.config.mjs", "a/first/eslint.config.mjs"):
+        cfg = tmp_path / rel
+        cfg.parent.mkdir(parents=True)
+        cfg.write_text("export default [];\n")
+
+    analyzer = StaticAnalyzer(tmp_path)
+    picks = {str(analyzer._find_executable_config("eslint")) for _ in range(5)}
+    assert len(picks) == 1
