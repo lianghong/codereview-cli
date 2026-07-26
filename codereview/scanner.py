@@ -196,10 +196,35 @@ class FileScanner:
     def _is_excluded(self, path: str) -> bool:
         """Check if path matches any exclusion pattern.
 
-        Uses PurePath.match() which properly handles ** glob patterns.
+        Tests both ``PurePath.match`` and ``PurePath.full_match``, because
+        neither alone covers the patterns this project ships:
+
+        * ``match`` is **right-anchored** and treats ``**`` as a *single*
+          segment. So ``**/node_modules/**`` means literally "one segment,
+          ``node_modules``, one segment": it matches ``a/node_modules/x.py``
+          but **not** ``node_modules/x.py`` (no leading segment) and not
+          ``a/b/node_modules/deep/x.py`` (too many). Every default pattern in
+          ``DEFAULT_EXCLUDE_PATTERNS`` is of that shape, so relying on ``match``
+          alone left the deep contents of vendored trees *eligible for review*.
+          The ``_get_excluded_dir_names`` prune set hides this for a plain scan
+          — the directory is never walked — but it does not hide it when the
+          pattern is path-qualified and therefore contributes no prune name,
+          nor for any caller that reaches ``_is_excluded`` directly.
+        * ``full_match`` recurses ``**`` correctly but requires the *whole*
+          relative path to match, so it rejects the right-anchored spellings
+          ``match`` exists for (``*.py`` against ``a/b/x.py``).
+
+        The union is safe rather than merely convenient: with no ``**`` in the
+        pattern, ``full_match`` is *stricter* than ``match`` (whole-path vs.
+        right-anchored), so it can only add matches for the recursive-``**``
+        case — exactly the reading a user writing ``**/dist/**`` intends. It
+        does not widen path-qualified patterns into other subtrees:
+        ``docs/api/**`` still does not match ``app/api/views.py``, and
+        ``docs/api/*`` still does not match ``docs/api/sub/x.py`` (a single
+        ``*`` is one segment under both predicates).
         """
         pure_path = PurePath(path)
         for pattern in self.exclude_patterns:
-            if pure_path.match(pattern):
+            if pure_path.match(pattern) or pure_path.full_match(pattern):
                 return True
         return False

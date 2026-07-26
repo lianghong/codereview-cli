@@ -239,6 +239,114 @@ def test_wildcard_prefixed_exclude_still_prunes(tmp_path):
     assert all("build" not in p.parts for p in resolved)
 
 
+@pytest.mark.parametrize(
+    "relative_path",
+    [
+        # No leading segment: PurePath.match("**/node_modules/**") requires one.
+        "node_modules/index.py",
+        # One leading segment: the only depth bare match() ever covered.
+        "pkg/node_modules/index.py",
+        # Deeper than one segment on either side — both were missed.
+        "pkg/sub/node_modules/index.py",
+        "pkg/node_modules/dep/lib/index.py",
+        "a/b/c/node_modules/d/e/index.py",
+    ],
+)
+def test_is_excluded_matches_a_recursive_pattern_at_every_depth(relative_path):
+    """``**/node_modules/**`` must exclude the directory's contents at any depth.
+
+    ``PurePath.match`` is right-anchored and treats ``**`` as a *single*
+    segment, so the pattern read as "one segment, node_modules, one segment":
+    only ``pkg/node_modules/index.py`` matched. Every other depth — including
+    the top-level ``node_modules/`` and anything nested inside a vendored
+    dependency — was *eligible for review*. The prune set masks this during a
+    plain ``scan()``, which is exactly why it needs testing at this level: a
+    path-qualified pattern contributes no prune name, so there the glob is the
+    only defense.
+    """
+    scanner = FileScanner(".", exclude_patterns=["**/node_modules/**"])
+    assert scanner._is_excluded(relative_path) is True
+
+
+def test_is_excluded_does_not_widen_a_path_qualified_pattern():
+    """Adding ``full_match`` must not make ``docs/api/**`` reach a sibling tree.
+
+    ``full_match`` is whole-path, so it is *stricter* than ``match`` wherever
+    the pattern has no recursive ``**``; the union can only add the recursive
+    case. This pins that: the fix buys depth, not breadth.
+
+    (``other/docs/api/x.py`` is deliberately not asserted here — ``match`` is
+    right-anchored, so it excluded that path long before ``full_match`` was
+    added. That is the pattern's pre-existing meaning, not a widening.)
+    """
+    scanner = FileScanner(".", exclude_patterns=["docs/api/**"])
+    assert scanner._is_excluded("app/api/views.py") is False
+
+
+@pytest.mark.parametrize(
+    "relative_path",
+    [
+        "main.py",
+        "src/main.py",
+        "app/api/views.py",
+        "pkg/service/handler.go",
+        "cmd/server/main.go",
+        "tests/test_api.py",
+        "internal/build_config.py",
+        "scripts/deploy.sh",
+        "src/vendored_client.py",
+    ],
+)
+def test_default_patterns_exclude_no_ordinary_source_file(relative_path):
+    """The shipped defaults must not exclude a file a user expects reviewed.
+
+    Widening ``_is_excluded`` to the ``match``/``full_match`` union buys depth
+    on ``**/dir/**`` patterns; the failure mode to guard is that it also buys
+    *breadth*. A false positive here is invisible at runtime — the file is
+    never scanned, never counted, and never reported as skipped — so it is
+    pinned against the real ``DEFAULT_EXCLUDE_PATTERNS`` rather than argued
+    from the predicates' semantics. Note the deliberately adversarial names:
+    ``build_config.py`` and ``vendored_client.py`` must survive ``**/build/**``
+    and ``**/vendor/**`` (segment match, not substring).
+    """
+    scanner = FileScanner(".")
+    assert scanner._is_excluded(relative_path) is False
+
+
+def test_single_star_still_means_exactly_one_segment():
+    """``docs/api/*`` keeps its literal meaning under the union.
+
+    Documented behavior (see CLAUDE.md): there is no path-qualified spelling
+    that covers an arbitrary-depth subtree, and ``docs/api/*`` deliberately
+    does not reach ``docs/api/sub/x.py``. ``full_match`` treats a single ``*``
+    as one segment too, so this must not change.
+    """
+    scanner = FileScanner(".", exclude_patterns=["docs/api/*"])
+
+    assert scanner._is_excluded("docs/api/generated.py") is True
+    assert scanner._is_excluded("docs/api/sub/x.py") is False
+
+
+def test_deep_vendored_files_are_excluded_end_to_end(tmp_path):
+    """The scan must not report a deeply nested vendored file.
+
+    Drives ``scan()`` with a *path-qualified* pattern, so the directory is
+    walked rather than pruned and ``_is_excluded`` is the only thing standing
+    between the review and 40k lines of someone else's code.
+    """
+    deep = tmp_path / "web" / "node_modules" / "left-pad" / "src"
+    deep.mkdir(parents=True)
+    (deep / "index.py").write_text("x = 1\n")
+    keep = tmp_path / "web" / "app.py"
+    keep.write_text("y = 2\n")
+
+    scanner = FileScanner(tmp_path, exclude_patterns=["web/node_modules/**"])
+    resolved = [f.resolve() for f in scanner.scan()]
+
+    assert keep.resolve() in resolved
+    assert (deep / "index.py").resolve() not in resolved
+
+
 def test_default_patterns_all_still_prune_their_directories():
     """Every default ``**/dir/**`` pattern must still contribute a prune name.
 
