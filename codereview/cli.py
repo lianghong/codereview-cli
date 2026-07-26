@@ -26,7 +26,12 @@ from rich.progress import (
 from rich.table import Table
 
 from codereview.analyzer import CodeAnalyzer
-from codereview.batcher import FileBatch, FileBatcher, count_tokens
+from codereview.batcher import (
+    BYTES_PER_TOKEN,
+    FileBatch,
+    FileBatcher,
+    count_tokens,
+)
 from codereview.callbacks import (
     BaseCallbackHandler,
     ProgressCallbackHandler,
@@ -146,10 +151,18 @@ def _create_console(quiet: bool = False, no_color: bool = False) -> Console:
 
 
 def _format_batch_files_desc(file_names: list[str]) -> str:
-    """Format batch file list for progress display."""
-    if len(file_names) <= 3:
-        return ", ".join(file_names)
-    return f"{', '.join(file_names[:3])} +{len(file_names) - 3} more"
+    """Format batch file list for progress display.
+
+    Names are Rich-escaped here rather than at the call site: the only consumer
+    is a ``Progress`` description, which Rich parses as markup. A repository
+    file named ``test[bold].py`` would otherwise be *displayed* as ``test.py``
+    — a name that doesn't exist — and a closing-tag shape like ``a[/x].py``
+    raises ``MarkupError``, aborting a review over a filename.
+    """
+    escaped = [escape(name) for name in file_names]
+    if len(escaped) <= 3:
+        return ", ".join(escaped)
+    return f"{', '.join(escaped[:3])} +{len(escaped) - 3} more"
 
 
 def _aws_error_detail(error: ClientError, verbose: bool) -> str:
@@ -250,6 +263,35 @@ def _render_batch_error(
         con.print(tb)
 
 
+def _count_lines(file_path: Path) -> int:
+    """Count lines in *file_path*, or 0 if it can't be read.
+
+    Binary chunked newline counting rather than decoding each line (~2-3x
+    faster and avoids decode overhead). The LLM read happens again later in
+    ``analyze_batch``; a bytes-only scan here keeps that second read cheaper
+    without changing its encoding.
+
+    Counting newlines alone is ``wc -l``, not a line count: a final line with
+    no trailing newline has no separator to count. A one-line file without a
+    trailing newline reported 0 lines, and every such file in a repo shaved 1
+    off the total the report presents as the size of what was reviewed. An
+    empty file correctly contributes nothing.
+    """
+    lines = 0
+    try:
+        with file_path.open("rb") as fb:
+            last_byte = b""
+            while chunk := fb.read(65536):
+                lines += chunk.count(b"\n")
+                last_byte = chunk[-1:]
+            if last_byte and last_byte != b"\n":
+                lines += 1
+    except OSError:
+        # Unreadable file contributes nothing; the scanner already reports it.
+        return 0
+    return lines
+
+
 # Upper bound on the per-batch linter-findings block. Mirrors the max_chars
 # default of StaticAnalyzer.condense_for_prompt — every batch's prompt carries
 # at most this much condensed linter output.
@@ -297,10 +339,19 @@ def _per_batch_overhead_tokens(
     Returns:
         A ``PerBatchOverhead`` with per-source token counts and a ``.total``.
     """
+    # The linter block is sized, not sampled. `count_tokens("x" * 4000)` looks
+    # like a measurement but isn't: BPE merges runs of one repeated character,
+    # so it returns 500 tokens for 4000 bytes — a 4.6:1 ratio no real text hits.
+    # Condensed linter output is file paths, rule ids and messages, which land
+    # near the 3-bytes-per-token heuristic (~1333 here). Reserving 500 for
+    # something that costs ~1300 under-reserves the budget by ~800 tokens per
+    # batch, and the budget's whole job is keeping a batch inside the context
+    # window; an under-reservation shows up as a context overflow that aborts
+    # the batch, not as a slightly-off estimate.
     return PerBatchOverhead(
         system_prompt=count_tokens(system_prompt),
         readme=count_tokens(readme_content) if readme_content else 0,
-        linter=count_tokens("x" * _LINTER_BLOCK_MAX_CHARS) if has_linters else 0,
+        linter=_LINTER_BLOCK_MAX_CHARS // BYTES_PER_TOKEN if has_linters else 0,
     )
 
 
@@ -625,7 +676,10 @@ def validate_provider_credentials(
 @click.option(
     "--stream",
     is_flag=True,
-    help="Enable streaming output with real-time token display",
+    help=(
+        "Real-time token display; runs batches sequentially. Ignored on "
+        "providers that do not stream tokens (Bedrock, NVIDIA, Google)."
+    ),
 )
 @click.option(
     "--list-models",
@@ -801,6 +855,8 @@ def run_review(
         verbose: Detailed progress and the token-budget breakdown.
         quiet: Suppress terminal rendering; forces off *verbose* and *stream*.
         stream: Token-by-token output; forces sequential batch execution.
+            Ignored (with a warning, and without giving up concurrency) for a
+            provider whose ``supports_token_streaming()`` is False.
         readme: Explicit README path, or None to auto-discover.
         no_readme: Skip README context entirely.
 
@@ -840,9 +896,33 @@ def run_review(
         _, model_config = config_loader.resolve_model(model_name)
         model_display_name = model_config.name
 
+        # --stream costs concurrency (max_workers drops to 1 below, because
+        # token-by-token output from parallel batches interleaves), and on
+        # Bedrock, NVIDIA and Google the client never emits a token anyway — so
+        # the flag was buying a 3-5x slowdown for output that cannot appear.
+        # Ask the provider *class*, which needs no credentials and no instance;
+        # attaching a streaming handler and choosing a worker count are the same
+        # decision (concurrent Rich `Live`s corrupt the terminal — see
+        # callbacks.py), so both are settled here, once.
+        stream_unavailable = stream and not ProviderFactory(
+            config_loader=config_loader
+        ).supports_token_streaming(model_name)
+        if stream_unavailable:
+            stream = False
+
         con.print("\n[bold cyan]🔍 Code Review Tool[/bold cyan]\n")
-        con.print(f"📂 Scanning directory: {directory}")
-        con.print(f"🤖 Model: {model_display_name}\n")
+        con.print(f"📂 Scanning directory: {escape(str(directory))}")
+        con.print(f"🤖 Model: {escape(model_display_name)}\n")
+
+        # Say it rather than silently ignoring the flag: the user asked for
+        # streaming and isn't getting it, and the reason they *should* care is
+        # that the run keeps its parallelism instead.
+        if stream_unavailable:
+            con.print(
+                "[yellow]⚠ --stream ignored: "
+                f"{escape(model_display_name)} does not stream tokens to "
+                "callbacks. Keeping parallel batches instead.[/yellow]\n"
+            )
 
         # Handle README context
         readme_content: str | None = None
@@ -854,10 +934,13 @@ def run_review(
                     content, size = result
                     readme_content = content
                     con.print(
-                        f"📄 Using README: [cyan]{readme}[/cyan] ({size / 1024:.1f} KB)\n"
+                        f"📄 Using README: [cyan]{escape(str(readme))}[/cyan] "
+                        f"({size / 1024:.1f} KB)\n"
                     )
                 else:
-                    con.print(f"[yellow]⚠️  Could not read {readme}[/yellow]\n")
+                    con.print(
+                        f"[yellow]⚠️  Could not read {escape(str(readme))}[/yellow]\n"
+                    )
             else:
                 # Auto-discover README
                 found_readme = find_readme(directory)
@@ -917,32 +1000,14 @@ def run_review(
 
         con.print(f"✓ Found {len(files)} files to review")
 
-        # Count total lines of code. Use binary chunked newline counting rather
-        # than decoding each line (~2-3x faster and avoids decode overhead).
-        # The LLM read happens again later in analyze_batch; bytes-only scan
-        # here keeps the second read cheaper without changing its encoding.
-        total_lines = 0
-        for file_path in files:
-            try:
-                with file_path.open("rb") as fb:
-                    last_byte = b""
-                    while chunk := fb.read(65536):
-                        total_lines += chunk.count(b"\n")
-                        last_byte = chunk[-1:]
-                    # Counting newlines alone is wc -l, not a line count: a
-                    # final line with no trailing newline has no separator to
-                    # count. A one-line file without a trailing newline
-                    # reported 0 lines of code, and every such file in a repo
-                    # shaved 1 off the total the report presents as the size of
-                    # what was reviewed. last_byte is "" only for an empty
-                    # file, which correctly contributes nothing.
-                    if last_byte and last_byte != b"\n":
-                        total_lines += 1
-            except OSError:
-                # Skip files that can't be read
-                pass
+        # Line counts, kept per file rather than as one running total: the
+        # scan display below reports every file found, while the report's
+        # metrics must describe only what the batcher actually sends (the
+        # batcher drops oversized files after this point, exactly as
+        # files_analyzed accounts for). One read pass serves both.
+        lines_by_file = {path: _count_lines(path) for path in files}
 
-        con.print(f"✓ Total lines of code: {total_lines:,}")
+        con.print(f"✓ Total lines of code: {sum(lines_by_file.values()):,}")
 
         # Report files skipped during scanning (e.g., too large)
         if scanner.skipped_files:
@@ -950,7 +1015,12 @@ def run_review(
                 f"[yellow]⚠️  {len(scanner.skipped_files)} file(s) skipped during scan:[/yellow]"
             )
             for skipped_path, reason in scanner.skipped_files[:5]:
-                con.print(f"   • {skipped_path.name}: {reason}")
+                # escape(): a filename is repository-controlled text, and Rich
+                # parses `[...]` as a style tag. `test[bold].py` prints as
+                # `test.py` (a name that doesn't exist), and a closing-tag shape
+                # like `a[/x].py` raises MarkupError — killing the run on a
+                # filename, in the branch whose job is reporting file problems.
+                con.print(f"   • {escape(skipped_path.name)}: {escape(reason)}")
             if len(scanner.skipped_files) > 5:
                 con.print(f"   ... and {len(scanner.skipped_files) - 5} more")
         con.print()
@@ -1051,7 +1121,9 @@ def run_review(
                     "too large to review with this model:[/yellow]"
                 )
                 for skipped_path, est_tokens in batcher.skipped_oversized:
-                    con.print(f"   {skipped_path.name} (~{est_tokens:,} tokens)")
+                    con.print(
+                        f"   {escape(skipped_path.name)} (~{est_tokens:,} tokens)"
+                    )
                 con.print()
             except OSError:
                 for skipped_path, est_tokens in batcher.skipped_oversized:
@@ -1064,6 +1136,24 @@ def run_review(
         except OSError:
             # Handle terminal I/O errors
             print(f"Created {len(batches)} batches")
+
+        # Nothing to send: every scanned file was dropped by the batcher (each
+        # one alone exceeds the per-batch token budget). This needs its own
+        # diagnostic because the all-batches-failed handler below tests
+        # `failed_batches == len(batches)`, which is `0 == 0` here — so the run
+        # printed "All 0 batch(es) failed" and blamed rate limits, credentials
+        # and service outages for a problem that is entirely local and whose
+        # actual fix (a larger-context model) isn't among the causes it lists.
+        if not batches:
+            con.print(
+                "[bold red]✗ No batches to analyze: every file found was too "
+                "large for this model's per-batch token budget.[/bold red]"
+            )
+            con.print("[yellow]Try:[/yellow]")
+            con.print("  - A model with a larger context window (--list-models)")
+            con.print("  - Excluding the oversized files (--exclude)")
+            con.print("  - A lower --max-file-size so they're skipped at scan time")
+            raise SystemExit(1)
 
         # Handle dry-run mode
         if dry_run:
@@ -1086,7 +1176,10 @@ def run_review(
         if stream:
             streaming_handler = StreamingCallbackHandler(console=con, verbose=True)
             callbacks = [streaming_handler]
-        elif verbose:
+        elif verbose or stream_unavailable:
+            # A downgraded --stream still gets *some* live feedback: the spinner
+            # handler is safe under concurrency (refcounted by run_id — see
+            # callbacks.py), where the streaming panel is not.
             progress_handler = ProgressCallbackHandler(console=con)
             callbacks = [progress_handler]
 
@@ -1130,11 +1223,21 @@ def run_review(
         # the review does not have — "Analyzed 120 files" for a run that
         # reviewed 118. Batch membership is the only authority on what was sent.
         total_files = sum(len(batch.files) for batch in batches)
+        # Same authority for the line count, and for the same reason: an
+        # oversized file the batcher dropped is often a *huge* file, so counting
+        # every scanned file's lines here overstated the reviewed size by far
+        # more than files_analyzed ever did — a 40k-line generated file dropped
+        # from a 5k-line review still reported 45k lines "reviewed".
+        total_lines = sum(
+            lines_by_file.get(path, 0) for batch in batches for path in batch.files
+        )
 
         # Concurrency: parallel batches give a 3-5x speedup on multi-batch runs.
         # Streaming forces sequential execution because token-by-token output
         # from concurrent batches would interleave incomprehensibly.
         # Single-batch runs also use sequential to avoid executor overhead.
+        # Note `stream` is already False for a provider that cannot stream, so
+        # the speedup is only given up when tokens will actually appear.
         max_workers = 1 if (stream or len(batches) <= 1) else min(len(batches), 4)
 
         with Progress(
@@ -1170,7 +1273,9 @@ def run_review(
                     )
 
                     if verbose:
-                        con.print(f"  Files: {', '.join(file_names)}")
+                        con.print(
+                            f"  Files: {', '.join(escape(n) for n in file_names)}"
+                        )
 
                     try:
                         report = future.result()
@@ -1243,6 +1348,14 @@ def run_review(
 
         # Build metrics object
         severity_counts = Counter(i.severity for i in all_issues)
+        # ReviewMetrics declares security_issues/performance_issues, the two
+        # category counts a reader scans for first, and the aggregation never
+        # filled them: `exclude_none=True` in metrics_to_dict then dropped them,
+        # so the Metrics section listed five severity rows and no category rows
+        # at all. The categories are the post-normalization Literal values
+        # (models.py's field_validator has already mapped every synonym), so
+        # counting them here needs no second mapping table.
+        category_counts = Counter(i.category for i in all_issues)
         metrics = ReviewMetrics(
             files_analyzed=total_files,
             total_lines=total_lines,
@@ -1252,6 +1365,8 @@ def run_review(
             medium_issues=severity_counts.get("Medium", 0),
             low_issues=severity_counts.get("Low", 0),
             info_issues=severity_counts.get("Info", 0),
+            security_issues=category_counts.get("Security", 0),
+            performance_issues=category_counts.get("Performance", 0),
             input_tokens=analyzer.provider.total_input_tokens,
             output_tokens=analyzer.provider.total_output_tokens,
             total_tokens=analyzer.provider.total_input_tokens
@@ -1342,7 +1457,9 @@ def run_review(
                 f"[yellow]⚠️  Warning: {len(analyzer.skipped_files)} file(s) could not be read:[/yellow]"
             )
             for skipped_file, error in analyzer.skipped_files[:5]:  # Show first 5
-                con.print(f"   • {skipped_file}: {error}")
+                # Repository-controlled path text through Rich markup — see the
+                # escape() note on the scan-time skip list above.
+                con.print(f"   • {escape(str(skipped_file))}: {escape(str(error))}")
             if len(analyzer.skipped_files) > 5:
                 con.print(f"   ... and {len(analyzer.skipped_files) - 5} more")
             con.print()
@@ -1367,7 +1484,10 @@ def run_review(
                 if output_format.lower() == "json":
                     # Export as JSON for programmatic consumption
                     output.write_text(final_report.model_dump_json(indent=2))  # type: ignore[attr-defined]
-                    con.print(f"\n[green]✓ JSON report exported to: {output}[/green]\n")
+                    con.print(
+                        "\n[green]✓ JSON report exported to: "
+                        f"{escape(str(output))}[/green]\n"
+                    )
                 else:
                     # Export as Markdown (default)
                     # Collect all skipped files for the report.
@@ -1419,9 +1539,31 @@ def run_review(
                         skipped_files=all_skipped_files if all_skipped_files else None,
                         audit=audit,
                     )
-                    con.print(f"\n[green]✓ Report exported to: {output}[/green]\n")
-            except OSError as e:
-                con.print(f"\n[red]✗ Failed to write report to {output}: {e}[/red]\n")
+                    con.print(
+                        f"\n[green]✓ Report exported to: {escape(str(output))}[/green]\n"
+                    )
+            except (OSError, RuntimeError) as e:
+                # Both spellings are required, and the second one is not
+                # defensive: `output.write_text` (JSON path) raises OSError
+                # directly, but `MarkdownExporter.export` converts it into a
+                # RuntimeError as its documented contract (renderer.py). An
+                # OSError-only handler therefore covered the JSON path and
+                # missed the markdown one, which fell through to the generic
+                # `except Exception` below — losing the escape() on a
+                # repository-controlled path and printing a traceback under
+                # --verbose for a plain permissions problem.
+                # The markdown exporter chains the original OSError, so prefer
+                # it: its message names the actual problem ("Permission
+                # denied"), while the RuntimeError wrapper only repeats the
+                # path. Named `export_failure`, not `reason` — that name is
+                # already a `str` in this scope (the skipped-file reasons).
+                export_failure: BaseException = (
+                    e.__cause__ if isinstance(e, RuntimeError) and e.__cause__ else e
+                )
+                con.print(
+                    f"\n[red]✗ Failed to write report to {escape(str(output))}: "
+                    f"{escape(str(export_failure))}[/red]\n"
+                )
                 raise click.Abort()
 
         # Step 7: Apply the --fail-on quality gate.
@@ -1441,6 +1583,15 @@ def run_review(
                     f"(--fail-on {fail_on.lower()}).[/red]\n"
                 )
                 raise SystemExit(EXIT_QUALITY_GATE_FAILED)
+
+    except click.Abort:
+        # Already-diagnosed failures re-raise untouched. `click.Abort` subclasses
+        # RuntimeError, so without this it lands in the generic `except Exception`
+        # below — and its `str()` is empty, so the user's last line before the
+        # exit was a blank "✗ Error: " that overwrote the specific message
+        # (e.g. "Failed to write report to /ro/out.md: Permission denied") the
+        # raising site had just printed. Nothing to add here; the diagnosis is done.
+        raise
 
     except NoCredentialsError:
         con.print("\n[red]✗ AWS credentials not found[/red]\n")

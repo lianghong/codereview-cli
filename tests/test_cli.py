@@ -735,6 +735,41 @@ def test_per_batch_overhead_shared_by_budget_and_dry_run():
     assert full.total > base.total
 
 
+def test_linter_reservation_covers_real_linter_text():
+    """The linter reservation must bound *realistic* condensed linter output.
+
+    It used to be ``count_tokens("x" * 4000)``, which looks like a measurement
+    but isn't: BPE merges runs of one repeated character, so a 4000-byte
+    placeholder tokenizes to ~500 — a ratio no real text reaches. Actual
+    condensed output (paths, rule ids, messages) costs ~2.5x that, so the budget
+    under-reserved by ~800 tokens per batch, and an under-reserved budget shows
+    up as a context overflow that aborts the batch.
+    """
+    from codereview.cli import (
+        _LINTER_BLOCK_MAX_CHARS,
+        _per_batch_overhead_tokens,
+        count_tokens,
+    )
+
+    reserved = _per_batch_overhead_tokens(None, has_linters=True).linter
+
+    # A representative condensed block, truncated to the same cap the real one
+    # is condensed to, so this compares like with like.
+    realistic = (
+        "codereview/providers/bedrock.py:223:5: ANN401 Dynamically typed "
+        "expressions (typing.Any) are disallowed in `result`\n"
+    ) * 200
+    realistic = realistic[:_LINTER_BLOCK_MAX_CHARS]
+
+    assert reserved >= count_tokens(realistic), (
+        f"reserved {reserved} tokens for a block that really costs "
+        f"{count_tokens(realistic)}"
+    )
+    assert reserved > count_tokens("x" * _LINTER_BLOCK_MAX_CHARS), (
+        "a repeated-character placeholder is not a valid size proxy for BPE"
+    )
+
+
 def test_dry_run_estimate_is_upper_bound_on_actual_input(tmp_path):
     """#2: dry-run input estimate must conservatively bound a real multi-batch run.
 
@@ -1594,9 +1629,13 @@ def _oversized_batch_mocks(code_dir, *, scanned, batched):
 
     batcher_cls = stack.enter_context(patch("codereview.cli.FileBatcher"))
     batcher = Mock()
-    batcher.create_batches.return_value = [
-        FileBatch(files=list(batched), batch_number=1, total_batches=1)
-    ]
+    # No batched files → no batches, matching create_batches: a file that alone
+    # exceeds the budget is dropped, not packed into an empty batch.
+    batcher.create_batches.return_value = (
+        [FileBatch(files=list(batched), batch_number=1, total_batches=1)]
+        if batched
+        else []
+    )
     batcher.skipped_oversized = [
         (path, 999_999) for path in scanned if path not in batched
     ]
@@ -1676,6 +1715,226 @@ def test_dry_run_does_not_bill_files_the_batcher_will_drop(tmp_path):
     ), "the dropped file is listed in the table of files to analyze"
     assert "Files: 1" in output
     assert "excludes 1 file(s) skipped as too large" in output
+
+
+def test_total_lines_excludes_files_the_batcher_dropped(tmp_path):
+    """total_lines must describe what was reviewed, like files_analyzed does.
+
+    An oversized file is the *large* one by definition, so counting every
+    scanned file's lines overstated the reviewed size by far more than
+    files_analyzed ever did: a 40k-line generated file dropped from a 5-line
+    review still reported 40,005 lines "reviewed".
+    """
+    import json
+
+    from codereview.cli import run_review
+
+    reviewed = tmp_path / "small.py"
+    reviewed.write_text("x = 1\n" * 5)
+    dropped = tmp_path / "huge.py"
+    dropped.write_text("y = 2\n" * 40_000)
+
+    buffer = StringIO()
+    stack, _ = _oversized_batch_mocks(
+        tmp_path, scanned=[reviewed, dropped], batched=[reviewed]
+    )
+    report_path = tmp_path / "out.json"
+    with stack:
+        run_review(
+            tmp_path,
+            console=Console(file=buffer, width=200),
+            no_readme=True,
+            output=report_path,
+            output_format="json",
+        )
+
+    exported = json.loads(report_path.read_text())
+    assert exported["metrics"]["total_lines"] == 5, (
+        "the dropped file's 40,000 lines were never sent but were reported as reviewed"
+    )
+    # The scan display still reports everything it found — that figure is about
+    # discovery, not coverage, and the two must not be conflated.
+    assert "Total lines of code: 40,005" in buffer.getvalue()
+
+
+def test_no_batches_gets_its_own_diagnostic(tmp_path):
+    """Every file dropped as oversized is not "all batches failed".
+
+    The all-failed handler tests `failed_batches == len(batches)`, which is
+    `0 == 0` when the batcher produced nothing — so the run printed "All 0
+    batch(es) failed" and blamed rate limits, credentials and service outages
+    for an entirely local problem whose actual fix isn't among those causes.
+    """
+    from codereview.cli import run_review
+
+    dropped = tmp_path / "huge.py"
+    dropped.write_text("y = 2\n")
+
+    buffer = StringIO()
+    stack, mock_analyzer = _oversized_batch_mocks(
+        tmp_path, scanned=[dropped], batched=[]
+    )
+    with stack:
+        with pytest.raises(SystemExit) as exc:
+            run_review(
+                tmp_path,
+                console=Console(file=buffer, width=200, no_color=True),
+                no_readme=True,
+            )
+
+    assert exc.value.code == 1
+    output = buffer.getvalue()
+    assert "No batches to analyze" in output
+    assert "larger context window" in output
+    assert "All 0 batch(es) failed" not in output
+    # No provider call may have been attempted.
+    mock_analyzer.analyze_batch.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["test[bold].py", "a[[bold]b.py", "weird[[.py", "x[dim italic]y.py"],
+)
+def test_markup_in_a_filename_neither_crashes_nor_alters_the_name(tmp_path, name):
+    """Filenames are repository-controlled text and Rich parses `[...]` as markup.
+
+    `test[bold].py` printed as `test.py` — a name that doesn't exist, in the
+    list whose whole job is telling the user which file had a problem. (A
+    closing-tag shape, which raises MarkupError outright, can't be tested from a
+    real filename because `[/x]` contains a path separator; the escape() call is
+    the same one either way, and `escape` doubles the `[` so no tag is parsed.)
+    """
+    from codereview.cli import run_review
+
+    code_file = tmp_path / name
+    code_file.write_text("x = 1\n")
+
+    buffer = StringIO()
+    stack, _ = _pipeline_mocks(tmp_path)
+    scanner_cls = stack.enter_context(patch("codereview.cli.FileScanner"))
+    scanner = Mock()
+    scanner.scan.return_value = [code_file]
+    scanner.skipped_files = [(code_file, "too large")]
+    scanner_cls.return_value = scanner
+
+    with stack:
+        run_review(
+            tmp_path,
+            console=Console(file=buffer, width=300, no_color=True),
+            no_readme=True,
+            verbose=True,
+        )
+
+    output = buffer.getvalue()
+    assert name in output, "the markup was consumed, printing a name that doesn't exist"
+
+
+@pytest.mark.parametrize("output_format", ["markdown", "json"])
+def test_unwritable_output_is_diagnosed_by_the_export_handler(tmp_path, output_format):
+    """Both export paths must be diagnosed by the export handler, not the
+    generic one.
+
+    The two paths raise *different* exception types for the same failure:
+    ``output.write_text`` (json) raises ``OSError``, while
+    ``MarkdownExporter.export`` converts it to a ``RuntimeError`` as its
+    documented contract. An ``except OSError``-only handler therefore covered
+    json and silently missed markdown — the markdown failure fell through to
+    the generic ``except Exception``, which is a different code path with
+    different behavior (no ``escape()`` on the repository-controlled path, and
+    a full traceback under ``--verbose`` for a plain permissions problem).
+
+    Asserting only on "the path is named" cannot tell the two handlers apart,
+    because the RuntimeError's own message names the path too. The
+    ``✗ Failed to write report to`` prefix is unique to the export handler, so
+    that is what this checks.
+    """
+    import click
+
+    from codereview.cli import run_review
+
+    code_file = tmp_path / "test.py"
+    code_file.write_text("x = 1\n")
+    readonly = tmp_path / "ro"
+    readonly.mkdir()
+    readonly.chmod(0o500)
+
+    buffer = StringIO()
+    stack, _ = _pipeline_mocks(tmp_path)
+    try:
+        with stack:
+            with pytest.raises(click.Abort):
+                run_review(
+                    tmp_path,
+                    console=Console(file=buffer, width=200, no_color=True),
+                    no_readme=True,
+                    output=readonly / "report.md",
+                    output_format=output_format,
+                )
+    finally:
+        readonly.chmod(0o700)
+
+    output = buffer.getvalue()
+    assert "✗ Failed to write report to" in output, (
+        "the export handler did not run; the generic handler diagnosed this"
+    )
+    assert "Permission denied" in output
+    assert "✗ Error:" not in output, (
+        "the generic handler ran on a failure the export handler owns"
+    )
+
+
+def test_click_abort_is_not_re_diagnosed_by_the_generic_handler(tmp_path):
+    """An already-diagnosed abort must not be relabelled on its way out.
+
+    `click.Abort` subclasses RuntimeError, so without a dedicated re-raise it
+    lands in the generic `except Exception` — and `str(click.Abort())` is
+    empty, so the run's final line becomes a bare "✗ Error: " printed *after*
+    the specific diagnosis. Driven through a raise site inside the try block
+    (the renderer) rather than the export path, because the export handler
+    catches RuntimeError itself and so can't demonstrate the leak.
+    """
+    import click
+
+    from codereview.cli import run_review
+
+    code_file = tmp_path / "test.py"
+    code_file.write_text("x = 1\n")
+
+    buffer = StringIO()
+    stack, _ = _pipeline_mocks(tmp_path)
+    renderer_cls = stack.enter_context(patch("codereview.cli.TerminalRenderer"))
+    renderer_cls.return_value.render.side_effect = click.Abort()
+
+    with stack:
+        with pytest.raises(click.Abort):
+            run_review(
+                tmp_path,
+                console=Console(file=buffer, width=200, no_color=True),
+                no_readme=True,
+            )
+
+    assert "✗ Error:" not in buffer.getvalue(), (
+        "the generic handler appended an empty error to an already-diagnosed abort"
+    )
+
+
+def test_batch_progress_description_survives_a_closing_tag_shaped_name():
+    """A closing-tag shape must not raise MarkupError out of the progress bar.
+
+    `[/x]` can't appear in a real filename (it contains a path separator), so
+    this drives the formatter directly — Rich would raise
+    "closing tag doesn't match any open tag" and abort the review.
+    """
+    from rich.console import Console as RichConsole
+
+    from codereview.cli import _format_batch_files_desc
+
+    desc = _format_batch_files_desc(["a[/x].py", "b.py"])
+
+    buffer = StringIO()
+    # print() is where Rich parses markup; no exception and the name intact.
+    RichConsole(file=buffer, width=200, no_color=True).print(desc)
+    assert "a[/x].py" in buffer.getvalue()
 
 
 @pytest.mark.parametrize("bad", ["-0.5", "2.5", "99"])
