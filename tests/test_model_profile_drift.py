@@ -20,9 +20,9 @@ different in several places, for reasons the profiles cannot know:
 
 * ``supports_tool_use`` is an *empirical* value here — several models advertise
   ``structured_output: true`` and still fail on the forced ``tool_choice`` that
-  ``.with_structured_output()`` sets, which is precisely why CLAUDE.md's
-  structured-output matrix exists. The profile is the vendor's claim; ours is
-  what a live run did.
+  ``.with_structured_output()`` sets, which is precisely why the path matrix in
+  ``docs/structured-output.md`` exists. The profile is the vendor's claim; ours
+  is what a live run did.
 * A conservative ``max_output_tokens`` is a cost and latency choice, not an
   error. Only a value *above* the profile's cap is a bug.
 * A conservative ``context_window`` is safe (smaller batches); one *above* the
@@ -51,11 +51,12 @@ from codereview.providers.bedrock import strip_cross_region_prefix
 # documented failure mode.
 # ---------------------------------------------------------------------------
 _ALLOWED_DIVERGENCES: dict[tuple[str, str, str], str] = {
-    # supports_tool_use is empirical here; see CLAUDE.md's structured-output
-    # matrix. A forced tool_choice comes back as literal text on these — an
-    # observed failure, not a documented API restriction: Anthropic limits
-    # tool_choice to auto/none only under manual thinking.type: "enabled", and
-    # documents forced tool use as supported with adaptive thinking.
+    # supports_tool_use is empirical here; see the path matrix in
+    # docs/structured-output.md. A forced tool_choice comes back as literal text
+    # on these — an observed failure, not a documented API restriction:
+    # Anthropic limits tool_choice to auto/none only under manual
+    # thinking.type: "enabled", and documents forced tool use as supported with
+    # adaptive thinking.
     ("bedrock", "sonnet5", "structured_output"): (
         "first Sonnet tier with adaptive thinking on by default — inherits the "
         "Opus 4.8 literal-text failure under a forced tool_choice"
@@ -265,7 +266,7 @@ def test_supports_tool_use_disagreements_are_all_deliberate():
         "undocumented supports_tool_use disagreement(s):\n  "
         + "\n  ".join(undocumented)
         + "\nIf ours is right, allowlist it in _ALLOWED_DIVERGENCES with the "
-        "failure mode (and add a row to CLAUDE.md's structured-output matrix). "
+        "failure mode (and add a row to docs/structured-output.md's matrix). "
         "If the profile is right, flip the YAML."
     )
 

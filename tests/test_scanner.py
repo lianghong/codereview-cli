@@ -316,7 +316,7 @@ def test_default_patterns_exclude_no_ordinary_source_file(relative_path):
 def test_single_star_still_means_exactly_one_segment():
     """``docs/api/*`` keeps its literal meaning under the union.
 
-    Documented behavior (see CLAUDE.md): there is no path-qualified spelling
+    Documented behavior (see docs/architecture.md): there is no path-qualified spelling
     that covers an arbitrary-depth subtree, and ``docs/api/*`` deliberately
     does not reach ``docs/api/sub/x.py``. ``full_match`` treats a single ``*``
     as one segment too, so this must not change.

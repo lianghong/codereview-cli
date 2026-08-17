@@ -855,3 +855,76 @@ uv run codereview ./src --static-analysis --dry-run
 ```
 
 The output will show which tools are available and will be used during analysis.
+
+---
+
+## Implementation notes
+
+Background for the Static-analysis rules in `CLAUDE.md`. Read this before changing
+`static_analysis.py`.
+
+### The config-execution gate
+
+`run_tool` consults `_find_executable_config` (against `_CONFIG_EXECUTION_RISK`) **before the
+command is built**, and returns a failed result naming the config rather than running. Verified
+live against mypy 1.19.1, ESLint v10.8.0 and Prettier 3.x: each ran attacker-supplied code, and
+mypy still reported `passed: True`.
+
+Two design rules, both deliberate:
+
+- **Detect on *content*, not presence.** Suffix-executable configs (`eslint.config.js`) are risky
+  by existing; data configs are risky only when `_PLUGIN_DECLARATION` matches — and for mypy, only
+  inside its own `[mypy]`/`[tool.mypy]` section. Refusing every repo that merely ships a
+  `pyproject.toml` would trade away the feature's whole point (linter output that matches *that*
+  project's CI) for a threat that isn't there. This repository is asserted not-false-positived by
+  `test_this_repository_is_not_false_positived`.
+- **Fail closed.** An `OSError` reading the config, or one over `_MAX_CONFIG_SCAN_BYTES` (512 KB),
+  counts as risky — an unreadable file is exactly what an attacker would arrange if that bypassed
+  the check.
+
+The skip message must say the tool's **findings are missing from this review**; a silently-absent
+tool reads as "clean". Neutralizing flags exist (`mypy --config-file=`,
+`eslint --no-config-lookup`, `prettier --no-config`) but were not used: they'd silently produce
+output that doesn't match the project's own config, which is a different lie.
+
+Locked by the `_CONFIG_EXECUTION_RISK` block in `tests/test_static_analysis.py`, which patches
+`codereview.static_analysis.subprocess.run` and asserts `run.assert_not_called()` — asserting on
+the *result* would pass even if the tool ran first.
+
+### "I ran and found problems" ≠ "I never started"
+
+`_OPERATIONAL_FAILURE_EXIT_CODES` maps the exit codes that mean a tool *couldn't run*
+(ruff/black/mypy: 2) so the result carries `issues_count=0` plus an explicit error, not a
+fabricated finding count. Without it, a repo whose ruff config names a nonexistent rule
+contributed **zero** coverage while reporting a tidy count.
+
+The map is deliberately short and **verified against the installed binaries, not the docs**:
+isort exits 1 for both a bad config and a mis-sorted file, and vulture exits 3 for findings, so
+neither is classifiable and neither is listed. When a tool's two meanings are ambiguous, keep
+treating the exit as a finding — discarding real findings is the worse error.
+
+### Parse structured output from `stdout` only
+
+`_count_npm_audit_issues` was fed `stdout + stderr`, and npm writes routine notices there
+(`npm warn …`), so a single warning turned valid `--json` output into unparseable text and the
+count silently became 0 — a clean bill of health for a repo with real advisories. Keep
+`result.stderr` for the human-readable `output`/`errors` fields.
+
+### Determinism
+
+When `MAX_FILES_PER_TOOL=500` truncation triggers, file lists must be `sorted(...)[:N]`. Locked in
+by `tests/test_static_analysis.py::test_truncation_is_deterministic`. `MAX_FILES_PER_TOOL`'s
+docstring documents this as a design guarantee.
+
+### Path filtering for prompt condensation matches whole components, from the right
+
+`_line_mentions_any_path` compares component tuples (`_path_components`) at component granularity;
+`_path_match_token` keeps the **whole** normalized path. A two-component `parent/basename` token
+cannot disambiguate same-named files under same-named parents — and `api/`, `utils/`, `models/`,
+`tests/` are precisely the directory names that repeat — so a finding in `other/api/views.py` was
+attributed to `app/api/views.py`. Boundary-aware substring matching fixes the
+`foo.py` ⊂ `foo.py.orig` shape but *not* this one: the information was already discarded when the
+token was built.
+
+Don't reintroduce a fixed-width token, and don't `lstrip("./")` (it eats a leading `.` from a real
+name and regresses `test_condense_for_prompt_filter_matches_across_path_forms`).
