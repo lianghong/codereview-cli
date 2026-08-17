@@ -54,8 +54,12 @@ Two traps when doing this:
    Changed in the CHANGELOG.
 
 `gemini-flash` followed the same move to `gemini-3.6-flash` (only an alias there, so no `id`
-rename was needed) when Google deprecated `gemini-3-flash-preview`. `sonnet` is the deliberate
-exception — it stayed on Sonnet 4.6 when Sonnet 5 shipped.
+rename was needed) when Google deprecated `gemini-3-flash-preview`, and again to
+`gemini-3.7-flash` on 2026-08-17. That second move shows the other half of the rule: 3.6 stayed
+live and **kept** its version-explicit `gemini-3-flash`/`gemini3-flash`/`g3flash` back-compat
+names, because a name that says "3" must not jump two generations to different pricing and
+capabilities. Only the generation-neutral name travels. `sonnet` is the deliberate exception — it
+stayed on Sonnet 4.6 when Sonnet 5 shipped.
 
 ## Removing a model must not break a `--model` invocation *silently*
 
@@ -113,7 +117,7 @@ misleading. Keep genuinely current alternative spellings in `aliases`.
 `tests/test_model_profile_drift.py`. Each LangChain partner package ships a `_MODEL_PROFILES`
 table in `<package>/data/_profiles.py`, read via the private
 `_get_default_model_profile(name)` — a plain dict lookup, so no credentials, no client, no
-network. 15 of 30 entries resolve one; the misses are re-hosts whose wire ids the tables don't
+network. 15 of 31 entries resolve one; the misses are re-hosts whose wire ids the tables don't
 carry (all of NVIDIA, Z.AI, `bedrock_openai`) plus anything newer than the installed package.
 
 **Neither side is authoritative**: the tables are generated from the community-curated

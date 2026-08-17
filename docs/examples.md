@@ -109,7 +109,10 @@ codereview ./src --model kimi-k2.6
 # Gemini 3.1 Pro - Most advanced reasoning, 1M context (Google GenAI)
 codereview ./src --model gemini-3.1-pro
 
-# Gemini 3.6 Flash - GA workhorse, thinking on by default (Google GenAI)
+# Gemini 3.7 Flash - latest Flash, complex coding + agentic (Google GenAI)
+codereview ./src --model gemini-3.7-flash
+
+# Gemini 3.6 Flash - previous GA workhorse, thinking on by default (Google GenAI)
 codereview ./src --model gemini-3.6-flash
 ```
 

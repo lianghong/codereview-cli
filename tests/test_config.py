@@ -839,20 +839,88 @@ def test_gemini36_flash_keeps_tool_use_path():
     assert config.supports_tool_use is True
 
 
-def test_generation_neutral_gemini_flash_alias_tracks_36():
-    """Every Gemini Flash alias must resolve to Gemini 3.6 Flash.
+def test_gemini37_flash_context_and_output_match_model_card():
+    """Gemini 3.7 Flash advertises a 1,048,576-token context and 64K output.
 
-    ``gemini-3-flash-preview`` is deprecated upstream with ``gemini-3.6-flash``
-    named as its replacement, so the generation-neutral alias moved there first;
-    the 2026-07-25 cleanup then removed the Gemini 3 Flash entry outright and
-    Gemini 3.6 Flash absorbed its version-explicit aliases too. Gemini 3.6 Flash
-    is the only Flash-tier entry now, so all of these resolve to it.
+    ``context_window`` is deliberately the conservative 1,000,000 rather than
+    the card's exact 1,048,576 (matching the 3.6 entry): under-stating the
+    window only makes batches smaller, while over-stating it overflows.
     """
     loader = ConfigLoader()
-    aliases = ("gemini-flash", "gemini-3-flash", "gemini3-flash", "g3flash")
-    for alias in aliases:
+    provider, config = loader.resolve_model("gemini-3.7-flash")
+    assert provider == "google_genai"
+    assert config.full_id == "gemini-3.7-flash"
+    assert config.context_window == 1_000_000
+    assert config.inference_params is not None
+    assert config.inference_params.max_output_tokens == 65536
+
+
+def test_gemini37_flash_keeps_tool_use_path():
+    """Gemini 3.7 Flash earned the tool-use path with a live run.
+
+    The assume-prompt-parsing rule says a new thinking model ships
+    ``supports_tool_use: false`` until a live run proves otherwise. Three runs
+    on 2026-08-17 each returned a valid ``CodeReviewReport`` with
+    ``parsing_error`` None *and* non-zero ``output_token_details.reasoning``,
+    i.e. tool-use held while the model was actually thinking. Don't flip this
+    to ``false`` without a reproduction.
+    """
+    loader = ConfigLoader()
+    _, config = loader.resolve_model("gemini-3.7-flash")
+    assert config.supports_tool_use is True
+
+
+def test_generation_neutral_gemini_flash_alias_tracks_the_newest_flash():
+    """``gemini-flash`` tracks the current Flash generation; the rest don't.
+
+    The generation-neutral name moved 3.6 -> 3.7 when 3.7 Flash shipped, per the
+    convention in ``docs/model-registry.md``. The version-explicit back-compat
+    names inherited from the removed Gemini 3 Flash Preview stay on 3.6, which
+    is still live: a name that says "3" must not resolve two generations
+    forward, since pricing and capabilities differ.
+    """
+    loader = ConfigLoader()
+
+    _, config = loader.resolve_model("gemini-flash")
+    assert config.id == "gemini-3.7-flash", (
+        f"gemini-flash resolved to {config.id!r} — the generation-neutral alias "
+        "must follow the newest Flash entry"
+    )
+
+    for alias in ("gemini-3-flash", "gemini3-flash", "g3flash"):
         _, config = loader.resolve_model(alias)
         assert config.id == "gemini-3.6-flash", f"{alias!r} resolved to {config.id!r}"
+
+
+def test_every_modern_gemini_entry_omits_sampling_params():
+    """Reflective guard: no Gemini entry from 3.6 onward may ship a sampler.
+
+    ``test_gemini36_flash_omits_sampling_params`` pins one entry; this one
+    fails when a *new* Gemini entry reintroduces ``default_temperature`` /
+    ``default_top_p`` / ``default_top_k``, which the API ignores today and
+    documents an HTTP 400 for on future generations. Gemini 3.1 Pro predates
+    the deprecation and keeps its sampling params, so the cutoff is 3.6.
+    """
+    loader = ConfigLoader()
+    models = loader.list_models().get("google_genai", [])
+    assert models, "no google_genai models configured"
+
+    checked = []
+    for config in models:
+        version = re.search(r"(\d+)\.(\d+)", config.id)
+        if version is None:
+            continue
+        if (int(version.group(1)), int(version.group(2))) < (3, 6):
+            continue
+        checked.append(config.id)
+        assert config.inference_params is not None, config.id
+        for param in ("temperature", "top_p", "top_k"):
+            assert getattr(config.inference_params, param) is None, (
+                f"{config.id} ships default_{param}: sampling params are "
+                "deprecated from Gemini 3.6 Flash onward — omit all three"
+            )
+
+    assert checked, "no Gemini entry at 3.6 or newer was checked"
 
 
 # ---------------------------------------------------------------------------

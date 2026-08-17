@@ -413,7 +413,12 @@ codereview ./src --model mistral-small
 codereview ./src --model gemini-3.1-pro
 ```
 
-**Gemini 3.6 Flash** - GA workhorse, 1M context, thinking on by default (Google GenAI; owns `gemini-flash` and the retired `gemini-3-flash` names):
+**Gemini 3.7 Flash** - latest Flash generation, complex coding and agentic workflows, 1M context, thinking at low/medium/high (Google GenAI; owns the generation-neutral `gemini-flash`):
+```bash
+codereview ./src --model gemini-3.7-flash
+```
+
+**Gemini 3.6 Flash** - previous GA workhorse, 1M context, thinking on by default (Google GenAI; keeps the retired `gemini-3-flash` names):
 ```bash
 codereview ./src --model gemini-3.6-flash
 ```
@@ -666,7 +671,8 @@ codereview ./src --model step-3.7-flash     # Step 3.7 Flash (256K, multimodal; 
 
 # Google Generative AI
 codereview ./src --model gemini-3.1-pro     # Gemini 3.1 Pro (1M context; supersedes retired 3 Pro)
-codereview ./src --model gemini-3.6-flash   # Gemini 3.6 Flash (GA workhorse, thinking on; owns `gemini-flash`/`gemini-3-flash`)
+codereview ./src --model gemini-3.7-flash   # Gemini 3.7 Flash (latest Flash, coding/agentic; owns `gemini-flash`)
+codereview ./src --model gemini-3.6-flash   # Gemini 3.6 Flash (previous GA workhorse; keeps `gemini-3-flash`)
 
 # DeepSeek direct API (paid, native tool calling)
 codereview ./src --model deepseek-v4-pro    # Flagship, 1M context
@@ -704,7 +710,8 @@ codereview ./src --model gpt5.5-bedrock     # GPT-5.5 on Bedrock (or `gpt-bedroc
 | **GLM-5.2** | NVIDIA NIM | Free tier, 753B MoE, 1M context, thinking (GLM-5.1/GLM-5 deprecated) | Free* |
 | **Kimi K2.6** | NVIDIA NIM | Free tier, 262K context (K2.5 retired 2026-05-20) | Free* |
 | **Gemini 3.1 Pro** | Google GenAI | Most advanced reasoning, 1M context (3 Pro retired 2026-03-09) | $2/M input, $12/M output |
-| **Gemini 3.6 Flash** | Google GenAI | GA workhorse, 1M context, 64K output, thinking on by default (owns `gemini-flash`/`gemini-3-flash`) | $1.50/M input, $7.50/M output |
+| **Gemini 3.7 Flash** | Google GenAI | Latest Flash: complex coding, agentic workflows, 1M context, 64K output, thinking low/medium/high (owns `gemini-flash`) | $1.50/M input, $7.50/M output |
+| **Gemini 3.6 Flash** | Google GenAI | Previous GA workhorse, 1M context, 64K output, thinking on by default (keeps `gemini-3-flash`) | $1.50/M input, $7.50/M output |
 | **DeepSeek-V4-Pro** | DeepSeek direct | 1M context, three reasoning modes, native tool calling | $1.74/M input, $3.48/M output |
 | **DeepSeek-V4-Flash** | DeepSeek direct | 1M context, cheapest paid option with tool calling | $0.14/M input, $0.28/M output |
 | **GLM-5.2** | Z.AI direct | Flagship, 1M-token context, long-horizon engineering, thinking mode (only Z.AI entry) | $1.40/M input, $4.40/M output |

@@ -195,7 +195,10 @@ generations. Omit all three (`default_temperature`/`default_top_p`/`default_top_
 `inference_params` for every new Gemini entry; the Google provider already passes
 `allow_none=True` to `_resolve_temperature` and drops `top_p`/`top_k` when unset, so no code
 change is needed. The older Gemini 3.1 Pro entry keeps theirs — that generation still honors
-them. Locked by `test_gemini36_flash_omits_sampling_params`.
+them. Locked by `test_gemini36_flash_omits_sampling_params` for that entry and by
+`test_every_modern_gemini_entry_omits_sampling_params`, which parses the version out of every
+`google_genai` entry's `id` and fails when a *new* one at ≥3.6 reintroduces a sampler — the pinned
+single-entry test can't catch that.
 
 ## Per-provider quirks
 

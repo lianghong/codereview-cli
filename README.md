@@ -8,12 +8,13 @@
 
 ## 🎉 What's New (Unreleased)
 
+- ✅ **Gemini 3.7 Flash (Google)** — latest Flash generation, built for complex coding and agentic workflows, 1M context, 64K output (`--model gemini-3.7-flash`, or the generation-neutral `gemini-flash`, which moved here from 3.6). Keeps the tool-use path: verified by a live run with thinking active
 - ✅ **3 new providers**: DeepSeek direct API (`deepseek-v4-pro`, `deepseek-v4-flash`), Z.AI (`zhipuai/glm-5.2`), Moonshot/Kimi (`kimi-k2.6`). 8 providers total now (incl. OpenAI-on-Bedrock).
 - ✅ **GPT-5.6 Sol (Bedrock)** — OpenAI's flagship and best coding model, on the OpenAI-compatible `bedrock-mantle` endpoint, 272K context, Responses API (`--model gpt5.6`)
 - ✅ **Grok 4.3 (Bedrock)** — xAI reasoning-first model on the new OpenAI-compatible `bedrock-mantle` endpoint, 1M context (`--model grok`)
 - ✅ **GLM-5.2 (NVIDIA + Z.AI)** — Zhipu flagship, 753B MoE, 1M context (`--model glm52` / `glm`); supersedes GLM-5.1 on both providers
 - ✅ **GPT-5.4 (Azure)** — frontier reasoning model, 1.05M context, default Azure model
-- ✅ **Registry cleanup (11 entries removed)** — every model probed against its live provider endpoint; superseded, region-unavailable, and dead entries dropped. 30 models remain.
+- ✅ **Registry cleanup (11 entries removed)** — every model probed against its live provider endpoint; superseded, region-unavailable, and dead entries dropped. 30 models remained, 31 with Gemini 3.7 Flash.
 - ⚠️ **Alias cleanup (40 aliases deleted)** — `--list-models` now advertises only current names. Version-explicit aliases of removed models (`opus4.6`, `glm51`, `mm25`, `kimi25`, `step35`, `gpt5.4-bedrock`, …) were **deleted**, not redirected: they now fail fast instead of silently resolving to a newer model with different pricing and behavior. Version-neutral names (`glm5`, `kimi-azure`, `gemini-3-flash`, …) still resolve and are listed under `--list-models --verbose`. See [Migrating deleted aliases](#migrating-deleted-aliases).
 - ✅ **`--fail-on <severity>`** — CI merge gate: exits 2 when issues at that severity or above are found, distinct from exit 1 (the run itself failed). Independent of `--severity`, and applied after the report is written
 - ✅ **New `Correctness` category** — logic errors, edge cases, error paths, race conditions, and resource leaks are no longer filed as "Code Quality" next to naming nits
@@ -243,9 +244,13 @@ export GOOGLE_API_KEY="your-api-key-here"
 # (Google shut down gemini-3-pro 2026-03-09; gemini-3-pro now routes here)
 codereview /path/to/code --model gemini-3.1-pro
 
-# Gemini 3.6 Flash - GA workhorse, thinking on by default (1M context)
-# (supersedes the deprecated gemini-3-flash-preview; gemini-flash, gemini-3-flash,
-#  gemini3-flash, and g3flash all resolve here)
+# Gemini 3.7 Flash - latest Flash generation, complex coding + agentic (1M context)
+# (owns the generation-neutral gemini-flash alias)
+codereview /path/to/code --model gemini-3.7-flash
+
+# Gemini 3.6 Flash - previous GA workhorse, thinking on by default (1M context)
+# (supersedes the deprecated gemini-3-flash-preview; gemini-3-flash,
+#  gemini3-flash, and g3flash still resolve here)
 codereview /path/to/code --model gemini-3.6-flash
 ```
 
@@ -412,7 +417,8 @@ codereview /path/to/code --model step-3.7-flash     # Step 3.7 Flash (256K, mult
 
 # Google Generative AI Models
 codereview /path/to/code --model gemini-3.1-pro     # Gemini 3.1 Pro (1M context)
-codereview /path/to/code --model gemini-3.6-flash   # Gemini 3.6 Flash (GA workhorse, thinking on; `gemini-flash`)
+codereview /path/to/code --model gemini-3.7-flash   # Gemini 3.7 Flash (latest Flash, coding/agentic; `gemini-flash`)
+codereview /path/to/code --model gemini-3.6-flash   # Gemini 3.6 Flash (previous GA workhorse, thinking on)
 
 # DeepSeek Direct API
 codereview /path/to/code --model deepseek-v4-pro    # Flagship, 1M context
@@ -460,7 +466,8 @@ codereview /path/to/code -m kimi
 | Kimi K2.6 | NVIDIA NIM | 262K context, thinking mode (supersedes retired K2.5) | Free* | Free* |
 | Step 3.7 Flash | NVIDIA NIM | 256K multimodal, reasoning levels (supersedes 3.5 Flash) | Free* | Free* |
 | Gemini 3.1 Pro | Google GenAI | Most advanced reasoning, 1M context (supersedes retired 3 Pro) | $2.00 | $12.00 |
-| Gemini 3.6 Flash | Google GenAI | GA workhorse, 1M context, 64K output, thinking on by default (owns `gemini-flash`; supersedes 3 Flash Preview) | $1.50 | $7.50 |
+| Gemini 3.7 Flash | Google GenAI | Latest Flash: complex coding, agentic workflows, 1M context, 64K output, thinking low/medium/high (owns `gemini-flash`) | $1.50 | $7.50 |
+| Gemini 3.6 Flash | Google GenAI | Previous GA workhorse, 1M context, 64K output, thinking on by default (keeps the `gemini-3-flash` back-compat names) | $1.50 | $7.50 |
 | **DeepSeek-V4-Pro** | **DeepSeek direct** | **1M context, three reasoning modes, tool calling** | **$1.74** | **$3.48** |
 | **DeepSeek-V4-Flash** | **DeepSeek direct** | **1M context, 12x cheaper input than V4-Pro** | **$0.14** | **$0.28** |
 | **GLM-5.2 (Z.AI)** | **Z.AI direct** | **Flagship, 1M-token context, long-horizon engineering, thinking mode (supersedes GLM-5.1 at the same price)** | **$1.40** | **$4.40** |
@@ -796,7 +803,7 @@ and a different structured-output path — is worse than an error you can read a
 | `dsv4pro`, `dsv4f` | `dsv4-pro`, `dsv4-flash` |
 | `dsv4-azure` | `deepseek-v4-pro` (the Azure deployment is gone) |
 | `g31pro`, `g3pro` | `gemini31-pro` (or `gemini-pro`) |
-| `g36flash` | `gemini36-flash` (or `gemini-flash`) |
+| `g36flash` | `gemini36-flash` (`gemini-flash` now resolves to 3.7 Flash) |
 | `mm35`, `mmed` | `mistral-medium` (or `mistral-medium-3.5`) |
 | `kimi-moonshot` | `kimi` |
 

@@ -10,6 +10,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 #### New Models
+- **Gemini 3.7 Flash (Google GenAI)** — latest and most capable Flash model,
+  built for complex coding, agentic workflows and reliable multi-step execution
+  (released August 2026)
+  - Model ID: `gemini-3.7-flash` (`full_id: gemini-3.7-flash`)
+  - Aliases: `gemini37-flash`, `gemini3.7-flash`, plus the generation-neutral
+    `gemini-flash` (moved off 3.6 Flash — see Changed)
+  - 1M-token context (card: 1,048,576; registered as the conservative
+    1,000,000, matching the 3.6 entry — under-stating only shrinks batches,
+    over-stating overflows), up to 64K output
+  - Pricing $1.50/$7.50 per M, the same standard rate as 3.6 Flash. Google is
+    running an introductory discount ($0.75/$3.75 through 2026-12-31,
+    reverting 2027-01-01); the **standard** rate is recorded, so estimates
+    over-state cost during the promo rather than under-stating it afterwards
+  - Thinking supported at low/medium/high; `minimal` is rejected with an error
+  - Sampling params omitted — `temperature`/`top_p`/`top_k` are deprecated for
+    every Gemini entry from 3.6 Flash onward
+  - **Keeps the tool-use path** (no `supports_tool_use` override), making it
+    the second exception to the assume-prompt-parsing rule. Earned the same
+    way 3.6 Flash did: the model card lists Structured outputs *and* Function
+    calling as Supported, and three live runs on 2026-08-17 each returned a
+    valid `CodeReviewReport` with `parsing_error` None — each reporting
+    non-zero `output_token_details.reasoning`, so tool-use held *while the
+    model was thinking*, which is the exact condition the rule guards against
 - **Claude Opus 5 (AWS Bedrock)** — Anthropic's most capable Opus model and
   first of the Claude 5 generation's Opus tier; **new CLI default model**
   (released 2026-07-24)
@@ -319,6 +342,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pin fails when a provider drops from "some coverage" to "none".
 
 ### Changed
+- **`gemini-flash` now resolves to Gemini 3.7 Flash** (was 3.6 Flash). The
+  generation-neutral alias tracks the current Flash generation, per the
+  registry convention. Gemini 3.6 Flash stays live and **keeps** its
+  version-explicit back-compat names — `gemini-3-flash`, `gemini3-flash` and
+  `g3flash` still resolve to 3.6, deliberately: a name that says "3" must not
+  jump two generations to different capabilities. Only the generation-neutral
+  name travels.
 - **The ruff rule set is now pinned in `pyproject.toml`** (`[tool.ruff.lint]
   select = ["E4", "E7", "E9", "F"]`) instead of inheriting ruff's defaults.
   Those defaults are not stable across releases — ruff 0.16.0 enables ~400

@@ -1014,16 +1014,64 @@ providers:
           2x reasoning over Gemini 3 Pro,
           Deep Think with 3 levels
 
+      # Gemini 3.7 Flash - latest Flash generation (August 2026)
+      # 1M token context, 64K output, thinking at low/medium/high
+      - id: gemini-3.7-flash
+        full_id: gemini-3.7-flash
+        name: Gemini 3.7 Flash
+        # Generation-neutral `gemini-flash` tracks the current Flash
+        # generation, so it moves here from gemini-3.6-flash. The
+        # version-explicit back-compat names (gemini-3-flash, gemini3-flash,
+        # g3flash) deliberately stay on 3.6, which is still live: a name that
+        # says "3" resolving two generations forward is the version-explicit
+        # trap (see docs/model-registry.md).
+        aliases:
+          - gemini-flash
+          - gemini37-flash
+          - gemini3.7-flash
+        pricing:
+          # Verified: ai.google.dev/gemini-api/docs/pricing (2026-08-17).
+          # Same standard rate as 3.6 Flash. Google is running an introductory
+          # discount - $0.75/$3.75 through 2026-12-31, reverting to
+          # $1.50/$7.50 on 2027-01-01 - and the standard rate is what's
+          # recorded, matching the 3.6 entry. Estimates therefore over-state
+          # cost during the promo rather than under-stating it after it ends.
+          input_per_million: 1.50
+          output_per_million: 7.50
+        inference_params:
+          # temperature/top_p/top_k stay omitted - deprecated from 3.6 Flash
+          # onward, see the gemini-3.6-flash entry below for the full reason.
+          max_output_tokens: 65536
+        context_window: 1000000
+        capabilities:
+          - code_review
+          - reasoning
+          - multimodal
+          - tool_use
+          - agentic_tasks
+          - computer_use
+          - thinking
+        notes: >-
+          Latest and most capable Flash model (August 2026), built for complex
+          coding, agentic workflows and reliable multi-step execution. 1M-token
+          context (1,048,576), up to 64K output. Thinking supported at low,
+          medium and high; "minimal" is rejected with an error. Sampling params
+          (temperature/top_p/top_k) are deprecated and omitted. Keeps the
+          tool-use path (no supports_tool_use override): the model card lists
+          Structured outputs and Function calling as Supported, and three live
+          runs on 2026-08-17 each returned a valid CodeReviewReport with
+          parsing_error None - each with output_token_details.reasoning > 0, so
+          thinking was active on the runs that succeeded, which is the
+          condition the assume-prompt-parsing rule exists for.
+
       # Gemini 3.6 Flash - GA workhorse model (July 2026)
       # 1M token context, 64K output, thinking on by default (level: medium)
       - id: gemini-3.6-flash
         full_id: gemini-3.6-flash
         name: Gemini 3.6 Flash
-        # Generation-neutral `gemini-flash` tracks the current Flash
-        # generation, and Google names gemini-3.6-flash as the recommended
-        # replacement for the deprecated gemini-3-flash-preview.
+        # Version-explicit spellings only: the generation-neutral
+        # `gemini-flash` moved to gemini-3.7-flash when that shipped.
         aliases:
-          - gemini-flash
           - gemini36-flash
           - gemini3.6-flash
         # Back-compat only: resolves, but hidden from --list-models
