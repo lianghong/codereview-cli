@@ -52,9 +52,9 @@ def test_model_aliases_exist():
     assert "opus" in MODEL_ALIASES
     assert "sonnet" in MODEL_ALIASES
     assert "haiku" in MODEL_ALIASES
-    assert "mistral-medium-nvidia" in MODEL_ALIASES
+    assert "minimax-m3-nvidia" in MODEL_ALIASES
     assert "kimi" in MODEL_ALIASES
-    assert "qwen" in MODEL_ALIASES
+    assert "glm" in MODEL_ALIASES
 
 
 def test_resolve_model_id_with_alias():
@@ -63,14 +63,16 @@ def test_resolve_model_id_with_alias():
     provider, model_config = loader.resolve_model("opus")
     assert model_config.full_id == "us.anthropic.claude-opus-5"
 
+    # `sonnet` moved from Sonnet 4.6 to Sonnet 5 when the 4.6 entry was removed
+    # (2026-08-29) — generation-neutral names track the current generation.
     provider, model_config = loader.resolve_model("sonnet")
-    assert model_config.full_id == "global.anthropic.claude-sonnet-4-6"
+    assert model_config.full_id == "us.anthropic.claude-sonnet-5"
 
     provider, model_config = loader.resolve_model("haiku")
     assert model_config.full_id == "global.anthropic.claude-haiku-4-5-20251001-v1:0"
 
-    provider, model_config = loader.resolve_model("qwen")
-    assert model_config.full_id == "qwen.qwen3-coder-next"
+    provider, model_config = loader.resolve_model("glm")
+    assert model_config.full_id == "glm-5.2"
 
 
 def test_resolve_model_id_case_insensitive():
@@ -80,7 +82,7 @@ def test_resolve_model_id_case_insensitive():
     provider1, model1 = loader.resolve_model("opus")
     provider2, model2 = loader.resolve_model("sonnet")
     assert model1.name == "Claude Opus 5"
-    assert model2.name == "Claude Sonnet 4.6"
+    assert model2.name == "Claude Sonnet 5"
 
 
 def test_resolve_model_id_with_full_id():
@@ -326,14 +328,59 @@ def test_real_registry_loads_without_any_conflict_warning(caplog):
 #   Kimi-K2.5 / DeepSeek-V4-Pro (Azure) — DeploymentNotFound on this resource
 #                                         (deployment_name, not full_id — see
 #                                         DEAD_AZURE_DEPLOYMENT_NAMES below)
+#   deepseek-ai/deepseek-v4-pro         — the undated *preview* ids. NIM
+#   deepseek-ai/deepseek-v4-flash         end-of-lifed both 2026-08-07 and now
+#                                         answers HTTP 410 Gone with an explicit
+#                                         end-of-life message (probed 2026-08-29).
+#                                         The dated GA ids `-0813` / `-0731` are
+#                                         live and the two NVIDIA entries were
+#                                         re-pointed onto them, keeping their
+#                                         generation-neutral ids and aliases.
+#                                         Listed here because an *undated* id
+#                                         reads like the current one and is the
+#                                         exact thing a copy-paste reintroduces.
+#
+# Re-audited 2026-08-29 against NIM's live catalog and a completion per entry.
+# Five entries were removed in that pass; unlike a "superseded" call these are
+# not judgement calls, because NIM answers HTTP 410 and states its own EOL date:
+#   mistralai/mistral-small-4-119b-2603 — EOL 2026-07-27; no Mistral remains on
+#                                         NIM, so every Mistral alias was deleted
+#   mistralai/mistral-medium-3.5-128b   — EOL 2026-08-07 (same)
+#   qwen/qwen3.5-397b-a17b              — EOL 2026-07-27; the catalog now returns
+#                                         zero `qwen/*` ids at all
+#   z-ai/glm-5.2                        — EOL 2026-08-21; zero `z-ai/*` ids left,
+#                                         closing out that lineage after glm5 and
+#                                         glm-5.1 above
+#   stepfun-ai/step-3.7-flash           — EOL 2026-08-28; zero `stepfun*` ids left
+#
+# A SECOND pass the same day removed nine more entries and deliberately added
+# NOTHING here, because every one of those endpoints answered when probed. That
+# distinction is the whole point of this set: it means "do not point at this wire
+# id again", not "we stopped shipping this model". The nine, all still live:
+#   us.anthropic.claude-opus-4-8, global.anthropic.claude-sonnet-4-6,
+#   moonshotai.kimi-k2.5, qwen.qwen3-coder-next, minimax.minimax-m2.5 (Bedrock,
+#   ListFoundationModels), gemini-3.6-flash (Google), openai.gpt-5.5 and
+#   xai.grok-4.3 (bedrock-mantle, HTTP 200), and moonshotai/kimi-k2.6 (listed by
+#   NIM's GET /v1/models; its HTTP 404 names the *account*, i.e. provisioning
+#   scope, not an EOL — contrast the 410-with-EOL-date entries above).
+# Note the near-collisions already in this set: `moonshotai/kimi-k2.5` and
+# `minimaxai/minimax-m2.5` are the NVIDIA re-hosts (slash), which really are
+# dead; their Bedrock namesakes use a dot and must stay out.
 DEAD_UPSTREAM_FULL_IDS = {
     "minimaxai/minimax-m2.5",
     "moonshotai/kimi-k2.5",
     "z-ai/glm5",
     "z-ai/glm-5.1",
+    "z-ai/glm-5.2",
     "gemini-3-pro-preview",
     "qwen/qwen3-coder-480b-a35b-instruct",
     "qwen.qwen3-coder-480b-a35b-v1:0",
+    "qwen/qwen3.5-397b-a17b",
+    "deepseek-ai/deepseek-v4-pro",
+    "deepseek-ai/deepseek-v4-flash",
+    "mistralai/mistral-small-4-119b-2603",
+    "mistralai/mistral-medium-3.5-128b",
+    "stepfun-ai/step-3.7-flash",
 }
 
 # Azure entries are addressed by deployment_name, not full_id, and only work if
@@ -391,31 +438,49 @@ def test_retired_model_aliases_redirect_to_live_successors():
         "kimi25-azure": "kimi-k2.6",
         "deepseek-v4-azure": "deepseek-v4-pro",
         "ds-v4-azure": "deepseek-v4-pro",
-        # NVIDIA deprecated the z-ai/glm5 free endpoint; glm-5.2 is the live
-        # GLM on NIM. (`glm5`/`glm-5` predate GLM-5.1 and stay redirected; the
-        # GLM-5.1-specific names were deleted — see the counterpart guard.)
-        "glm5": "z-ai/glm-5.2",
-        "glm-5": "z-ai/glm-5.2",
-        "glm5-nvidia": "z-ai/glm-5.2",
+        # GLM-on-NVIDIA is entirely gone (glm5 deprecated 2026-04-20, glm-5.1
+        # ~2026-07, glm-5.2 EOL 2026-08-21 — NIM serves no `z-ai/*` id now), so
+        # 2026-08-29 moved these onto Bedrock's `zai.glm-5`. That is the model
+        # they actually name: the spellings say GLM *5*. The NVIDIA-suffixed
+        # `glm5-nvidia` was deleted instead — see the counterpart guard.
+        "glm5": "zai.glm-5",
+        "glm-5": "zai.glm-5",
         # GLM-on-Z.AI: 5.1 removed in favour of 5.2 (same price, 1M context).
         "zai-glm": "glm-5.2",
         "glm-zai": "glm-5.2",
         # Gemini: 3 Pro shut down 2026-03-09; 3 Flash Preview deprecated in
-        # favour of the GA Gemini 3.6 Flash.
+        # favour of the GA Gemini 3.6 Flash, which was itself removed 2026-08-29
+        # — so the generation-3 Flash names moved on again, to 3.7 Flash. They
+        # stay in this map because 3.7 IS a generation-3 Flash at the same
+        # $1.50/$7.50, same 1M context and same 64K output; the *minor*-version
+        # spellings (gemini36-flash, gemini3.6-flash) were deleted instead.
         "gemini-3-pro": "gemini-3.1-pro-preview",
         "gemini3-pro": "gemini-3.1-pro-preview",
-        "gemini-3-flash": "gemini-3.6-flash",
-        "gemini3-flash": "gemini-3.6-flash",
-        "g3flash": "gemini-3.6-flash",
-        # Qwen: the 480B NIM endpoint is gone; on Bedrock the 480B model is
-        # us-west-2-only, so Qwen3 Coder Next is the only reachable Qwen there.
-        "qwen-nvidia": "qwen/qwen3.5-397b-a17b",
-        "qwen3-nvidia": "qwen/qwen3.5-397b-a17b",
-        "qwen-coder-nvidia": "qwen/qwen3.5-397b-a17b",
-        "qwen-bedrock": "qwen.qwen3-coder-next",
-        # Step: 3.5 Flash superseded by 3.7 Flash on NIM. The generation-neutral
-        # name redirects; step35 / step-3.5-flash were deleted.
-        "step-flash": "stepfun-ai/step-3.7-flash",
+        "gemini-3-flash": "gemini-3.7-flash",
+        "gemini3-flash": "gemini-3.7-flash",
+        "g3flash": "gemini-3.7-flash",
+        # ---- 2026-08-29 curation pass (nine live entries removed) ----
+        # Claude Sonnet 4.6 removed in favour of Sonnet 5 (same $3/$15, 5x the
+        # context). `sonnet` was the removed entry's *id* and names the tier, not
+        # a version, so it moves up — and as a plain `alias`, not a deprecated
+        # one, because sonnet5 genuinely is the current Sonnet.
+        "sonnet": "us.anthropic.claude-sonnet-5",
+        "claude-sonnet": "us.anthropic.claude-sonnet-5",
+        # Kimi K2.5 on *Bedrock* removed; the Moonshot direct API is the family's
+        # canonical owner and ships the newer K2.6 at a lower output price, so
+        # this is the same move `kimi-azure` made. Crosses a provider boundary,
+        # hence deprecated rather than advertised.
+        "kimi-bedrock": "kimi-k2.6",
+        # GPT-5.5 on Bedrock removed; GPT-5.6 Sol is the only OpenAI entry left
+        # on bedrock-mantle. `gpt-bedrock` names "the GPT on Bedrock", which Sol
+        # now is — but following it forward DOUBLES the rate ($2.50/$15 ->
+        # $5/$30), which is why it stays a deprecated_alias.
+        "gpt-bedrock": "openai.gpt-5.6-sol",
+        # Deliberately NOT in this map, though the convention's default would put
+        # them here: every `qwen*` and `grok*` spelling. Both families left the
+        # registry entirely in the same pass, so there is no successor that is
+        # honestly the same thing — see the counterpart guard.
+        #
         # A removed entry's *id* is a --model spelling too, not just its
         # aliases — these were ids of removed entries and are easy to forget.
         "deepseek-v4-pro-azure": "deepseek-v4-pro",
@@ -428,11 +493,17 @@ def test_retired_model_aliases_redirect_to_live_successors():
         )
 
 
-# Identifiers that once shipped and were deliberately DELETED in the 2026-07-25
-# alias cleanup rather than redirected onto a successor. Each states a specific
-# model version or is a redundant short form; resolving them to a newer
+# Identifiers that once shipped and were deliberately DELETED — in the
+# 2026-07-25 alias cleanup, the 2026-08-29 dead-endpoint pass, or the 2026-08-29
+# curation pass — rather than redirected onto a successor. Each either states a
+# specific model version, names a vendor/provider that no longer appears in the
+# registry at all, or is a redundant short form. Resolving any of them to a newer
 # generation would silently change pricing, sampling-param support and the
 # structured-output path, so failing fast is the correct behavior.
+#
+# Whether the endpoint is still alive upstream does NOT enter into it: the
+# 2026-08-29 curation group below is nine live endpoints, and their names are
+# deleted on exactly the same rule as the ones NVIDIA end-of-lifed.
 #
 # This is the allowlist for test_no_historical_model_id_is_orphaned — anything
 # NOT listed here must still resolve.
@@ -466,11 +537,119 @@ RETIRED_ALIASES_DELETED_NOT_REDIRECTED = frozenset(
         "glm5.1",
         "glm5.1-zai",
         "zhipuai/glm-5.1",
-        # Step 3.5 Flash — superseded; step-flash still redirects.
+        # ---- 2026-08-29 removal pass: five NIM endpoints answering HTTP 410 ----
+        # GLM-5.2 on NVIDIA (EOL 2026-08-21). `glm5`/`glm-5` migrated to
+        # `glm5-bedrock`; every NVIDIA-suffixed spelling died with the endpoint,
+        # since NIM now serves no GLM at all.
+        "glm52",
+        "glm52-nvidia",
+        "glm5.2-nvidia",
+        "glm-5.2-nvidia",
+        "glm5-nvidia",
+        # Step 3.5 Flash (superseded 2026-07-25) and Step 3.7 Flash (EOL
+        # 2026-08-28). `step-flash`/`step-nvidia` are version-neutral and would
+        # normally migrate, but no Step model remains in the registry to carry
+        # them, so the whole family fails fast.
         "step35",
         "step-3.5-flash",
-        # GPT-5.4 on Bedrock — gpt-bedrock still redirects.
+        "step-3.7-flash",
+        "step-3.7",
+        "step37",
+        "step37-nvidia",
+        "step-flash",
+        "step-nvidia",
+        # Qwen3.5 on NVIDIA (EOL 2026-07-27); NIM serves no `qwen/*` id now. The
+        # version-neutral `qwen-nvidia`/`qwen3-nvidia`/`qwen-coder-nvidia` are
+        # deleted *on purpose* rather than migrated: the only live Qwen here is
+        # `qwen-next-bedrock`, and a `-nvidia` name resolving to Bedrock would
+        # move the user from a free endpoint to a billed one on another provider.
+        "qwen3.5-nvidia",
+        "qwen3.5",
+        "qwen35",
+        "qwen35-nvidia",
+        "qwen-nvidia",
+        "qwen3-nvidia",
+        "qwen-coder-nvidia",
+        # Mistral Small 4 (EOL 2026-07-27) and Mistral Medium 3.5 (EOL
+        # 2026-08-07). NIM carries no Mistral successor, so no Mistral model
+        # remains in this registry and a Mistral name has nothing honest to
+        # resolve to.
+        "mistral-small-nvidia",
+        "mistral-small",
+        "mistral-small-4",
+        "ms4",
+        "mistral-medium-nvidia",
+        "mistral-medium",
+        "mistral-medium-3.5",
+        # GPT-5.4 on Bedrock — gpt-bedrock still redirects (now to GPT-5.6 Sol).
         "gpt5.4-bedrock",
+        # ---- 2026-08-29 curation pass: nine LIVE entries removed ----
+        # Unlike every group above, nothing here died upstream. These endpoints
+        # all still answer; the entries were cut because a surviving entry
+        # covered the same ground. The alias rule does not change for that
+        # reason: a name that pins a version still must not answer from a
+        # different one. See the models.yaml removal notes for the per-entry
+        # evidence, and DEAD_UPSTREAM_FULL_IDS for why none of their wire ids
+        # were blacklisted.
+        #
+        # Opus 4.8 — superseded by opus5 at identical $5/$25, context and output.
+        # `opus`/`claude-opus` were already on opus5, so nothing migrated.
+        "opus4.8",
+        "opus-4.8",
+        "claude-opus-4.8",
+        "claude-opus-48",
+        # Sonnet 4.6 — `sonnet`/`claude-sonnet` migrated to sonnet5 (see the
+        # redirect map); only the version-explicit pair dies. Worth knowing what
+        # `--model sonnet4.6` used to buy that sonnet5 does not: temperature
+        # support and the tool-use structured-output path.
+        "sonnet4.6",
+        "claude-sonnet-4.6",
+        # Kimi K2.5 on Bedrock — `kimi-bedrock` migrated to Moonshot-direct K2.6.
+        "kimi-k2.5-bedrock",
+        "kimi25-bedrock",
+        # Kimi K2.6 on NVIDIA — the surviving NIM Kimi is K3, a different
+        # generation, so these do not follow it. Use `kimi-nvidia-3` or `kimi`.
+        "kimi-k2.6-nvidia",
+        "kimi-nvidia-26",
+        "kimi26-nvidia",
+        # Qwen3 Coder Next on Bedrock — the LAST Qwen anywhere in the registry,
+        # so even the version-neutral `qwen`/`qwen-coder` are deleted rather than
+        # migrated (nothing Qwen-shaped remains to migrate onto). `qwen-bedrock`
+        # moves here from the redirect map for the same reason. This also removed
+        # the cheapest Bedrock entry ($0.50/$1.20) and one of only three
+        # tool-use-path Bedrock entries.
+        "qwen-next-bedrock",
+        "qwen-bedrock",
+        "qwen-next",
+        "qwen3-next",
+        "qwen-coder-next",
+        "qwen",
+        "qwen-coder",
+        # MiniMax M2.5 on Bedrock — superseded within the registry by
+        # `minimax-m3` on NIM. Pointing a `-bedrock` name at NVIDIA would cross a
+        # provider *and* a billing boundary while claiming to be Bedrock, so it
+        # joins the already-deleted mm25/mm2.7 names above.
+        "minimax-m2.5-bedrock",
+        "mm2.5-bedrock",
+        # Gemini 3.6 Flash — 3.7 Flash is identical on price, context and output,
+        # so the generation-3 names migrated (see the redirect map); these pin the
+        # minor version and do not.
+        "gemini-3.6-flash",
+        "gemini36-flash",
+        "gemini3.6-flash",
+        # GPT-5.5 on Bedrock — `gpt-bedrock` migrated to GPT-5.6 Sol.
+        "gpt5.5-bedrock",
+        # Grok 4.3 on Bedrock — xAI leaves the registry entirely, so even
+        # `grok`/`grok-bedrock` are deleted: resolving a Grok name to an OpenAI
+        # model would be a vendor swap, not a version bump. Costliest removal of
+        # the pass — it was bedrock_openai's cheapest entry ($1.25/$2.50 vs
+        # $5/$30), its widest context (1M vs 272K), and its only entry accepting
+        # temperature/top_p.
+        "grok-4.3-bedrock",
+        "grok",
+        "grok-4.3",
+        "grok43",
+        "grok-bedrock",
         # Redundant/cryptic short forms of live models, dropped as noise.
         "gpt54p",
         "glm5b",
@@ -735,11 +914,79 @@ def test_every_pricing_and_inference_key_in_the_yaml_is_actually_read():
     )
 
 
+def test_every_provider_default_in_the_defaults_block_names_a_live_model():
+    """The doc-only ``defaults:`` block still has to name models that exist.
+
+    CLAUDE.md documents this block as informational — nothing in the code reads
+    it, and the CLI's real default ``--model`` is hardcoded to ``opus5``. That is
+    exactly why it rots unnoticed: ``nvidia_default`` sat on
+    ``mistral-medium-nvidia`` after the 2026-08-29 removal pass deleted that
+    entry, and no test, no loader path and no CLI surface objected. A reader
+    reaching for "the recommended NVIDIA model" would have been handed a name
+    that fails to resolve.
+
+    Unread configuration that *looks* authoritative is the same hazard as the
+    sixteen inert pricing keys, minus the loader — so pin it here instead of
+    deleting the block. Also asserts the named model actually belongs to the
+    provider in the key, since ``<provider>_default`` claims both.
+
+    The key prefix must *equal* a provider name, bar the one documented
+    shorthand below. Prefix matching would be the obvious shortcut and is wrong
+    here: ``bedrock`` is a prefix of ``bedrock_openai``, so ``bedrock_default``
+    could name a ``bedrock-mantle`` model and still pass, which is the exact
+    provider confusion CLAUDE.md warns about.
+    """
+    key_provider_aliases = {"azure": "azure_openai"}
+
+    repo_root = Path(__file__).resolve().parent.parent
+    doc = yaml.safe_load(
+        (repo_root / "codereview" / "config" / "models.yaml").read_text()
+    )
+    configured_providers = set(doc.get("providers") or {})
+    stale_aliases = set(key_provider_aliases.values()) - configured_providers
+    assert not stale_aliases, (
+        f"key_provider_aliases points at providers models.yaml no longer "
+        f"defines: {sorted(stale_aliases)}"
+    )
+
+    defaults = doc.get("defaults") or {}
+    provider_defaults = {
+        key: value
+        for key, value in defaults.items()
+        if key.endswith("_default") and isinstance(value, str)
+    }
+    assert provider_defaults, (
+        "no <provider>_default keys found in the defaults block — it was "
+        "renamed or removed and this test is now vacuous"
+    )
+
+    loader = ConfigLoader()
+    broken: list[str] = []
+    for key, name in sorted(provider_defaults.items()):
+        prefix = key.removesuffix("_default")
+        expected_provider = key_provider_aliases.get(prefix, prefix)
+        try:
+            provider, config = loader.resolve_model(name)
+        except ValueError:
+            broken.append(f"{key}: {name!r} does not resolve to any model")
+            continue
+        if provider != expected_provider:
+            broken.append(
+                f"{key}: {name!r} resolves to the {provider!r} provider "
+                f"(entry {config.id!r}), not {expected_provider!r}"
+            )
+
+    assert not broken, (
+        "the defaults block in models.yaml names models that no longer exist "
+        "or belong to another provider:\n  " + "\n  ".join(broken)
+    )
+
+
 def test_adaptive_thinking_claude_models_disable_tool_use():
     """Adaptive-thinking Claude models must NOT use tool-based structured output.
 
-    Opus 4.7/4.8 only support ``thinking.type: "adaptive"`` and engage thinking
-    server-side per request; Opus 5 goes further and has thinking on by
+    Opus 4.7/4.8 only supported ``thinking.type: "adaptive"`` and engaged
+    thinking server-side per request; Opus 5 goes further and has thinking on by
     default. ``with_structured_output()`` sets a forced ``tool_choice``, and on
     the batches where these models think, the tool call comes back as markup
     *text* — failing CodeReviewReport validation with a list_type error on
@@ -757,9 +1004,14 @@ def test_adaptive_thinking_claude_models_disable_tool_use():
     not established.
     Opus 5 has independent confirmation: its Bedrock model card lists
     "Structured outputs: Not Supported" on bedrock-runtime and bedrock-mantle.
+
+    ``opus4.8`` is no longer in this list because that entry was removed
+    2026-08-29 (superseded by opus5 at identical pricing) — the *evidence* it
+    produced still underpins the flag on every entry here, which is why the
+    reproduction is written down rather than just cited.
     """
     loader = ConfigLoader()
-    for alias in ("opus5", "opus4.8", "sonnet5", "fable5"):
+    for alias in ("opus5", "sonnet5", "fable5"):
         _, config = loader.resolve_model(alias)
         assert config.supports_tool_use is False, (
             f"{alias} is an adaptive-thinking model and must set "
@@ -801,50 +1053,114 @@ def test_glm52_zai_disables_tool_use():
         assert config.context_window == 1048576
 
 
-def test_gemini36_flash_context_and_output_match_model_card():
-    """Gemini 3.6 Flash advertises a 1M-token context and up to 64K output."""
-    loader = ConfigLoader()
-    provider, config = loader.resolve_model("gemini-3.6-flash")
-    assert provider == "google_genai"
-    assert config.full_id == "gemini-3.6-flash"
-    assert config.context_window == 1_000_000
-    assert config.inference_params is not None
-    assert config.inference_params.max_output_tokens == 65536
+def test_kimi_k3_nvidia_matches_the_model_card():
+    """Kimi K3 on NIM: card figures, and no thinking knob that does nothing.
 
+    The card's Output properties say *"Thinking is always enabled"* and expose
+    effort levels (low/high/max) rather than an on/off switch, so this entry
+    must not ship ``thinking`` / ``enable_thinking`` / ``clear_thinking``:
+    ``NVIDIAProvider._create_model`` would forward them as
+    ``chat_template_kwargs`` where they cannot change anything, which is the
+    ConfigLoader "key that looks like configuration but affects nothing"
+    hazard in CLAUDE.md.
 
-def test_gemini36_flash_omits_sampling_params():
-    """Gemini 3.6 Flash onward, temperature/top_p/top_k are deprecated.
-
-    Google's API ignores all three today and documents an HTTP 400 for future
-    model generations. The Google provider passes ``allow_none=True`` to
-    ``_resolve_temperature`` and drops ``top_p``/``top_k`` when unset, so
-    omitting ``default_temperature``/``default_top_p``/``default_top_k`` from
-    the YAML (loaded into ``temperature``/``top_p``/``top_k``) is what keeps
-    them off the wire. Applies to every Gemini entry added from 3.6 onward.
+    ``reasoning_effort`` is likewise absent: ``InferenceParams`` only permits
+    ``none``/``low``/``medium``/``high`` while the card names ``max``, and NIM's
+    free tier rate-limited every attempt to verify the wire spelling — an
+    unverified knob is worse than the endpoint default.
     """
     loader = ConfigLoader()
-    _, config = loader.resolve_model("gemini-3.6-flash")
+    provider, config = loader.resolve_model("kimi-k3-nvidia")
+    assert provider == "nvidia"
+    assert config.full_id == "moonshotai/kimi-k3"
+    # Input Context Length (ISL) from the card, exact rather than rounded.
+    assert config.context_window == 1048576
     assert config.inference_params is not None
-    assert config.inference_params.temperature is None
-    assert config.inference_params.top_p is None
-    assert config.inference_params.top_k is None
+    assert config.inference_params.temperature == 1.0
+    assert config.inference_params.top_p == 0.95
+    assert config.inference_params.max_output_tokens == 32768
+    for knob in ("thinking", "enable_thinking", "clear_thinking", "reasoning_effort"):
+        assert getattr(config.inference_params, knob) is None, (
+            f"kimi-k3-nvidia sets {knob}: K3's thinking is always on with no "
+            "off switch, so this forwards a parameter that changes nothing"
+        )
 
 
-def test_gemini36_flash_keeps_tool_use_path():
-    """Gemini 3.6 Flash documents structured outputs and function calling, and
-    a live review run confirmed the tool-use path works — so it must not be
-    opted into prompt-based JSON parsing."""
+def test_kimi_k3_nvidia_disables_tool_use():
+    """Kimi K3 must use prompt-based JSON parsing, via every advertised name.
+
+    Thinking is always enabled and cannot be disabled — the *constant* form of
+    the forced-``tool_choice``-while-thinking failure (like Fable 5 and Grok
+    4.3), not the intermittent form. Tool-use is unproven on this endpoint, so
+    the assume-prompt-parsing rule applies; both K2.6 entries (NIM and
+    Moonshot-direct) are prompt-path for the same reason. Flip to ``true`` only
+    with a live review run that shows ``parsing_error`` None while the model
+    actually reasoned.
+    """
     loader = ConfigLoader()
-    _, config = loader.resolve_model("gemini-3.6-flash")
-    assert config.supports_tool_use is True
+    for name in ("kimi-k3-nvidia", "kimi-nvidia-3", "kimi3-nvidia"):
+        provider, config = loader.resolve_model(name)
+        assert provider == "nvidia", f"{name} should route to the nvidia provider"
+        assert config.id == "kimi-k3-nvidia"
+        assert config.supports_tool_use is False, (
+            f"{name} (Kimi K3) must set supports_tool_use: false — thinking is "
+            "always on and forced tool_choice is unproven on this endpoint"
+        )
+
+
+def test_bare_kimi_k3_names_stay_reserved_for_the_direct_provider():
+    """The NIM re-host must not squat the canonical ``kimi-k3`` spellings.
+
+    Per ``docs/model-registry.md``, a vendor's direct API owns the bare aliases
+    and a re-host keeps provider-suffixed ones — which is why the K2.6 re-host
+    is ``kimi-nvidia-26``, not ``kimi-k2.6``. Moonshot direct ships K2.6 today;
+    when it gains K3 the bare names must be free for it, otherwise ``--model
+    kimi-k3`` would silently keep pointing at the free NIM trial endpoint.
+    """
+    loader = ConfigLoader()
+    for name in ("kimi-k3", "kimi3", "k3"):
+        with pytest.raises(ValueError):
+            loader.resolve_model(name)
+
+
+def test_deepseek_v4_nvidia_entries_name_the_dated_ga_endpoints():
+    """Both NVIDIA DeepSeek-V4 entries must target the dated GA ids.
+
+    The undated preview ids (``deepseek-ai/deepseek-v4-pro`` /
+    ``-v4-flash``) were end-of-lifed 2026-08-07 and return HTTP 410 Gone;
+    ``DEAD_UPSTREAM_FULL_IDS`` guards against reintroducing them. This is the
+    positive half: the entries keep their generation-neutral ids and aliases
+    (the successors are drop-in), so only ``full_id`` moved, and a future
+    dated release must move it again rather than adding a parallel entry.
+    """
+    loader = ConfigLoader()
+    expected = {
+        "deepseek-v4-pro-nvidia": "deepseek-ai/deepseek-v4-pro-0813",
+        "deepseek-v4-flash-nvidia": "deepseek-ai/deepseek-v4-flash-0731",
+    }
+    for model_id, full_id in expected.items():
+        provider, config = loader.resolve_model(model_id)
+        assert provider == "nvidia"
+        assert config.full_id == full_id, (
+            f"{model_id} points at {config.full_id!r}; the live NIM catalog "
+            f"serves {full_id!r}"
+        )
+
+    # The aliases carried over — a scripted `--model dsv4-nvidia` still works.
+    for alias in ("dsv4-nvidia", "ds-v4-nvidia", "deepseek-v4-nvidia"):
+        _, config = loader.resolve_model(alias)
+        assert config.full_id == "deepseek-ai/deepseek-v4-pro-0813"
+    for alias in ("dsv4-flash-nvidia", "ds-v4-flash-nvidia"):
+        _, config = loader.resolve_model(alias)
+        assert config.full_id == "deepseek-ai/deepseek-v4-flash-0731"
 
 
 def test_gemini37_flash_context_and_output_match_model_card():
     """Gemini 3.7 Flash advertises a 1,048,576-token context and 64K output.
 
     ``context_window`` is deliberately the conservative 1,000,000 rather than
-    the card's exact 1,048,576 (matching the 3.6 entry): under-stating the
-    window only makes batches smaller, while over-stating it overflows.
+    the card's exact 1,048,576 (as the removed 3.6 entry also was): under-stating
+    the window only makes batches smaller, while over-stating it overflows.
     """
     loader = ConfigLoader()
     provider, config = loader.resolve_model("gemini-3.7-flash")
@@ -853,6 +1169,29 @@ def test_gemini37_flash_context_and_output_match_model_card():
     assert config.context_window == 1_000_000
     assert config.inference_params is not None
     assert config.inference_params.max_output_tokens == 65536
+
+
+def test_gemini37_flash_omits_sampling_params():
+    """From Gemini 3.6 Flash onward, temperature/top_p/top_k are deprecated.
+
+    Google's API ignores all three today and documents an HTTP 400 for future
+    model generations. The Google provider passes ``allow_none=True`` to
+    ``_resolve_temperature`` and drops ``top_p``/``top_k`` when unset, so
+    omitting ``default_temperature``/``default_top_p``/``default_top_k`` from
+    the YAML (loaded into ``temperature``/``top_p``/``top_k``) is what keeps
+    them off the wire.
+
+    This pinned 3.6 Flash until that entry was removed 2026-08-29; 3.7 Flash is
+    now the oldest Gemini entry the rule covers. The cutoff itself is still 3.6 —
+    see ``test_every_modern_gemini_entry_omits_sampling_params``, which is what
+    catches the *next* entry.
+    """
+    loader = ConfigLoader()
+    _, config = loader.resolve_model("gemini-3.7-flash")
+    assert config.inference_params is not None
+    assert config.inference_params.temperature is None
+    assert config.inference_params.top_p is None
+    assert config.inference_params.top_k is None
 
 
 def test_gemini37_flash_keeps_tool_use_path():
@@ -871,35 +1210,44 @@ def test_gemini37_flash_keeps_tool_use_path():
 
 
 def test_generation_neutral_gemini_flash_alias_tracks_the_newest_flash():
-    """``gemini-flash`` tracks the current Flash generation; the rest don't.
+    """``gemini-flash`` tracks the current Flash generation; a minor version can't.
 
     The generation-neutral name moved 3.6 -> 3.7 when 3.7 Flash shipped, per the
-    convention in ``docs/model-registry.md``. The version-explicit back-compat
-    names inherited from the removed Gemini 3 Flash Preview stay on 3.6, which
-    is still live: a name that says "3" must not resolve two generations
-    forward, since pricing and capabilities differ.
+    convention in ``docs/model-registry.md``. When the 3.6 entry itself was
+    removed (2026-08-29) the split held but the sides changed:
+
+    * ``gemini-3-flash``/``gemini3-flash``/``g3flash`` say generation *3*, and
+      3.7 Flash is a generation-3 Flash at the same $1.50/$7.50, same 1M context
+      and same 64K output — so they follow, as ``deprecated_aliases``.
+    * ``gemini36-flash``/``gemini3.6-flash`` pin the *minor* version and were
+      deleted instead, so they raise (``test_deleted_aliases_do_not_resolve``).
+
+    That is the line the convention draws: a name may follow the model it names,
+    never a version it doesn't.
     """
     loader = ConfigLoader()
 
-    _, config = loader.resolve_model("gemini-flash")
-    assert config.id == "gemini-3.7-flash", (
-        f"gemini-flash resolved to {config.id!r} — the generation-neutral alias "
-        "must follow the newest Flash entry"
-    )
-
-    for alias in ("gemini-3-flash", "gemini3-flash", "g3flash"):
+    for alias in ("gemini-flash", "gemini-3-flash", "gemini3-flash", "g3flash"):
         _, config = loader.resolve_model(alias)
-        assert config.id == "gemini-3.6-flash", f"{alias!r} resolved to {config.id!r}"
+        assert config.id == "gemini-3.7-flash", (
+            f"{alias!r} resolved to {config.id!r} — it must follow the newest "
+            "Flash entry"
+        )
+
+    for deleted in ("gemini36-flash", "gemini3.6-flash", "gemini-3.6-flash"):
+        with pytest.raises(ValueError, match="Unknown model"):
+            loader.resolve_model(deleted)
 
 
 def test_every_modern_gemini_entry_omits_sampling_params():
     """Reflective guard: no Gemini entry from 3.6 onward may ship a sampler.
 
-    ``test_gemini36_flash_omits_sampling_params`` pins one entry; this one
+    ``test_gemini37_flash_omits_sampling_params`` pins one entry; this one
     fails when a *new* Gemini entry reintroduces ``default_temperature`` /
     ``default_top_p`` / ``default_top_k``, which the API ignores today and
     documents an HTTP 400 for on future generations. Gemini 3.1 Pro predates
-    the deprecation and keeps its sampling params, so the cutoff is 3.6.
+    the deprecation and keeps its sampling params, so the cutoff stays 3.6 even
+    though no 3.6 entry is registered any more.
     """
     loader = ConfigLoader()
     models = loader.list_models().get("google_genai", [])

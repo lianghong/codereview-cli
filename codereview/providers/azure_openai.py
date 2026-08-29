@@ -137,8 +137,8 @@ class AzureOpenAIProvider(TokenTrackingMixin, ModelProvider):
         # Some Azure-hosted models (e.g. DeepSeek-V4-Pro on Foundry) don't
         # support tool calling, which `with_structured_output` relies on.
         # For those, return the raw chat model and parse JSON via prompt
-        # instructions in `_create_chain` — same pattern as Bedrock's
-        # DeepSeek-R1 / MiniMax M2.5 path.
+        # instructions in `_create_chain` — same pattern as Bedrock's Claude
+        # reasoning tiers and GLM 5.
         # Tool-use vs prompt-parsing routing (and _create_chain) live in the
         # base class; supports_tool_use in models.yaml decides the path.
         return self._apply_structured_output(base_model)

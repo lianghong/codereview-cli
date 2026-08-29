@@ -77,12 +77,16 @@ class CodeAnalyzer:
         Returns:
             New short model name
         """
-        # Map common legacy IDs to new names
+        # Map common legacy IDs to new names. A row may only name an alias that
+        # still resolves: the Qwen row (`qwen.qwen3-coder-480b-a35b-v1:0` ->
+        # "qwen") was dropped when the 2026-08-29 curation pass removed the last
+        # Qwen entry, because mapping to a dead alias replaces the wire id the
+        # caller actually passed with a short name they never typed, and the
+        # ValueError then names neither. Unmapped ids fall through unchanged.
         legacy_mappings = {
             "global.anthropic.claude-opus-4-6-v1": "opus",
             "global.anthropic.claude-sonnet-4-6": "sonnet",
             "global.anthropic.claude-haiku-4-5-20251001-v1:0": "haiku",
-            "qwen.qwen3-coder-480b-a35b-v1:0": "qwen",
         }
 
         return legacy_mappings.get(model_id, model_id)

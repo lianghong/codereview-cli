@@ -59,11 +59,9 @@ _ALLOWED_DIVERGENCES: dict[tuple[str, str, str], str] = {
     # adaptive thinking.
     ("bedrock", "sonnet5", "structured_output"): (
         "first Sonnet tier with adaptive thinking on by default — inherits the "
-        "Opus 4.8 literal-text failure under a forced tool_choice"
-    ),
-    ("bedrock", "kimi-k2.5-bedrock", "structured_output"): (
-        "Bedrock Converse leaks Moonshot tool-call markers "
-        "(<|tool_call_begin|>…) into text instead of parsing as tool_use"
+        "literal-text failure under a forced tool_choice that was reproduced on "
+        "Opus 4.8 (entry removed 2026-08-29; the reproduction is recorded in "
+        "docs/structured-output.md)"
     ),
     ("bedrock", "glm5-bedrock", "structured_output"): (
         "thinking on by default (reasoning_effort=max); forced tool_choice "
@@ -74,31 +72,22 @@ _ALLOWED_DIVERGENCES: dict[tuple[str, str, str], str] = {
         "forced tool_choice — live-verified on the tool-use path, unlike the "
         "Bedrock OpenAI-compatible endpoint for the same family"
     ),
-    # Output/context caps above the profile's, all on Bedrock's third-party
-    # re-hosts. Kept as-is rather than lowered from the profile: models.dev is
-    # community-curated, and three of these four profile numbers are exactly
-    # half the input window (196608/2 = 98304, 202752/2 = 101376, 131072*2 =
-    # 262144), which is a derivation rather than an observation — nine of the
-    # 110 Bedrock profiles have that exact in/out ratio. Lowering
+    # Output/context caps above the profile's, on Bedrock's third-party re-hosts.
+    # Kept as-is rather than lowered from the profile: models.dev is
+    # community-curated, and the profile number is exactly half the input window
+    # (202752/2 = 101376), which is a derivation rather than an observation —
+    # nine of the 110 Bedrock profiles have that exact in/out ratio. Lowering
     # max_output_tokens on a hunch truncates long reviews mid-report, which is
     # silent; being too high fails loudly on the first batch and is then easy
-    # to fix. Revisit each one when a live run says otherwise.
-    ("bedrock", "kimi-k2.5-bedrock", "max_output_tokens"): (
-        "profile says 16000, model card says 65536; unverified live, and "
-        "lowering it would silently truncate long reviews"
-    ),
-    ("bedrock", "minimax-m2.5-bedrock", "max_output_tokens"): (
-        "profile says 98304, exactly half its 196608 input window; the YAML's "
-        "128000 comes from MiniMax's own card. Unverified live"
-    ),
+    # to fix. Revisit when a live run says otherwise.
+    #
+    # This group was four entries until 2026-08-29, when the kimi-k2.5-bedrock,
+    # minimax-m2.5-bedrock and qwen-next-bedrock entries were removed; their
+    # allowlist rows went with them, since `test_allowlist_has_no_stale_entries`
+    # rejects permission for a divergence that no longer exists.
     ("bedrock", "glm5-bedrock", "max_output_tokens"): (
         "profile says 101376, exactly half its 202752 input window; the YAML's "
         "128000 comes from Zhipu's card. Unverified live"
-    ),
-    ("bedrock", "qwen-next-bedrock", "max_input_tokens"): (
-        "profile says 131072, Alibaba's card says 262144 for Qwen3-Coder-Next; "
-        "unverified live. Over-claiming context only over-packs a batch, which "
-        "the retry path reports as a validation error naming the real limit"
     ),
 }
 
@@ -344,11 +333,12 @@ def test_allowlist_has_no_stale_entries():
 # check above then skips it in silence.
 #
 # The empty ones are empty for a reason, not by oversight:
-#   nvidia         — NIM's re-host ids (`z-ai/glm-5.2`, `moonshotai/kimi-k2.6`)
-#                    aren't in the table; it carries older NIM models only
+#   nvidia         — NIM's re-host ids (`moonshotai/kimi-k3`,
+#                    `deepseek-ai/deepseek-v4-pro-0813`) aren't in the table; it
+#                    carries older NIM models only
 #   moonshot       — the table has kimi-k2.5, not our kimi-k2.6
 #   zai            — GLM isn't in langchain-openai's table at all
-#   bedrock_openai — its ids are `openai.gpt-5.5` / `xai.grok-4.3`; see
+#   bedrock_openai — its id is `openai.gpt-5.6-sol`, not `gpt-5.6-sol`; see
 #                    test_rehosted_ids_are_not_mapped_onto_direct_api_profiles
 _PROVIDERS_WITH_PROFILE_COVERAGE = {
     "bedrock",
@@ -383,27 +373,32 @@ def test_profile_coverage_has_not_collapsed():
 def test_rehosted_ids_are_not_mapped_onto_direct_api_profiles():
     """A re-host's limits are its own; don't borrow the direct API's profile.
 
-    Tempting, because ``openai.gpt-5.5`` → ``gpt-5.5`` would light up three
-    more rows. It would also be wrong: the profile says ``max_input_tokens:
-    1050000`` for GPT-5.5, while the same model on Bedrock's ``bedrock-mantle``
-    endpoint gives 400K — so the comparison would pass a ``context_window``
-    over twice the real limit, which is the exact failure this file exists to
-    catch. Only ``strip_cross_region_prefix`` is applied, and only because a
-    Bedrock inference-profile prefix names the *same* endpoint (langchain-aws's
-    own table carries both spellings with identical limits).
+    Tempting, because stripping the vendor prefix (``openai.gpt-5.6-sol`` →
+    ``gpt-5.6-sol``) would light up every ``bedrock_openai`` row. It would also
+    be wrong: the profile says ``max_input_tokens: 1050000`` for GPT-5.6 Sol,
+    while the same model on Bedrock's ``bedrock-mantle`` endpoint gives 272K — so
+    the comparison would pass a ``context_window`` nearly four times the real
+    limit, which is the exact failure this file exists to catch. Only
+    ``strip_cross_region_prefix`` is applied, and only because a Bedrock
+    inference-profile prefix names the *same* endpoint (langchain-aws's own table
+    carries both spellings with identical limits).
+
+    Written against ``openai.gpt-5.5`` (400K on Bedrock vs the same 1.05M
+    profile) until that entry was removed 2026-08-29. The gap is wider on Sol,
+    not narrower — the hazard did not go away with the entry.
     """
     from langchain_openai.chat_models.base import _get_default_model_profile
 
     loader = get_config_loader()
     rehosted = {m.id: m for m in loader.list_models()["bedrock_openai"]}
-    gpt55 = rehosted["gpt5.5-bedrock"]
-    direct = _get_default_model_profile("gpt-5.5")
+    sol = rehosted["gpt5.6-sol-bedrock"]
+    direct = _get_default_model_profile("gpt-5.6-sol")
 
-    assert direct.get("max_input_tokens", 0) > (gpt55.context_window or 0), (
-        "GPT-5.5's direct-API profile no longer over-states the Bedrock "
+    assert direct.get("max_input_tokens", 0) > (sol.context_window or 0), (
+        "GPT-5.6 Sol's direct-API profile no longer over-states the Bedrock "
         "endpoint's window; re-check whether that mapping is now safe"
     )
-    assert not _get_default_model_profile(gpt55.full_id), (
-        f"{gpt55.full_id} now resolves a profile directly — verify its limits "
+    assert not _get_default_model_profile(sol.full_id), (
+        f"{sol.full_id} now resolves a profile directly — verify its limits "
         "describe the bedrock-mantle endpoint before trusting the comparison"
     )

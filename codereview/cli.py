@@ -476,7 +476,7 @@ def display_available_models(console: Console, verbose: bool = False) -> None:
     setup_table.add_row(
         "bedrock_openai",
         "OPENAI_API_KEY (Bedrock API key), OPENAI_BASE_URL",
-        "Bedrock console → API keys (OpenAI models, e.g. GPT-5.5)",
+        "Bedrock console → API keys (OpenAI models, e.g. GPT-5.6 Sol)",
     )
 
     console.print(setup_table)

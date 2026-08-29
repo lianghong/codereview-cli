@@ -94,8 +94,11 @@ class BedrockOpenAIProvider(TokenTrackingMixin, ModelProvider):
         self.provider_config = provider_config
         self.project_context = project_context
 
-        # GPT-5.5 / GPT-5.4 are reasoning models and reject temperature/top_p;
-        # allow_none preserves that opt-out (no default_temperature in YAML).
+        # The GPT-5.x tiers here are reasoning models and reject
+        # temperature/top_p; allow_none preserves that opt-out (no
+        # default_temperature in YAML). It stays a per-entry opt-out rather
+        # than an unconditional drop because this endpoint also serves models
+        # that accept both — Grok 4.3 did, at card defaults 0.7/0.95.
         self.temperature = self._resolve_temperature(
             override=temperature,
             model_config=model_config,
@@ -157,8 +160,8 @@ class BedrockOpenAIProvider(TokenTrackingMixin, ModelProvider):
         base_model = ChatOpenAI(**model_params)
 
         # Tool-use vs prompt-based JSON parsing is decided once in the base
-        # class from supports_tool_use; tool-use-less models here (GPT-5.x /
-        # Grok adaptive thinking) get the PydanticOutputParser path.
+        # class from supports_tool_use; tool-use-less models here (currently
+        # GPT-5.6 Sol's adaptive thinking) get the PydanticOutputParser path.
         return self._apply_structured_output(base_model)
 
     def _is_retryable_error(self, error: Exception) -> bool:

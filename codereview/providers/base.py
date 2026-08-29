@@ -210,7 +210,7 @@ class ModelProvider(ABC):
         ``model_config`` attribute must override.
 
         Returns:
-            Display name like "Claude Opus 5" or "GPT-5.5 (Bedrock)"
+            Display name like "Claude Opus 5" or "GPT-5.6 Sol (Bedrock)"
         """
         model_config = getattr(self, "model_config", None)
         if model_config is None:
@@ -635,7 +635,7 @@ class ModelProvider(ABC):
         metadata either, so both its token counts are estimated too.
 
         This matters most where it hurts most. Reasoning models on the
-        prompt-parsing path (GPT-5.5/5.6 on Bedrock, Opus 5) intermittently
+        prompt-parsing path (GPT-5.6 Sol on Bedrock, Opus 5) intermittently
         emit invalid JSON on think-heavy batches, and ``enable_output_fixing``
         can burn several attempts on one batch. Every one of those attempts is
         billed by the vendor; recording none of them made the batches with the
@@ -682,9 +682,10 @@ class ModelProvider(ABC):
         2. Direct ``CodeReviewReport`` shape (prompt-parsing fallback):
            The ``CodeReviewReport`` instance itself, produced by chaining
            a ``PydanticOutputParser`` onto the model. Used by tool-use-less
-           endpoints — currently DeepSeek-V4-Pro on Azure and MiniMax M2.5
-           on Bedrock — where the model emits JSON via prompt format
-           instructions instead of via tool-calling.
+           endpoints — currently the Bedrock Claude reasoning tiers, GPT-5.6
+           Sol, GLM 5, MiniMax M3, Kimi K3/K2.6 and GLM-5.2 — where the model
+           emits JSON via prompt format instructions instead of via
+           tool-calling.
 
         Anything else (a string, a raw AIMessage, a list, etc.) is a
         contract violation. ``_execute_with_retry`` raises ``ValueError``

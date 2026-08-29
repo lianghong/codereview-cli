@@ -35,7 +35,7 @@ class InferenceParams(BaseModel):
         enable_thinking: Enable thinking/reasoning mode (model-specific).
         clear_thinking: Clear thinking content between turns (False preserves reasoning).
         thinking: Thinking mode selector (e.g. DeepSeek-V4-Pro: False/'high'/'max').
-        reasoning_effort: Per-request reasoning budget (Mistral Medium 3.5 and similar).
+        reasoning_effort: Per-request reasoning budget. No live example since 2026-08-29.
     """
 
     model_config = {"frozen": True}
@@ -68,9 +68,12 @@ class InferenceParams(BaseModel):
     reasoning_effort: Literal["none", "low", "medium", "high"] | None = Field(
         None,
         description=(
-            "Reasoning effort budget sent with each request. Used by models "
-            "like Mistral Medium 3.5 that accept 'none'/'high' to toggle "
-            "between instant reply and deep reasoning."
+            "Reasoning effort budget sent with each request, for models that "
+            "accept 'none'/'high' to toggle between instant reply and deep "
+            "reasoning. No entry in models.yaml sets it since Mistral Medium "
+            "3.5 (the only one that did) was removed 2026-08-29 — kept because "
+            "the NVIDIA provider still forwards it (nvidia.py) and NIM models "
+            "with effort levels come and go."
         ),
     )
 

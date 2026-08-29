@@ -209,8 +209,12 @@ class NVIDIAProvider(TokenTrackingMixin, ModelProvider):
             if chat_template_kwargs:
                 model_params["chat_template_kwargs"] = chat_template_kwargs
 
-            # reasoning_effort is a top-level payload key (Mistral Medium 3.5).
-            # ChatNVIDIA merges model_kwargs into the request payload.
+            # reasoning_effort is a top-level payload key, not a
+            # chat_template_kwargs one; ChatNVIDIA merges model_kwargs into the
+            # request payload. No models.yaml entry sets it right now — Mistral
+            # Medium 3.5 was the only one and its endpoint was EOL'd (removed
+            # 2026-08-29) — so this branch is currently unexercised by the
+            # registry, not dead.
             if self.model_config.inference_params.reasoning_effort is not None:
                 model_params["model_kwargs"] = {
                     "reasoning_effort": (

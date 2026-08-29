@@ -10,8 +10,8 @@ the rest of the CLI.
 Models with ``supports_tool_use: false`` (e.g. kimi-k2.6, whose thinking
 mode is incompatible with the tool_choice that ``.with_structured_output``
 would set) are routed through prompt-based JSON parsing via
-``PydanticOutputParser`` — same pattern as MiniMax M2.5 on Bedrock and
-DeepSeek-V4-Pro on Azure.
+``PydanticOutputParser`` — same pattern as GLM 5 on Bedrock and MiniMax M3
+on NVIDIA.
 """
 
 import logging

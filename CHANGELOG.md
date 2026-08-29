@@ -10,6 +10,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 #### New Models
+- **Kimi K3 (NVIDIA NIM)** — Moonshot AI's flagship native-multimodal agentic
+  model, on NVIDIA's free NIM endpoint (build.nvidia.com release 2026-08-20)
+  - Model ID: `kimi-k3-nvidia` (`full_id: moonshotai/kimi-k3`)
+  - Aliases: `kimi-nvidia-3`, `kimi3-nvidia` — **NVIDIA-suffixed only**. The
+    bare `kimi-k3`/`kimi3`/`k3` names stay reserved for the Moonshot direct
+    provider, canonical owner of the Kimi family (it currently ships K2.6), and
+    a test asserts they still don't resolve. Mirrors the
+    `kimi-nvidia-26`/`kimi26-nvidia` shape of the existing K2.6 re-host
+  - MoE: 2.8T total / 104B active, 896 experts (16 routed + 2 shared per
+    token); Kimi Delta Attention (69 KDA + 24 gated MLA layers), Attention
+    Residuals, Stable LatentMoE, plus a 401M MoonViT-V2 vision encoder.
+    Quantization-aware trained (MXFP4 weights, MXFP8 activations)
+  - 1,048,576-token input context (registered verbatim from the card's ISL),
+    text + image in / text out, 160K vocab. Modified MIT — commercial use
+    allowed
+  - `temperature: 1.0` with `top_p: 0.95` — the card's own evaluation config
+    for *single-step* tasks (its `top_p: 1.0` variant is for agentic loops,
+    which a one-shot review is not); the same fixed pair Moonshot requires for
+    K2.6
+  - `max_output_tokens: 32768`, double the K2.6 sibling's 16384: thinking
+    cannot be switched off here and NIM bills reasoning inside
+    `completion_tokens`, so the report needs headroom above the reasoning it
+    follows. Verified live that the endpoint accepts a 32768 `max_tokens`
+  - `supports_tool_use: false` (prompt-based JSON parsing). The card's Output
+    properties state *"Thinking is always enabled"* with no knob to disable it,
+    which is the **constant** — not intermittent — forced-`tool_choice`-
+    while-thinking profile, the same shape as Fable 5 and Grok 4.3. Tool-use
+    could not be probed live (NIM's free tier returned HTTP 429 for every
+    forced-`tool_choice` attempt), so the assume-prompt-parsing rule decides
+    it; both K2.6 entries are prompt-path for the same reason. Flip to `true`
+    only if a live review run proves tool-use *while thinking*
+  - **No `reasoning_effort` is set** even though the card documents low/high/max
+    levels: `InferenceParams.reasoning_effort` only permits up to `high`, and
+    the wire spelling on this endpoint couldn't be verified under the 429s.
+    The endpoint default applies
 - **Gemini 3.7 Flash (Google GenAI)** — latest and most capable Flash model,
   built for complex coding, agentic workflows and reliable multi-step execution
   (released August 2026)
@@ -68,7 +103,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Model ID: `sonnet5` (`full_id: us.anthropic.claude-sonnet-5`, geo-US
     inference profile; routes us-east-1/us-east-2/us-west-2)
   - Aliases: `claude-sonnet-5`, `sonnet-5`, `claude-sonnet5` (the bare
-    `sonnet` alias intentionally stays on Sonnet 4.6)
+    `sonnet` alias intentionally stayed on Sonnet 4.6 — **superseded later in
+    this same cycle**: the 2026-08-29 curation pass removed the 4.6 entry, so
+    `sonnet`/`claude-sonnet` now resolve here as plain, advertised aliases)
   - 1M-token context, up to 128K output; pricing $3/$15 per M (standard;
     a launch promo of $2/$10 runs through 2026-08-31 — we register the
     durable standard rate)
@@ -344,11 +381,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - **`gemini-flash` now resolves to Gemini 3.7 Flash** (was 3.6 Flash). The
   generation-neutral alias tracks the current Flash generation, per the
-  registry convention. Gemini 3.6 Flash stays live and **keeps** its
+  registry convention. Gemini 3.6 Flash stayed live at the time and **kept** its
   version-explicit back-compat names — `gemini-3-flash`, `gemini3-flash` and
-  `g3flash` still resolve to 3.6, deliberately: a name that says "3" must not
-  jump two generations to different capabilities. Only the generation-neutral
-  name travels.
+  `g3flash` resolved to 3.6, deliberately: a name that says "3" must not jump
+  two generations to different capabilities. Only the generation-neutral name
+  travels. **Superseded later in this same cycle**: the 2026-08-29 curation pass
+  removed the 3.6 entry, at which point those three names had nowhere else to go
+  and moved onto 3.7 Flash as `deprecated_aliases` — the other half of the rule,
+  which only applies once the older entry is retired.
 - **The ruff rule set is now pinned in `pyproject.toml`** (`[tool.ruff.lint]
   select = ["E4", "E7", "E9", "F"]`) instead of inheriting ruff's defaults.
   Those defaults are not stable across releases — ruff 0.16.0 enables ~400
@@ -378,7 +418,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Default model is now `opus5`** (was `opus4.8`) — Claude Opus 5 supersedes
   Opus 4.8 at identical $5/$25 pricing, with Anthropic specifically calling out
   code review and bug-finding among its largest gains. Runs that relied on the
-  implicit default now hit Opus 5; pass `--model opus4.8` to pin the old one.
+  implicit default now hit Opus 5; at the time `--model opus4.8` still pinned
+  the old one. **Superseded later in this same cycle**: the 2026-08-29 curation
+  pass removed the Opus 4.8 entry outright, so that escape hatch is gone and
+  `opus4.8` / `claude-opus-4.8` no longer resolve — Opus 5 is the only Opus.
 - **The generation-neutral `opus` and `claude-opus` aliases now resolve to
   Opus 5** (were Claude Opus 4.6). The Opus 4.6 and 4.7 entries were
   subsequently removed (see Removed) and their version-explicit names
@@ -458,6 +501,174 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     so a name can never be dropped by accident, only on purpose.
 
 ### Removed
+- **Nine entries removed as curation, 27 → 18 models. Every one of these
+  endpoints is still live.** This is the opposite case from the dead-endpoint
+  pass below and must not be read as one: the entries were cut at the user's
+  direction because a surviving entry covered the same ground, and each was
+  probed first to confirm the endpoint still answers.
+
+  | Removed entry | `full_id` | Covered instead by | What the registry loses |
+  |---|---|---|---|
+  | `opus4.8` | `us.anthropic.claude-opus-4-8` | `opus5` | nothing measurable — identical $5/$25, 1M context, 128K output |
+  | `sonnet` (Sonnet 4.6) | `global.anthropic.claude-sonnet-4-6` | `sonnet5` | `--temperature` support and the tool-use structured-output path; context goes 200K → 1M at the same $3/$15 |
+  | `kimi-k2.5-bedrock` | `moonshotai.kimi-k2.5` | `kimi-k2.6` (Moonshot direct) | a Bedrock-hosted Kimi; output price *drops* $3.00 → $2.50 |
+  | `qwen-next-bedrock` | `qwen.qwen3-coder-next` | nothing | **Bedrock's cheapest entry** ($0.50/$1.20 → `haiku` at $1.00/$5.00), one of only three tool-use-path Bedrock entries, and the last Qwen anywhere in the registry |
+  | `minimax-m2.5-bedrock` | `minimax.minimax-m2.5` | `minimax-m3` (NVIDIA, free) | a Bedrock-hosted MiniMax; context 196K → 1M on the survivor |
+  | `kimi-k2.6-nvidia` | `moonshotai/kimi-k2.6` | `kimi-k3-nvidia` (free) / `kimi-k2.6` | nothing this account could use — see below |
+  | `gemini-3.6-flash` | `gemini-3.6-flash` | `gemini-3.7-flash` | nothing measurable — identical $1.50/$7.50, 1M context, 64K output |
+  | `gpt5.5-bedrock` | `openai.gpt-5.5` | `gpt5.6-sol-bedrock` | **twice the rate** ($2.50/$15 → $5/$30) and a narrower window (400K → 272K) |
+  | `grok-4.3-bedrock` | `xai.grok-4.3` | nothing | `bedrock_openai`'s cheapest entry ($1.25/$2.50 vs $5/$30), its widest context (1M vs 272K), its only entry accepting `temperature`/`top_p`, and the registry's only xAI model |
+
+  **`kimi-k2.6-nvidia` is the one with a non-curation reason worth stating
+  precisely: this account cannot invoke it.** NIM lists `moonshotai/kimi-k2.6`
+  in `GET /v1/models`, but invoking it returns **HTTP 404 naming the account** —
+  a provisioning scope, *not* an EOL, and therefore not the 410 shape the pass
+  below is about. The YAML removal comment says exactly that rather than
+  implying the endpoint is dead, because the distinction decides whether
+  re-adding is a config change or a mistake.
+
+  **None of these nine `full_id`s were added to `DEAD_UPSTREAM_FULL_IDS`**, and
+  `tests/test_config.py` carries a comment listing all nine and saying why. That
+  set means "pointing an entry here is a bug"; a live-but-unwanted wire id in it
+  would block a future re-add on false grounds.
+
+  Alias disposition follows the unchanged rule (version-explicit → delete,
+  version-neutral → migrate), with two families deleted outright:
+
+  - **`sonnet` / `claude-sonnet` → `sonnet5`, as plain `aliases`** — the one
+    migration in this pass that is *advertised* rather than deprecated. `sonnet`
+    was the removed entry's `id`, it names a tier rather than a version, and
+    Sonnet 5 genuinely is the current Sonnet, so nothing about the name became
+    untrue.
+  - **`kimi-bedrock` → Moonshot's `kimi-k2.6`** and **`gpt-bedrock` →
+    `gpt5.6-sol-bedrock`**, both `deprecated_aliases`: still truthful about the
+    model, but following either forward changes provider or price (Sol doubles
+    the rate), so they resolve without being advertised.
+  - **Every `qwen*` spelling deleted, including the bare `qwen` and
+    `qwen-coder`.** The Bedrock entry was the last Qwen in the registry, so the
+    version-*neutral* names have nothing honest to resolve to — the same reason
+    `step-flash`/`step-nvidia` died in the pass below, applied to a second
+    family.
+  - **Every `grok*` spelling deleted, including the bare `grok` and
+    `grok-bedrock`.** xAI leaves the registry entirely and resolving a Grok name
+    to an OpenAI model would be a **vendor swap**, not a version bump. Note the
+    shape: `xai.grok-4.3` is live, `bedrock_openai` still drives it with no code
+    change, and there are zero registry entries — a live endpoint, working code
+    and a name that must still fail.
+  - Version-explicit deletions: `opus4.8`, `opus-4.8`, `claude-opus-4.8`,
+    `claude-opus-48`, `sonnet4.6`, `claude-sonnet-4.6`, `kimi-k2.5-bedrock`,
+    `kimi25-bedrock`, `kimi-k2.6-nvidia`, `kimi-nvidia-26`, `kimi26-nvidia`,
+    `minimax-m2.5-bedrock`, `mm2.5-bedrock`, `gemini-3.6-flash`,
+    `gemini36-flash`, `gemini3.6-flash`, `gpt5.5-bedrock`, `grok-4.3-bedrock`.
+    `RETIRED_ALIASES_DELETED_NOT_REDIRECTED` goes 65 → **94 names**.
+
+  Measured consequences, stated so re-adding is an informed choice rather than a
+  rediscovery: **Bedrock keeps exactly one entry on the tool-use
+  structured-output path** (`haiku` — 3 → 1), which makes it the only case
+  proving that path still works on Bedrock at all; the prompt-parsing share goes
+  15/27 → **9/18**; partner-package profile coverage goes to **9/18** (Bedrock
+  4/5, Azure 2/2, DeepSeek 2/2, Google 1/2); and
+  `test_model_profile_drift.py::_ALLOWED_DIVERGENCES` drops 8 → **4** rows,
+  because a stale allowlist row is itself a test failure.
+
+  Evidence from removed entries that stays load-bearing for entries that remain
+  was moved into surviving YAML comments and `docs/`, not left in `git log`:
+  Opus 4.8's literal-text forced-`tool_choice` reproduction (`de5e2fc`, which
+  Opus 5 / Sonnet 5 / Fable 5 all rest on), GPT-5.5's live-verified
+  reasoning-only failure (the whole basis for GPT-5.6 Sol's
+  `supports_tool_use: false`), Kimi K2.5-on-Bedrock's tool-call-marker leakage
+  (the clearest "mangles the tool call" case), Grok 4.3's acceptance of
+  `temperature`/`top_p` at card defaults 0.7/0.95 (why `bedrock_openai` keeps a
+  per-entry opt-out instead of dropping sampling params unconditionally), and
+  Gemini 3.6 Flash as the *first* model to win `supports_tool_use: true` back
+  with a live run — the precedent 3.7 Flash now carries.
+
+  Grok 4.3 and GPT-5.5 were both **added earlier in this same unreleased
+  cycle**, so they are added-and-removed before ever shipping in a release;
+  their `### Added` notes are left intact as the record of what was known when.
+  Opus 4.8 was v0.4.0's headline addition and its default model.
+
+  `CLAUDE.md`, `README.md`, `docs/model-registry.md`,
+  `docs/structured-output.md`, `docs/providers.md`, `docs/usage.md` and
+  `docs/examples.md` were all brought in line, including the Model Comparison
+  and *Migrating Deleted Aliases* tables. Two pre-existing README errors
+  surfaced while recomputing those tables and were fixed in the same pass: the
+  DeepSeek-V4-Pro direct row still quoted the expired 75%-off launch promo
+  ($1.74/$3.48 instead of the steady-state $0.435/$0.87), and Fable 5 had no
+  row at all.
+
+  One code change fell out of the removals: `CodeAnalyzer._map_legacy_model_id`
+  dropped its `qwen.qwen3-coder-480b-a35b-v1:0` → `"qwen"` row. Mapping a
+  legacy wire id onto an alias that no longer resolves is worse than not
+  mapping it — the `ValueError` would name a short alias the caller never typed
+  instead of the id they passed.
+
+- **⚠️ Five NVIDIA NIM entries — half the roster — were pointing at endpoints
+  NVIDIA has end-of-lifed.** Re-probing every registry entry on 2026-08-29 (the
+  same procedure as the 2026-07-25 audit, extended to *invoke* each endpoint
+  rather than only list the catalog) found each of these answering **HTTP 410
+  Gone** with NVIDIA's own EOL date in the response body:
+
+  | Removed entry | `full_id` | NVIDIA-stated EOL |
+  |---|---|---|
+  | `mistral-small-nvidia` | `mistralai/mistral-small-4-119b-2603` | 2026-07-27 |
+  | `qwen3.5-nvidia` | `qwen/qwen3.5-397b-a17b` | 2026-07-27 |
+  | `mistral-medium-nvidia` | `mistralai/mistral-medium-3.5-128b` | 2026-08-07 |
+  | `glm52` | `z-ai/glm-5.2` | 2026-08-21 |
+  | `step-3.7-flash` | `stepfun-ai/step-3.7-flash` | 2026-08-28 |
+
+  Three of these are **whole-family wipes**: `GET /v1/models` now returns zero
+  ids under `qwen/*`, zero under `z-ai/*` and zero matching `stepfun*`, and NIM
+  carries no Mistral successor either. So the NVIDIA roster goes 10 → 5 (MiniMax
+  M3, Kimi K3, Kimi K2.6, DeepSeek-V4-Pro-0813, DeepSeek-V4-Flash-0731) and the
+  registry goes 32 → **27 models**.
+
+  **Neither `--list-models` nor `--validate` could have caught this**, which is
+  the part worth remembering. `--list-models` reads `models.yaml` and never
+  touches the network by design. `--validate` checks NIM's catalog for the model
+  id, and a miss there is a **warning, never `valid = False`** — deliberately, since
+  catalog visibility isn't invocation permission. A retired NIM endpoint drops
+  out of the catalog *and* refuses invocation, so both surfaces reported healthy
+  right up to the 410 on the first batch. Documented in `docs/model-registry.md`
+  as its own rule: NIM retires endpoints on a rolling basis with no in-band
+  deprecation signal, so re-probe that provider whenever `models.yaml` is touched.
+
+  Alias disposition, per the removal convention (version-explicit → delete,
+  version-neutral → migrate) with two deliberate departures from it:
+
+  - **`glm5` / `glm-5` migrated to `glm5-bedrock`** (`zai.glm-5`), verified live
+    in the configured `us-east-1` via `ListFoundationModels`. They land on the
+    model they actually name — those spellings say GLM *5*, and this is GLM 5 —
+    but it is a provider *and* a billing change from the free NIM endpoint, so
+    they stay `deprecated_aliases`: resolvable, not advertised by `--list-models`.
+    For GLM-5.2 specifically, use the Z.AI direct entry (`glm` / `zhipuai/glm-5.2`),
+    canonical owner of the family and still live.
+  - **`qwen-nvidia` / `qwen3-nvidia` / `qwen-coder-nvidia` were deleted, not
+    migrated**, though they are version-neutral. The only live Qwen left is
+    `qwen-next-bedrock`, and a `-nvidia`-suffixed name silently resolving to
+    Bedrock would move a user from a free endpoint to a **billed** one on
+    another provider — a worse outcome than an error they can read.
+  - **`step-flash` / `step-nvidia` were deleted** for the plainer reason that no
+    StepFun model remains anywhere in the registry to migrate them onto.
+  - Every remaining identifier was deleted: `mistral-small`, `mistral-small-4`,
+    `ms4`, `mistral-medium`, `mistral-medium-3.5`, `mm35`, `mmed`, `qwen3.5`,
+    `qwen35`, `qwen35-nvidia`, `glm52-nvidia`, `glm5.2-nvidia`, `glm-5.2-nvidia`,
+    `glm5-nvidia`, `step-3.7`, `step37`, `step37-nvidia`. `RETIRED_ALIASES_DELETED_NOT_REDIRECTED`
+    goes 40 → **65 names**, and `DEAD_UPSTREAM_FULL_IDS` gained all five wire ids
+    so no future entry can quietly point at one again.
+
+  GLM-5.2 (NVIDIA), Step 3.7 Flash and Kimi K3 were *added* earlier in this same
+  unreleased cycle; the GLM and Step entries are therefore added-and-removed
+  before ever shipping in a release, and their `### Added` notes above are left
+  intact as the record of what was known when. `mistral-medium-nvidia` was the
+  only entry in the registry carrying `inference_params.reasoning_effort` — noted
+  in `models.yaml` at the removal site, since that key now has no live example.
+
+  Four rows also left the `docs/structured-output.md` path matrix (Qwen3.5 397B,
+  GLM-5.2-on-NVIDIA, Step 3.7 Flash, Mistral Small 4 119B) — for endpoint death,
+  not for anything learned about structured output. The prompt-path count goes
+  19 → 15 of 27 entries.
+
 - **Sixteen inert prompt-caching pricing keys deleted from `models.yaml`** — six
   `cache_write_per_million` / `cache_read_per_million` pairs (Claude Fable 5,
   Opus 5, Opus 4.8, Sonnet 5, Sonnet 4.6, Haiku 4.5) and four
@@ -495,6 +706,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   long-context tier note quoted a cached rate alongside the input/output pair.
 
 ### Fixed
+- **`defaults.nvidia_default` in `models.yaml` named a model that no longer
+  exists** — it still read `mistral-medium-nvidia` after that entry was removed,
+  so the file's own "recommended NVIDIA model" was a name that fails to resolve.
+  Now `deepseek-v4-flash-nvidia`. The `defaults:` block is documented as
+  informational (nothing in the code reads it; the CLI's real default `--model`
+  is hardcoded to `opus5`), and that is precisely why it rotted unnoticed —
+  unread configuration that still reads as authoritative, the same shape as the
+  sixteen inert pricing keys minus the loader.
+
+  New guard: `tests/test_config.py::test_every_provider_default_in_the_defaults_block_names_a_live_model`
+  resolves every `<provider>_default` key and asserts the model belongs to the
+  provider the key names. It requires the key prefix to *equal* a provider name
+  rather than prefix-match it — `bedrock` is a prefix of `bedrock_openai`, so a
+  prefix match would let `bedrock_default` name a `bedrock-mantle` model and
+  pass. `azure` → `azure_openai` is the one documented shorthand, and the test
+  asserts that mapping isn't itself stale.
+
+  Also retired two code comments naming Mistral Medium 3.5 as the live example
+  for `inference_params.reasoning_effort` (`config/models.py`,
+  `providers/nvidia.py`). It was the only entry that set the key; the forwarding
+  code stays, now labelled as unexercised-by-the-registry rather than dead, since
+  NIM models with effort levels come and go.
+
+- **⚠️ Both NVIDIA DeepSeek-V4 entries pointed at endpoints NVIDIA EOL'd on
+  2026-08-07** — `deepseek-ai/deepseek-v4-pro` and
+  `deepseek-ai/deepseek-v4-flash` are gone from NIM's `GET /v1/models` catalog
+  and return **HTTP 410 Gone** on completion, so `--model dsv4-nvidia` and
+  `--model dsv4-flash-nvidia` failed at invocation time while `--list-models`
+  and `--validate` (catalog-visibility only) both still reported them fine.
+  Re-pointed at the dated GA endpoints the catalog actually serves:
+  - `dsv4-nvidia` → `deepseek-ai/deepseek-v4-pro-0813` (GA release superseding
+    the preview; adds the DSpark speculative-decoding module. MoE 1.65T total /
+    49B active, 129,280 vocab, hybrid CSA + HCA + Manifold-Constrained
+    Hyper-Connections, 1,000,000 ISL, MIT). Reasoning-effort levels are now
+    low/high/max
+  - `dsv4-flash-nvidia` → `deepseek-ai/deepseek-v4-flash-0731`
+  - The entry `id`s and all aliases are unchanged, so nothing a user typed
+    breaks; only the wire `full_id` and the display `name` (now
+    `…-0813 (NVIDIA)` / `…-0731 (NVIDIA)`) moved
+  - Both dead ids were added to `DEAD_UPSTREAM_FULL_IDS` in
+    `tests/test_config.py`. That is safe for the *direct*-DeepSeek entries,
+    which use unprefixed `full_id`s, and a companion test now asserts the
+    positive half — that both NVIDIA entries name a dated GA endpoint
+  - **The Pro/Flash asymmetry matters for the structured-output path**: probes
+    showed Pro-0813 is non-thinking by default while Flash-0731 *reasons by
+    default* (one probe burned its entire 400-token budget on reasoning and
+    returned no content). So `thinking: false` is merely explicit on Pro but
+    **load-bearing** on Flash — it is what stops reasoning from eating
+    `max_output_tokens` and what keeps the forced `tool_choice` of the tool-use
+    path working. Verified live on Pro-0813: a forced `tool_choice` returns
+    `finish_reason=tool_calls` with a real `tool_calls` payload, so both entries
+    correctly stay on the native tool-calling path
 - **⚠️ Retried parse failures were billed by the vendor and recorded as free**
   — `_execute_with_retry` tracked token usage from the raw `AIMessage` (including
   its `parsed is None` branch), but an `OutputParserException` raises from the
@@ -1245,6 +1508,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     (`dsv4-flash`), `dsv4pro` (`dsv4-pro`), `dsv4-azure` (`deepseek-v4-pro`),
     `g31pro`/`g3pro` (`gemini31-pro`), `g36flash` (`gemini36-flash`),
     `mm35`/`mmed` (`mistral-medium`), `kimi-moonshot` (`kimi`).
+    **Two of those replacements were themselves removed later in this same
+    cycle** — the deletions stand, but the pointer has moved: `mistral-medium`
+    went with the 2026-08-07 NIM EOL pass (no Mistral entry remains, so
+    `mm35`/`mmed` have no destination at all), and `gemini36-flash` went with
+    the 2026-08-29 curation pass, so `g36flash` now points at
+    `gemini-3.7-flash`.
   - Full replacement table: **Migrating Deleted Aliases** in `README.md`.
     Every deleted name is listed in `RETIRED_ALIASES_DELETED_NOT_REDIRECTED`
     (`tests/test_config.py`) with a reason, and
