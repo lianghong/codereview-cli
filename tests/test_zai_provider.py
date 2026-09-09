@@ -34,23 +34,19 @@ def model_config():
 
 
 @pytest.fixture
-def glm52_model_config():
-    """The real GLM-5.2 registry shape: supports_tool_use=False (prompt parsing).
-
-    Z.AI's OpenAI-compat endpoint ignores json_schema response_format and emits
-    markdown-fenced JSON, so GLM routes through PydanticOutputParser.
-    """
+def glm53_model_config():
+    """The real GLM-5.3 registry shape: always-thinking prompt parsing."""
     return ModelConfig(
-        id="zhipuai/glm-5.2",
-        full_id="glm-5.2",
-        name="GLM-5.2 (Z.AI)",
+        id="zhipuai/glm-5.3",
+        full_id="glm-5.3",
+        name="GLM-5.3 (Z.AI)",
         aliases=["zai-glm"],
         pricing=PricingConfig(input_per_million=1.40, output_per_million=4.40),
         inference_params=InferenceParams(
-            temperature=0.3,
-            top_p=0.95,
-            max_output_tokens=16384,
+            temperature=1.0,
+            max_output_tokens=32768,
         ),
+        context_window=1_000_000,
         supports_tool_use=False,
     )
 
@@ -239,20 +235,13 @@ def test_zai_validate_credentials_happy_path(model_config, provider_config):
         assert result.valid is True
 
 
-def test_zai_glm52_uses_prompt_parsing(glm52_model_config, provider_config):
-    """GLM-5.2 (supports_tool_use=False) must skip tool-calling structured
-    output and parse JSON with PydanticOutputParser.
-
-    Regression: Z.AI's endpoint ignores OpenAI's json_schema response_format
-    and returns markdown-fenced JSON (```json ... ```), which the json_schema
-    path rejects ("Invalid JSON: expected value at line 1 column 1"). The
-    PydanticOutputParser path strips the fences.
-    """
+def test_zai_glm53_uses_prompt_parsing(glm53_model_config, provider_config):
+    """GLM-5.3 must skip forced tool use until thinking is live-verified."""
     with patch("codereview.providers.zai.ChatOpenAI") as mock_openai:
         mock_instance = Mock()
         mock_openai.return_value = mock_instance
 
-        provider = ZAIProvider(glm52_model_config, provider_config)
+        provider = ZAIProvider(glm53_model_config, provider_config)
 
         # No tool-calling structured output should have been requested.
         mock_instance.with_structured_output.assert_not_called()

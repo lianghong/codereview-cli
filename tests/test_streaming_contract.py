@@ -448,7 +448,7 @@ def test_stream_still_serializes_where_tokens_do_arrive(sample_code_dir):
     Token-by-token output from concurrent batches interleaves incomprehensibly,
     so this half of the original behaviour has to survive.
     """
-    workers, output = _run_and_capture_workers(sample_code_dir, "glm-5.2", stream=True)
+    workers, output = _run_and_capture_workers(sample_code_dir, "glm-5.3", stream=True)
     assert workers == 1
     assert "--stream ignored" not in output
 

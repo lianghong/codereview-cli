@@ -72,7 +72,7 @@ def test_resolve_model_id_with_alias():
     assert model_config.full_id == "global.anthropic.claude-haiku-4-5-20251001-v1:0"
 
     provider, model_config = loader.resolve_model("glm")
-    assert model_config.full_id == "glm-5.2"
+    assert model_config.full_id == "glm-5.3"
 
 
 def test_resolve_model_id_case_insensitive():
@@ -445,9 +445,11 @@ def test_retired_model_aliases_redirect_to_live_successors():
         # `glm5-nvidia` was deleted instead — see the counterpart guard.
         "glm5": "zai.glm-5",
         "glm-5": "zai.glm-5",
-        # GLM-on-Z.AI: 5.1 removed in favour of 5.2 (same price, 1M context).
-        "zai-glm": "glm-5.2",
-        "glm-zai": "glm-5.2",
+        # GLM-on-Z.AI: 5.1 -> 5.2 -> 5.3, all at the same $1.40/$4.40
+        # rate; the generation-neutral direct-provider names track the current
+        # flagship while version-specific names are deleted.
+        "zai-glm": "glm-5.3",
+        "glm-zai": "glm-5.3",
         # Gemini: 3 Pro shut down 2026-03-09; 3 Flash Preview deprecated in
         # favour of the GA Gemini 3.6 Flash, which was itself removed 2026-08-29
         # — so the generation-3 Flash names moved on again, to 3.7 Flash. They
@@ -530,13 +532,19 @@ RETIRED_ALIASES_DELETED_NOT_REDIRECTED = frozenset(
         "kimi-k2.5",
         "kimi-k2.5-nvidia",
         "kimi25",
-        # GLM-5.1 (both the NVIDIA re-host and the Z.AI entry, whose id it was).
+        # GLM-5.1 (both the NVIDIA re-host and the retired Z.AI entry).
         "glm51",
         "glm51-nvidia",
         "glm-5.1",
         "glm5.1",
         "glm5.1-zai",
         "zhipuai/glm-5.1",
+        # GLM-5.2 on Z.AI was superseded by 5.3 at identical price and limits.
+        # These pin the minor version; neutral `glm`/`zai-glm` names moved.
+        "zhipuai/glm-5.2",
+        "glm-5.2",
+        "glm5.2",
+        "glm5.2-zai",
         # ---- 2026-08-29 removal pass: five NIM endpoints answering HTTP 410 ----
         # GLM-5.2 on NVIDIA (EOL 2026-08-21). `glm5`/`glm-5` migrated to
         # `glm5-bedrock`; every NVIDIA-suffixed spelling died with the endpoint,
@@ -1019,38 +1027,49 @@ def test_adaptive_thinking_claude_models_disable_tool_use():
         )
 
 
-def test_glm52_zai_disables_tool_use():
-    """GLM-5.2 on Z.AI must use prompt-based JSON parsing.
+def test_latest_zai_models_use_prompt_parsing_and_published_limits():
+    """GLM-5.3 models are always-thinking and start on prompt parsing.
 
-    Z.AI's OpenAI-compat endpoint ignores OpenAI's json_schema response_format
-    that with_structured_output() relies on and returns markdown-fenced JSON,
-    which the json_schema parser rejects ("Invalid JSON: expected value at line
-    1 column 1" in the field) — and GLM-5.2 is additionally a thinking model.
-    Both reasons keep it on the PydanticOutputParser path, which strips the
-    fences. Resolves via every advertised alias — the version-explicit GLM-5.1
-    names were deleted in the 2026-07-25 alias cleanup, not absorbed, so they
-    are deliberately absent here (see
-    ``RETIRED_ALIASES_DELETED_NOT_REDIRECTED``).
+    Z.AI advertises function calling and structured output, but the repository
+    policy requires a live review proving forced tool use while thinking before
+    enabling LangChain's tool-based structured-output path.
     """
     loader = ConfigLoader()
-    aliases = (
-        "zhipuai/glm-5.2",
-        "glm",
-        "glm-5.2",
-        "glm5.2",
-        "glm5.2-zai",
-        "zai-glm",
-        "glm-zai",
-    )
+
+    aliases = ("zhipuai/glm-5.3", "glm", "glm-5.3", "glm5.3", "zai-glm", "glm-zai")
     for alias in aliases:
         provider, config = loader.resolve_model(alias)
-        assert provider == "zai", f"{alias} should route to the zai provider"
-        assert config.id == "zhipuai/glm-5.2"
-        assert config.supports_tool_use is False, (
-            f"{alias} (GLM-5.2) must set supports_tool_use: false — Z.AI returns "
-            "markdown-fenced JSON and it's a thinking model"
-        )
-        assert config.context_window == 1048576
+        assert provider == "zai"
+        assert config.id == "zhipuai/glm-5.3"
+        assert config.supports_tool_use is False
+        assert config.context_window == 1_000_000
+        assert config.inference_params is not None
+        assert config.inference_params.max_output_tokens == 32768
+
+    for alias in ("zhipuai/glm-5.3-flash", "glm-flash", "glm53-flash", "glm5.3-flash"):
+        provider, config = loader.resolve_model(alias)
+        assert provider == "zai"
+        assert config.id == "zhipuai/glm-5.3-flash"
+        assert config.supports_tool_use is False
+        assert config.context_window == 1_000_000
+        assert config.inference_params is not None
+        assert config.inference_params.max_output_tokens == 32768
+
+
+def test_deepseek_direct_uses_current_peak_pricing():
+    """Cost estimates must not under-state DeepSeek's weekday peak rates."""
+    loader = ConfigLoader()
+    expected = {
+        "deepseek-v4-pro": (1.32, 3.96),
+        "deepseek-v4-flash": (0.44, 1.32),
+    }
+
+    for model_id, (input_rate, output_rate) in expected.items():
+        provider, config = loader.resolve_model(model_id)
+        assert provider == "deepseek"
+        assert config.pricing is not None
+        assert config.pricing.input_per_million == input_rate
+        assert config.pricing.output_per_million == output_rate
 
 
 def test_kimi_k3_nvidia_matches_the_model_card():
@@ -1209,30 +1228,44 @@ def test_gemini37_flash_keeps_tool_use_path():
     assert config.supports_tool_use is True
 
 
+def test_gemini38_flash_matches_the_published_model_card():
+    """Gemini 3.8 Flash has a 1,048,576-token context and 65,536 output cap."""
+    loader = ConfigLoader()
+    provider, config = loader.resolve_model("gemini-3.8-flash")
+
+    assert provider == "google_genai"
+    assert config.full_id == "gemini-3.8-flash"
+    assert config.context_window == 1_000_000
+    assert config.inference_params is not None
+    assert config.inference_params.max_output_tokens == 65536
+    assert config.inference_params.temperature is None
+    assert config.inference_params.top_p is None
+    assert config.inference_params.top_k is None
+
+
+def test_gemini38_flash_starts_on_the_prompt_parsing_path():
+    """A new thinking model needs a live run before forced tool use is trusted."""
+    loader = ConfigLoader()
+    _, config = loader.resolve_model("gemini-3.8-flash")
+    assert config.supports_tool_use is False
+
+
 def test_generation_neutral_gemini_flash_alias_tracks_the_newest_flash():
-    """``gemini-flash`` tracks the current Flash generation; a minor version can't.
+    """``gemini-flash`` tracks 3.8; inherited generation-3 names stay on 3.7.
 
-    The generation-neutral name moved 3.6 -> 3.7 when 3.7 Flash shipped, per the
-    convention in ``docs/model-registry.md``. When the 3.6 entry itself was
-    removed (2026-08-29) the split held but the sides changed:
-
-    * ``gemini-3-flash``/``gemini3-flash``/``g3flash`` say generation *3*, and
-      3.7 Flash is a generation-3 Flash at the same $1.50/$7.50, same 1M context
-      and same 64K output — so they follow, as ``deprecated_aliases``.
-    * ``gemini36-flash``/``gemini3.6-flash`` pin the *minor* version and were
-      deleted instead, so they raise (``test_deleted_aliases_do_not_resolve``).
-
-    That is the line the convention draws: a name may follow the model it names,
-    never a version it doesn't.
+    The generation-neutral name moved 3.6 -> 3.7 -> 3.8 as each Flash model
+    shipped. The deprecated ``gemini-3-flash`` spellings were inherited by 3.7
+    when 3.6 was removed, and remain there while that endpoint is still live.
+    Minor-version names never redirect.
     """
     loader = ConfigLoader()
 
-    for alias in ("gemini-flash", "gemini-3-flash", "gemini3-flash", "g3flash"):
+    _, current = loader.resolve_model("gemini-flash")
+    assert current.id == "gemini-3.8-flash"
+
+    for alias in ("gemini-3-flash", "gemini3-flash", "g3flash"):
         _, config = loader.resolve_model(alias)
-        assert config.id == "gemini-3.7-flash", (
-            f"{alias!r} resolved to {config.id!r} — it must follow the newest "
-            "Flash entry"
-        )
+        assert config.id == "gemini-3.7-flash"
 
     for deleted in ("gemini36-flash", "gemini3.6-flash", "gemini-3.6-flash"):
         with pytest.raises(ValueError, match="Unknown model"):

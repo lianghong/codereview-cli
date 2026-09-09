@@ -110,7 +110,7 @@ raises from the *parser*, past the `AIMessage`, so there is no usage metadata le
 parser attaches as `llm_output`, called from the retry `except` in `_execute_with_retry`.
 Estimating isn't a shortcut there: a `CodeReviewReport` carries no metadata either, so the
 *success* branch of that path is already estimated, and every `supports_tool_use: false`
-reasoning model (Opus 5, GPT-5.6 Sol, GLM-5.2, K2.6, K3, …) is exactly the kind that
+reasoning model (Opus 5, GPT-5.6 Sol, GLM-5.3, K2.6, K3, …) is exactly the kind that
 burns several billed attempts on a think-heavy batch. Swallow accounting failures to
 `logging.debug` — this runs on the way to a retry or a raise and must never mask the parse
 error.

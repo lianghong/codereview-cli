@@ -59,13 +59,14 @@ Two traps when doing this:
    Changed in the CHANGELOG.
 
 `gemini-flash` followed the same move to `gemini-3.6-flash` (only an alias there, so no `id`
-rename was needed) when Google deprecated `gemini-3-flash-preview`, and again to
-`gemini-3.7-flash` on 2026-08-17. That second move showed the other half of the rule while both
-entries were live: 3.6 **kept** its version-explicit `gemini-3-flash`/`gemini3-flash`/`g3flash`
-back-compat names, because a name that says "3" must not jump two generations to different
-pricing and capabilities. Only the generation-neutral name travels — until the older entry is
-retired, at which point those names have nowhere else to go: the 3.6 entry was removed on
-2026-08-29 and all three moved onto `gemini-3.7-flash` as `deprecated_aliases`.
+rename was needed) when Google deprecated `gemini-3-flash-preview`, then to
+`gemini-3.7-flash` on 2026-08-17, and to `gemini-3.8-flash` in September 2026. The 3.7 move
+showed the other half of the rule while both entries were live: 3.6 **kept** its
+version-explicit `gemini-3-flash`/`gemini3-flash`/`g3flash` back-compat names, because a name
+that says "3" must not jump between live minor versions. Only the generation-neutral name
+travels. When the 3.6 entry was retired on 2026-08-29, all three names moved onto 3.7 as
+`deprecated_aliases`; they remain there while 3.7 is live even though `gemini-flash` now tracks
+3.8.
 
 `sonnet` was the deliberate exception for a while — it stayed on Sonnet 4.6 when Sonnet 5 shipped,
 because 4.6 was the cheaper daily driver and holding the bare name there was a pricing choice, not
@@ -185,10 +186,10 @@ misleading. Keep genuinely current alternative spellings in `aliases`.
 `tests/test_model_profile_drift.py`. Each LangChain partner package ships a `_MODEL_PROFILES`
 table in `<package>/data/_profiles.py`, read via the private
 `_get_default_model_profile(name)` — a plain dict lookup, so no credentials, no client, no
-network. 9 of 18 entries resolve one (Bedrock 4/5, Azure 2/2, DeepSeek 2/2, Google 1/2); the
+network. 9 of 20 entries resolve one (Bedrock 4/5, Azure 2/2, DeepSeek 2/2, Google 1/3); the
 misses are re-hosts and direct vendor APIs whose wire ids the tables don't carry (all of NVIDIA,
 Z.AI, Moonshot and `bedrock_openai`) plus anything newer than the installed package —
-`gemini-3.7-flash` is currently in that last group.
+`gemini-3.7-flash` and `gemini-3.8-flash` are currently in that last group.
 
 **Neither side is authoritative**: the tables are generated from the community-curated
 [models.dev](https://github.com/sst/models.dev), and our `supports_tool_use` is *empirical* — the

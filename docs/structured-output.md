@@ -61,8 +61,9 @@ which is consistent with all of the above.
 | DeepSeek V4 family (**DeepSeek direct**) | on by default (both V4-Pro and V4-Flash) | `true` | tool-use | Thinking is on by default and rejects a forced `tool_choice` (HTTP 400), but **the provider explicitly sends `thinking: disabled`** so tool calling works — tool-use is a property of us disabling thinking, not of the model. **`inference_params.thinking: enabled` flips this entry to the prompt path at runtime** (see `deepseek._create_model`) |
 | MiniMax M3 (NVIDIA) | enabled (interleaved) | `false` | prompt | New reasoning/thinking model — assume prompt-parsing until a live run proves tool-use (forced `tool_choice` while thinking is unproven on this endpoint). Live-verified working on the prompt path. Owns the whole MiniMax alias lineage after M2.7 was removed 2026-07-25 and M2.5-on-Bedrock 2026-08-29 |
 | GLM 5 (Bedrock) | on by default (reasoning_effort=max) | `false` | prompt | Thinking model → forced `tool_choice` auto-downgraded/returned as text; assume-prompt-parsing until proven (positive Converse report was for GLM-4.7, not GLM-5). **Absorbed the version-neutral `glm5`/`glm-5` aliases** 2026-08-29 when the GLM-5.2-on-NVIDIA entry was removed — they name GLM *5*, and this is the live GLM 5 |
-| GLM-5.2 (Z.AI) | enabled (server-side) | `false` | prompt | Z.AI's endpoint ignores `json_schema` response_format and returns markdown-fenced JSON (`PydanticOutputParser` strips the fences) **and** it's a thinking model → assume-prompt-parsing rule. 1M context, only Z.AI entry (GLM-5.1 removed 2026-07-25; its aliases resolve here). Unverified live; flip to `true` only if a live run proves tool-use |
-| Gemini 3.7 Flash (Google) | supported low/medium/high (`minimal` errors) | `true` (default) | tool-use | **The Gemini exception, and the only live-proven one left** (2026-08-17): card lists Structured outputs *and* Function calling as Supported, and three live runs each returned a valid `CodeReviewReport` with `parsing_error` None and `output_token_details.reasoning > 0` — tool-use held *while thinking*, which is the condition the rule exists for. Owns the generation-neutral `gemini-flash` plus 3.6's `gemini-3-flash`/`gemini3-flash`/`g3flash`; sampling params omitted (3.6-onward rule) |
+| GLM-5.3 / GLM-5.3-Flash (Z.AI) | always on, low/high/max (default max) | `false` | prompt | Both are new always-thinking models. Z.AI advertises Function Calling and Structured Output, but no live review has proved forced tool use while thinking; the assume-prompt-parsing rule applies. GLM-5.2's endpoint also returned fenced JSON on this provider path, reinforcing the conservative default. |
+| Gemini 3.8 Flash (Google) | supported low/medium/high (`minimal` errors) | `false` | prompt | New thinking model: its card advertises Structured outputs and Function calling, but policy requires a live review proving forced tool use while thinking. No such run has been recorded yet. Owns `gemini-flash`; sampling params omitted. |
+| Gemini 3.7 Flash (Google) | supported low/medium/high (`minimal` errors) | `true` (default) | tool-use | **The Gemini exception, and the only live-proven one left** (2026-08-17): card lists Structured outputs *and* Function calling as Supported, and three live runs each returned a valid `CodeReviewReport` with `parsing_error` None and `output_token_details.reasoning > 0` — tool-use held *while thinking*, which is the condition the rule exists for. Keeps its versioned aliases plus 3.6's `gemini-3-flash`/`gemini3-flash`/`g3flash`; sampling params omitted. |
 | Everything else (Gemini 3.1 Pro, DeepSeek V4 family on NVIDIA) | — | `true` (default) | tool-use | Standard `.with_structured_output()` |
 
 **Two separate 2026-08-29 passes removed rows from this matrix; don't conflate them.**
@@ -88,9 +89,9 @@ live run; 3.7 Flash's row now carries that precedent.
 
 Two distinct shapes drive the `false` cases:
 
-**"Can't tool-call at all / mangles the tool call"** — MiniMax M3, GLM-5.2-on-Z.AI fenced JSON.
-The clearest case was Kimi-K2.5-on-Bedrock's marker leakage (entry removed 2026-08-29), which is
-why that observation is kept above.
+**"Can't tool-call at all / mangles the tool call"** — MiniMax M3 and the retired
+GLM-5.2-on-Z.AI entry's fenced JSON. The clearest case was Kimi-K2.5-on-Bedrock's marker
+leakage (entry removed 2026-08-29), which is why that observation is kept above.
 
 **"Can tool-call but not *while thinking*"** — Opus 5, Sonnet 5, Fable 5, GLM 5,
 GPT-5.6-Sol-on-Bedrock, K2.6, K3. These are intermittent, except the always-on-thinking models
@@ -126,8 +127,8 @@ contradicts.
 ## Per-model detail
 
 **MiniMax M3 on NVIDIA, Kimi K3 on NVIDIA, Kimi K2.6 on Moonshot, Claude Opus 5, Sonnet 5 and
-Fable 5 on Bedrock, GPT-5.6 Sol on `bedrock-mantle`, GLM 5 on Bedrock and GLM-5.2 on Z.AI** lack
-usable tool-based structured output.
+Fable 5 on Bedrock, GPT-5.6 Sol on `bedrock-mantle`, GLM 5 on Bedrock, and the GLM-5.3 family
+on Z.AI** lack usable tool-based structured output.
 
 - **Opus 5** is the one case with vendor confirmation rather than inference: its Bedrock model
   card lists *Structured outputs: Not Supported* for both `bedrock-runtime` and
@@ -138,13 +139,13 @@ usable tool-based structured output.
   `false` (live-verified working on the prompt path against the NVIDIA NIM endpoint).
 - **Sonnet 5** is the first Sonnet-tier model with adaptive thinking on by default, so it
   inherits the exact Opus 4.8 conflict (unverified live; ships `false` under the rule).
-- **GLM-5.2 (Z.AI)**: Z.AI's OpenAI-compat endpoint ignores OpenAI's `json_schema`
-  response_format that `.with_structured_output()` sets and returns markdown-fenced JSON
-  (` ```json … ``` `), which the json_schema parser rejects with "Invalid JSON: expected value
-  at line 1 column 1"; `PydanticOutputParser` strips the fences. It is the current
-  `zai_default` (1M context, the only Z.AI entry since GLM-5.1 was removed 2026-07-25) and
-  additionally a thinking model, so it stays on the prompt path under the rule (unverified
-  live).
+- **GLM-5.3 and GLM-5.3-Flash (Z.AI)** are always-thinking models and ship on
+  prompt parsing under the assume-prompt-parsing rule. Z.AI advertises Function Calling and
+  Structured Output for both, but that does not prove LangChain's forced `tool_choice` works
+  while reasoning is active. Flip either entry only after a live review demonstrates that
+  condition. The removed GLM-5.2 entry supplied additional provider-path evidence: Z.AI's
+  OpenAI-compatible endpoint ignored the `json_schema` response format and returned fenced JSON,
+  which `PydanticOutputParser` handled.
 - **K2.6** — Moonshot's server rejects `tool_choice='specified'` (HTTP 400) when thinking is
   enabled.
 - **Sonnet 5 (and Opus 4.8, whose entry was removed 2026-08-29)** support only

@@ -683,7 +683,7 @@ class ModelProvider(ABC):
            The ``CodeReviewReport`` instance itself, produced by chaining
            a ``PydanticOutputParser`` onto the model. Used by tool-use-less
            endpoints — currently the Bedrock Claude reasoning tiers, GPT-5.6
-           Sol, GLM 5, MiniMax M3, Kimi K3/K2.6 and GLM-5.2 — where the model
+           Sol, GLM 5, MiniMax M3, Kimi K3/K2.6 and the GLM-5.3 family — where the model
            emits JSON via prompt format instructions instead of via
            tool-calling.
 

@@ -22,7 +22,7 @@ def model_config():
         full_id="deepseek-v4-pro",
         name="DeepSeek-V4-Pro",
         aliases=["dsv4-pro"],
-        pricing=PricingConfig(input_per_million=1.74, output_per_million=3.48),
+        pricing=PricingConfig(input_per_million=1.32, output_per_million=3.96),
         inference_params=InferenceParams(
             temperature=0.3,
             top_p=0.95,
@@ -38,7 +38,7 @@ def flash_model_config():
         full_id="deepseek-v4-flash",
         name="DeepSeek-V4-Flash",
         aliases=["dsv4-flash"],
-        pricing=PricingConfig(input_per_million=0.14, output_per_million=0.28),
+        pricing=PricingConfig(input_per_million=0.44, output_per_million=1.32),
         inference_params=InferenceParams(
             temperature=0.3,
             max_output_tokens=16384,
@@ -131,7 +131,7 @@ def _thinking_enabled_config():
         full_id="deepseek-v4-pro",
         name="DeepSeek-V4-Pro (thinking)",
         aliases=[],
-        pricing=PricingConfig(input_per_million=1.74, output_per_million=3.48),
+        pricing=PricingConfig(input_per_million=1.32, output_per_million=3.96),
         inference_params=InferenceParams(
             temperature=0.3,
             max_output_tokens=16384,

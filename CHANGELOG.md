@@ -10,6 +10,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 #### New Models
+- **GLM-5.3 and GLM-5.3-Flash (Z.AI direct)**
+  - GLM-5.3 (`zhipuai/glm-5.3`, wire ID `glm-5.3`) is the latest text
+    flagship: 1M context, 128K vendor output ceiling, always-on reasoning at
+    low/high/max effort, and the same $1.40/$4.40 rate as GLM-5.2
+  - GLM-5.3-Flash (`zhipuai/glm-5.3-flash`, aliases `glm-flash`,
+    `glm53-flash`, `glm5.3-flash`) is the first native-multimodal GLM-5 model:
+    320B total / 18B active, 1M context, $0.15/$0.50 list pricing. The official
+    pricing page currently applies a temporary 50% discount; estimates record
+    list price to avoid under-stating future cost
+  - Both use conservative 32K output caps and prompt-based structured output.
+    Z.AI advertises function calling and JSON output, but reasoning cannot be
+    disabled; forced tool use while thinking has not been live-verified
+- **Gemini 3.8 Flash (Google GenAI)** — Google's most intelligent Flash model,
+  optimized for long-horizon software engineering, autonomous agents, and
+  complex enterprise workflows (GA September 2026)
+  - Model ID and wire ID: `gemini-3.8-flash`
+  - Aliases: `gemini38-flash`, `gemini3.8-flash`, and the generation-neutral
+    `gemini-flash`, moved from 3.7 Flash
+  - Conservative 1,000,000-token context (published limit 1,048,576), 65,536
+    max output tokens, and low/medium/high thinking levels
+  - Standard pricing $1.50/$7.50 per M. Google charges the introductory
+    $0.75/$3.75 rate through 2026-12-31; recording the standard rate avoids
+    under-estimating runs after the promotion ends
+  - Sampling parameters omitted, as required for Gemini 3.6 Flash and newer
+  - `supports_tool_use: false`: the card advertises function calling and
+    structured output, but this is a new thinking model and has not passed a
+    live code-review run with forced tool use while thinking. It starts on the
+    prompt-parsing path until that stronger condition is verified
 - **Kimi K3 (NVIDIA NIM)** — Moonshot AI's flagship native-multimodal agentic
   model, on NVIDIA's free NIM endpoint (build.nvidia.com release 2026-08-20)
   - Model ID: `kimi-k3-nvidia` (`full_id: moonshotai/kimi-k3`)
@@ -379,6 +407,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pin fails when a provider drops from "some coverage" to "none".
 
 ### Changed
+- **DeepSeek direct pricing now follows the current peak/off-peak schedule.**
+  Cost estimates record peak rates to avoid under-stating weekday peak runs:
+  V4-Pro is now $1.32/$3.96 per M and V4-Flash $0.44/$1.32; official off-peak
+  rates are half those values.
+- **`glm`, `zai-glm`, and `glm-zai` now resolve to GLM-5.3** (was GLM-5.2),
+  following the generation-neutral alias convention.
+- **`gemini-flash` now resolves to Gemini 3.8 Flash** (was 3.7 Flash), following
+  the generation-neutral alias convention. Versioned 3.7 aliases and the
+  generation-3 back-compat names inherited from removed 3.6 Flash remain on
+  the still-live 3.7 entry.
 - **`gemini-flash` now resolves to Gemini 3.7 Flash** (was 3.6 Flash). The
   generation-neutral alias tracks the current Flash generation, per the
   registry convention. Gemini 3.6 Flash stayed live at the time and **kept** its
@@ -501,6 +539,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     so a name can never be dropped by accident, only on purpose.
 
 ### Removed
+- **GLM-5.2 (Z.AI direct) removed as curation.** The endpoint remains live, but
+  GLM-5.3 uses the same base model with stronger post-training at the same
+  $1.40/$4.40 rate, 1M context, and 128K output ceiling. Version-explicit names
+  `zhipuai/glm-5.2`, `glm-5.2`, `glm5.2`, and `glm5.2-zai` now fail fast;
+  generation-neutral aliases moved to 5.3.
 - **Nine entries removed as curation, 27 → 18 models. Every one of these
   endpoints is still live.** This is the opposite case from the dead-endpoint
   pass below and must not be read as one: the entries were cut at the user's
@@ -641,8 +684,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     model they actually name — those spellings say GLM *5*, and this is GLM 5 —
     but it is a provider *and* a billing change from the free NIM endpoint, so
     they stay `deprecated_aliases`: resolvable, not advertised by `--list-models`.
-    For GLM-5.2 specifically, use the Z.AI direct entry (`glm` / `zhipuai/glm-5.2`),
-    canonical owner of the family and still live.
+    For a current direct GLM, use `glm` / `zhipuai/glm-5.3`; version-explicit
+    GLM-5.2 names are retired even though that endpoint remains live.
   - **`qwen-nvidia` / `qwen3-nvidia` / `qwen-coder-nvidia` were deleted, not
     migrated**, though they are version-neutral. The only live Qwen left is
     `qwen-next-bedrock`, and a `-nvidia`-suffixed name silently resolving to

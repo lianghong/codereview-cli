@@ -112,7 +112,7 @@ def _profile_lookups():
     from langchain_openai.chat_models.base import _get_default_model_profile as openai
 
     # zai and bedrock_openai are ChatOpenAI-based, so they read OpenAI's table
-    # — which is why neither of them ever hits (their wire ids are `glm-5.2`
+    # — which is why neither of them ever hits (their wire ids are `glm-5.3`
     # and `openai.gpt-5.6-sol`, not names OpenAI's table carries).
     return {
         "bedrock": aws,

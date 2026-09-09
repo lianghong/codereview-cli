@@ -7,10 +7,11 @@ ChatZhipuAI class — that path uses the Chinese endpoint (open.bigmodel.cn)
 and a different env var (ZHIPUAI_API_KEY), and pulls in a heavy dependency
 tree we don't otherwise need.
 
-The OpenAI-compatible adapter natively supports ``with_structured_output``
-and tool calling, but Z.AI's endpoint ignores the ``json_schema``
-response_format it sets and answers with markdown-fenced JSON, so the GLM
-entries opt into prompt-based parsing via ``supports_tool_use: false``.
+The OpenAI-compatible adapter exposes ``with_structured_output`` and tool
+calling. Current GLM entries are always-thinking models and therefore opt into
+prompt-based parsing via ``supports_tool_use: false`` until a live run proves
+forced tool use works while thinking. The retired GLM-5.2 entry also returned
+markdown-fenced JSON when ``json_schema`` was requested on this provider path.
 """
 
 import logging
@@ -101,7 +102,7 @@ class ZAIProvider(TokenTrackingMixin, ModelProvider):
         """Create LangChain ChatOpenAI model pointing at Z.AI's endpoint."""
         # Z.AI's OpenAI-compatible endpoint requires the model name in the
         # request body (real OpenAI ignores it; routing happens via URL).
-        # full_id holds the wire-level model name (e.g. "glm-5.2"); fall
+        # full_id holds the wire-level model name (e.g. "glm-5.3"); fall
         # back to id if full_id is not set.
         wire_model = self.model_config.full_id or self.model_config.id
 
@@ -130,9 +131,8 @@ class ZAIProvider(TokenTrackingMixin, ModelProvider):
 
         # Tool-use vs prompt-parsing routing (and _create_chain) live in the
         # base class; supports_tool_use in models.yaml decides the path.
-        # GLM-5.2 sets it false: Z.AI's endpoint ignores OpenAI's json_schema
-        # response_format and emits markdown-fenced JSON, which the
-        # PydanticOutputParser path strips.
+        # Current GLM entries set this false because they are always-thinking
+        # models whose forced-tool-use behavior is not yet live-verified.
         return self._apply_structured_output(base_model)
 
     def _is_retryable_error(self, error: Exception) -> bool:

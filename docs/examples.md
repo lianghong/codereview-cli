@@ -109,8 +109,11 @@ codereview ./src --model kimi-k2.6
 # Gemini 3.1 Pro - Most advanced reasoning, 1M context (Google GenAI)
 codereview ./src --model gemini-3.1-pro
 
-# Gemini 3.7 Flash - the only Flash entry, complex coding + agentic (Google GenAI)
-# (3.6 Flash was removed 2026-08-29; `gemini-flash` and 3.6's names resolve here)
+# Gemini 3.8 Flash - latest Flash, long-horizon engineering + agents (Google GenAI)
+# (`gemini-flash` resolves here)
+codereview ./src --model gemini-3.8-flash
+
+# Gemini 3.7 Flash - previous Flash; live-verified tool-use path
 codereview ./src --model gemini-3.7-flash
 ```
 
@@ -204,7 +207,7 @@ codereview ./src \
 - Opus 5 (100 files): ~$1.50
 - GPT-5.4 (100 files): ~$0.75
 - Gemini 3.1 Pro (100 files): ~$0.50
-- Gemini 3.7 Flash (100 files): ~$0.32
+- Gemini 3.8 Flash (100 files): ~$0.32
 - Sonnet (100 files): ~$0.30
 - DeepSeek-V4-Pro direct (100 files): ~$0.18
 - Kimi K2.6 direct (100 files): ~$0.12
@@ -804,9 +807,10 @@ diff before.md after.md
 
 2. **Choose Cost-Effective Models**:
    - **NVIDIA NIM free tier** (DeepSeek-V4-Flash-0731, MiniMax M3, Kimi K3) for development and CI experimentation
-   - **DeepSeek-V4-Pro direct** for budget-conscious production reviews ($0.435/$0.87 per M, 1M context — the Azure deployment was removed 2026-07-25)
+   - **GLM-5.3-Flash direct** for budget-conscious production reviews ($0.15/$0.50 list per M, 1M context)
+   - **DeepSeek-V4-Flash direct** when off-peak pricing or native tool calling is preferred ($0.44/$1.32 peak, half-price off peak)
    - **Haiku** for CI/CD quality gates (fastest, cheapest Bedrock option since Qwen3 Coder Next was removed 2026-08-29)
-   - **Gemini 3.7 Flash** for large-context reviews (1M context, thinking low/medium/high)
+   - **Gemini 3.8 Flash** for large-context reviews (1M context, thinking low/medium/high)
    - **Gemini 3.1 Pro** for advanced reasoning reviews (1M context)
    - **Sonnet** for PR reviews (balanced)
    - **GPT-5.4** for Azure-hosted reviews ($2.50/$15 per M, 1.05M context)

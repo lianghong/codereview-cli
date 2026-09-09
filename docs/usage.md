@@ -408,7 +408,12 @@ codereview ./src --model minimax-m3
 codereview ./src --model gemini-3.1-pro
 ```
 
-**Gemini 3.7 Flash** - latest Flash generation, complex coding and agentic workflows, 1M context, thinking at low/medium/high (Google GenAI; owns the generation-neutral `gemini-flash`):
+**Gemini 3.8 Flash** - latest Flash generation for long-horizon software engineering and autonomous agents, 1M context, thinking at low/medium/high (Google GenAI; owns `gemini-flash`):
+```bash
+codereview ./src --model gemini-3.8-flash
+```
+
+**Gemini 3.7 Flash** - previous Flash generation, 1M context, live-verified tool-use path:
 ```bash
 codereview ./src --model gemini-3.7-flash
 ```
@@ -434,10 +439,11 @@ codereview ./src --model deepseek-v4-pro     # Flagship
 codereview ./src --model deepseek-v4-flash   # 3x cheaper input
 ```
 
-**GLM-5.2 (Z.AI)** - flagship, 1M-token context (only Z.AI model; supersedes GLM-5.1 at the same price):
+**GLM-5.3 / GLM-5.3-Flash (Z.AI)** - current flagship and low-cost multimodal sibling, both with 1M-token contexts:
 ```bash
-codereview ./src --model zhipuai/glm-5.2
-codereview ./src --model glm        # short alias
+codereview ./src --model zhipuai/glm-5.3
+codereview ./src --model glm          # flagship short alias
+codereview ./src --model glm-flash    # low-cost multimodal sibling
 ```
 
 **Kimi K2.6 (Moonshot)** - 1T MoE, 32B active, 256K context, agentic:
@@ -474,14 +480,16 @@ Be aware of costs and choose models accordingly:
 
 **Google Generative AI:**
 - **Gemini 3.1 Pro**: Most advanced reasoning ($2/M input, $12/M output)
-- **Gemini 3.7 Flash**: Current Flash generation, thinking at low/medium/high ($1.50/M input, $7.50/M output)
+- **Gemini 3.7 Flash**: Previous Flash generation; live-verified tool-use path ($1.50/M input, $7.50/M output)
+- **Gemini 3.8 Flash**: Current Flash generation, long-horizon engineering and agents ($1.50/M input, $7.50/M output)
 
 **DeepSeek direct:**
-- **DeepSeek-V4-Pro**: Flagship, 1M context, native tool calling ($0.435/M input, $0.87/M output)
-- **DeepSeek-V4-Flash**: ~3x cheaper input than V4-Pro ($0.14/M input, $0.28/M output)
+- **DeepSeek-V4-Pro**: Flagship, 1M context, native tool calling (peak: $1.32/M input, $3.96/M output; off peak is half)
+- **DeepSeek-V4-Flash**: Lower-cost sibling (peak: $0.44/M input, $1.32/M output; off peak is half)
 
 **Z.AI direct:**
-- **GLM-5.2**: Flagship, 1M-token context, long-horizon engineering, thinking mode ($1.40/M input, $4.40/M output)
+- **GLM-5.3**: Latest text flagship, always-on reasoning, 1M context ($1.40/M input, $4.40/M output)
+- **GLM-5.3-Flash**: Low-cost multimodal sibling, 1M context (list: $0.15/M input, $0.50/M output)
 
 **Moonshot direct (Kimi):**
 - **Kimi K2.6**: 1T MoE, 32B active, 256K context, agentic ($0.60/M input, $2.50/M output)
@@ -494,7 +502,7 @@ Be aware of costs and choose models accordingly:
 - Focus on critical paths first
 - The tool displays estimated cost after each run
 - Use NVIDIA NIM free tier for development/testing
-- For high-volume CI, **DeepSeek-V4-Flash** ($0.14/$0.28) is the cheapest paid option with full tool-calling support
+- For high-volume CI, **GLM-5.3-Flash** ($0.15/$0.50 list) is the cheapest paid option; DeepSeek-V4-Flash costs $0.44/$1.32 at peak and half that off peak
 
 ### 11. Act on Findings Systematically
 
@@ -680,14 +688,16 @@ codereview ./src --model kimi-nvidia-3      # Kimi K3 (2.8T/104B MoE, 1M context
 
 # Google Generative AI
 codereview ./src --model gemini-3.1-pro     # Gemini 3.1 Pro (1M context; supersedes retired 3 Pro)
-codereview ./src --model gemini-3.7-flash   # Gemini 3.7 Flash (only Flash entry; owns `gemini-flash` and 3.6's names)
+codereview ./src --model gemini-3.7-flash   # Gemini 3.7 Flash (previous Flash; tool-use path)
+codereview ./src --model gemini-3.8-flash   # Gemini 3.8 Flash (current Flash; owns `gemini-flash`)
 
 # DeepSeek direct API (paid, native tool calling)
 codereview ./src --model deepseek-v4-pro    # Flagship, 1M context
 codereview ./src --model deepseek-v4-flash  # ~3x cheaper input than V4-Pro
 
 # Z.AI (Zhipu international)
-codereview ./src --model zhipuai/glm-5.2    # Flagship, 1M-token context (owns `glm`/`zai-glm`)
+codereview ./src --model zhipuai/glm-5.3          # Flagship, 1M context (owns `glm`/`zai-glm`)
+codereview ./src --model zhipuai/glm-5.3-flash    # Low-cost multimodal sibling
 
 # Moonshot direct API (Kimi)
 codereview ./src --model kimi-k2.6          # Canonical Kimi, 256K context
@@ -715,10 +725,12 @@ codereview ./src --model gpt5.6             # GPT-5.6 Sol (OpenAI flagship, best
 | **DeepSeek-V4-Flash-0731 (NVIDIA)** | NVIDIA NIM | Free tier, 1M context, fast/cheap sibling of V4-Pro | Free* |
 | **Kimi K3** | NVIDIA NIM | Free tier, 2.8T/104B MoE, 1M context, multimodal (text+image in), always-on thinking | Free* |
 | **Gemini 3.1 Pro** | Google GenAI | Most advanced reasoning, 1M context (3 Pro retired 2026-03-09) | $2/M input, $12/M output |
-| **Gemini 3.7 Flash** | Google GenAI | Only Flash entry: complex coding, agentic workflows, 1M context, 64K output, thinking low/medium/high (owns `gemini-flash` and 3.6's names) | $1.50/M input, $7.50/M output |
-| **DeepSeek-V4-Pro** | DeepSeek direct | 1M context, three reasoning modes, native tool calling | $0.435/M input, $0.87/M output |
-| **DeepSeek-V4-Flash** | DeepSeek direct | 1M context, cheapest paid option with tool calling | $0.14/M input, $0.28/M output |
-| **GLM-5.2** | Z.AI direct | Flagship, 1M-token context, long-horizon engineering, thinking mode (only Z.AI entry) | $1.40/M input, $4.40/M output |
+| **Gemini 3.7 Flash** | Google GenAI | Previous Flash generation, 1M context, 64K output; live-verified tool-use path | $1.50/M input, $7.50/M output |
+| **Gemini 3.8 Flash** | Google GenAI | Current Flash: long-horizon engineering and autonomous agents, 1M context, 64K output (owns `gemini-flash`) | $1.50/M input, $7.50/M output |
+| **DeepSeek-V4-Pro** | DeepSeek direct | 1M context, three reasoning modes, native tool calling | Peak $1.32/M input, $3.96/M output |
+| **DeepSeek-V4-Flash** | DeepSeek direct | 1M context, lower-cost sibling | Peak $0.44/M input, $1.32/M output |
+| **GLM-5.3** | Z.AI direct | Latest text flagship, always-on reasoning, 1M context | $1.40/M input, $4.40/M output |
+| **GLM-5.3-Flash** | Z.AI direct | Low-cost multimodal sibling, 1M context | List $0.15/M input, $0.50/M output |
 | **Kimi K2.6** | Moonshot direct | 1T MoE, 32B active, 256K context, agentic — the only Kimi outside NVIDIA | $0.60/M input, $2.50/M output |
 | **GPT-5.6 Sol (Bedrock)** | OpenAI-on-Bedrock | OpenAI flagship, best coding model, 272K context, `bedrock-mantle` endpoint (In-Region us-east-1/us-east-2) | $5/M input, $30/M output |
 
@@ -874,7 +886,7 @@ For projects with 1000+ files:
 | 1000 files, bulk scan | Haiku 4.5 | AWS Bedrock | $0.10-$0.50 |
 | Development/testing | DeepSeek-V4-Flash-0731 | NVIDIA NIM | Free |
 | Advanced reasoning (1M) | Gemini 3.1 Pro | Google GenAI | $2.00-$12.00/M |
-| Large context (1M) | Gemini 3.7 Flash | Google GenAI | $1.50-$7.50/M |
+| Large context (1M) | Gemini 3.8 Flash | Google GenAI | $1.50-$7.50/M |
 | Large context needed | Kimi K3 | NVIDIA NIM | Free |
 
 *Actual costs depend on file size and complexity

@@ -328,7 +328,7 @@ providers:
         # GLM-5 is a thinking model with reasoning on by default
         # (reasoning_effort defaults to max), so a forced tool_choice is
         # auto-downgraded / returned as text while thinking — the same
-        # incompatibility the GLM-5.2-on-Z.AI entry routes around.
+        # incompatibility observed on the retired GLM-5.2-on-Z.AI entry.
         # Assume prompt-based JSON parsing until a live run proves tool-use.
         supports_tool_use: false
         capabilities:
@@ -773,8 +773,8 @@ providers:
       # the configured us-east-1 (verified against ListFoundationModels). That
       # is a provider *and* a billing change from the free NIM endpoint they used
       # to reach, which is why they stay `deprecated_aliases` — resolvable, but
-      # not advertised by --list-models. For GLM-5.2 specifically use the Z.AI
-      # direct entry (`glm` / `zhipuai/glm-5.2`), canonical owner of the family.
+      # not advertised by --list-models. For a current direct GLM use Z.AI's
+      # `glm` / `zhipuai/glm-5.3`; version-specific 5.2 names are retired.
 
       # Step 3.5 Flash (NVIDIA) removed 2026-07-25 and Step 3.7 Flash (NVIDIA)
       # removed 2026-08-29 — no StepFun model remains on NIM:
@@ -828,15 +828,51 @@ providers:
           2x reasoning over Gemini 3 Pro,
           Deep Think with 3 levels
 
-      # Gemini 3.7 Flash - latest Flash generation (August 2026)
+      # Gemini 3.8 Flash - latest Flash generation (September 2026)
+      # 1M token context, 64K output, thinking at low/medium/high
+      - id: gemini-3.8-flash
+        full_id: gemini-3.8-flash
+        name: Gemini 3.8 Flash
+        aliases:
+          - gemini-flash
+          - gemini38-flash
+          - gemini3.8-flash
+        pricing:
+          # Verified: ai.google.dev/gemini-api/docs/pricing (2026-09-09).
+          # Record the standard rate rather than the introductory
+          # $0.75/$3.75 rate that ends 2026-12-31, so estimates do not
+          # under-state costs after 2027-01-01.
+          input_per_million: 1.50
+          output_per_million: 7.50
+        inference_params:
+          # Sampling params remain deprecated for Gemini 3.8 Flash.
+          max_output_tokens: 65536
+        context_window: 1000000
+        # This is a thinking model. The card advertises structured output and
+        # function calling, but unlike 3.7 no live review has yet proved forced
+        # tool use while thinking, so the prompt path is required by policy.
+        supports_tool_use: false
+        capabilities:
+          - code_review
+          - reasoning
+          - multimodal
+          - agentic_tasks
+          - computer_use
+          - thinking
+        notes: >-
+          Most intelligent Flash model (September 2026), optimized for
+          long-horizon software engineering, autonomous agents and complex
+          enterprise workflows. 1M-token context (1,048,576), up to 64K
+          output, and low/medium/high thinking levels; "minimal" is rejected.
+          Sampling params are deprecated and omitted. Uses prompt-based
+          structured output until a live run proves tool use while thinking.
+
+      # Gemini 3.7 Flash - previous Flash generation (August 2026)
       # 1M token context, 64K output, thinking at low/medium/high
       - id: gemini-3.7-flash
         full_id: gemini-3.7-flash
         name: Gemini 3.7 Flash
-        # Generation-neutral `gemini-flash` tracks the current Flash
-        # generation, so it moved here from gemini-3.6-flash.
         aliases:
-          - gemini-flash
           - gemini37-flash
           - gemini3.7-flash
         # Back-compat only: resolves, but hidden from --list-models
@@ -880,7 +916,7 @@ providers:
           - computer_use
           - thinking
         notes: >-
-          Latest and most capable Flash model (August 2026), built for complex
+          Previous Flash generation (August 2026), built for complex
           coding, agentic workflows and reliable multi-step execution. 1M-token
           context (1,048,576), up to 64K output. Thinking supported at low,
           medium and high; "minimal" is rejected with an error. Sampling params
@@ -893,7 +929,7 @@ providers:
           condition the assume-prompt-parsing rule exists for.
 
       # Gemini 3 Flash Preview removed 2026-07-25 and Gemini 3.6 Flash removed
-      # 2026-08-29 - gemini-3.7-flash above is the only Flash entry left:
+      # 2026-08-29; Gemini 3.7 and 3.8 Flash are the live Flash entries:
       #   gemini-3-flash-preview  DEPRECATED upstream (announced 2025-12-17),
       #     with gemini-3.6-flash named as its replacement. Still live on the
       #     API; re-add from git history for the cheaper $0.50/$3.00 rate.
@@ -940,13 +976,11 @@ providers:
           - deepseek-v4-azure
           - ds-v4-azure
         pricing:
-          # DeepSeek list price (https://api-docs.deepseek.com/quick_start/pricing).
-          # Per DeepSeek docs, the 75% launch promo ends 2026-05-31 15:59 UTC,
-          # after which the steady-state rate is 1/4 of the original list
-          # ($1.74/$3.48) → $0.435/$0.87. Values below reflect that post-promo
-          # steady-state rate.
-          input_per_million: 0.435
-          output_per_million: 0.87
+          # Peak rates verified against DeepSeek's official pricing table on
+          # 2026-09-09. The API charges half-price off peak; recording peak
+          # rates prevents the CLI from under-estimating weekday peak runs.
+          input_per_million: 1.32
+          output_per_million: 3.96
         inference_params:
           # Lower temp for code review determinism (model default 1.0)
           default_temperature: 0.3
@@ -974,8 +1008,11 @@ providers:
           - dsv4-flash
           - ds-v4-flash
         pricing:
-          input_per_million: 0.14
-          output_per_million: 0.28
+          # Peak rates verified against DeepSeek's official pricing table on
+          # 2026-09-09. Off-peak rates are $0.22/$0.66; cost estimates use the
+          # peak $0.44/$1.32 rates so they do not under-state a run.
+          input_per_million: 0.44
+          output_per_million: 1.32
         inference_params:
           default_temperature: 0.3
           default_top_p: 0.95
@@ -987,8 +1024,9 @@ providers:
           - structured_output
           - tool_use
         notes: >-
-          Cost-efficient flash variant. 12x cheaper input than V4-Pro,
-          same context window. Best for high-volume reviews and CI.
+          Cost-efficient flash variant, same 1M context and 384K vendor output
+          ceiling as V4-Pro. The registry keeps a conservative 16K output cap
+          for one-shot reviews. Best for high-volume reviews and CI.
 
   # Moonshot AI (Kimi) Direct API Provider
   # Uses langchain-moonshot's ChatMoonshot, which extends BaseChatOpenAI
@@ -1077,51 +1115,32 @@ providers:
     base_url: "https://api.z.ai/api/paas/v4/"
     request_timeout: 300
     models:
-      # GLM-5.2 (Z.AI) — current Zhipu flagship, supersedes GLM-5.1.
-      # Long-horizon engineering model: "truly usable 1M-token context" for
-      # project-scale coding/refactoring, more stable long-task execution, and
-      # tighter adherence to engineering standards. Thinking/reasoning mode +
-      # function calling + MCP. https://docs.z.ai/guides/llm/glm-5.2
-      - id: zhipuai/glm-5.2
-        full_id: glm-5.2
-        name: GLM-5.2 (Z.AI)
+      # GLM-5.3 (Z.AI) — current flagship, superseding GLM-5.2 at the same
+      # $1.40/$4.40 list price. Text-only, 1M context, 128K output ceiling,
+      # always-on reasoning at low/high/max effort, function calling and JSON
+      # structured output. https://docs.z.ai/guides/llm/glm-5.3
+      - id: zhipuai/glm-5.3
+        full_id: glm-5.3
+        name: GLM-5.3 (Z.AI)
         aliases:
           - glm
-          - glm-5.2
-          - glm5.2
-          - glm5.2-zai
+          - glm-5.3
+          - glm5.3
           - zai-glm
           - glm-zai
-        # 2026-07-25: the GLM-5.1 back-compat names (zhipuai/glm-5.1 - the
-        # removed entry's id - and glm5.1-zai) were deleted, not migrated.
-        # Use `glm` (generation-neutral) or `glm-5.2`.
         pricing:
-          # Official docs.z.ai pricing page: $1.40 / $4.40 per 1M tokens
-          # (same list price as GLM-5.1).
+          # Official pay-as-you-go rates, verified 2026-09-09.
           input_per_million: 1.40
           output_per_million: 4.40
         inference_params:
-          # GLM-5.2 is a thinking model. The vendor's examples pair thinking
-          # with temperature 1.0 (non-streaming) / 0.6 (streaming). For
-          # deterministic code review we take the LOWER documented value (0.6):
-          # it curbs variance/hallucinated line numbers without starving the
-          # reasoning pass — pushing lower (<=0.3) tends to destabilize thinking
-          # models. top_p matches the model card. NOTE: thinking is governed
-          # server-side on Z.AI's OpenAI-compat endpoint; ZAIProvider does not
-          # forward enable_thinking/reasoning_effort, so they're omitted here.
-          default_temperature: 0.6
-          default_top_p: 0.95
-          max_output_tokens: 16384
-        # Docs: "truly usable 1M-token context" (1024*1024 tokens).
-        context_window: 1048576
-        # Same path the retired GLM-5.1 entry used: Z.AI's OpenAI-compat
-        # endpoint ignores the json_schema response_format that
-        # .with_structured_output() sets and returns markdown-fenced JSON,
-        # which the json_schema parser rejects with
-        # "Invalid JSON: expected value at line 1 column 1". GLM-5.2 is
-        # additionally a thinking model, so per the "assume prompt-parsing until
-        # a live run proves tool-use" rule it stays on the PydanticOutputParser
-        # path regardless. (PydanticOutputParser strips the ```json fences.)
+          # GLM-5.3 defaults to temperature=1.0/top_p=0.95. Setting the
+          # temperature is necessary because ZAIProvider's generic fallback is
+          # 0.3; omit top_p so the server keeps its documented default.
+          default_temperature: 1.0
+          max_output_tokens: 32768
+        context_window: 1000000
+        # Reasoning cannot be disabled. Ship on prompt parsing until a live
+        # review proves forced tool use works while the model is thinking.
         supports_tool_use: false
         capabilities:
           - reasoning
@@ -1130,16 +1149,62 @@ providers:
           - long_horizon_agentic
           - tool_use
           - structured_output
+          - thinking
         notes: >-
-          Current Zhipu flagship (supersedes GLM-5.1). 1M-token context for
-          project-scale coding, stable long-horizon execution, thinking mode.
-          OpenAI-compatible endpoint; structured output via prompt-based JSON
-          parsing (supports_tool_use: false) — Z.AI returns markdown-fenced JSON.
+          Latest Z.AI flagship, with a reported 50% gain over GLM-5.2 on Z.ai
+          Code Bench. Always-on reasoning defaults to max effort. The vendor
+          ceiling is 128K output; this registry uses a conservative 32K cap.
+          Structured output uses prompt parsing pending a live forced-tool-use
+          review while thinking.
 
-      # GLM-5.1 (Z.AI) removed 2026-07-25: superseded by GLM-5.2 above at the
-      # SAME $1.40/$4.40 list price, with a 1M context instead of 203K — no
-      # reason to pick 5.1. Still live on Z.AI, so re-add from git history if
-      # needed. GLM-5.2 absorbed its aliases.
+      # GLM-5.3-Flash — latest low-cost GLM and the first native multimodal
+      # model in the GLM-5 family. 320B total / 18B active, 1M context.
+      # https://docs.z.ai/guides/vlm/glm-5.3-flash
+      - id: zhipuai/glm-5.3-flash
+        full_id: glm-5.3-flash
+        name: GLM-5.3-Flash (Z.AI)
+        aliases:
+          - glm-flash
+          - glm53-flash
+          - glm5.3-flash
+        pricing:
+          # Record the $0.15/$0.50 list rate, not the temporary 50%-off
+          # $0.075/$0.25 promotion shown on the official pricing page.
+          input_per_million: 0.15
+          output_per_million: 0.50
+        inference_params:
+          # Vendor-recommended defaults for this always-thinking model.
+          default_temperature: 1.0
+          default_top_p: 0.95
+          max_output_tokens: 32768
+        context_window: 1000000
+        supports_tool_use: false
+        architecture: "MoE (320B total, 18B active; hybrid sparse/linear attention)"
+        capabilities:
+          - reasoning
+          - code_review
+          - code_generation
+          - long_horizon_agentic
+          - tool_use
+          - structured_output
+          - thinking
+          - multimodal
+        notes: >-
+          Low-cost multimodal Flash sibling with text, image, video and file
+          input. Thinking is always enabled; prompt-based structured output is
+          used until forced tool use while thinking is live-verified. The CLI
+          currently sends source text only, so its visual input capability is
+          not used during code review.
+
+      # GLM-5.2 (Z.AI) removed 2026-09-09 as CURATION: GLM-5.3 uses the same
+      # base model with stronger post-training, the same $1.40/$4.40 rate, 1M
+      # context and 128K output ceiling. The endpoint remains live. Neutral
+      # aliases `glm`, `zai-glm` and `glm-zai` moved to 5.3; version-explicit
+      # `zhipuai/glm-5.2`, `glm-5.2`, `glm5.2` and `glm5.2-zai` were deleted.
+
+      # GLM-5.1 (Z.AI) removed 2026-07-25: superseded first by GLM-5.2 and now
+      # by GLM-5.3 at the SAME $1.40/$4.40 list price, with a 1M context instead
+      # of 203K. Still live on Z.AI; re-add from git history if needed.
 
   # OpenAI-on-Bedrock Provider (OpenAI-compatible endpoint)
   # AWS hosts OpenAI's frontier models (GPT-5.6 Sol here) and xAI's Grok on
@@ -1302,7 +1367,7 @@ defaults:
   azure_default: gpt-5.4
   # Updated 2026-08-29: was mistral-medium-nvidia, whose endpoint NVIDIA EOL'd.
   nvidia_default: deepseek-v4-flash-nvidia
-  zai_default: zhipuai/glm-5.2
+  zai_default: zhipuai/glm-5.3
   deepseek_default: deepseek-v4-pro
   moonshot_default: kimi-k2.6
   aws_region: us-west-2
@@ -1373,6 +1438,6 @@ scanning:
 # stale, and one named a model that no longer exists at all.
 # - Free: any NVIDIA NIM entry (free tier; $0/$0 above)
 # - Quick: Haiku 4.5 (the only sub-$3 Bedrock entry after the 2026-08-29 pass)
-# - Standard: Sonnet 5, Gemini 3.7 Flash, GLM-5.2 (Z.AI)
+# - Standard: Sonnet 5, Gemini 3.8 Flash, GLM-5.3 (Z.AI)
 # - Complex: Opus 5 (the CLI default), GPT-5.6 Sol (Bedrock)
 # - Budget-with-a-key: DeepSeek-V4-Flash, Kimi K2.6 (Moonshot)
