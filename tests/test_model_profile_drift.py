@@ -67,6 +67,20 @@ _ALLOWED_DIVERGENCES: dict[tuple[str, str, str], str] = {
         "thinking on by default (reasoning_effort=max); forced tool_choice "
         "auto-downgraded or returned as text"
     ),
+    # New in langchain-aws 1.7.6, which added an Opus 5 profile where 1.6.3 had
+    # none — so this divergence appeared on a dependency bump, not on a change
+    # to our YAML. Ours wins here on evidence: Opus 5 is the single entry whose
+    # `false` rests on *vendor documentation* rather than an observed failure,
+    # and the profile is community-curated (models.dev) with a `last_updated` of
+    # 2026-07-24, three days after the model shipped. Flipping the YAML on it
+    # would put forced tool_choice on the CLI's default model.
+    ("bedrock", "opus5", "structured_output"): (
+        "the Bedrock model card lists 'Structured outputs: Not Supported' on "
+        "both bedrock-runtime and bedrock-mantle; the profile's True is "
+        "community-curated and contradicts the vendor's own card. Thinking is "
+        "also on by default, which independently reproduces the Opus 4.8 "
+        "forced-tool_choice failure (docs/structured-output.md)"
+    ),
     ("azure_openai", "gpt-5.4-pro", "structured_output"): (
         "the profile is conservative and the Azure deployment does tolerate a "
         "forced tool_choice — live-verified on the tool-use path, unlike the "
