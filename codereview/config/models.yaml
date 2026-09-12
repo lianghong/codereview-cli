@@ -1337,6 +1337,98 @@ providers:
           reasoning-only failure mode verified on GPT-5.5 on Bedrock. In-Region
           only: us-east-1 / us-east-2.
 
+      # GPT-6 Astra — OpenAI's most capable model, GA on Amazon Bedrock
+      # 2026-09-08 (model card: launch 2026-09-08, knowledge cutoff 2026-04-30,
+      # EOL no sooner than 2027-09-08). Second entry on this provider, alongside
+      # GPT-5.6 Sol. Two things about it are unlike every other entry in this
+      # file; read both before touching it.
+      #
+      # (1) THE REGION IS INCOMPATIBLE WITH SOL'S. `base_url` is
+      #     PROVIDER-level (`${OPENAI_BASE_URL}`), and on `bedrock-mantle` Astra
+      #     is served from `us-west-2` ONLY, while Sol is In-Region
+      #     us-east-1/us-east-2 only. One OPENAI_BASE_URL cannot reach both:
+      #       Astra: https://bedrock-mantle.us-west-2.api.aws/openai/v1
+      #       Sol:   https://bedrock-mantle.us-east-1.api.aws/openai/v1
+      #     Pointing at the wrong one 404s the model id, it does not fall back.
+      #     There is no per-model base_url override on bedrock_openai (only
+      #     `bedrock` has a per-model `region`), so this is an operator switch,
+      #     not configuration. Do NOT "fix" it by widening Astra's region list
+      #     from memory — re-read the model card's bedrock-mantle availability
+      #     table, which listed exactly one row on 2026-09-13.
+      #
+      # (2) context_window BELOW THE MODEL'S REAL LIMIT, ON PURPOSE. The card
+      #     says 1,050,000 tokens, and Astra is the first entry here with
+      #     TIERED pricing: at 272K input tokens or fewer it bills $11/$55 per
+      #     1M, above that it bills $22/$82.50 (In-Region, short vs long
+      #     context). Our pricing model is a single flat input/output pair, so a
+      #     batch that crosses 272K input would be billed at 2x what --dry-run
+      #     and the cost line report — the same under-reporting class as the
+      #     Azure gpt-5.4 usage_metadata bug, and CLAUDE.md's rule is that a
+      #     wrong pricing number is the worst kind of wrong because the next
+      #     reader trusts it. So the window is clamped to the price break:
+      #     272000, which the batcher then cannot pack past, keeping $11/$55
+      #     exact for every batch. What this costs is batch SIZE, not coverage —
+      #     the token budget just packs fewer files per request. If a real
+      #     1M-token-context review is ever wanted, that needs tier-aware
+      #     pricing in code first; raising this number alone silently halves the
+      #     reported cost.
+      - id: gpt6-astra-bedrock
+        full_id: openai.gpt-6-astra
+        name: GPT-6 Astra (Bedrock)
+        aliases:
+          - gpt6
+          - gpt-6
+          - gpt6-bedrock
+        pricing:
+          # bedrock-mantle is In-Region us-west-2, so these are the In-Region
+          # SHORT-context rates ($11 / $55 per 1M), which the clamped
+          # context_window above guarantees are the ones that apply. AWS notes
+          # In-Region includes a 10% fee over OpenAI's own rates — already
+          # baked into these numbers, do not add it again. Long context is
+          # $22/$82.50, Global CRIS $10/$50; neither is reachable from this
+          # entry's endpoint + window. Cache reads $1.10, 30m cache writes
+          # $13.75 — not read by the bedrock_openai pricing path.
+          input_per_million: 11.00
+          output_per_million: 55.00
+        inference_params:
+          # No default_temperature/top_p — reasoning model, same as the rest of
+          # the GPT-5.x/6 family on this endpoint. Reasoning effort defaults
+          # server-side; left unset so operators can tune per request.
+          max_output_tokens: 128000
+        # Both Responses and Chat Completions are supported on bedrock-mantle
+        # (unlike Sol, which is Responses-only), but Responses is what carries
+        # reasoning summaries, so keep it.
+        use_responses_api: true
+        # NOT the model's limit (1,050,000) — a deliberate clamp to the 272K
+        # pricing tier break. See (2) in the block above before changing it.
+        context_window: 272000
+        # Assume-prompt-parsing, per CLAUDE.md: a new reasoning/thinking model
+        # gets `false` until a live run proves tool-use. Two things make it more
+        # than the default assumption here: Astra reasons server-side and
+        # adaptively like GPT-5.5/5.6 did on this same endpoint (where the
+        # reasoning-only, `tool_calls=[]`, no-`parsed` failure was live-verified
+        # on 5.5), and the Bedrock model card lists "Structured outputs" as NOT
+        # supported on bedrock-runtime. Flip to true only on a live run over
+        # think-heavy batches, not on a doc.
+        supports_tool_use: false
+        capabilities:
+          - reasoning
+          - code_review
+          - code_generation
+          - security_analysis
+          - computer_use
+          - vision
+        notes: >-
+          OpenAI GPT-6 Astra, OpenAI's most capable model, hosted on Amazon
+          Bedrock via the OpenAI-compatible bedrock-mantle endpoint (bearer-key
+          auth, ChatOpenAI + base_url — NOT the SigV4 Converse path). Text +
+          image input, 1.05M-token model context that we deliberately clamp to
+          272K to stay inside the cheaper pricing tier, 128K max output.
+          Responses API, no temperature/top_p, structured output via
+          prompt-based JSON parsing. bedrock-mantle serves it from us-west-2
+          ONLY — which is mutually exclusive with GPT-5.6 Sol's us-east-1 /
+          us-east-2, since OPENAI_BASE_URL is provider-wide.
+
       # Grok 4.3 (Bedrock) removed 2026-08-29, and with it xAI leaves this
       # registry entirely — there is no other Grok entry on any provider.
       # `xai.grok-4.3` is still LIVE on bedrock-mantle, so this was CURATION, and

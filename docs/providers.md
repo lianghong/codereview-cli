@@ -184,7 +184,7 @@ a run; `create_provider` reports the real error.
 ## Sampling params
 
 **Reasoning models** (Claude Opus 5, Claude Sonnet 5, Claude Fable 5, GPT-5.4 / 5.4 Pro on Azure,
-GPT-5.6 Sol on Bedrock, DeepSeek-V4-Pro) don't accept `temperature`/`top_p`. Bedrock and Azure
+GPT-5.6 Sol and GPT-6 Astra on Bedrock, DeepSeek-V4-Pro) don't accept `temperature`/`top_p`. Bedrock and Azure
 providers both pass `allow_none=True` to `_resolve_temperature`; omit `default_temperature` from
 `inference_params` for new reasoning models.
 
@@ -210,7 +210,7 @@ single-entry test can't catch that.
 
 ### OpenAI-on-Bedrock is NOT the `bedrock` provider
 
-GPT-5.6 Sol on Bedrock goes through Bedrock's *OpenAI-compatible* endpoint, which
+GPT-5.6 Sol and GPT-6 Astra on Bedrock go through Bedrock's *OpenAI-compatible* endpoint, which
 authenticates with an Amazon Bedrock **API key (bearer token)** via `ChatOpenAI` + `base_url` —
 not the SigV4 `ChatBedrockConverse` path. It lives in the separate `bedrock_openai` provider.
 Underlying transport is the `openai` SDK (already pulled by `langchain-openai`; no new dep).
@@ -238,12 +238,34 @@ Bedrock OpenAI-compatible endpoint does.
 
 **GPT-5.6 Sol** (`openai.gpt-5.6-sol`, id `gpt5.6-sol-bedrock`, aliases
 `gpt5.6`/`gpt-5.6`/`gpt5.6-bedrock` plus the inherited `gpt-bedrock`; flagship of the
-Sol/Terra/Luna family) is the provider's only entry since 2026-08-29: Responses-API-only, rejects
+Sol/Terra/Luna family) is Responses-API-only, rejects
 `temperature`/`top_p`, and its `full_id` is a real published wire id rather than a console
 literal. It's OpenAI's best coding model, so it's the code-review pick of the family; In-Region
 only us-east-1 / us-east-2. It is also, at $5/$30 per million, **twice the price of the GPT-5.5
 entry it replaced** ($2.50/$15) and narrower (272K vs 400K) — which is why `gpt-bedrock` sits in
 `deprecated_aliases`, resolvable but unadvertised, rather than in `aliases`.
+
+**GPT-6 Astra** (`openai.gpt-6-astra`, id `gpt6-astra-bedrock`, aliases
+`gpt6`/`gpt-6`/`gpt6-bedrock`) joined 2026-09-13, ending Sol's spell as the provider's only entry.
+GA on Bedrock 2026-09-08, OpenAI's most capable model, text + image input, 128K max output,
+knowledge cutoff 2026-04-30. Two properties are unlike anything else in the registry:
+
+- **Its Region is mutually exclusive with Sol's.** `base_url` is *provider*-level
+  (`${OPENAI_BASE_URL}`), and `bedrock-mantle` serves Astra from **us-west-2 only** while Sol is
+  In-Region us-east-1 / us-east-2 only. One base URL cannot reach both; the wrong one 404s the
+  model id with no fallback. `bedrock_openai` has no per-model `base_url` override (only the
+  `bedrock` provider has a per-model `region`), so this is an operator switch, not configuration.
+  Don't widen Astra's Region list from memory — the model card's `bedrock-mantle` availability
+  table had exactly one row on 2026-09-13.
+- **Its `context_window` (272000) is deliberately *below* the model's real limit (1,050,000).**
+  Astra is the first entry here with **tiered** pricing: In-Region it bills $11/$55 per million up
+  to 272K input tokens and $22/$82.50 above that. Our pricing model is one flat input/output pair
+  per entry, so a batch crossing 272K input would cost 2x what `--dry-run` and the cost line
+  report — the same under-reporting class as the Azure `gpt-5.4` `usage_metadata` bug, and the
+  worst kind of wrong because the next reader trusts a pricing number. Clamping the window to the
+  price break means the batcher cannot pack past it, so $11/$55 is exact for every batch. The cost
+  is batch *size*, not coverage. A genuine 1M-context review needs tier-aware pricing in code
+  first; raising the number alone silently halves every reported cost.
 
 **The `bedrock_openai` provider is not OpenAI-only, and the code still proves it.** xAI's
 **Grok 4.3** rode the same `bedrock-mantle` OpenAI-compatible endpoint (model id `xai.grok-4.3`,
