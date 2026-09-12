@@ -29,6 +29,7 @@ from codereview.providers.base import (
     ValidationResult,
 )
 from codereview.providers.mixins import (
+    CLIENT_RETRIES_DISABLED,
     TokenTrackingMixin,
     extract_openai_token_usage,
     is_blank,
@@ -113,6 +114,8 @@ class MoonshotProvider(TokenTrackingMixin, ModelProvider):
             "rate_limiter": self.rate_limiter,
             "callbacks": self.callbacks if self.callbacks else None,
             "timeout": self.provider_config.request_timeout,
+            # This provider's retry loop owns every attempt; see the constant.
+            "max_retries": CLIENT_RETRIES_DISABLED,
             # streaming only for a handler that actually consumes tokens, and
             # stream_usage alongside it so the billed counts survive the
             # streaming path. Both halves live in openai_stream_params.
