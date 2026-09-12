@@ -1402,14 +1402,26 @@ providers:
         # NOT the model's limit (1,050,000) — a deliberate clamp to the 272K
         # pricing tier break. See (2) in the block above before changing it.
         context_window: 272000
-        # Assume-prompt-parsing, per CLAUDE.md: a new reasoning/thinking model
-        # gets `false` until a live run proves tool-use. Two things make it more
-        # than the default assumption here: Astra reasons server-side and
-        # adaptively like GPT-5.5/5.6 did on this same endpoint (where the
-        # reasoning-only, `tool_calls=[]`, no-`parsed` failure was live-verified
-        # on 5.5), and the Bedrock model card lists "Structured outputs" as NOT
-        # supported on bedrock-runtime. Flip to true only on a live run over
-        # think-heavy batches, not on a doc.
+        # LIVE-VERIFIED 2026-09-13, not assumed — and the A/B is worth keeping
+        # because the failure shape here is NOT the one GPT-5.5 showed.
+        # Reviewing `codereview/providers/` (2 batches, ~98K input tokens, a
+        # genuinely think-heavy target) on the us-west-2 mantle base:
+        #   supports_tool_use: true  -> batch 1 of 2 DIED. The Responses API
+        #     returned ResponseError(code='server_error', message='The server
+        #     had an error while processing your request.') — surfaced by
+        #     base.py's `raise ValueError(response.error)`. Retries burned the
+        #     whole budget: 3m06s wall clock for a half-finished review, and
+        #     the run reported "1/2 batch(es) failed".
+        #   supports_tool_use: false -> both batches completed in 37.4s and
+        #     found 4 issues. Same target, same key, same Region.
+        # So a forced `tool_choice` on a think-heavy batch makes this endpoint
+        # 500, where GPT-5.5 instead returned a reasoning-only response
+        # (tool_calls=[], no `parsed`). Different symptom, same root cause and
+        # same fix. Note it is a *server_error*, which reads as transient — do
+        # not "fix" a recurrence by widening the retry classifier, and do not
+        # flip this back on the strength of a small batch: trivial inputs pass
+        # forced tool_choice cleanly (a 12-line file did), so only a think-heavy
+        # target reproduces it.
         supports_tool_use: false
         capabilities:
           - reasoning

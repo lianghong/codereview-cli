@@ -257,6 +257,17 @@ knowledge cutoff 2026-04-30. Two properties are unlike anything else in the regi
   `bedrock` provider has a per-model `region`), so this is an operator switch, not configuration.
   Don't widen Astra's Region list from memory — the model card's `bedrock-mantle` availability
   table had exactly one row on 2026-09-13.
+- **`supports_tool_use: false` is live-verified here, not assumed** (2026-09-13). A/B on
+  `codereview/providers/` — 2 batches, ~98K input tokens, on the us-west-2 mantle base. With
+  `true`, batch 1 of 2 died on `ResponseError(code='server_error', message='The server had an
+  error while processing your request.')`, surfaced through `base.py`'s
+  `raise ValueError(response.error)` after retries consumed the budget: 3m06s wall clock for a
+  half-finished review. With `false`, both batches completed in 37.4s and found 4 issues. Same
+  target, key and Region. **The symptom differs from GPT-5.5's** — 5.5 returned a reasoning-only
+  response (`tool_calls=[]`, no `parsed`), Astra 500s — but the cause and the fix are the same.
+  Two traps: the error *reads* as transient, so don't respond to a recurrence by widening the
+  retry classifier; and a trivial batch passes forced `tool_choice` cleanly (a 12-line file did),
+  so only a think-heavy target reproduces it.
 - **Its `context_window` (272000) is deliberately *below* the model's real limit (1,050,000).**
   Astra is the first entry here with **tiered** pricing: In-Region it bills $11/$55 per million up
   to 272K input tokens and $22/$82.50 above that. Our pricing model is one flat input/output pair
