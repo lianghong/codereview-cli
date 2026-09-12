@@ -15,6 +15,7 @@ from codereview.providers.base import (
     ValidationResult,
 )
 from codereview.providers.mixins import (
+    CLIENT_RETRIES_DISABLED,
     TRANSPORT_TRANSIENT_ERRORS,
     TokenTrackingMixin,
     is_blank,
@@ -110,6 +111,12 @@ class GoogleGenAIProvider(TokenTrackingMixin, ModelProvider):
             "timeout": self.provider_config.request_timeout,
             "callbacks": self.callbacks if self.callbacks else None,
             "rate_limiter": self.rate_limiter,
+            # This provider's retry loop owns every attempt; see the constant.
+            # ChatGoogleGenerativeAI is the worst offender of the set — it
+            # DECLARES max_retries=6, so leaving it default meant up to 6x7=42
+            # requests for a budget of 5, with its backoff pre-empting the 10s
+            # base wait this provider uses for 429.
+            "max_retries": CLIENT_RETRIES_DISABLED,
         }
 
         # Omit temperature for reasoning models that opt out (temperature=None)

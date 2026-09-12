@@ -61,8 +61,13 @@ def _model_config() -> ModelConfig:
 # ---------------------------------------------------------------------------
 
 
-def _build(provider_key):
-    """Return a constructed provider with its LangChain client patched out."""
+def _provider_recipe(provider_key):
+    """Return ``(patch_target, factory)`` for one provider.
+
+    Split out of :func:`_build` so the client-retry guard below can keep the
+    ``MagicMock`` and read the constructor kwargs off it; ``_build`` needs only
+    the provider itself.
+    """
     model_config = _model_config()
 
     if provider_key == "nvidia":
@@ -131,11 +136,23 @@ def _build(provider_key):
     else:  # pragma: no cover — parametrization keeps this unreachable
         raise AssertionError(f"unknown provider key {provider_key!r}")
 
+    return target, make
+
+
+def _build_capturing_client(provider_key):
+    """Construct a provider and return the patched client mock alongside it."""
+    target, make = _provider_recipe(provider_key)
     with patch(target) as mock_client:
         instance = MagicMock()
         instance.with_structured_output.return_value = MagicMock()
         mock_client.return_value = instance
-        return make()
+        provider = make()
+    return provider, mock_client
+
+
+def _build(provider_key):
+    """Return a constructed provider with its LangChain client patched out."""
+    return _build_capturing_client(provider_key)[0]
 
 
 # ---------------------------------------------------------------------------
@@ -500,4 +517,125 @@ def test_no_provider_classifies_by_an_exception_type_its_client_cannot_raise():
         f"provider(s) {dead} do not recognize the throttling error their own "
         "client raises — the classifier is dead code. Classify on the status "
         "the installed client reports, not on a legacy exception class."
+    )
+
+
+# ---------------------------------------------------------------------------
+# Client-level retries: our retry loop must be the ONLY one
+# ---------------------------------------------------------------------------
+#
+# Every entry here says how one provider stops its *client* from retrying
+# underneath `_execute_with_retry`. Nested loops multiply rather than add: the
+# OpenAI SDK's own DEFAULT_MAX_RETRIES = 2 turned a budget of 5 (6 attempts)
+# into 6x3 = 18 requests, and ChatGoogleGenerativeAI, which declares
+# max_retries=6, into 6x7 = 42. That is not just wasteful — the inner loop
+# retries on *its* policy, so `_is_retryable_error` and `_RETRY_MATRIX` above
+# never see the failure, and the inner backoff pre-empts the per-provider waits
+# (Azure's Retry-After, Google's 10s for 429) that exist because a short wait
+# burns the whole budget inside one rate-limit window.
+_CLIENT_RETRY_CONTRACT = {
+    # Clients taking an integer `max_retries`: 0 disables the inner loop.
+    "azure_openai": "max_retries_zero",
+    "bedrock_openai": "max_retries_zero",
+    "deepseek": "max_retries_zero",
+    "moonshot": "max_retries_zero",
+    "zai": "max_retries_zero",
+    "google_genai": "max_retries_zero",
+    # botocore has no `max_retries`; retries live in the client config object.
+    "bedrock": "botocore_no_attempts",
+    # ChatNVIDIA runs on a plain `requests.Session` with no retry adapter
+    # mounted and takes no retry knob, so one call is one request already.
+    # Classified explicitly rather than omitted — an unlisted provider is
+    # indistinguishable from a forgotten one, which is what this guard exists
+    # to prevent.
+    "nvidia": "no_client_retry_knob",
+}
+
+
+def _client_retry_violation(
+    provider_key: str, contract: str, kwargs: dict
+) -> str | None:
+    """Return a failure description, or None when the contract holds."""
+    if contract == "max_retries_zero":
+        if kwargs.get("max_retries") != 0:
+            return (
+                f"{provider_key}: client constructed with "
+                f"max_retries={kwargs.get('max_retries')!r}, expected 0"
+            )
+        return None
+
+    if contract == "botocore_no_attempts":
+        config = kwargs.get("config")
+        attempts = getattr(config, "retries", {}).get("max_attempts")
+        if attempts != 0:
+            return (
+                f"{provider_key}: botocore config carries "
+                f"retries={{'max_attempts': {attempts!r}}}, expected 0"
+            )
+        return None
+
+    if contract == "no_client_retry_knob":
+        if "max_retries" in kwargs:
+            return (
+                f"{provider_key}: is classified as having no client retry knob "
+                "but _create_model passes max_retries — reclassify it as "
+                "'max_retries_zero'"
+            )
+        return None
+
+    raise AssertionError(f"unknown client-retry contract {contract!r}")
+
+
+@pytest.mark.parametrize("provider_key", sorted(_CLIENT_RETRY_CONTRACT))
+def test_provider_client_does_not_retry_underneath_our_retry_loop(provider_key):
+    """The client must not add attempts our retry loop didn't ask for.
+
+    Asserted on the kwargs the provider actually hands its client, not on the
+    source text: the bug being locked out was invisible precisely because the
+    parameter was *absent* and the SDK's default filled it in.
+    """
+    _, mock_client = _build_capturing_client(provider_key)
+    assert mock_client.call_args is not None, (
+        f"{provider_key}: client was never constructed; the patch target moved"
+    )
+    violation = _client_retry_violation(
+        provider_key, _CLIENT_RETRY_CONTRACT[provider_key], mock_client.call_args.kwargs
+    )
+    assert violation is None, violation
+
+
+def test_every_provider_is_classified_for_client_level_retries():
+    """A new provider must be classified above, not default to the SDK's retries.
+
+    Same reflective shape as the retry-matrix guard: enumerate the provider
+    package so provider #9 cannot silently reintroduce a nested retry loop by
+    simply not passing ``max_retries``.
+    """
+    import importlib
+    import inspect
+    from pathlib import Path
+
+    from codereview.providers.base import ModelProvider
+
+    providers_dir = Path(__file__).resolve().parent.parent / "codereview" / "providers"
+    found = set()
+    for path in sorted(providers_dir.glob("*.py")):
+        if path.stem in {"__init__", "base", "mixins", "factory"}:
+            continue
+        module = importlib.import_module(f"codereview.providers.{path.stem}")
+        for _, obj in inspect.getmembers(module, inspect.isclass):
+            if (
+                issubclass(obj, ModelProvider)
+                and obj is not ModelProvider
+                and obj.__module__ == module.__name__
+            ):
+                found.add(path.stem)
+
+    assert found, "no provider modules found; the scan is broken"
+    missing = sorted(found - set(_CLIENT_RETRY_CONTRACT))
+    assert not missing, (
+        f"provider module(s) {missing} are not classified in "
+        "_CLIENT_RETRY_CONTRACT. Pass max_retries=CLIENT_RETRIES_DISABLED in "
+        "_create_model and add the row — leaving it to the client's default "
+        "multiplies our retry budget instead of adding to it."
     )

@@ -289,6 +289,37 @@ def parse_retry_after(error: Exception, max_wait: float) -> float | None:
     return None
 
 
+# Pass as the client's own ``max_retries``. ``_execute_with_retry`` owns the
+# retry budget for every provider, so a client that also retries internally
+# nests one loop inside the other and the real attempt count becomes
+# outer x inner — NOT what ``_resolve_max_retries`` resolved and reported.
+#
+# Measured 2026-09-13, before this was applied: the OpenAI SDK defaults to
+# ``DEFAULT_MAX_RETRIES = 2`` and langchain-openai's ``max_retries`` field
+# defaults to ``None`` (i.e. it forwards nothing, so the SDK default stands), so
+# the five OpenAI-client providers ran up to 6 x 3 = **18** HTTP requests for a
+# budget of 5; ``ChatGoogleGenerativeAI`` declares ``max_retries=6``, giving
+# 6 x 7 = **42**. A GPT-6 Astra batch failing under forced ``tool_choice`` took
+# 3m06s for exactly this reason.
+#
+# Two consequences beyond the request count, which are the real reason this is
+# a bug and not just waste: the client retries its own broader status set
+# *before* ``_is_retryable_error`` ever sees the error, so ``_RETRY_MATRIX`` —
+# deliberately per-provider and contract-tested — only ever judges what
+# survived someone else's policy; and the client's own backoff runs underneath
+# ours, pre-empting Azure's ``Retry-After`` handling and Google's 10s-for-429.
+#
+# ``bedrock`` has always done this via botocore's ``retries={"max_attempts": 0}``
+# ("We handle retries ourselves"); this constant is the same decision for the
+# clients that take a plain integer. Disabling it means the transport failures
+# the client used to absorb now reach our loop, which is why every classifier
+# must name them — ``is_openai_retryable_error`` covers
+# ``APIConnectionError``/``APITimeoutError`` and the Google provider uses
+# ``TRANSPORT_TRANSIENT_ERRORS``. Don't set this to a nonzero value to "keep a
+# safety net": that net is what made the doubled attempts invisible.
+CLIENT_RETRIES_DISABLED = 0
+
+
 def is_openai_retryable_error(error: Exception) -> bool:
     """Return True for transient errors worth retrying on OpenAI-compatible APIs.
 

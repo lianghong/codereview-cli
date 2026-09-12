@@ -17,6 +17,7 @@ from codereview.providers.base import (
     ValidationResult,
 )
 from codereview.providers.mixins import (
+    CLIENT_RETRIES_DISABLED,
     TokenTrackingMixin,
     extract_openai_token_usage,
     is_blank,
@@ -112,6 +113,10 @@ class AzureOpenAIProvider(TokenTrackingMixin, ModelProvider):
             "rate_limiter": self.rate_limiter,
             "callbacks": self.callbacks if self.callbacks else None,
             "timeout": self.provider_config.request_timeout,  # Request timeout in seconds
+            # This provider's retry loop owns every attempt; see the constant.
+            # Load-bearing for the Retry-After handling below: the SDK's own
+            # retries would consume the 429 before we ever read the header.
+            "max_retries": CLIENT_RETRIES_DISABLED,
             # streaming + stream_usage together: only a handler that consumes
             # tokens turns streaming on, and turning it on requires asking for
             # the usage chunk or the billed counts vanish. See

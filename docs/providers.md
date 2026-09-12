@@ -75,6 +75,37 @@ status — narrowing it to 429 meant a server saying "come back in 30s" during a
 got blind exponential backoff instead. `max_wait` still bounds the value, so a hostile header
 can't stall a run; the log line says "backoff", not "rate limit", because a 503 reaches it.
 
+### Our retry loop must be the only one
+
+**Every client is constructed with its own retries disabled** — `max_retries=CLIENT_RETRIES_DISABLED`
+(`= 0`, `mixins.py`) for the six OpenAI-SDK-shaped clients, `BotocoreConfig(retries={"max_attempts": 0})`
+for Bedrock. NVIDIA needs nothing: `ChatNVIDIA` runs on a plain `requests.Session` with no retry
+adapter and takes no retry knob.
+
+Nested loops **multiply**, they don't add. The bug shipped for six providers at once because the
+parameter was simply *absent* and each SDK filled in its own default:
+
+| Client | Its default | Our budget of 5 (6 attempts) became |
+|---|---|---|
+| `ChatOpenAI` / `AzureChatOpenAI` / `ChatDeepSeek` / `ChatMoonshot` (openai SDK `DEFAULT_MAX_RETRIES = 2`) | 2 | 6 × 3 = **18** requests |
+| `ChatGoogleGenerativeAI` (declares it) | 6 | 6 × 7 = **42** requests |
+
+Two consequences beyond the request count, both worse than the waste:
+
+- **`_is_retryable_error` and `_RETRY_MATRIX` are bypassed.** The inner loop retries on the SDK's
+  policy, not ours, so a status this project deliberately classifies as fatal (NVIDIA's bare 500,
+  a 400) still gets retried, and a status it classifies as retryable never reaches the classifier
+  at all. The whole matrix becomes advisory.
+- **The inner backoff pre-empts the outer one.** Azure's `Retry-After` handling and Google's 10s
+  base for 429 exist because a short wait burns the entire budget inside one rate-limit window —
+  which is exactly what the SDK's own sub-second backoff does first.
+
+Don't reintroduce a nonzero value "as a safety net": that net is what made the doubled attempts
+invisible. `tests/test_retry_contract.py::test_provider_client_does_not_retry_underneath_our_retry_loop`
+asserts on the kwargs each provider hands its client (not on source text — the bug was an *absent*
+parameter), and `test_every_provider_is_classified_for_client_level_retries` reflects over
+`codereview/providers/*.py` so provider #9 can't skip the classification.
+
 **`max_retries=None` means "the provider decides".** Every `analyze_batch` in the chain
 (`CodeAnalyzer` → provider) defaults it to `None` and providers resolve it via
 `_resolve_max_retries(override, provider_config, provider_default)`, precedence
