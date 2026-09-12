@@ -1250,6 +1250,59 @@ def test_gemini38_flash_starts_on_the_prompt_parsing_path():
     assert config.supports_tool_use is False
 
 
+def test_gpt6_astra_matches_the_published_model_card():
+    """GPT-6 Astra on ``bedrock-mantle``: Responses API, 128K out, no sampling.
+
+    The model itself takes text and images and reasons server-side, so it gets
+    the assume-prompt-parsing flag and no ``temperature``/``top_p`` — the same
+    shape as every other GPT on this endpoint.
+    """
+    loader = ConfigLoader()
+    provider, config = loader.resolve_model("gpt6")
+
+    assert provider == "bedrock_openai"
+    assert config.id == "gpt6-astra-bedrock"
+    assert config.full_id == "openai.gpt-6-astra"
+    assert config.use_responses_api is True
+    assert config.supports_tool_use is False
+    assert config.inference_params is not None
+    assert config.inference_params.max_output_tokens == 128000
+    assert config.inference_params.temperature is None
+    assert config.inference_params.top_p is None
+
+
+def test_gpt6_astra_window_is_clamped_to_its_cheaper_pricing_tier():
+    """The window is BELOW the model's real limit, and that is the point.
+
+    Astra's Bedrock model card gives a 1,050,000-token context window, but it is
+    the first entry in this registry with *tiered* pricing: In-Region it bills
+    $11/$55 per million up to 272K input tokens and $22/$82.50 above that.
+    ``ModelConfig`` carries one flat input/output pair, so a batch that crossed
+    272K input would be billed at double what ``--dry-run`` and the cost line
+    report — the under-reporting class that cost us the Azure ``gpt-5.4``
+    ``usage_metadata`` bug, and the worst kind of wrong because the next reader
+    trusts a pricing number.
+
+    Clamping ``context_window`` to the price break means the batcher cannot pack
+    past it, so the configured rate is exact for every batch. What that costs is
+    batch *size*, not coverage. Raising the window to 1.05M requires tier-aware
+    pricing in code first; doing it alone silently halves every reported cost —
+    which is what this test exists to stop.
+    """
+    loader = ConfigLoader()
+    _, config = loader.resolve_model("gpt6")
+
+    assert config.context_window == 272_000, (
+        "GPT-6 Astra's window is pinned to Bedrock's 272K short-context price "
+        "break, not to the model's 1,050,000-token limit. If you raised it, "
+        "the flat pricing below now under-reports cost by 2x on any batch "
+        "over 272K input tokens — add tier-aware pricing first."
+    )
+    assert config.pricing is not None
+    assert config.pricing.input_per_million == 11.00
+    assert config.pricing.output_per_million == 55.00
+
+
 def test_generation_neutral_gemini_flash_alias_tracks_the_newest_flash():
     """``gemini-flash`` tracks 3.8; inherited generation-3 names stay on 3.7.
 

@@ -10,7 +10,8 @@
 
 - ✅ **Gemini 3.8 Flash (Google)** — newest Flash generation for long-horizon software engineering and autonomous agents, with 1M context and 64K output (`--model gemini-3.8-flash`, or `gemini-flash`). It starts on prompt-based structured output until a live review proves forced tool use while thinking; Gemini 3.7 Flash remains available under its versioned names
 - ✅ **3 new providers**: DeepSeek direct API (`deepseek-v4-pro`, `deepseek-v4-flash`), Z.AI (`zhipuai/glm-5.3`, `zhipuai/glm-5.3-flash`), Moonshot/Kimi (`kimi-k2.6`). 8 providers total now (incl. OpenAI-on-Bedrock).
-- ✅ **GPT-5.6 Sol (Bedrock)** — OpenAI's flagship and best coding model, on the OpenAI-compatible `bedrock-mantle` endpoint, 272K context, Responses API (`--model gpt5.6`). Sole `bedrock_openai` entry after the curation pass below, and it inherits `gpt-bedrock`
+- ✅ **GPT-6 Astra (Bedrock)** — OpenAI's most capable model, GA on the OpenAI-compatible `bedrock-mantle` endpoint 2026-09-08, text + image input, 128K output (`--model gpt6`). Two caveats worth knowing before you switch: its `context_window` is deliberately set to **272K, not the model's 1.05M**, because Bedrock bills Astra at $11/$55 per M up to 272K input and **$22/$82.50 above it** — clamping keeps the reported cost exact; and `bedrock-mantle` serves it from **us-west-2 only**, which is mutually exclusive with GPT-5.6 Sol's us-east-1/us-east-2, since `OPENAI_BASE_URL` is provider-wide
+- ✅ **GPT-5.6 Sol (Bedrock)** — OpenAI's flagship and best coding model, on the OpenAI-compatible `bedrock-mantle` endpoint, 272K context, Responses API (`--model gpt5.6`). It inherits `gpt-bedrock`
 - ✅ **GLM-5.3 and GLM-5.3-Flash (Z.AI)** — latest flagship and low-cost multimodal sibling, both with 1M context. `glm` now selects 5.3; Flash costs $0.15/$0.50 per M at list price. Both start on prompt-based structured output because reasoning is always enabled
 - ✅ **GPT-5.4 (Azure)** — frontier reasoning model, 1.05M context, default Azure model
 - ➖ **Grok 4.3 (Bedrock) was added *and* removed inside this same unreleased cycle**, as was GPT-5.5-on-Bedrock. Both endpoints are live; both entries were cut in the curation pass below. `bedrock_openai` is still not OpenAI-only — Grok needed no provider code, only a YAML entry — so re-adding is a config change. See [Migrating deleted aliases](#migrating-deleted-aliases) for `grok`/`grok-4.3`/`grok43`/`grok-bedrock`, all of which now fail fast.
@@ -29,12 +30,12 @@
 - ✅ **AWS error redaction** — STS/Bedrock validation errors no longer leak SCP fragments or IAM policy details
 - ✅ **All 1208 tests passing**, ruff/format/mypy clean
 
-A LangChain-based CLI tool that provides comprehensive, intelligent code reviews for Python, Go, Shell Script, C++, Java, JavaScript, and TypeScript projects using Claude, GPT-5.4, GPT-5.6 Sol, Gemini, DeepSeek-V4-Pro, Kimi K3, GLM-5.3, and other leading models through AWS Bedrock, Azure OpenAI, NVIDIA NIM, Google Generative AI, DeepSeek, Z.AI, and Moonshot.
+A LangChain-based CLI tool that provides comprehensive, intelligent code reviews for Python, Go, Shell Script, C++, Java, JavaScript, and TypeScript projects using Claude, GPT-5.4, GPT-5.6 Sol, GPT-6 Astra, Gemini, DeepSeek-V4-Pro, Kimi K3, GLM-5.3, and other leading models through AWS Bedrock, Azure OpenAI, NVIDIA NIM, Google Generative AI, DeepSeek, Z.AI, and Moonshot.
 
 ## Features
 
-- **Multi-Provider Support** (8 providers): AWS Bedrock (Claude, GLM), Azure OpenAI (GPT-5.4, GPT-5.4 Pro), NVIDIA NIM (MiniMax M3, Kimi K3, DeepSeek-V4-Pro/Flash), Google GenAI (Gemini 3.1 Pro / 3.7 Flash / 3.8 Flash), DeepSeek direct (V4-Pro, V4-Flash), Z.AI (GLM-5.3, GLM-5.3-Flash), Moonshot direct (Kimi K2.6), and OpenAI-on-Bedrock (GPT-5.6 Sol via the `bedrock-mantle` OpenAI-compatible endpoint)
-- **AI-Powered Analysis**: Leverages Claude Opus 5, Claude Sonnet 5, GPT-5.4, GPT-5.6 Sol, DeepSeek-V4-Pro, Kimi K3, GLM-5.3, Gemini 3.1 Pro, Gemini 3.8 Flash, and other leading models for deep code understanding
+- **Multi-Provider Support** (8 providers): AWS Bedrock (Claude, GLM), Azure OpenAI (GPT-5.4, GPT-5.4 Pro), NVIDIA NIM (MiniMax M3, Kimi K3, DeepSeek-V4-Pro/Flash), Google GenAI (Gemini 3.1 Pro / 3.7 Flash / 3.8 Flash), DeepSeek direct (V4-Pro, V4-Flash), Z.AI (GLM-5.3, GLM-5.3-Flash), Moonshot direct (Kimi K2.6), and OpenAI-on-Bedrock (GPT-5.6 Sol, GPT-6 Astra via the `bedrock-mantle` OpenAI-compatible endpoint)
+- **AI-Powered Analysis**: Leverages Claude Opus 5, Claude Sonnet 5, GPT-5.4, GPT-5.6 Sol, GPT-6 Astra, DeepSeek-V4-Pro, Kimi K3, GLM-5.3, Gemini 3.1 Pro, Gemini 3.8 Flash, and other leading models for deep code understanding
 - **Multi-Language Support**: Reviews Python, Go, Shell Script, C++, Java, JavaScript, and TypeScript codebases
 - **Smart Batching**: Automatically groups files for efficient token usage
 - **Structured Output**: Get categorized issues with severity levels and actionable suggestions
@@ -60,7 +61,7 @@ A LangChain-based CLI tool that provides comprehensive, intelligent code reviews
   - DeepSeek API key from [platform.deepseek.com](https://platform.deepseek.com/api_keys) — `DEEPSEEK_API_KEY` (V4-Pro, V4-Flash)
   - Z.AI API key from [z.ai](https://z.ai) — `ZAI_API_KEY` (GLM-5.3 / 5.3-Flash; international)
   - Moonshot/Kimi API key from [platform.moonshot.cn](https://platform.moonshot.cn) — `KIMI_API_KEY` (Kimi K2.6; international keys from `platform.moonshot.ai` work too — override `base_url`)
-  - Amazon Bedrock API key (bearer token) for OpenAI-on-Bedrock — `OPENAI_API_KEY` + `OPENAI_BASE_URL` (GPT-5.6 Sol via the `bedrock-mantle` OpenAI-compatible endpoint)
+  - Amazon Bedrock API key (bearer token) for OpenAI-on-Bedrock — `OPENAI_API_KEY` + `OPENAI_BASE_URL` (GPT-5.6 Sol, GPT-6 Astra via the `bedrock-mantle` OpenAI-compatible endpoint — one base URL per Region, and these two models' Regions do not overlap)
 
 ### Install with uv (recommended)
 
@@ -339,9 +340,12 @@ In the [Amazon Bedrock console](https://console.aws.amazon.com/bedrock/home#/api
 
 ```bash
 export OPENAI_API_KEY="<your-amazon-bedrock-api-key>"
-# Point at a Region that serves the model. GPT-5.6 Sol is In-Region only:
-# us-east-1 / us-east-2 — no Geo/Global routing, and NOT us-west-2
+# Point at a Region that serves the model you want. The two entries on this
+# provider do NOT overlap, and OPENAI_BASE_URL is provider-wide, so pick one:
+#   GPT-5.6 Sol   — In-Region us-east-1 / us-east-2 only (NOT us-west-2)
 export OPENAI_BASE_URL="https://bedrock-mantle.us-east-1.api.aws/openai/v1"
+#   GPT-6 Astra   — bedrock-mantle serves it from us-west-2 only
+# export OPENAI_BASE_URL="https://bedrock-mantle.us-west-2.api.aws/openai/v1"
 ```
 
 ### 3. Use OpenAI-on-Bedrock Models
@@ -352,6 +356,13 @@ export OPENAI_BASE_URL="https://bedrock-mantle.us-east-1.api.aws/openai/v1"
 #  resolves here, at twice GPT-5.5's rate — see the migration table)
 codereview /path/to/code --model gpt5.6
 codereview /path/to/code --model gpt5.6-bedrock   # or gpt-5.6, gpt5.6-sol-bedrock
+
+# GPT-6 Astra - OpenAI's most capable model (Responses API, text + image in)
+# Needs OPENAI_BASE_URL on us-west-2 — the ONLY bedrock-mantle Region for it,
+# and not the one Sol runs in. Context window is clamped to 272K on purpose:
+# above 272K input tokens Bedrock doubles the rate to $22/$82.50 per M.
+codereview /path/to/code --model gpt6
+codereview /path/to/code --model gpt6-bedrock     # or gpt-6, gpt6-astra-bedrock
 ```
 
 > **Tip:** GPT-5.6 also ships cheaper tiers — Terra (`openai.gpt-5.6-terra`, $2.50/$15) for balanced everyday work and Luna (`openai.gpt-5.6-luna`, $1/$6) for high-volume/CI. Add either the same way as the Sol entry in `models.yaml` if you want a lower-cost run.
@@ -413,6 +424,7 @@ codereview /path/to/code --model kimi               # Short alias
 
 # OpenAI-on-Bedrock (bedrock-mantle OpenAI-compatible endpoint; bearer-key auth)
 codereview /path/to/code --model gpt5.6             # GPT-5.6 Sol (OpenAI flagship, best coding model)
+codereview /path/to/code --model gpt6               # GPT-6 Astra (OpenAI's most capable; us-west-2 only)
 
 # Short aliases work too
 codereview /path/to/code -m haiku
@@ -443,7 +455,8 @@ codereview /path/to/code -m kimi
 | **GLM-5.3 (Z.AI)** | **Z.AI direct** | **Latest text flagship, always-on reasoning, 1M context** | **$1.40** | **$4.40** |
 | **GLM-5.3-Flash (Z.AI)** | **Z.AI direct** | **Low-cost multimodal sibling, 1M context (list rate)** | **$0.15** | **$0.50** |
 | **Kimi K2.6** | **Moonshot direct** | **1T MoE, 32B active, 256K context, agentic (owns `kimi`, and `kimi-bedrock`)** | **$0.60** | **$2.50** |
-| **GPT-5.6 Sol (Bedrock)** | **OpenAI-on-Bedrock** | **OpenAI flagship, best coding model, 272K context, `bedrock-mantle` endpoint (owns `gpt-bedrock`)** | **$5.00** | **$30.00** |
+| **GPT-5.6 Sol (Bedrock)** | **OpenAI-on-Bedrock** | **OpenAI flagship, best coding model, 272K context, `bedrock-mantle` endpoint us-east-1/2 (owns `gpt-bedrock`)** | **$5.00** | **$30.00** |
+| **GPT-6 Astra (Bedrock)** | **OpenAI-on-Bedrock** | **OpenAI's most capable model, text + image in, 128K output, `bedrock-mantle` endpoint us-west-2 only. Window clamped to 272K to stay in this price tier (1.05M model limit; above 272K input bills $22/$82.50)** | **$11.00** | **$55.00** |
 
 *NVIDIA NIM models are currently in free preview tier. Models with thinking mode use interleaved reasoning for deeper code analysis. Several Bedrock models display "TBD" until AWS publishes official pricing — the CLI renders unpriced models as `Estimated cost: TBD` instead of `$0.0000`.
 
