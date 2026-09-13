@@ -14,6 +14,7 @@ from codereview.cli import main
 from codereview.models import CodeReviewReport, ReviewIssue, ReviewMetrics
 from codereview.renderer import MarkdownExporter
 from codereview.scanner import FileScanner
+from tests.mock_helpers import wire_mock_cost
 
 
 @pytest.fixture
@@ -204,6 +205,7 @@ class TestFullWorkflow:
 
             mock_analyzer = Mock()
             mock_analyzer.provider = mock_provider
+            wire_mock_cost(mock_analyzer, mock_provider)
             mock_analyzer.analyze_batch.return_value = mock_code_review_report
             mock_analyzer.skipped_files = []
             mock_analyzer_class.return_value = mock_analyzer
@@ -242,6 +244,7 @@ class TestFullWorkflow:
 
             mock_analyzer = Mock()
             mock_analyzer.provider = mock_provider
+            wire_mock_cost(mock_analyzer, mock_provider)
             mock_analyzer.analyze_batch.return_value = mock_code_review_report
             mock_analyzer.skipped_files = []
             mock_analyzer_class.return_value = mock_analyzer
@@ -281,6 +284,7 @@ class TestFullWorkflow:
 
             mock_analyzer = Mock()
             mock_analyzer.provider = mock_provider
+            wire_mock_cost(mock_analyzer, mock_provider)
             mock_analyzer.analyze_batch.return_value = mock_code_review_report
             mock_analyzer.skipped_files = []
             mock_analyzer_class.return_value = mock_analyzer
@@ -315,6 +319,7 @@ class TestFullWorkflow:
 
             mock_analyzer = Mock()
             mock_analyzer.provider = mock_provider
+            wire_mock_cost(mock_analyzer, mock_provider)
             mock_analyzer.analyze_batch.return_value = mock_code_review_report
             mock_analyzer.skipped_files = []
             mock_analyzer_class.return_value = mock_analyzer
@@ -349,6 +354,7 @@ class TestFullWorkflow:
 
             mock_analyzer = Mock()
             mock_analyzer.provider = mock_provider
+            wire_mock_cost(mock_analyzer, mock_provider)
             mock_analyzer.analyze_batch.return_value = mock_code_review_report
             mock_analyzer.skipped_files = []
             mock_analyzer_class.return_value = mock_analyzer
@@ -411,6 +417,7 @@ class TestWorkflowWithFixtures:
 
             mock_analyzer = Mock()
             mock_analyzer.provider = mock_provider
+            wire_mock_cost(mock_analyzer, mock_provider)
             mock_analyzer.analyze_batch.return_value = mock_code_review_report
             mock_analyzer.skipped_files = []
             mock_analyzer_class.return_value = mock_analyzer
@@ -519,6 +526,7 @@ class TestOutputFormats:
 
             mock_analyzer = Mock()
             mock_analyzer.provider = mock_provider
+            wire_mock_cost(mock_analyzer, mock_provider)
             mock_analyzer.analyze_batch.return_value = mock_code_review_report
             mock_analyzer.skipped_files = []
             mock_analyzer_class.return_value = mock_analyzer
@@ -589,6 +597,7 @@ class TestBatchProcessing:
 
             mock_analyzer = Mock()
             mock_analyzer.provider = mock_provider
+            wire_mock_cost(mock_analyzer, mock_provider)
             mock_analyzer.analyze_batch.return_value = mock_code_review_report
             mock_analyzer.skipped_files = []
             mock_analyzer_class.return_value = mock_analyzer
@@ -662,6 +671,7 @@ class TestBatchProcessing:
 
             mock_analyzer = Mock()
             mock_analyzer.provider = mock_provider
+            wire_mock_cost(mock_analyzer, mock_provider)
             mock_analyzer.analyze_batch.side_effect = [report1, report2]
             mock_analyzer.skipped_files = []
             mock_analyzer_class.return_value = mock_analyzer

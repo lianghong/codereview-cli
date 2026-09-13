@@ -1410,6 +1410,9 @@ def run_review(
         # (models.py's field_validator has already mapped every synonym), so
         # counting them here needs no second mapping table.
         category_counts = Counter(i.category for i in all_issues)
+        # The provider accrued this per request, so it is the only figure that
+        # is right for a tiered entry. Read it; never recompute from the totals.
+        cost = analyzer.estimate_cost()
         metrics = ReviewMetrics(
             files_analyzed=total_files,
             total_lines=total_lines,
@@ -1428,6 +1431,9 @@ def run_review(
             model_name=model_display_name,
             input_price_per_million=pricing["input_price_per_million"],
             output_price_per_million=pricing["output_price_per_million"],
+            input_cost=cost["input_cost"],
+            output_cost=cost["output_cost"],
+            long_context_requests=int(cost.get("long_context_requests", 0)),
             static_analysis_run=False,
         )
 
@@ -1495,14 +1501,20 @@ def run_review(
                 "[dim](provider has not published pricing yet)[/dim]"
             )
         else:
-            input_cost = (
-                analyzer.provider.total_input_tokens / 1_000_000
-            ) * input_price
-            output_cost = (
-                analyzer.provider.total_output_tokens / 1_000_000
-            ) * output_price
+            # Read the provider's accrual; do NOT recompute `tokens * price`.
+            # That was the bug this replaced: it multiplied the run *totals* by
+            # the short-context rate, so a tiered entry reported half of what
+            # any batch over the threshold actually billed.
+            input_cost = cost["input_cost"]
+            output_cost = cost["output_cost"]
             total_cost = input_cost + output_cost
             con.print(f"   [bold]Estimated cost: ${total_cost:.4f}[/bold]")
+            long_requests = int(cost.get("long_context_requests", 0))
+            if long_requests:
+                con.print(
+                    f"      [yellow]{long_requests} request(s) billed at this "
+                    "model's long-context rates[/yellow]"
+                )
         con.print()
 
         # Warn if any files were skipped

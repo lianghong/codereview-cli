@@ -37,6 +37,7 @@ from codereview.config.models import (
     ZAIConfig,
 )
 from codereview.providers.mixins import openai_stream_params, wants_token_streaming
+from tests.mock_helpers import wire_mock_cost
 
 
 @pytest.fixture
@@ -372,6 +373,7 @@ def _cli_mocks(code_dir, file_count=2):
 
     mock_analyzer = Mock()
     mock_analyzer.provider = mock_provider
+    wire_mock_cost(mock_analyzer, mock_provider)
     mock_analyzer.analyze_batch.return_value = CodeReviewReport(
         summary="Test",
         metrics=ReviewMetrics(files_analyzed=1),

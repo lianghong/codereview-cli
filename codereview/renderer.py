@@ -730,9 +730,17 @@ class MarkdownExporter:
 
         metrics_dict = metrics_to_dict(report)
 
-        # Separate token metrics from other metrics
+        # Separate token metrics from other metrics. The accrued-cost keys are
+        # excluded from both: they are rendered as money in the cost block
+        # below, and a bare "- Input Cost: 1.9758" row beside it reads as a
+        # second, contradictory figure.
         token_keys = {"input_tokens", "output_tokens", "total_tokens"}
-        regular_metrics = {k: v for k, v in metrics_dict.items() if k not in token_keys}
+        cost_keys = {"input_cost", "output_cost", "long_context_requests"}
+        regular_metrics = {
+            k: v
+            for k, v in metrics_dict.items()
+            if k not in token_keys and k not in cost_keys
+        }
         token_metrics = {k: v for k, v in metrics_dict.items() if k in token_keys}
 
         # Display regular metrics first. Check bool BEFORE int: bool is a
@@ -787,18 +795,48 @@ class MarkdownExporter:
                         "(provider has not published pricing yet)"
                     )
                 else:
-                    input_cost = (input_tokens / 1_000_000) * input_price
-                    output_cost = (output_tokens / 1_000_000) * output_price
+                    # Prefer the cost the provider ACCRUED per request. On a
+                    # tiered entry the rate depends on one request's input
+                    # size, so `total_tokens * input_price` reports the
+                    # short-context rate for every request — half the billed
+                    # figure above the threshold. The prices are for the
+                    # per-M annotation only.
+                    accrued_input = metrics_dict.get("input_cost")
+                    accrued_output = metrics_dict.get("output_cost")
+                    long_requests = metrics_dict.get("long_context_requests")
+                    if isinstance(accrued_input, int | float) and isinstance(
+                        accrued_output, int | float
+                    ):
+                        input_cost = float(accrued_input)
+                        output_cost = float(accrued_output)
+                        tiered = isinstance(long_requests, int) and long_requests > 0
+                    else:
+                        # No accrual recorded — a hand-built or legacy metrics
+                        # dict, i.e. no provider ran. Flat arithmetic is all
+                        # that is available and is exact for an untiered entry.
+                        input_cost = (input_tokens / 1_000_000) * input_price
+                        output_cost = (output_tokens / 1_000_000) * output_price
+                        tiered = False
                     total_cost = input_cost + output_cost
                     lines.append(f"- **Estimated Cost:** ${total_cost:.4f} USD")
-                    lines.append(
-                        f"  - Input cost: ${input_cost:.4f} "
-                        f"(${input_price:.2f}/M tokens)"
-                    )
-                    lines.append(
-                        f"  - Output cost: ${output_cost:.4f} "
-                        f"(${output_price:.2f}/M tokens)"
-                    )
+                    if tiered:
+                        # Naming the rate would be wrong here: the run spans
+                        # two of them.
+                        lines.append(f"  - Input cost: ${input_cost:.4f}")
+                        lines.append(f"  - Output cost: ${output_cost:.4f}")
+                        lines.append(
+                            f"  - {long_requests} request(s) billed at "
+                            "long-context rates"
+                        )
+                    else:
+                        lines.append(
+                            f"  - Input cost: ${input_cost:.4f} "
+                            f"(${input_price:.2f}/M tokens)"
+                        )
+                        lines.append(
+                            f"  - Output cost: ${output_cost:.4f} "
+                            f"(${output_price:.2f}/M tokens)"
+                        )
 
         return "\n".join(lines)
 

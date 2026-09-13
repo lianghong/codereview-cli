@@ -9,6 +9,7 @@ from click.testing import CliRunner
 from rich.console import Console
 
 from codereview.cli import main
+from tests.mock_helpers import wire_mock_cost
 
 
 @pytest.fixture
@@ -62,6 +63,7 @@ def test_cli_with_directory(cli_runner, sample_code_dir):
             "output_price_per_million": 25.0,
         }
         mock_analyzer.provider = mock_provider
+        wire_mock_cost(mock_analyzer, mock_provider)
         mock_analyzer.analyze_batch.return_value = Mock(
             summary="Test",
             files_analyzed=1,
@@ -110,6 +112,7 @@ def test_cli_output_option(cli_runner, sample_code_dir, tmp_path):
             "output_price_per_million": 25.0,
         }
         mock_analyzer.provider = mock_provider
+        wire_mock_cost(mock_analyzer, mock_provider)
         mock_analyzer.analyze_batch.return_value = Mock(
             summary="Test",
             files_analyzed=1,
@@ -312,6 +315,7 @@ def test_cli_with_model_option(cli_runner, sample_code_dir):
             "output_price_per_million": 15.0,
         }
         mock_analyzer.provider = mock_provider
+        wire_mock_cost(mock_analyzer, mock_provider)
         mock_analyzer.analyze_batch.return_value = Mock(
             summary="Test",
             files_analyzed=1,
@@ -370,6 +374,7 @@ def test_cli_default_model(cli_runner, sample_code_dir):
             "output_price_per_million": 25.0,
         }
         mock_analyzer.provider = mock_provider
+        wire_mock_cost(mock_analyzer, mock_provider)
         mock_analyzer.analyze_batch.return_value = Mock(
             summary="Test",
             files_analyzed=1,
@@ -419,6 +424,7 @@ def test_cli_model_short_name(cli_runner, sample_code_dir):
             "output_price_per_million": 5.0,
         }
         mock_analyzer.provider = mock_provider
+        wire_mock_cost(mock_analyzer, mock_provider)
         mock_analyzer.analyze_batch.return_value = Mock(
             summary="Test",
             files_analyzed=1,
@@ -944,6 +950,7 @@ def _run_with_issues(cli_runner, sample_code_dir, issues, extra_args=()):
 
         mock_analyzer = Mock()
         mock_analyzer.provider = mock_provider
+        wire_mock_cost(mock_analyzer, mock_provider)
         mock_analyzer.analyze_batch.return_value = CodeReviewReport(
             summary="Test",
             metrics=ReviewMetrics(files_analyzed=1),
@@ -1093,6 +1100,7 @@ def _run_with_tiny_context_window(cli_runner, code_dir, extra_args=()):
         }
         mock_analyzer = Mock()
         mock_analyzer.provider = mock_provider
+        wire_mock_cost(mock_analyzer, mock_provider)
         mock_analyzer.analyze_batch.return_value = Mock(
             summary="Test",
             files_analyzed=1,
@@ -1266,6 +1274,7 @@ def _pipeline_mocks(code_dir, issues=(), *, analyzer_error=None, recommendations
 
     mock_analyzer = Mock()
     mock_analyzer.provider = mock_provider
+    wire_mock_cost(mock_analyzer, mock_provider)
     if analyzer_error is not None:
         mock_analyzer.analyze_batch.side_effect = analyzer_error
     else:
