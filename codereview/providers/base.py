@@ -226,17 +226,34 @@ class ModelProvider(ABC):
         ``model_config`` attribute must override.
 
         Returns:
-            Dictionary with keys: input_price_per_million, output_price_per_million
+            Dictionary with keys: input_price_per_million,
+            output_price_per_million, and — only for an entry with a
+            long-context pricing tier — long_context_threshold_tokens,
+            long_input_price_per_million, long_output_price_per_million.
+            Read the tier keys with ``.get()``; most entries have none.
         """
         model_config = getattr(self, "model_config", None)
         if model_config is None:
             raise NotImplementedError(
                 "Provider has no model_config; override get_pricing()"
             )
-        return {
-            "input_price_per_million": model_config.pricing.input_per_million,
-            "output_price_per_million": model_config.pricing.output_per_million,
+        pricing = model_config.pricing
+        rates: dict[str, float] = {
+            "input_price_per_million": pricing.input_per_million,
+            "output_price_per_million": pricing.output_per_million,
         }
+        # Long-context tier keys are added only when the entry has one, so
+        # consumers must use .get() — a flat-priced model reports no tier at
+        # all rather than a null one. Unpacked into locals so the None-narrowing
+        # is explicit; PricingConfig guarantees the three move together.
+        threshold = pricing.long_context_threshold_tokens
+        long_input = pricing.long_input_per_million
+        long_output = pricing.long_output_per_million
+        if threshold is not None and long_input is not None and long_output is not None:
+            rates["long_context_threshold_tokens"] = threshold
+            rates["long_input_price_per_million"] = long_input
+            rates["long_output_price_per_million"] = long_output
+        return rates
 
     def reset_state(self) -> None:
         """Reset token counters and state for fresh run.

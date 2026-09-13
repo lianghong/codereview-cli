@@ -175,6 +175,36 @@ reflective guards keep it from lapsing: every `ModelProvider` subclass must appe
 `_USAGE_MATRIX`, and every provider module mentioning `use_responses_api` must be covered on
 that path.
 
+### Tiered pricing is a property of one request, not of a run
+
+GPT-6 Astra is the first entry whose rate depends on how big a single call is: In-Region it
+bills $11/$55 per million at 272,000 input tokens **or fewer** and $22/$82.50 above that.
+Three optional `PricingConfig` fields carry it — `long_context_threshold_tokens`,
+`long_input_per_million`, `long_output_per_million` — and a `model_validator` rejects a
+*partial* tier, because two of the three would fall back to the flat pair with no error and no
+warning, which is exactly the "YAML key that looks like configuration" failure that shipped
+sixteen times on `pricing`/`inference_params`.
+
+**The threshold must never be applied to an accumulated total.** `estimate_cost` used to
+multiply `_total_input_tokens` by one rate, and a run of five 100K batches has a 500K total
+while every one of its requests billed at the cheap tier — pricing the total would invent a
+long-context charge nothing incurred, and *doubling* a cost figure is the same class of wrong
+as halving it. So the tier is selected in `TokenTrackingMixin._track_tokens`, the last place a
+single request's input size is still visible: it calls `PricingConfig.rates_for_request`,
+accrues `_accrued_input_cost`/`_accrued_output_cost` under the existing token lock, and counts
+`_long_context_requests`. `estimate_cost` then only *reports* the accrual — it must not
+recompute, or the per-request sizes are gone again. For a flat-priced entry the accumulator is
+arithmetically identical to the old single multiplication (`sum(t_i) * r == sum(t_i * r)`), so
+the untiered entries are unaffected to the cent.
+
+`get_pricing()` adds the three tier keys **only** when the entry has a tier, so consumers must
+read them with `.get()` — a flat model reports no tier rather than a null one. `--dry-run`
+mirrors the same rule in `cli.py`'s `_estimate_tiered_cost`, which prices each `FileBatch` as
+its own request (files plus the per-batch overhead, since the re-sent system prompt and README
+are billed input) and names how many batches crossed the break, because a smaller
+`--batch-size` can drop the run back to the cheap tier. Guards in
+`tests/test_tiered_pricing.py`.
+
 ## Streaming: `streaming=bool(callbacks)` was wrong twice, and `--stream` was wrong a third time
 
 Three coupled defects, all in `tests/test_streaming_contract.py`:
@@ -299,15 +329,17 @@ knowledge cutoff 2026-04-30. Two properties are unlike anything else in the regi
   Two traps: the error *reads* as transient, so don't respond to a recurrence by widening the
   retry classifier; and a trivial batch passes forced `tool_choice` cleanly (a 12-line file did),
   so only a think-heavy target reproduces it.
-- **Its `context_window` (272000) is deliberately *below* the model's real limit (1,050,000).**
-  Astra is the first entry here with **tiered** pricing: In-Region it bills $11/$55 per million up
-  to 272K input tokens and $22/$82.50 above that. Our pricing model is one flat input/output pair
-  per entry, so a batch crossing 272K input would cost 2x what `--dry-run` and the cost line
-  report — the same under-reporting class as the Azure `gpt-5.4` `usage_metadata` bug, and the
-  worst kind of wrong because the next reader trusts a pricing number. Clamping the window to the
-  price break means the batcher cannot pack past it, so $11/$55 is exact for every batch. The cost
-  is batch *size*, not coverage. A genuine 1M-context review needs tier-aware pricing in code
-  first; raising the number alone silently halves every reported cost.
+- **It is the first entry here with *tiered* pricing**, and its `context_window` was clamped to
+  the price break until the code could handle that. In-Region it bills $11/$55 per million up to
+  272K input tokens and $22/$82.50 above; with one flat input/output pair per entry, a batch
+  crossing 272K would have cost 2x what `--dry-run` and the cost line reported — the same
+  under-reporting class as the Azure `gpt-5.4` `usage_metadata` bug, and the worst kind of wrong
+  because the next reader trusts a pricing number. Clamping the window to 272000 meant the batcher
+  could not pack past it. The window is now `1000000` and both tiers are configured; the
+  mechanism, and the per-request-not-per-run rule that makes it correct, are under
+  [Tiered pricing is a property of one request](#tiered-pricing-is-a-property-of-one-request-not-of-a-run).
+  What the clamp cost while it stood was review *quality*, not money: ~4x more batches, and each
+  batch only ever sees its own files, so cross-file findings were lost.
 
 **The `bedrock_openai` provider is not OpenAI-only, and the code still proves it.** xAI's
 **Grok 4.3** rode the same `bedrock-mantle` OpenAI-compatible endpoint (model id `xai.grok-4.3`,

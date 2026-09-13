@@ -355,6 +355,60 @@ def _per_batch_overhead_tokens(
     )
 
 
+def _estimate_tiered_cost(
+    batches: list[FileBatch],
+    per_batch_overhead: int,
+    pricing: dict[str, float],
+) -> tuple[float, float, int]:
+    """Estimate run cost by pricing each batch as its own request.
+
+    Tiered pricing keys off the input size of a *single* API call, and every
+    batch is one call. Pricing the run's summed input instead would push a run
+    of many small batches into a long-context tier none of its requests reach —
+    for GPT-6 Astra, a 2x overstatement of a figure people decide on.
+
+    Falls back to the flat rates for the twenty-odd entries with no tier, where
+    the per-batch loop is arithmetically identical to one multiplication.
+
+    Args:
+        batches: The batches the run will send, one request each.
+        per_batch_overhead: Non-file tokens added to every batch (system prompt,
+            README, linter block) — part of that request's billed input.
+        pricing: A provider ``get_pricing()`` dict.
+
+    Returns:
+        ``(input_cost, output_cost, long_context_batch_count)``.
+    """
+    flat_input = float(pricing["input_price_per_million"])
+    flat_output = float(pricing["output_price_per_million"])
+    threshold = pricing.get("long_context_threshold_tokens")
+
+    input_cost = 0.0
+    output_cost = 0.0
+    long_batches = 0
+
+    for batch in batches:
+        batch_input = (
+            sum(FileBatcher.estimate_file_tokens(path) for path in batch.files)
+            + per_batch_overhead
+        )
+        # Same 20%-of-input heuristic the flat estimator uses, applied per batch
+        # so the two paths agree on the total for an untiered model.
+        batch_output = int(batch_input * 0.2)
+
+        if threshold is not None and batch_input > int(threshold):
+            rate_in = float(pricing["long_input_price_per_million"])
+            rate_out = float(pricing["long_output_price_per_million"])
+            long_batches += 1
+        else:
+            rate_in, rate_out = flat_input, flat_output
+
+        input_cost += (batch_input / 1_000_000) * rate_in
+        output_cost += (batch_output / 1_000_000) * rate_out
+
+    return input_cost, output_cost, long_batches
+
+
 def display_available_models(console: Console, verbose: bool = False) -> None:
     """Display all available models in a formatted table.
 
@@ -1916,12 +1970,27 @@ def _render_dry_run(
             "[dim](provider has not published pricing yet)[/dim]"
         )
     else:
-        input_cost = (total_input_tokens / 1_000_000) * input_price
-        output_cost = (estimated_output_tokens / 1_000_000) * output_price
+        input_cost, output_cost, long_batches = _estimate_tiered_cost(
+            batches, overhead.total, pricing
+        )
         total_cost = input_cost + output_cost
         console.print(f"   [bold]Est. cost: ${total_cost:.4f}[/bold]")
-        console.print(f"      (Input: ${input_cost:.4f} @ ${input_price}/M)")
-        console.print(f"      (Output: ${output_cost:.4f} @ ${output_price}/M)")
+        if long_batches:
+            # Naming the count matters: the same file set batched differently
+            # (a smaller --batch-size) can drop back to the cheap tier, so the
+            # user can act on this number.
+            threshold = int(pricing["long_context_threshold_tokens"])
+            console.print(
+                f"      [yellow]{long_batches} of {len(batches)} batch(es) exceed "
+                f"{threshold:,} input tokens and bill at this model's "
+                f"long-context rates (${pricing['long_input_price_per_million']}/"
+                f"${pricing['long_output_price_per_million']} per M)[/yellow]"
+            )
+            console.print(f"      (Input: ${input_cost:.4f}, blended across tiers)")
+            console.print(f"      (Output: ${output_cost:.4f}, blended across tiers)")
+        else:
+            console.print(f"      (Input: ${input_cost:.4f} @ ${input_price}/M)")
+            console.print(f"      (Output: ${output_cost:.4f} @ ${output_price}/M)")
     console.print()
     console.print("[dim]Run without --dry-run to perform the actual analysis.[/dim]")
 

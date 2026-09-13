@@ -432,7 +432,7 @@ codereview ./src --model gpt5.6
 ```bash
 codereview ./src --model gpt6
 ```
-Its `context_window` is set to 272K rather than the model's 1.05M on purpose: Bedrock prices Astra at $11/$55 per M up to 272K input tokens and **$22/$82.50 above it**, and our pricing model is one flat rate per entry, so the clamp is what keeps `--dry-run` and the cost line honest. Raising it without adding tier-aware pricing in code would silently halve every reported cost.
+Astra is the only entry with **tiered** pricing: Bedrock charges $11/$55 per M for a request at or below 272K input tokens and **$22/$82.50 above it**. The threshold is per *request*, not per run — five 100K batches total 500K tokens and still bill entirely at the cheap rate — so each batch is priced on its own size, and `--dry-run` tells you how many of them cross the break. A smaller `--batch-size` can put a run back in the cheap tier.
 
 **GLM 5 (Bedrock)** - 200K context, reasoning_effort=max, pricing not yet announced (shows `TBD`):
 ```bash
@@ -479,7 +479,7 @@ Be aware of costs and choose models accordingly:
 
 **OpenAI-on-Bedrock (`bedrock-mantle`):**
 - **GPT-5.6 Sol**: OpenAI's coding tier, 272K context ($5/M input, $30/M output) — twice GPT-5.5's rate, which this entry replaced 2026-08-29. us-east-1 / us-east-2
-- **GPT-6 Astra**: OpenAI's most capable model, window clamped to 272K ($11/M input, $55/M output at that tier; $22/$82.50 above it, which the clamp avoids). us-west-2 only, so it and Sol can't share one `OPENAI_BASE_URL`
+- **GPT-6 Astra**: OpenAI's most capable model, 1M context, tiered pricing ($11/M input, $55/M output for a request at or below 272K input tokens; $22/$82.50 above). us-west-2 only, so it and Sol can't share one `OPENAI_BASE_URL`
 
 **Azure OpenAI:**
 - **GPT-5.4**: Frontier reasoning, 1.05M context, default Azure ($2.50/M input, $15/M output)
@@ -716,7 +716,7 @@ codereview ./src --model kimi               # Short alias
 # NOTE: these two live in different Regions and OPENAI_BASE_URL is provider-wide
 # — Sol on us-east-1/us-east-2, Astra on us-west-2. One at a time.
 codereview ./src --model gpt5.6             # GPT-5.6 Sol (OpenAI flagship, best coding model, 272K)
-codereview ./src --model gpt6               # GPT-6 Astra (OpenAI's most capable; window clamped to 272K)
+codereview ./src --model gpt6               # GPT-6 Astra (OpenAI's most capable; tiered above 272K)
 ```
 
 **When to use each model:**
@@ -743,7 +743,7 @@ codereview ./src --model gpt6               # GPT-6 Astra (OpenAI's most capable
 | **GLM-5.3-Flash** | Z.AI direct | Low-cost multimodal sibling, 1M context | List $0.15/M input, $0.50/M output |
 | **Kimi K2.6** | Moonshot direct | 1T MoE, 32B active, 256K context, agentic — the only Kimi outside NVIDIA | $0.60/M input, $2.50/M output |
 | **GPT-5.6 Sol (Bedrock)** | OpenAI-on-Bedrock | OpenAI flagship, best coding model, 272K context, `bedrock-mantle` endpoint (In-Region us-east-1/us-east-2) | $5/M input, $30/M output |
-| **GPT-6 Astra (Bedrock)** | OpenAI-on-Bedrock | OpenAI's most capable model, text + image in, 128K output, `bedrock-mantle` us-west-2 only; window clamped to 272K (1.05M model limit) to stay in the cheaper price tier | $11/M input, $55/M output |
+| **GPT-6 Astra (Bedrock)** | OpenAI-on-Bedrock | OpenAI's most capable model, text + image in, 128K output, `bedrock-mantle` us-west-2 only; 1M context, tiered pricing above 272K input tokens per request | $11/M input, $55/M output |
 
 *NVIDIA NIM models are currently in free preview tier.
 

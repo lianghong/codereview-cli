@@ -9,9 +9,22 @@ from pydantic import BaseModel, Field, HttpUrl, model_validator
 class PricingConfig(BaseModel):
     """Pricing configuration for model API calls.
 
+    The base pair is the only required part. A model that bills a *higher* rate
+    once a single request's input exceeds a threshold (GPT-6 Astra: $11/$55 up
+    to 272K input tokens, $22/$82.50 above) declares that second tier with the
+    three ``long_*`` fields.
+
+    **The tier is chosen per request, never per run.** See
+    :meth:`rates_for_request`.
+
     Attributes:
         input_per_million: Cost per million input tokens in USD.
         output_per_million: Cost per million output tokens in USD.
+        long_context_threshold_tokens: Input-token count above which a single
+            request bills at the long-context rates. ``None`` (default) means
+            flat pricing.
+        long_input_per_million: Input rate for a request over the threshold.
+        long_output_per_million: Output rate for a request over the threshold.
     """
 
     model_config = {"frozen": True}
@@ -22,6 +35,67 @@ class PricingConfig(BaseModel):
     output_per_million: float = Field(
         ..., ge=0, description="Cost per million output tokens in USD"
     )
+    long_context_threshold_tokens: int | None = Field(
+        None,
+        gt=0,
+        description="Input tokens above which one request bills at long-context rates",
+    )
+    long_input_per_million: float | None = Field(
+        None, ge=0, description="Input cost per million above the threshold"
+    )
+    long_output_per_million: float | None = Field(
+        None, ge=0, description="Output cost per million above the threshold"
+    )
+
+    @model_validator(mode="after")
+    def _check_tier_is_complete(self) -> "PricingConfig":
+        """All three ``long_*`` fields together, or none of them.
+
+        A partial tier is the dangerous state: with a threshold but no rates
+        there is nothing to switch to, and with rates but no threshold they can
+        never apply. Either way the YAML *looks* tier-aware and silently bills
+        at the cheap tier — the exact "unread pricing number" failure the
+        loader's forwarding test exists for, one layer up.
+        """
+        tier = (
+            self.long_context_threshold_tokens,
+            self.long_input_per_million,
+            self.long_output_per_million,
+        )
+        if any(value is not None for value in tier) and None in tier:
+            raise ValueError(
+                "long-context pricing is incomplete: set all of "
+                "long_context_threshold_tokens, long_input_per_million and "
+                "long_output_per_million, or none of them"
+            )
+        return self
+
+    @property
+    def has_long_context_tier(self) -> bool:
+        """True when a second, higher-priced tier is configured."""
+        return self.long_context_threshold_tokens is not None
+
+    def rates_for_request(self, input_tokens: int) -> tuple[float, float]:
+        """Return ``(input_rate, output_rate)`` for **one** request this size.
+
+        Tiered pricing is a property of an individual API call, not of a run.
+        Every batch is its own request, so a 5-batch run of 100K-token batches
+        bills all five at the cheap tier even though the run totals 500K —
+        applying the threshold to an accumulated total would invent a
+        long-context charge that was never billed. Callers must therefore ask
+        with a single request's input size, which is why
+        ``TokenTrackingMixin._track_tokens`` (where that size is still visible)
+        accrues cost instead of ``estimate_cost`` (where only totals survive).
+        """
+        threshold = self.long_context_threshold_tokens
+        if (
+            threshold is None
+            or input_tokens <= threshold
+            or self.long_input_per_million is None
+            or self.long_output_per_million is None
+        ):
+            return (self.input_per_million, self.output_per_million)
+        return (self.long_input_per_million, self.long_output_per_million)
 
 
 class InferenceParams(BaseModel):
