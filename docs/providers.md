@@ -335,10 +335,20 @@ knowledge cutoff 2026-04-30. Two properties are unlike anything else in the regi
 - **Its Region is mutually exclusive with Sol's.** `base_url` is *provider*-level
   (`${OPENAI_BASE_URL}`), and `bedrock-mantle` serves Astra from **us-west-2 only** while Sol is
   In-Region us-east-1 / us-east-2 only. One base URL cannot reach both; the wrong one 404s the
-  model id with no fallback. `bedrock_openai` has no per-model `base_url` override (only the
-  `bedrock` provider has a per-model `region`), so this is an operator switch, not configuration.
-  Don't widen Astra's Region list from memory — the model card's `bedrock-mantle` availability
-  table had exactly one row on 2026-09-13.
+  model id with no fallback, on *every* batch of the run — the observed shape on 2026-09-13 was
+  four batches and four identical `The model 'openai.gpt-6-astra' does not exist` 404s against a
+  us-east-2 endpoint. This was an operator switch (re-export `OPENAI_BASE_URL` to change models)
+  until both entries gained **`region:`**, which `BedrockOpenAIProvider._resolve_base_url` reads
+  to rewrite the Region label of the configured URL per model, so one export serves both. Two
+  deliberate properties of that helper: it **derives from the configured URL** rather than a
+  hardcoded `bedrock-mantle` host template, so `OPENAI_BASE_URL` stays authoritative for scheme,
+  host and path and a custom gateway keeps working; and a host with **no Region label to rewrite
+  passes through unchanged** (debug-logged) rather than raising — failing closed there would
+  break a working self-hosted endpoint over a cosmetic mismatch. The HTTPS gate runs on the
+  *resolved* URL, so a Region override can't smuggle the bearer key onto `http://`. Don't widen
+  Astra's Region from memory — the model card's `bedrock-mantle` availability table had exactly
+  one row on 2026-09-13. Note `--validate` cannot catch a wrong Region: it has no model in scope
+  and checks only the provider-level URL, so the Region is first exercised on invoke.
 - **`supports_tool_use: false` is live-verified here, not assumed** (2026-09-13). A/B on
   `codereview/providers/` — 2 batches, ~98K input tokens, on the us-west-2 mantle base. With
   `true`, batch 1 of 2 died on `ResponseError(code='server_error', message='The server had an
@@ -370,8 +380,9 @@ provider is OpenAI-specific, so a non-OpenAI `bedrock-mantle` model needs a YAML
 code. Two things that entry taught, worth keeping for the next one: a `bedrock-mantle` model may
 **accept `temperature`/`top_p`** and therefore omit `use_responses_api` and ride Chat Completions
 (Grok's card defaulted 0.7/0.95); and In-Region support is per-model, not per-endpoint (Grok:
-us-west-2 / us-east-1 / us-east-2; Sol: us-east-1 / us-east-2 only), so pin `OPENAI_BASE_URL` to a
-Region that serves the specific model.
+us-west-2 / us-east-1 / us-east-2; Sol: us-east-1 / us-east-2 only), so give the entry a
+**`region:`** naming a Region that serves that specific model rather than relying on whatever
+`OPENAI_BASE_URL` happens to point at.
 
 ### Moonshot has two platforms
 

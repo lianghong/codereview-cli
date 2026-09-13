@@ -60,7 +60,7 @@ Comprehensive guide for using the Code Review CLI tool effectively.
 
 **For OpenAI-on-Bedrock — GPT-5.6 Sol / GPT-6 Astra (optional):**
 - [ ] `OPENAI_API_KEY` set to an Amazon Bedrock API key (bearer token, not an openai.com key)
-- [ ] `OPENAI_BASE_URL` set to the `bedrock-mantle` endpoint of a Region that serves the model you want. **The two entries do not overlap and `OPENAI_BASE_URL` is provider-wide, so you can only reach one at a time:** GPT-5.6 Sol is In-Region us-east-1 / us-east-2, GPT-6 Astra is us-west-2 only. Pointing at the other Region 404s the model id rather than falling back
+- [ ] `OPENAI_BASE_URL` set to a `bedrock-mantle` endpoint. **The two entries' Regions do not overlap** — GPT-5.6 Sol is In-Region us-east-1 / us-east-2, GPT-6 Astra is us-west-2 only — but you do *not* need one export each: both entries declare `region:` in `models.yaml` and the provider rewrites the Region label of this URL per model. Whichever Region you name here, both models resolve to theirs. An entry *without* `region:` uses the URL as-is, and a Region that doesn't serve the model 404s the model id rather than falling back
 
 ## Typical Workflows
 
@@ -479,7 +479,7 @@ Be aware of costs and choose models accordingly:
 
 **OpenAI-on-Bedrock (`bedrock-mantle`):**
 - **GPT-5.6 Sol**: OpenAI's coding tier, 272K context ($5/M input, $30/M output) — twice GPT-5.5's rate, which this entry replaced 2026-08-29. us-east-1 / us-east-2
-- **GPT-6 Astra**: OpenAI's most capable model, 1M context, tiered pricing ($11/M input, $55/M output for a request at or below 272K input tokens; $22/$82.50 above). us-west-2 only, so it and Sol can't share one `OPENAI_BASE_URL`
+- **GPT-6 Astra**: OpenAI's most capable model, 1M context, tiered pricing ($11/M input, $55/M output for a request at or below 272K input tokens; $22/$82.50 above). us-west-2 only — a Region it and Sol don't share, handled by the entry's `region:` rather than by re-exporting `OPENAI_BASE_URL`
 
 **Azure OpenAI:**
 - **GPT-5.4**: Frontier reasoning, 1.05M context, default Azure ($2.50/M input, $15/M output)
@@ -713,8 +713,9 @@ codereview ./src --model kimi               # Short alias
 # OpenAI-on-Bedrock (bedrock-mantle OpenAI-compatible endpoint; Bedrock API-key auth)
 # The GPT-5.5 and Grok 4.3 entries were removed 2026-08-29 as curation (both
 # endpoints are still live). `gpt-bedrock` resolves to Sol.
-# NOTE: these two live in different Regions and OPENAI_BASE_URL is provider-wide
-# — Sol on us-east-1/us-east-2, Astra on us-west-2. One at a time.
+# NOTE: these two live in different Regions — Sol on us-east-1/us-east-2, Astra
+# on us-west-2 — but each entry's `region:` handles that, so one
+# OPENAI_BASE_URL export serves both.
 codereview ./src --model gpt5.6             # GPT-5.6 Sol (OpenAI flagship, best coding model, 272K)
 codereview ./src --model gpt6               # GPT-6 Astra (OpenAI's most capable; tiered above 272K)
 ```

@@ -1286,6 +1286,12 @@ providers:
       - id: gpt5.6-sol-bedrock
         full_id: openai.gpt-5.6-sol
         name: GPT-5.6 Sol (Bedrock)
+        # In-Region us-east-1 / us-east-2 only. The provider rewrites the Region
+        # label of OPENAI_BASE_URL to this value, so Sol and Astra (us-west-2
+        # only) both work from one export; without it the other one's endpoint
+        # 404s the model id rather than falling back. Re-read the model card's
+        # bedrock-mantle availability table before changing this.
+        region: us-east-1
         aliases:
           - gpt5.6
           - gpt-5.6
@@ -1349,10 +1355,16 @@ providers:
       #     us-east-1/us-east-2 only. One OPENAI_BASE_URL cannot reach both:
       #       Astra: https://bedrock-mantle.us-west-2.api.aws/openai/v1
       #       Sol:   https://bedrock-mantle.us-east-1.api.aws/openai/v1
-      #     Pointing at the wrong one 404s the model id, it does not fall back.
-      #     There is no per-model base_url override on bedrock_openai (only
-      #     `bedrock` has a per-model `region`), so this is an operator switch,
-      #     not configuration. Do NOT "fix" it by widening Astra's region list
+      #     Pointing at the wrong one 404s the model id, it does not fall back —
+      #     on EVERY batch of the run, which is what it looked like in the field
+      #     on 2026-09-13 (four batches, four identical "The model
+      #     'openai.gpt-6-astra' does not exist" 404s).
+      #     This used to be an operator switch — re-export OPENAI_BASE_URL to
+      #     change models. It is now configuration: both entries carry `region:`
+      #     and BedrockOpenAIProvider._resolve_base_url rewrites the Region label
+      #     of the configured URL per model, so one export serves both. Only the
+      #     Region label is rewritten, so OPENAI_BASE_URL still decides scheme,
+      #     host and path. Do NOT "fix" a 404 here by widening Astra's region
       #     from memory — re-read the model card's bedrock-mantle availability
       #     table, which listed exactly one row on 2026-09-13.
       #
@@ -1374,6 +1386,11 @@ providers:
       - id: gpt6-astra-bedrock
         full_id: openai.gpt-6-astra
         name: GPT-6 Astra (Bedrock)
+        # us-west-2 ONLY on bedrock-mantle -- see note (1) above. The provider
+        # rewrites the Region label of OPENAI_BASE_URL to this value, which is
+        # what lets this entry and Sol (us-east-1/us-east-2) coexist under one
+        # provider-level export. Do NOT widen this from memory.
+        region: us-west-2
         aliases:
           - gpt6
           - gpt-6

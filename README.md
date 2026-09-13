@@ -10,7 +10,7 @@
 
 - ✅ **Gemini 3.8 Flash (Google)** — newest Flash generation for long-horizon software engineering and autonomous agents, with 1M context and 64K output (`--model gemini-3.8-flash`, or `gemini-flash`). It starts on prompt-based structured output until a live review proves forced tool use while thinking; Gemini 3.7 Flash remains available under its versioned names
 - ✅ **3 new providers**: DeepSeek direct API (`deepseek-v4-pro`, `deepseek-v4-flash`), Z.AI (`zhipuai/glm-5.3`, `zhipuai/glm-5.3-flash`), Moonshot/Kimi (`kimi-k2.6`). 8 providers total now (incl. OpenAI-on-Bedrock).
-- ✅ **GPT-6 Astra (Bedrock)** — OpenAI's most capable model, GA on the OpenAI-compatible `bedrock-mantle` endpoint 2026-09-08, text + image input, 128K output (`--model gpt6`). Two caveats worth knowing before you switch: it is the first entry with **tiered** pricing — Bedrock bills Astra at $11/$55 per M up to 272K input tokens and **$22/$82.50 above it**, per request, so a batch that crosses the break costs double and `--dry-run` names how many do; and `bedrock-mantle` serves it from **us-west-2 only**, which is mutually exclusive with GPT-5.6 Sol's us-east-1/us-east-2, since `OPENAI_BASE_URL` is provider-wide
+- ✅ **GPT-6 Astra (Bedrock)** — OpenAI's most capable model, GA on the OpenAI-compatible `bedrock-mantle` endpoint 2026-09-08, text + image input, 128K output (`--model gpt6`). Two caveats worth knowing before you switch: it is the first entry with **tiered** pricing — Bedrock bills Astra at $11/$55 per M up to 272K input tokens and **$22/$82.50 above it**, per request, so a batch that crosses the break costs double and `--dry-run` names how many do; and `bedrock-mantle` serves it from **us-west-2 only**, mutually exclusive with GPT-5.6 Sol's us-east-1/us-east-2 — each entry declares its `region:` and the provider rewrites the Region label of your `OPENAI_BASE_URL` per model, so one export reaches both
 - ✅ **GPT-5.6 Sol (Bedrock)** — OpenAI's flagship and best coding model, on the OpenAI-compatible `bedrock-mantle` endpoint, 272K context, Responses API (`--model gpt5.6`). It inherits `gpt-bedrock`
 - ✅ **GLM-5.3 and GLM-5.3-Flash (Z.AI)** — latest flagship and low-cost multimodal sibling, both with 1M context. `glm` now selects 5.3; Flash costs $0.15/$0.50 per M at list price. Both start on prompt-based structured output because reasoning is always enabled
 - ✅ **GPT-5.4 (Azure)** — frontier reasoning model, 1.05M context, default Azure model
@@ -61,7 +61,7 @@ A LangChain-based CLI tool that provides comprehensive, intelligent code reviews
   - DeepSeek API key from [platform.deepseek.com](https://platform.deepseek.com/api_keys) — `DEEPSEEK_API_KEY` (V4-Pro, V4-Flash)
   - Z.AI API key from [z.ai](https://z.ai) — `ZAI_API_KEY` (GLM-5.3 / 5.3-Flash; international)
   - Moonshot/Kimi API key from [platform.moonshot.cn](https://platform.moonshot.cn) — `KIMI_API_KEY` (Kimi K2.6; international keys from `platform.moonshot.ai` work too — override `base_url`)
-  - Amazon Bedrock API key (bearer token) for OpenAI-on-Bedrock — `OPENAI_API_KEY` + `OPENAI_BASE_URL` (GPT-5.6 Sol, GPT-6 Astra via the `bedrock-mantle` OpenAI-compatible endpoint — one base URL per Region, and these two models' Regions do not overlap)
+  - Amazon Bedrock API key (bearer token) for OpenAI-on-Bedrock — `OPENAI_API_KEY` + `OPENAI_BASE_URL` (GPT-5.6 Sol, GPT-6 Astra via the `bedrock-mantle` OpenAI-compatible endpoint — these two models' Regions do not overlap, but each entry's `region:` resolves that, so one base URL serves both)
 
 ### Install with uv (recommended)
 
@@ -340,12 +340,12 @@ In the [Amazon Bedrock console](https://console.aws.amazon.com/bedrock/home#/api
 
 ```bash
 export OPENAI_API_KEY="<your-amazon-bedrock-api-key>"
-# Point at a Region that serves the model you want. The two entries on this
-# provider do NOT overlap, and OPENAI_BASE_URL is provider-wide, so pick one:
-#   GPT-5.6 Sol   — In-Region us-east-1 / us-east-2 only (NOT us-west-2)
+# Any bedrock-mantle Region works — each model entry declares the Region that
+# actually serves it (`region:` in models.yaml) and the provider rewrites the
+# Region label of this URL per model. GPT-5.6 Sol is In-Region us-east-1 /
+# us-east-2 only, GPT-6 Astra is us-west-2 only, and one export now reaches
+# both; scheme, host and path still come from here.
 export OPENAI_BASE_URL="https://bedrock-mantle.us-east-1.api.aws/openai/v1"
-#   GPT-6 Astra   — bedrock-mantle serves it from us-west-2 only
-# export OPENAI_BASE_URL="https://bedrock-mantle.us-west-2.api.aws/openai/v1"
 ```
 
 ### 3. Use OpenAI-on-Bedrock Models
@@ -358,10 +358,10 @@ codereview /path/to/code --model gpt5.6
 codereview /path/to/code --model gpt5.6-bedrock   # or gpt-5.6, gpt5.6-sol-bedrock
 
 # GPT-6 Astra - OpenAI's most capable model (Responses API, text + image in)
-# Needs OPENAI_BASE_URL on us-west-2 — the ONLY bedrock-mantle Region for it,
-# and not the one Sol runs in. Pricing is tiered: a batch over 272K input
-# tokens bills at $22/$82.50 per M instead of $11/$55, and --dry-run says
-# which batches those are.
+# Runs in us-west-2 — the ONLY bedrock-mantle Region for it, and not the one
+# Sol runs in; the entry's `region:` handles that, so no re-export is needed.
+# Pricing is tiered: a batch over 272K input tokens bills at $22/$82.50 per M
+# instead of $11/$55, and --dry-run says which batches those are.
 codereview /path/to/code --model gpt6
 codereview /path/to/code --model gpt6-bedrock     # or gpt-6, gpt6-astra-bedrock
 ```
@@ -760,6 +760,32 @@ Error: DeploymentNotFound (Azure)
 **Solutions**:
 - **AWS**: Model may not be available in your region. Request access in AWS Bedrock Console
 - **Azure**: Ensure you have deployed the model in your Azure OpenAI resource. Check deployment name matches configuration
+
+### OpenAI-on-Bedrock: "The model … does not exist"
+
+```
+✗ Error on batch 1: OpenAIModelNotFoundError: Error code: 404 - {'error': {'code':
+  'not_found_error', 'message': "The model 'openai.gpt-6-astra' does not exist", ...}}
+```
+
+Every batch fails with the same 404 and the run ends with `All N batch(es) failed`. The model
+id is real — it just doesn't exist *in the Region your endpoint names*, and `bedrock-mantle`
+returns 404 rather than redirecting. The two entries on this provider have **no Region in
+common**: GPT-6 Astra is us-west-2 only, GPT-5.6 Sol is In-Region us-east-1 / us-east-2.
+
+`OPENAI_BASE_URL` is provider-wide, so the Region comes from **the model entry**: each carries
+`region:` in `models.yaml`, and the provider rewrites the Region label of your configured URL
+before building the client. One export reaches both models. If you hit this 404:
+
+- **A model entry is missing `region:`.** Add it — that's the fix, not a re-export.
+- **Your `OPENAI_BASE_URL` host has no Region label to rewrite** (a custom gateway, say). The
+  provider then uses the URL exactly as configured and logs why at debug level; point it at a
+  `bedrock-mantle.<region>.api.aws` host, or set the Region you need directly.
+- **The Region in the entry is wrong.** Check the model card's `bedrock-mantle` availability
+  table rather than widening it from memory.
+
+Note that `--validate` will *not* catch any of this: it checks key presence and HTTPS only,
+and runs no connection test for OpenAI-on-Bedrock. The Region is exercised on first invoke.
 
 ### Migrating Deleted Aliases
 
