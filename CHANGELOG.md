@@ -10,6 +10,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 #### New Models
+- **GPT-6 Astra (OpenAI-on-Bedrock)** — OpenAI's GPT-6 family flagship on
+  Bedrock's OpenAI-compatible `bedrock-mantle` endpoint
+  - Model ID: `gpt6-astra-bedrock` (`full_id: openai.gpt-6-astra`)
+  - Aliases: `gpt6`, `gpt-6`, `gpt6-bedrock`
+  - $11.00/$55.00 per M, 128K max output, `use_responses_api: true` for
+    reasoning summaries, no `temperature`/`top_p` (reasoning model)
+  - **`context_window: 272000`, deliberately below the published 1,048,576.**
+    This is the first entry with *tiered* per-token pricing — $11/$55 up to
+    272K input tokens, $22/$82.50 above it — and `PricingConfig` holds a single
+    flat pair. 272K is the price break, so clamping the window is what keeps
+    the batcher from packing into the expensive tier and reporting half the
+    billed cost. Raising it requires tier-aware pricing in code first;
+    `test_gpt6_astra_window_is_clamped_to_its_cheaper_pricing_tier` fails with
+    that explanation rather than just a number
+  - **`supports_tool_use: false`, live-verified rather than assumed.** A/B on a
+    think-heavy target (`codereview/providers/`, 2 batches, ~98K input tokens):
+    with `true`, batch 1 died on a Responses-API
+    `ResponseError(code='server_error')` and retries burned the budget for a
+    half-finished review in 3m06s; with `false`, both batches completed in
+    37.4s and found 4 issues. Same target, key, and Region. Note the failure
+    shape differs from GPT-5.5's (a 500, not a reasoning-only response), and a
+    *trivial* batch passes forced `tool_choice` cleanly — so small probes prove
+    nothing here
+  - **us-west-2 only, which makes it mutually exclusive with GPT-5.6 Sol**
+    (In-Region us-east-1/us-east-2 only). `OPENAI_BASE_URL` is a
+    *provider*-level setting and there is no per-model `base_url` override, so
+    switching across that line is an operator action, documented in
+    `README.md`, `docs/usage.md`, and `docs/providers.md`
 - **GLM-5.3 and GLM-5.3-Flash (Z.AI direct)**
   - GLM-5.3 (`zhipuai/glm-5.3`, wire ID `glm-5.3`) is the latest text
     flagship: 1M context, 128K vendor output ceiling, always-on reasoning at
@@ -407,6 +435,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pin fails when a provider drops from "some coverage" to "none".
 
 ### Changed
+- **Every dependency floor raised to the current release**, lockfile upgraded to
+  match: langchain 1.4.0, langchain-core 1.6.3, langchain-aws 1.7.6,
+  langchain-openai 1.6.2, langchain-google-genai 4.4.0, google-api-core 2.36.0,
+  boto3 1.43.93, click 8.5.0, pydantic 2.13.5, tiktoken 0.14.0, isort 9.0.1,
+  mypy 2.3.1, ruff 0.16.6, types-PyYAML 6.0.12.20260906.
+
+  Two deliberate exceptions. **ruff is pinned to `>=0.16.6`, not the latest
+  0.16.7**: 0.16.7 publishes nothing installable on Python 3.15, and
+  `requires-python = ">=3.14"` has to resolve there too, so `uv lock` fails
+  outright on the 3.15 split — the reason is recorded inline so the next bump
+  doesn't rediscover it. **`langchain-moonshot` stays `==0.1.0`** (already
+  latest); pre-1.0 is not semver.
+
+  The consequential transitive move is **openai 2.48.0 → 3.13.0**, a major bump
+  sitting directly under the client-retry invariant above. Re-verified against
+  the installed 3.13.0 rather than assumed to carry: `DEFAULT_MAX_RETRIES` is
+  still 2, langchain-openai's `max_retries` field still defaults to `None` (so
+  an unset value still reaches `root_client.max_retries == 2`), `max_retries=0`
+  still propagates to 0, and `ChatGoogleGenerativeAI` still declares 6. The
+  18×/42× figures stand.
+
+  One test changed, and it is the profile-drift guard working as designed:
+  **langchain-aws 1.7.6 added an Opus 5 entry to `_MODEL_PROFILES`** where 1.6.3
+  had none, claiming `structured_output: True` against our YAML's `false`. Ours
+  wins on evidence — Opus 5 is the single entry whose `false` rests on *vendor
+  documentation* ("Structured outputs: Not Supported" on the Bedrock model card)
+  rather than an observed failure, and the profile is community-curated with a
+  `last_updated` three days after the model shipped. Flipping the YAML would put
+  a forced `tool_choice` on the CLI's default model, so the divergence is
+  allowlisted in `_ALLOWED_DIVERGENCES` with that reasoning instead. Neither
+  side of that table is authoritative, which is why the guard asks for a written
+  reason rather than auto-syncing.
 - **DeepSeek direct pricing now follows the current peak/off-peak schedule.**
   Cost estimates record peak rates to avoid under-stating weekday peak runs:
   V4-Pro is now $1.32/$3.96 per M and V4-Flash $0.44/$1.32; official off-peak
@@ -749,6 +809,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   long-context tier note quoted a cached rate alongside the input/output pair.
 
 ### Fixed
+- **Six providers let their client SDK retry *underneath* our retry loop,
+  multiplying every attempt.** `_create_model` never passed `max_retries`, so
+  each SDK filled in its own default and nested loops multiplied rather than
+  added: the openai SDK's `DEFAULT_MAX_RETRIES = 2` turned a budget of 5 (6
+  attempts) into 6×3 = **18** requests on `azure_openai`, `bedrock_openai`,
+  `deepseek`, `moonshot` and `zai`, while `ChatGoogleGenerativeAI` — which
+  *declares* `max_retries=6` — reached 6×7 = **42**.
+
+  The request count was the least of it. The inner loop retries on the SDK's
+  policy, so `_is_retryable_error` and the `_RETRY_MATRIX` that pins each
+  provider's deliberately-different status set never saw the failure: a status
+  this project classifies as fatal still got retried, and one it classifies as
+  retryable never reached the classifier. And the SDK's sub-second backoff ran
+  first, pre-empting Azure's `Retry-After` handling and Google's 10s base for
+  429 — both of which exist precisely because a short wait burns the whole
+  budget inside a single rate-limit window.
+
+  Fix: `CLIENT_RETRIES_DISABLED = 0` in `mixins.py`, passed in each
+  `_create_model`. `bedrock` was already correct
+  (`BotocoreConfig(retries={"max_attempts": 0})`) and `nvidia` needs nothing —
+  `ChatNVIDIA` runs on a plain `requests.Session` with no retry adapter and
+  takes no retry knob — but both are now classified *explicitly*, because an
+  unlisted provider is indistinguishable from a forgotten one.
+
+  **Don't reintroduce a nonzero value as a "safety net"**: that net is what made
+  the doubled attempts invisible for as long as it did.
+
+  Two guards in `tests/test_retry_contract.py`:
+  `test_provider_client_does_not_retry_underneath_our_retry_loop` asserts the
+  kwargs each provider actually hands its client — not the source text, since
+  the bug was an *absent* parameter — and
+  `test_every_provider_is_classified_for_client_level_retries` reflects over
+  `codereview/providers/*.py` so a ninth provider can't skip the
+  classification. Transport-failure classification was audited in the same pass
+  and needed no change: `is_openai_retryable_error` already names
+  `APIConnectionError`/`APITimeoutError`, and `google_genai` already uses
+  `TRANSPORT_TRANSIENT_ERRORS`.
+
+  Found by GPT-6 Astra reviewing this repository's own `codereview/providers/`
+  during the live smoke test for its registry entry, then verified against the
+  installed packages rather than taken on the model's word.
 - **`defaults.nvidia_default` in `models.yaml` named a model that no longer
   exists** — it still read `mistral-medium-nvidia` after that entry was removed,
   so the file's own "recommended NVIDIA model" was a name that fails to resolve.
