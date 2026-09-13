@@ -9,6 +9,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Tier-aware per-token pricing, priced per request rather than per run.**
+  `PricingConfig` gained three optional keys — `long_context_threshold_tokens`,
+  `long_input_per_million`, `long_output_per_million` — with a validator that
+  rejects a *partial* tier, since two of the three would fall back to the flat
+  pair with no error and no warning
+  - **The threshold belongs to one API call, never to an accumulated total.**
+    `estimate_cost` multiplied `_total_input_tokens` by one rate, and a run of
+    five 100K batches has a 500K total while every one of its requests billed
+    at the cheap tier — applying the threshold there would have invented a
+    long-context charge nothing incurred. Tier selection therefore moved into
+    `TokenTrackingMixin._track_tokens`, the last place a single request's size
+    is visible; it accrues cost under the existing token lock and counts the
+    requests that crossed the break. `estimate_cost` now only *reports* that
+    accrual, and gained a `long_context_requests` key
+  - Flat-priced entries are unaffected to the cent: `sum(t_i) * r ==
+    sum(t_i * r)`
+  - `get_pricing()` reports the three tier keys **only** for an entry that has
+    a tier (read them with `.get()`), and `--dry-run` prices each batch as its
+    own request, warning how many of them bill at the long-context rates —
+    actionable, because a smaller `--batch-size` can drop back to the cheap one
+  - **GPT-6 Astra's `context_window` is no longer clamped**: 272000 → 1000000
+    (a conservative round number under the card's 1,050,000, matching the
+    Gemini entries), with both tiers configured in `models.yaml`
+  - 19 guards in `tests/test_tiered_pricing.py`;
+    `test_gpt6_astra_window_is_clamped_to_its_cheaper_pricing_tier` is replaced
+    by `test_gpt6_astra_carries_both_pricing_tiers_for_its_wide_window`, which
+    asserts the combination that actually matters — a wide window *and* a
+    configured long tier
+
 #### New Models
 - **GPT-6 Astra (OpenAI-on-Bedrock)** — OpenAI's GPT-6 family flagship on
   Bedrock's OpenAI-compatible `bedrock-mantle` endpoint
@@ -16,14 +45,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Aliases: `gpt6`, `gpt-6`, `gpt6-bedrock`
   - $11.00/$55.00 per M, 128K max output, `use_responses_api: true` for
     reasoning summaries, no `temperature`/`top_p` (reasoning model)
-  - **`context_window: 272000`, deliberately below the published 1,048,576.**
-    This is the first entry with *tiered* per-token pricing — $11/$55 up to
-    272K input tokens, $22/$82.50 above it — and `PricingConfig` holds a single
-    flat pair. 272K is the price break, so clamping the window is what keeps
-    the batcher from packing into the expensive tier and reporting half the
-    billed cost. Raising it requires tier-aware pricing in code first;
-    `test_gpt6_astra_window_is_clamped_to_its_cheaper_pricing_tier` fails with
-    that explanation rather than just a number
+  - **First entry with *tiered* per-token pricing** — $11/$55 up to 272K input
+    tokens, $22/$82.50 above it. `context_window` initially shipped clamped to
+    272000 (the price break) because `PricingConfig` held a single flat pair
+    and a batch past the break would report half its billed cost; the clamp was
+    lifted to `1000000` later in this release once pricing became tier-aware
+    (see "Tier-aware per-token pricing" under Added)
   - **`supports_tool_use: false`, live-verified rather than assumed.** A/B on a
     think-heavy target (`codereview/providers/`, 2 batches, ~98K input tokens):
     with `true`, batch 1 died on a Responses-API

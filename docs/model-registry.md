@@ -23,6 +23,27 @@ covers only `pricing`/`inference_params`, since `capabilities`/`architecture`/`n
 documented doc-only. If you want a new knob, wire it through `_parse_model_config` **and** the
 Pydantic model — a comment in the YAML is not configuration.
 
+The scrape matches `pricing_data["key"]` / `pricing_data.get("key")` on **one line**, so keep the
+key spelling unwrapped — `long_context_threshold_tokens` is bound to a local in `loader.py` for
+exactly that reason. A call `ruff format` wrapped across lines passes the assertion vacuously.
+
+## Tiered pricing: three keys or none
+
+An entry whose vendor charges by request size sets all three of
+`long_context_threshold_tokens`, `long_input_per_million`, `long_output_per_million`;
+`PricingConfig` raises on a partial set, because two of the three silently fall back to the flat
+pair. GPT-6 Astra is the reference case ($11/$55 per M at or below 272K input tokens,
+$22/$82.50 above). Two things to know before adding one:
+
+- **The threshold is per API call, not per run.** Tier selection happens in
+  `TokenTrackingMixin._track_tokens`; never in `estimate_cost`, which sees only totals. →
+  `docs/providers.md`
+- **A tier is what makes a wide `context_window` safe.** Astra's window was clamped to the
+  272K price break until the code could price both tiers, since a flat pair reports half the
+  billed cost on any batch past the break. `context_window` itself stays a conservative round
+  number under the card's figure (Astra 1,000,000 against 1,050,000; Gemini 1,000,000 against
+  1,048,576).
+
 ## Doc-only YAML
 
 The `defaults:` block (`zai_default`, `bedrock_default`, …) and a model's

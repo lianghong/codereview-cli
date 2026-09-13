@@ -366,6 +366,9 @@ class TokenTrackingMixin:
 
     _total_input_tokens: int
     _total_output_tokens: int
+    _accrued_input_cost: float
+    _accrued_output_cost: float
+    _long_context_requests: int
     _token_lock: threading.Lock
     model_config: ModelConfig
 
@@ -373,24 +376,47 @@ class TokenTrackingMixin:
         """Initialize token counters. Call in __init__."""
         self._total_input_tokens = 0
         self._total_output_tokens = 0
+        self._accrued_input_cost = 0.0
+        self._accrued_output_cost = 0.0
+        self._long_context_requests = 0
         self._token_lock = threading.Lock()
 
     def _track_tokens(self, input_tokens: int, output_tokens: int) -> None:
-        """Add tokens to running totals.
+        """Add tokens to running totals, pricing this request as it arrives.
+
+        Cost is accrued **here**, per request, rather than computed from the
+        totals in :meth:`estimate_cost`, because a tiered model's rate depends
+        on the size of one call: every batch is its own request, so five 100K
+        batches all bill at the cheap tier even though they total 500K. Pricing
+        the accumulated total would charge a long-context rate no request ever
+        incurred. For a flat-priced model the two are arithmetically identical
+        (``sum(tokens_i) * rate == sum(tokens_i * rate)``), so nothing changes
+        for the twenty entries without a tier.
 
         Args:
             input_tokens: Number of input tokens to add
             output_tokens: Number of output tokens to add
         """
+        pricing = self.model_config.pricing
+        input_rate, output_rate = pricing.rates_for_request(input_tokens)
+        billed_long = input_rate != pricing.input_per_million
+
         with self._token_lock:
             self._total_input_tokens += input_tokens
             self._total_output_tokens += output_tokens
+            self._accrued_input_cost += (input_tokens / 1_000_000) * input_rate
+            self._accrued_output_cost += (output_tokens / 1_000_000) * output_rate
+            if billed_long:
+                self._long_context_requests += 1
 
     def reset_state(self) -> None:
         """Reset token counters for fresh run."""
         with self._token_lock:
             self._total_input_tokens = 0
             self._total_output_tokens = 0
+            self._accrued_input_cost = 0.0
+            self._accrued_output_cost = 0.0
+            self._long_context_requests = 0
 
     @property
     def total_input_tokens(self) -> int:
@@ -402,8 +428,17 @@ class TokenTrackingMixin:
         """Get total output tokens used."""
         return self._total_output_tokens
 
+    @property
+    def long_context_requests(self) -> int:
+        """How many requests billed at the long-context tier (0 if untiered)."""
+        return self._long_context_requests
+
     def estimate_cost(self) -> dict[str, float]:
-        """Calculate cost from token usage.
+        """Report the cost accrued per request by :meth:`_track_tokens`.
+
+        Deliberately does **not** recompute from the totals: by the time only
+        totals remain, the per-request sizes a tiered model prices on are gone.
+        See ``PricingConfig.rates_for_request``.
 
         Returns:
             Dict with keys:
@@ -412,18 +447,13 @@ class TokenTrackingMixin:
                 - input_cost: Cost for input tokens in USD
                 - output_cost: Cost for output tokens in USD
                 - total_cost: Combined cost in USD
+                - long_context_requests: Requests billed at the higher tier
         """
-        pricing = self.model_config.pricing
-
-        input_cost = (self._total_input_tokens / 1_000_000) * pricing.input_per_million
-        output_cost = (
-            self._total_output_tokens / 1_000_000
-        ) * pricing.output_per_million
-
         return {
             "input_tokens": self._total_input_tokens,
             "output_tokens": self._total_output_tokens,
-            "input_cost": input_cost,
-            "output_cost": output_cost,
-            "total_cost": input_cost + output_cost,
+            "input_cost": self._accrued_input_cost,
+            "output_cost": self._accrued_output_cost,
+            "total_cost": self._accrued_input_cost + self._accrued_output_cost,
+            "long_context_requests": self._long_context_requests,
         }

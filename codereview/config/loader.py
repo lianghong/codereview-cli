@@ -498,9 +498,19 @@ class ConfigLoader:
         try:
             # Parse pricing
             pricing_data = model_data["pricing"]
+            # Bound to a local so the key spelling stays on one line: the
+            # forwarding guard in tests/test_config.py scrapes this file for
+            # `pricing_data["..."]`/`.get("...")` and a wrapped call hides it.
+            long_threshold = pricing_data.get("long_context_threshold_tokens")
             pricing = PricingConfig(
                 input_per_million=pricing_data["input_per_million"],
                 output_per_million=pricing_data["output_per_million"],
+                # Optional long-context tier; PricingConfig rejects a partial
+                # one. Forwarded here as well as declared on the model —
+                # a pricing key parsed but not passed on is invisible.
+                long_context_threshold_tokens=long_threshold,
+                long_input_per_million=pricing_data.get("long_input_per_million"),
+                long_output_per_million=pricing_data.get("long_output_per_million"),
             )
 
             # Parse inference params

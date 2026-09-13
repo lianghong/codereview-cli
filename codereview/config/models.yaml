@@ -1356,22 +1356,21 @@ providers:
       #     from memory — re-read the model card's bedrock-mantle availability
       #     table, which listed exactly one row on 2026-09-13.
       #
-      # (2) context_window BELOW THE MODEL'S REAL LIMIT, ON PURPOSE. The card
-      #     says 1,050,000 tokens, and Astra is the first entry here with
-      #     TIERED pricing: at 272K input tokens or fewer it bills $11/$55 per
-      #     1M, above that it bills $22/$82.50 (In-Region, short vs long
-      #     context). Our pricing model is a single flat input/output pair, so a
-      #     batch that crosses 272K input would be billed at 2x what --dry-run
-      #     and the cost line report — the same under-reporting class as the
-      #     Azure gpt-5.4 usage_metadata bug, and CLAUDE.md's rule is that a
-      #     wrong pricing number is the worst kind of wrong because the next
-      #     reader trusts it. So the window is clamped to the price break:
-      #     272000, which the batcher then cannot pack past, keeping $11/$55
-      #     exact for every batch. What this costs is batch SIZE, not coverage —
-      #     the token budget just packs fewer files per request. If a real
-      #     1M-token-context review is ever wanted, that needs tier-aware
-      #     pricing in code first; raising this number alone silently halves the
-      #     reported cost.
+      # (2) FIRST ENTRY WITH TIERED PRICING. At 272K input tokens or fewer one
+      #     request bills $11/$55 per 1M; above that the SAME request bills
+      #     $22/$82.50 (In-Region, short vs long context). This entry used to
+      #     clamp context_window to 272000 so the batcher could not pack past
+      #     the price break, because a single flat input/output pair would have
+      #     reported half the billed cost — the same under-reporting class as
+      #     the Azure gpt-5.4 usage_metadata bug, and CLAUDE.md's rule is that
+      #     a wrong pricing number is the worst kind of wrong because the next
+      #     reader trusts it. The clamp is gone now that pricing is tier-aware:
+      #     the three long_* keys below are read by
+      #     PricingConfig.rates_for_request, which picks the tier from ONE
+      #     request's input size, and TokenTrackingMixin._track_tokens prices
+      #     each request as it lands. The threshold is PER REQUEST, never per
+      #     run — five 100K batches total 500K tokens and still bill entirely
+      #     at the short rate, so never apply it to an accumulated total.
       - id: gpt6-astra-bedrock
         full_id: openai.gpt-6-astra
         name: GPT-6 Astra (Bedrock)
@@ -1381,15 +1380,18 @@ providers:
           - gpt6-bedrock
         pricing:
           # bedrock-mantle is In-Region us-west-2, so these are the In-Region
-          # SHORT-context rates ($11 / $55 per 1M), which the clamped
-          # context_window above guarantees are the ones that apply. AWS notes
+          # rates: SHORT context ($11 / $55 per 1M) for a request at or below
+          # the threshold, LONG context ($22 / $82.50) above it. AWS notes
           # In-Region includes a 10% fee over OpenAI's own rates — already
-          # baked into these numbers, do not add it again. Long context is
-          # $22/$82.50, Global CRIS $10/$50; neither is reachable from this
-          # entry's endpoint + window. Cache reads $1.10, 30m cache writes
-          # $13.75 — not read by the bedrock_openai pricing path.
+          # baked into these numbers, do not add it again. Global CRIS
+          # ($10/$50) is not reachable from this entry's endpoint. Cache reads
+          # $1.10, 30m cache writes $13.75 — not read by the bedrock_openai
+          # pricing path.
           input_per_million: 11.00
           output_per_million: 55.00
+          long_context_threshold_tokens: 272000
+          long_input_per_million: 22.00
+          long_output_per_million: 82.50
         inference_params:
           # No default_temperature/top_p — reasoning model, same as the rest of
           # the GPT-5.x/6 family on this endpoint. Reasoning effort defaults
@@ -1399,9 +1401,11 @@ providers:
         # (unlike Sol, which is Responses-only), but Responses is what carries
         # reasoning summaries, so keep it.
         use_responses_api: true
-        # NOT the model's limit (1,050,000) — a deliberate clamp to the 272K
-        # pricing tier break. See (2) in the block above before changing it.
-        context_window: 272000
+        # A conservative round number under the card's 1,050,000, same
+        # convention as the Gemini entries. No longer clamped to the 272K
+        # pricing break — see (2) above; batches that cross it are priced at
+        # the long-context rates instead of under-reported.
+        context_window: 1000000
         # LIVE-VERIFIED 2026-09-13, not assumed — and the A/B is worth keeping
         # because the failure shape here is NOT the one GPT-5.5 showed.
         # Reviewing `codereview/providers/` (2 batches, ~98K input tokens, a
