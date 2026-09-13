@@ -324,6 +324,23 @@ class ReviewMetrics(BaseModel):
     output_price_per_million: float | None = Field(
         default=None, description="Output token price per million"
     )
+    # The authoritative cost, accrued per request by TokenTrackingMixin. A
+    # consumer must REPORT these rather than recompute `tokens * price`: on a
+    # tiered entry the rate depends on one request's input size, so the rate
+    # above is only the short-context one and multiplying it by a run total
+    # under-reports every request that crossed the threshold. The two
+    # `*_price_per_million` fields are for display ("$11.00/M tokens"), not
+    # arithmetic. See PricingConfig.rates_for_request.
+    input_cost: float | None = Field(
+        default=None, description="Accrued input cost in USD, priced per request"
+    )
+    output_cost: float | None = Field(
+        default=None, description="Accrued output cost in USD, priced per request"
+    )
+    long_context_requests: int | None = Field(
+        default=None,
+        description="Requests billed at a long-context tier (0 when untiered)",
+    )
 
     # Static analysis flags (populated by CLI)
     static_analysis_run: bool | None = Field(

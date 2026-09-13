@@ -205,6 +205,27 @@ are billed input) and names how many batches crossed the break, because a smalle
 `--batch-size` can drop the run back to the cheap tier. Guards in
 `tests/test_tiered_pricing.py`.
 
+**Reporting the accrual is half the job, and it was the half that shipped broken.** Making
+`--dry-run` tier-aware left `estimate_cost()` with **no caller at all**: the completed run's
+summary (`cli.py`) and the Markdown export (`renderer.py`) each independently recomputed
+`tokens / 1_000_000 * rate` from the run *totals*, and the only rate in `get_pricing()` for them
+to use was the short-context one. Unclamping Astra's `context_window` made batches over 272K
+reachable, so both reported roughly **half** the billed cost — the very failure the clamp had
+existed to prevent. `ReviewMetrics` therefore carries `input_cost`, `output_cost` and
+`long_context_requests`; `run_review` fills them from `analyzer.estimate_cost()` and both
+consumers *report* them, plus the count of requests billed at the long tier (a doubled rate a
+user cannot see is indistinguishable from a bug). The export drops its `($11.00/M tokens)`
+annotation whenever that count is nonzero, because the run spans two rates and naming one would
+be a lie. Its flat arithmetic survives only as a fallback for a metrics dict with no accrual —
+a hand-built or legacy report, where no provider ran and the product is exact anyway.
+
+The rule this leaves: **a cost consumer reads the accrual, it does not price tokens.**
+`test_no_new_consumer_recomputes_cost_from_a_rate` scans `codereview/` for per-million
+arithmetic and fails on any file outside `_ALLOWED_COST_ARITHMETIC`, whose three entries each
+carry a reason — `mixins.py` *produces* the accrual, `cli.py`'s `_estimate_tiered_cost` prices a
+dry run that has no requests yet, and `renderer.py` holds the documented fallback above. A
+companion test rejects an allowlist entry that no longer does the arithmetic.
+
 ## Streaming: `streaming=bool(callbacks)` was wrong twice, and `--stream` was wrong a third time
 
 Three coupled defects, all in `tests/test_streaming_contract.py`:

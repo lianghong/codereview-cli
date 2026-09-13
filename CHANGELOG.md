@@ -32,7 +32,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **GPT-6 Astra's `context_window` is no longer clamped**: 272000 → 1000000
     (a conservative round number under the card's 1,050,000, matching the
     Gemini entries), with both tiers configured in `models.yaml`
-  - 19 guards in `tests/test_tiered_pricing.py`;
+  - **Every cost figure a user sees now reads that accrual.** The tier-aware
+    `estimate_cost()` initially had *no caller*: `--dry-run` was made
+    tier-aware but the completed run's summary (`cli.py`) and the Markdown
+    export (`renderer.py`) each still recomputed `tokens / 1_000_000 * rate`
+    off the run **totals**, and the only rate they had was the short-context
+    one — so any batch over 272K was reported at roughly half what it billed,
+    the exact failure the window clamp had existed to prevent.
+    `ReviewMetrics` gained `input_cost`, `output_cost` and
+    `long_context_requests`; `run_review` fills them from
+    `analyzer.estimate_cost()`, both consumers report them, and both name the
+    number of requests billed at the long tier (the export drops its
+    `($11.00/M tokens)` annotation there, since the run spans two rates). The
+    renderer keeps a documented flat fallback for a metrics dict carrying no
+    accrual — a hand-built or legacy report, where no provider ran
+  - A source guard (`test_no_new_consumer_recomputes_cost_from_a_rate`) fails
+    on any *new* file in `codereview/` that turns tokens into money with a
+    per-million rate; the three legitimate sites are allowlisted with reasons
+    in `_ALLOWED_COST_ARITHMETIC`, and a companion test rejects a stale entry
+  - 27 guards in `tests/test_tiered_pricing.py`;
     `test_gpt6_astra_window_is_clamped_to_its_cheaper_pricing_tier` is replaced
     by `test_gpt6_astra_carries_both_pricing_tiers_for_its_wide_window`, which
     asserts the combination that actually matters — a wide window *and* a
