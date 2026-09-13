@@ -240,3 +240,103 @@ def test_non_https_base_fails_closed_at_construction(gpt55_model_config):
     with patch("codereview.providers.bedrock_openai.ChatOpenAI"):
         with pytest.raises(ValueError, match="must use HTTPS"):
             BedrockOpenAIProvider(gpt55_model_config, config)
+
+
+# --- Per-model Region override -------------------------------------------
+#
+# `base_url` is a PROVIDER-level setting but bedrock-mantle's Regions are
+# per-model and non-overlapping: GPT-6 Astra is served from us-west-2 only,
+# GPT-5.6 Sol is In-Region us-east-1/us-east-2 only. One OPENAI_BASE_URL
+# therefore cannot reach both — pointing at the wrong Region returns a 404
+# naming the model id ("The model 'openai.gpt-6-astra' does not exist")
+# rather than falling back, and it does so on every batch of the run.
+#
+# A model entry may carry `region:` to rewrite the Region component of the
+# configured URL. The Region, not the whole URL, is what varies per the model
+# card, and deriving from the configured value (rather than a hardcoded host
+# template) keeps OPENAI_BASE_URL authoritative for scheme, host and path.
+
+
+@pytest.fixture
+def mantle_provider_config():
+    """The real bedrock-mantle endpoint shape, pointed at Sol's Region."""
+    return BedrockOpenAIConfig(
+        api_key="test-bedrock-key-1234567890abcdef",
+        base_url="https://bedrock-mantle.us-east-2.api.aws/openai/v1",
+        request_timeout=300,
+    )
+
+
+def _astra_config(**overrides):
+    """The GPT-6 Astra registry shape: us-west-2-only on bedrock-mantle."""
+    params = {
+        "id": "gpt6-astra-bedrock",
+        "full_id": "openai.gpt-6-astra",
+        "name": "GPT-6 Astra (Bedrock)",
+        "aliases": ["gpt6"],
+        "pricing": PricingConfig(input_per_million=11.0, output_per_million=55.0),
+        "inference_params": InferenceParams(max_output_tokens=128000),
+        "use_responses_api": True,
+        "supports_tool_use": False,
+        "region": "us-west-2",
+    }
+    params.update(overrides)
+    return ModelConfig(**params)
+
+
+def _built_base_url(model_config, provider_config):
+    """The base_url the ChatOpenAI client was actually constructed with."""
+    with patch("codereview.providers.bedrock_openai.ChatOpenAI") as mock_openai:
+        mock_openai.return_value = Mock()
+        BedrockOpenAIProvider(model_config, provider_config)
+        return mock_openai.call_args.kwargs["base_url"]
+
+
+def test_model_region_rewrites_the_endpoint_region(mantle_provider_config):
+    """Regression (field failure, 2026-09-13): every batch of an Astra run
+    404'd with "The model 'openai.gpt-6-astra' does not exist" because
+    OPENAI_BASE_URL named us-east-2 (Sol's Region). A model that declares its
+    Region must be reached there regardless of what the env var says.
+    """
+    url = _built_base_url(_astra_config(), mantle_provider_config)
+    assert url == "https://bedrock-mantle.us-west-2.api.aws/openai/v1"
+
+
+def test_no_model_region_leaves_the_configured_url_untouched(mantle_provider_config):
+    """The override is opt-in: an entry without `region` must behave exactly as
+    before, so adding this feature can't move any other model's endpoint.
+    """
+    url = _built_base_url(_astra_config(region=None), mantle_provider_config)
+    assert url == "https://bedrock-mantle.us-east-2.api.aws/openai/v1"
+
+
+def test_region_already_correct_is_a_no_op(mantle_provider_config):
+    """Rewriting to the Region already in the URL must be idempotent."""
+    url = _built_base_url(_astra_config(region="us-east-2"), mantle_provider_config)
+    assert url == "https://bedrock-mantle.us-east-2.api.aws/openai/v1"
+
+
+def test_region_override_passes_through_a_host_with_no_region_label():
+    """Fail SOFT, not closed. A self-hosted or otherwise non-AWS endpoint has no
+    Region component to swap; refusing to run would break a working custom
+    endpoint over a cosmetic mismatch, so the configured URL is used as-is.
+    """
+    config = BedrockOpenAIConfig(
+        api_key="test-bedrock-key-1234567890abcdef",
+        base_url="https://gateway.internal.example.com/openai/v1",
+    )
+    url = _built_base_url(_astra_config(), config)
+    assert url == "https://gateway.internal.example.com/openai/v1"
+
+
+def test_region_override_does_not_bypass_the_https_gate():
+    """The cleartext gate must run on the URL actually used, so a per-model
+    Region can never become a way to smuggle the bearer key over http://.
+    """
+    config = BedrockOpenAIConfig(
+        api_key="test-bedrock-key-1234567890abcdef",
+        base_url="http://bedrock-mantle.us-east-2.api.aws/openai/v1",
+    )
+    with patch("codereview.providers.bedrock_openai.ChatOpenAI"):
+        with pytest.raises(ValueError, match="must use HTTPS"):
+            BedrockOpenAIProvider(_astra_config(), config)

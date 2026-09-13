@@ -37,7 +37,9 @@ them to prompt-based JSON parsing.
 """
 
 import logging
+import re
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 from langchain_core.callbacks import BaseCallbackHandler
 from langchain_openai import ChatOpenAI
@@ -124,6 +126,66 @@ class BedrockOpenAIProvider(TokenTrackingMixin, ModelProvider):
         self.model = self._create_model()
         self.chain = self._create_chain()
 
+    def _resolve_base_url(self) -> str:
+        """Point the client at the Region that actually serves this model.
+
+        ``base_url`` is a *provider*-level setting, but ``bedrock-mantle``'s
+        Regions are **per model and non-overlapping**: GPT-6 Astra is served
+        from ``us-west-2`` only, GPT-5.6 Sol is In-Region ``us-east-1`` /
+        ``us-east-2`` only. One ``OPENAI_BASE_URL`` therefore cannot reach both,
+        and pointing at the wrong Region does not fall back — it returns a 404
+        naming the model id ("The model 'openai.gpt-6-astra' does not exist")
+        on every batch of the run. So a model entry may carry ``region:`` to
+        override the Region component of the configured URL.
+
+        Only the Region label in the host is rewritten, never the scheme, host
+        pattern or path: the Region is what varies per the model card, and
+        deriving from the configured value keeps ``OPENAI_BASE_URL``
+        authoritative for everything else (a custom gateway, a future URL
+        shape). A host with no Region label to swap is returned **unchanged** —
+        fail soft, since refusing to run would break a working self-hosted
+        endpoint over a cosmetic mismatch.
+        """
+        configured = self.provider_config.base_url
+        region = self.model_config.region
+        if not region:
+            return configured
+
+        parts = urlsplit(configured)
+        host = parts.hostname or ""
+        # An AWS Region label: two letters, one or more words, a digit —
+        # us-west-2, eu-central-1, ap-southeast-4, us-gov-west-1. Matched
+        # against a whole host component so a hostname that merely contains
+        # such a substring is left alone.
+        labels = host.split(".")
+        for index, label in enumerate(labels):
+            if re.fullmatch(r"[a-z]{2}(?:-[a-z]+)+-\d", label):
+                if label == region:
+                    return configured
+                labels[index] = region
+                netloc = ".".join(labels)
+                if parts.port:
+                    netloc = f"{netloc}:{parts.port}"
+                rewritten = urlunsplit(
+                    (parts.scheme, netloc, parts.path, parts.query, parts.fragment)
+                )
+                logging.debug(
+                    "Model %s declares region %s; using endpoint %s",
+                    self.model_config.id,
+                    region,
+                    rewritten,
+                )
+                return rewritten
+
+        logging.debug(
+            "Model %s declares region %s but base_url %s has no Region label to "
+            "rewrite; using it as configured.",
+            self.model_config.id,
+            region,
+            configured,
+        )
+        return configured
+
     def _create_model(self) -> Any:
         """Create a ChatOpenAI model pointing at Bedrock's OpenAI endpoint."""
         # The OpenAI-compatible endpoint requires the model name in the request
@@ -135,7 +197,9 @@ class BedrockOpenAIProvider(TokenTrackingMixin, ModelProvider):
             "model": wire_model,
             # Fail closed on cleartext so the Bedrock bearer key can't be sent
             # over HTTP even if validate_credentials was skipped.
-            "base_url": require_https(self.provider_config.base_url, "base_url"),
+            # Gate the URL actually used, so a per-model Region override can
+            # never become a way to send the bearer key over cleartext.
+            "base_url": require_https(self._resolve_base_url(), "base_url"),
             "api_key": SecretStr(str(self.provider_config.api_key)),
             "max_tokens": self.max_tokens,
             "rate_limiter": self.rate_limiter,
