@@ -1436,7 +1436,7 @@ def run_review(
             static_summary = StaticAnalyzer.get_summary(static_results)
             # Create a new metrics object with static analysis fields
             # Exclude static_analysis fields to avoid duplicate keyword arguments
-            base_metrics = metrics.model_dump(  # type: ignore[attr-defined]
+            base_metrics = metrics.model_dump(
                 exclude_none=True,
                 exclude={
                     "static_analysis_run",
@@ -1537,7 +1537,7 @@ def run_review(
             try:
                 if output_format.lower() == "json":
                     # Export as JSON for programmatic consumption
-                    output.write_text(final_report.model_dump_json(indent=2))  # type: ignore[attr-defined]
+                    output.write_text(final_report.model_dump_json(indent=2))
                     con.print(
                         "\n[green]✓ JSON report exported to: "
                         f"{escape(str(output))}[/green]\n"

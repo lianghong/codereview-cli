@@ -345,7 +345,7 @@ class ModelProvider(ABC):
             from codereview.static_analysis import StaticAnalyzer
 
             linter_block = StaticAnalyzer.condense_for_prompt(
-                linter_results,  # type: ignore[arg-type]
+                linter_results,
                 only_paths=list(files_content.keys()),
             )
             if linter_block:

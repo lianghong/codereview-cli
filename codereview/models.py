@@ -14,7 +14,7 @@ import logging
 import threading
 from typing import Any, Literal
 
-from pydantic import (  # type: ignore[attr-defined]
+from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
