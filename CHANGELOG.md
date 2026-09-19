@@ -527,6 +527,70 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pin fails when a provider drops from "some coverage" to "none".
 
 ### Changed
+- **Dependency floors moved to the current releases; five of twenty-four were
+  actually behind.** `langchain` 1.4.0 → 1.4.2, `langchain-aws` 1.7.6 → 1.7.8,
+  `google-api-core` 2.36.0 → 2.38.0, `boto3` 1.43.93 → 1.43.98, `ruff`
+  0.16.6 → 0.16.8. Everything else — `langchain-core` 1.6.3, `langchain-openai`
+  1.6.2, `langchain-nvidia-ai-endpoints` 1.4.3, `langchain-google-genai` 4.4.0,
+  `langchain-deepseek` 1.1.0, `pydantic` 2.13.5, `click`, `rich`, `pyyaml`,
+  `tiktoken`, and the whole static-analysis and dev groups — was **already at the
+  latest published version**, so the floors were left alone rather than churned.
+  `langchain-moonshot` stays `==0.1.0` per the existing pre-1.0 pin. `uv.lock` was
+  relocked to match. The upstream fixes this picks up that touch paths we actually
+  execute: langchain-aws *"reject incomplete Bedrock Converse streams"* and
+  *"preserve invalid tool calls for Bedrock replay"* (1.7.7), and a refreshed
+  `_MODEL_PROFILES` snapshot — which `tests/test_model_profile_drift.py` confirms
+  introduced **no new divergence** against `models.yaml`, so
+  `_ALLOWED_DIVERGENCES` is unchanged. Full gate clean on the new set: 1255 tests,
+  ruff/format/isort/mypy/vulture.
+
+- **`pyproject.toml` now declares its package index, because the floors above were
+  unsatisfiable without it.** This machine's ambient uv default was an Aliyun
+  mirror, and a mirror is a lagging cache: it had `langchain` 1.4.1 against PyPI's
+  1.4.2, `google-api-core` <=2.37.0 against 2.38.0, and `botocore` <=1.43.96 while
+  already serving the `boto3` 1.43.98 that requires `>=1.43.98`. So `uv lock`
+  failed on the `python_full_version >= '3.15'` split with nothing wrong in this
+  file — the same class of trap as the `ruff` floor above, where a *publishing*
+  fact masquerades as a configuration error. Declaring
+  `[[tool.uv.index]] url = "https://pypi.org/simple"` makes the resolution
+  reproducible instead of dependent on ambient config, which is the same reason
+  the ruff rule set is pinned: a gate whose verdict depends on the machine cannot
+  do its job.
+
+  **"Mirror first, PyPI for the stragglers" is not expressible in uv**, and the
+  three plausible spellings each fail in an instructive way, recorded in the
+  comment so the next reader doesn't re-derive them: `default = true` on the
+  mirror *demotes* it (uv always orders the default index last, so it pulls
+  everything from PyPI — the opposite of the intent, and visible only as a
+  whole-file `source =` rewrite in the lock); `[tool.uv.sources]` per-package pins
+  apply only to **direct** dependencies, and the blocking laggard `botocore` is
+  transitive; and `index-strategy = "unsafe-best-match"` would relax a
+  dependency-confusion defense across all 102 packages to import three. Restoring
+  the mirror is still available and is a deliberate trade — it means accepting the
+  mirror's latest as the ceiling for these floors.
+
+- **The `ruff>=0.16.6` hold is released, and the reason it existed is worth
+  keeping.** That floor was pinned below the latest because 0.16.7 published
+  nothing installable on Python 3.15, and `requires-python = ">=3.14"` has to
+  resolve there or `uv lock` fails on the 3.15 split. That was a publishing gap,
+  not a policy: 0.16.7 and 0.16.8 both now ship `py3` wheels at `requires_python
+  >= 3.7`, and `uv pip install --dry-run --python-version 3.15 'ruff>=0.16.8'`
+  resolves. The comment in `pyproject.toml` now names **that command** as the
+  re-check, because the changelog could not have told you either way. The
+  `[tool.ruff.lint] select` pin is untouched, which is what makes a floor bump
+  safe: 0.16.8 enables the same `E4`/`E7`/`E9`/`F` and reports the same verdict.
+
+- **NVIDIA: `max_tokens` → `max_completion_tokens` on the `ChatNVIDIA`
+  constructor.** On that client the two are one Pydantic field (`max_tokens`
+  carries `alias="max_completion_tokens"`), so this is behavior-identical today —
+  but `__init__` special-cases the old spelling to emit a `DeprecationWarning`
+  saying it *"will be removed in a future version"*, and that warning in the test
+  run was the only notice we would get. When the removal lands, an unexpected
+  `max_tokens` kwarg stops bounding the output budget, and a NIM entry whose
+  32K-output ceiling silently disappears is the failure the batcher's budget math
+  assumes cannot happen. Only NVIDIA is affected: every other provider's
+  `max_tokens` kwarg goes to a different client that still takes it.
+
 - **Moonshot upgraded from Kimi K2.6 to Kimi K3 — and the price it replaces was
   wrong.** `kimi-k2.6` → `kimi-k3` (`full_id` `kimi-k3`), verified live on
   2026-09-19: both ids are in `GET /v1/models`, a completion returns HTTP 200,

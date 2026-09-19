@@ -56,6 +56,38 @@ rather than normalized: NIM's is exactly `{429, 502, 503, 504}` (a bare 500 ther
 request the gateway rejected, and `test_non_rate_limit_error_not_retried` pins it
 non-retryable), Google's adds 500/504, Bedrock takes 5xx wholesale.
 
+### Rejected: `langchain_core.exceptions`' standard model exception types
+
+`langchain-core` 1.6.0 added a standard exception hierarchy — `ModelRateLimitError`,
+`ModelTimeoutError`, `ModelConnectionError`, `ModelAPIError`, `ModelAuthenticationError`,
+`ContextOverflowError` and friends — each carrying a class-level `is_retryable`. Read cold it looks
+like exactly the cross-provider primitive `_RETRY_MATRIX` exists to approximate, and replacing
+eight status classifiers with one `except ModelError as e: if e.is_retryable` is a tempting
+diff. **Don't**, and the reason is the rule this section already states.
+
+Surveyed on the installed set (2026-09-19), the types are raised by **two** of our eight
+providers' clients: `langchain_openai` and `langchain_google_genai`. `langchain-aws` and
+`langchain-nvidia-ai-endpoints` raise none of them, and `langchain-deepseek`, `zai`
+(`ChatOpenAI` + `base_url`) and `langchain-moonshot` only inherit them by way of
+`BaseChatOpenAI`. An `is_retryable` branch would therefore be **dead on Bedrock and NVIDIA** —
+the precise shape of the two classifiers that were already dead here once and aborted real
+429/503/504s on attempt 1. Dead retry logic is invisible: a misclassified throttle looks exactly
+like a lost batch.
+
+Nothing breaks by leaving them alone, because the vendor-facing subclasses are **mixins over the
+vendor's own exception**, not replacements — `OpenAIRateLimitError(openai.RateLimitError,
+ModelRateLimitError)`, `GoogleContextOverflowError(ClientError, ContextOverflowError)`. The MRO
+still contains the class each provider's status extraction already reads, so the existing
+classifiers are unaffected by the upgrade.
+
+The one piece with standalone value is `ContextOverflowError`, which is a *diagnostic*, not a
+retry decision: it is already non-retryable on both sides (`openai.BadRequestError` → 400), and a
+batch the `bytes // 3 + 50` estimate under-counted currently fails with vendor prose instead of
+"this batch exceeded the context window". Partial provider coverage is acceptable for a message
+in a way it is never acceptable for retry classification — a missing nicer message degrades to
+today's behavior, a missing retry branch loses work. Revisit it as a message improvement if the
+estimator is ever observed to under-count in the field; do not fold it into `_is_retryable_error`.
+
 **Retryability has to be tested from the *outside***: `_is_retryable_error` classifies on the
 exception's rendered text, and Bedrock's throttling arrives under several spellings
 (`ThrottlingException`, `TooManyRequestsException`, `ServiceUnavailable`, `ModelTimeout`, plus
