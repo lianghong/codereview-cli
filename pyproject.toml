@@ -24,9 +24,9 @@ dependencies = [
     # than langchain and is released independently; we depend on it explicitly
     # because we use its primitives directly (rate_limiters, callbacks, outputs,
     # exceptions, output_parsers, prompts).
-    "langchain>=1.4.0,<2",
+    "langchain>=1.4.2,<2",
     "langchain-core>=1.6.3,<2",
-    "langchain-aws>=1.7.6,<2",
+    "langchain-aws>=1.7.8,<2",
     "langchain-openai>=1.6.2,<2",
     "langchain-nvidia-ai-endpoints>=1.4.3,<2",
     # langchain-google-genai is on its own 4.x major line — cap at <5, not <2.
@@ -35,8 +35,8 @@ dependencies = [
     # langchain-moonshot is a community, single-maintainer, pre-1.0 package whose
     # 0.1.0 was already a breaking rewrite. Pin it exactly — pre-1.0 is not semver.
     "langchain-moonshot==0.1.0",
-    "google-api-core>=2.36.0",
-    "boto3>=1.43.93",
+    "google-api-core>=2.38.0",
+    "boto3>=1.43.98",
     "click>=8.5.0",
     "rich>=15.0.0",
     # Pydantic v3 is on the roadmap (deprecated-in-v2 items get removed) — cap <3.
@@ -67,9 +67,13 @@ static-analysis = [
     "isort>=9.0.1",
     "mypy>=2.3.1",
     # The rule set is pinned below, so a floor bump can't move the gate's verdict.
-    # 0.16.6, not the latest 0.16.7: 0.16.7 publishes nothing installable on
-    # Python 3.15, and `requires-python = ">=3.14"` has to resolve there too.
-    "ruff>=0.16.6",
+    # Held at 0.16.6 for a while because 0.16.7 published nothing installable on
+    # Python 3.15 and `requires-python = ">=3.14"` has to resolve there too. That
+    # was a publishing gap, not policy, and it is closed: both 0.16.7 and 0.16.8
+    # now ship `py3` wheels at `requires_python >= 3.7`, and
+    # `uv pip install --dry-run --python-version 3.15 'ruff>=0.16.8'` resolves.
+    # Re-check that command, not the changelog, before moving this floor again.
+    "ruff>=0.16.8",
     "types-PyYAML>=6.0.12.20260906",
     "vulture>=2.16",
 ]
@@ -79,6 +83,35 @@ dev = [
     "pytest>=9.1.1",
     "pytest-mock>=3.15.1",
 ]
+
+# Lock against PyPI explicitly, rather than inheriting whatever index the ambient
+# uv config happens to name. This machine's default was an Aliyun mirror, and a
+# mirror is a lagging cache: on 2026-09-19 it had `langchain` 1.4.1 against PyPI's
+# 1.4.2, `google-api-core` <=2.37.0 against 2.38.0, and `botocore` <=1.43.96 while
+# already carrying the `boto3` 1.43.98 that requires `>=1.43.98`. Floors at the
+# genuine latest therefore made `uv lock` fail outright on the `>=3.15` split — a
+# resolution error attributable to the *index*, with nothing wrong in this file.
+#
+# "Mirror first, PyPI for the stragglers" is not expressible in uv, and three
+# plausible spellings of it all fail:
+#
+#   - `default = true` on the mirror. uv tries indexes in declaration order but
+#     always places the *default* index last, so this demotes the mirror to
+#     fallback and pulls everything from PyPI anyway.
+#   - `[tool.uv.sources]` per-package pins. These apply only to *direct*
+#     dependencies, and `botocore` — the blocking laggard — is transitive.
+#   - `index-strategy = "unsafe-best-match"`. uv's refusal to take a newer
+#     *version* from a later index is a dependency-confusion defense, not an
+#     ergonomic wart; relaxing it globally to import three packages lets any
+#     listed index win on version for all 102.
+#
+# So: one index, the authoritative one. Restoring the mirror means accepting its
+# latest as the ceiling for the floors above — a deliberate trade, not a default.
+# `uv pip install --index-url` still overrides this ad hoc for a fast local sync.
+[[tool.uv.index]]
+name = "pypi"
+url = "https://pypi.org/simple"
+default = true
 
 [tool.pytest.ini_options]
 # Register every custom mark. An unregistered one only warns, so a typo'd

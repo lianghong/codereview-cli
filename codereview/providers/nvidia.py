@@ -187,7 +187,16 @@ class NVIDIAProvider(TokenTrackingMixin, ModelProvider):
         model_params: dict[str, Any] = {
             "model": self.model_config.full_id,
             "api_key": SecretStr(str(self.provider_config.api_key)),
-            "max_tokens": self.max_tokens,
+            # `max_completion_tokens`, not `max_tokens`. On `ChatNVIDIA` the two
+            # are the same Pydantic field (`max_tokens` carries
+            # `alias="max_completion_tokens"`), so this is behavior-identical
+            # today — but `__init__` warns on the `max_tokens` spelling and the
+            # package says it "will be removed in a future version". A
+            # DeprecationWarning in the test run is the only notice we get before
+            # that removal turns a silently-unbounded output budget into a
+            # TypeError, so spell it the way the package wants now. Every other
+            # provider's `max_tokens` kwarg is a different client's and stays.
+            "max_completion_tokens": self.max_tokens,
             "callbacks": self.callbacks if self.callbacks else None,
             "timeout": self.provider_config.polling_timeout,
             # Must be passed to the client to have any effect: an
