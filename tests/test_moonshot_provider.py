@@ -19,7 +19,7 @@ from codereview.providers.moonshot import MoonshotProvider
 def model_config():
     """Tool-use-capable Moonshot model fixture (hypothetical future Kimi).
 
-    The real kimi-k2.6 model uses ``supports_tool_use=False`` (see
+    The real kimi-k3 model uses ``supports_tool_use=False`` (see
     ``models.yaml``); this fixture exercises the tool-calling path
     explicitly so both branches of ``_create_model`` stay covered.
     """
@@ -39,18 +39,22 @@ def model_config():
 
 
 @pytest.fixture
-def k26_model_config():
-    """Real kimi-k2.6 config: prompt-based JSON parsing path."""
+def k3_model_config():
+    """Real kimi-k3 config: prompt-based JSON parsing path.
+
+    Mirrors the shipped entry: no temperature/top_p (K3 fixes both
+    server-side), ``reasoning_effort`` pinned down from the card's ``max``
+    default, and the 32K output budget.
+    """
     return ModelConfig(
-        id="kimi-k2.6",
-        full_id="kimi-k2.6",
-        name="Kimi K2.6 (Moonshot)",
+        id="kimi-k3",
+        full_id="kimi-k3",
+        name="Kimi K3 (Moonshot)",
         aliases=["kimi"],
-        pricing=PricingConfig(input_per_million=0.60, output_per_million=2.50),
+        pricing=PricingConfig(input_per_million=3.00, output_per_million=15.00),
         inference_params=InferenceParams(
-            temperature=1.0,
-            top_p=0.95,
-            max_output_tokens=16384,
+            reasoning_effort="high",
+            max_output_tokens=32768,
         ),
         supports_tool_use=False,
     )
@@ -116,15 +120,16 @@ def test_moonshot_uses_chatmoonshot_with_base_url(model_config, provider_config)
         )
 
 
-def test_moonshot_k26_uses_prompt_parsing(k26_model_config, provider_config):
-    """kimi-k2.6 (supports_tool_use=False) skips tool-calling structured
+def test_moonshot_k3_uses_prompt_parsing(k3_model_config, provider_config):
+    """kimi-k3 (supports_tool_use=False) skips tool-calling structured
     output and uses PydanticOutputParser instead — Moonshot's server
-    rejects tool_choice='specified' while thinking mode is enabled."""
+    rejects tool_choice='specified' while thinking mode is enabled, and K3
+    cannot turn thinking off, so the HTTP 400 is unconditional."""
     with patch("codereview.providers.moonshot.ChatMoonshot") as mock_ms:
         mock_instance = Mock()
         mock_ms.return_value = mock_instance
 
-        provider = MoonshotProvider(k26_model_config, provider_config)
+        provider = MoonshotProvider(k3_model_config, provider_config)
 
         # No tool-calling structured output should have been requested.
         mock_instance.with_structured_output.assert_not_called()
@@ -132,6 +137,52 @@ def test_moonshot_k26_uses_prompt_parsing(k26_model_config, provider_config):
         # Chain ends with the PydanticOutputParser so the model's text
         # response is converted into a CodeReviewReport.
         assert provider.chain.last is provider._output_parser
+
+
+def test_reasoning_effort_reaches_the_client(k3_model_config, provider_config):
+    """``inference_params.reasoning_effort`` must be forwarded to ChatMoonshot.
+
+    Parsed onto ``InferenceParams`` is not the same as sent. K3's card defaults
+    to ``max`` effort and Moonshot bills reasoning inside ``completion_tokens``
+    at the output rate, so an unforwarded ``high`` is a silent cost regression
+    *and* eats the output budget the review report needs — the same
+    invisible-knob shape that made ``NVIDIAConfig.polling_timeout`` dead config.
+    """
+    with patch("codereview.providers.moonshot.ChatMoonshot") as mock_ms:
+        mock_ms.return_value = Mock()
+
+        MoonshotProvider(k3_model_config, provider_config)
+
+        kwargs = mock_ms.call_args.kwargs
+        assert kwargs["reasoning_effort"] == "high"
+        # K3 fixes temperature/top_p server-side, so neither may be sent.
+        assert "temperature" not in kwargs
+        assert "top_p" not in kwargs
+        assert kwargs["max_tokens"] == 32768
+
+
+def test_reasoning_effort_is_omitted_when_unset(model_config, provider_config):
+    """No ``reasoning_effort`` in the YAML means the kwarg is not sent at all.
+
+    Passing ``None`` through would override the server-side default with a
+    value the model never asked for; and ``inference_params`` is Optional, so
+    the resolution has to survive a config that carries none.
+    """
+    bare = ModelConfig(
+        id="kimi-bare",
+        full_id="kimi-bare",
+        name="Kimi (no inference params)",
+        aliases=[],
+        pricing=PricingConfig(input_per_million=1.0, output_per_million=2.0),
+    )
+
+    for config in (model_config, bare):
+        with patch("codereview.providers.moonshot.ChatMoonshot") as mock_ms:
+            mock_ms.return_value = Mock()
+
+            MoonshotProvider(config, provider_config)
+
+            assert "reasoning_effort" not in mock_ms.call_args.kwargs
 
 
 def test_moonshot_falls_back_to_id_when_full_id_missing(provider_config):

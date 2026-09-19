@@ -75,6 +75,39 @@ status — narrowing it to 429 meant a server saying "come back in 30s" during a
 got blind exponential backoff instead. `max_wait` still bounds the value, so a hostile header
 can't stall a run; the log line says "backoff", not "rate limit", because a 503 reaches it.
 
+### A too-short client timeout looks exactly like a retryable outage
+
+Retry policy is only as good as the deadline each attempt runs against. If the client gives up
+before the model can plausibly answer, every attempt fails identically, `_is_retryable_error` says
+"transient" because `ReadTimeout` genuinely is, and the run burns its whole budget converging on the
+same wall. The symptom reads as an overloaded provider; the cause is local.
+
+Both non-streaming providers have hit this, for the same underlying reason — the response arrives in
+one piece, so nothing is received until generation completes, and a thinking model generates for a
+long time before emitting its first output token:
+
+- **Bedrock** — `read_timeout` defaults to 300s; any model whose thinking is on without being asked
+  for needs `read_timeout: 1800` in `models.yaml`.
+- **NVIDIA** — `polling_timeout` is forwarded to `ChatNVIDIA` as `timeout`, and
+  `_NVIDIAClient.timeout` is the `session.post` **read** timeout in addition to the 202-poll budget
+  its docstring advertises. The package default is **60s**. Every NIM entry is now an
+  always-reasoning model, and at 60s none of them can finish a batch: `glm53-flash-nvidia` on a
+  7-line file failed every attempt with `ReadTimeout: read timeout=60`, taking 7m05s to fail, and
+  completed in ~3m once the timeout was wired through. **Wiring it then exposed that the configured
+  value was itself too low:** `glm53-nvidia` needs 19m0s for the same 7-line file, so the YAML's 900
+  sat under the flagship's floor and that run survived only on a retry. It is now `1800`, Bedrock's
+  number for Bedrock's reason. Set this from the *slowest* entry the provider serves, not the
+  typical one, and treat a run that exceeds the ceiling but still exits 0 as a finding — a
+  successful retry hides the misconfiguration while doubling the work.
+
+Two things generalise. **A config knob that reaches the provider's `<Name>Config` but not the client
+is invisible** — the same hazard as `ConfigLoader`'s forwarding rule, one layer lower, and a
+plausible default is what hides it; `polling_timeout` sat disconnected through an upstream change
+that made forwarding safe again, and nothing failed. And **assert against the real client, not a
+mock**, when a kwarg's destination is the thing at issue: `timeout` on `ChatNVIDIA` has historically
+been both a request-body parameter (HTTP 400) and a client transport option, and a mock cannot tell
+those apart.
+
 ### Our retry loop must be the only one
 
 **Every client is constructed with its own retries disabled** — `max_retries=CLIENT_RETRIES_DISABLED`
@@ -141,7 +174,7 @@ raises from the *parser*, past the `AIMessage`, so there is no usage metadata le
 parser attaches as `llm_output`, called from the retry `except` in `_execute_with_retry`.
 Estimating isn't a shortcut there: a `CodeReviewReport` carries no metadata either, so the
 *success* branch of that path is already estimated, and every `supports_tool_use: false`
-reasoning model (Opus 5, GPT-5.6 Sol, GLM-5.3, K2.6, K3, …) is exactly the kind that
+reasoning model (Opus 5, GPT-5.6 Sol, GLM-5.3, K3, …) is exactly the kind that
 burns several billed attempts on a think-heavy batch. Swallow accounting failures to
 `logging.debug` — this runs on the way to a retry or a raise and must never mask the parse
 error.
@@ -282,8 +315,9 @@ generations. Omit all three (`default_temperature`/`default_top_p`/`default_top_
 `inference_params` for every new Gemini entry; the Google provider already passes
 `allow_none=True` to `_resolve_temperature` and drops `top_p`/`top_k` when unset, so no code
 change is needed. The older Gemini 3.1 Pro entry keeps theirs — that generation still honors
-them. Locked by `test_gemini37_flash_omits_sampling_params` for the current Flash entry (the 3.6
-entry it originally pinned was removed 2026-08-29) and by
+them. Locked by `test_gemini38_flash_matches_the_published_model_card` for the current Flash entry
+(the pinned-entry test has followed the roster twice: the 3.6 entry it originally covered went on
+2026-08-29, the 3.7 one on 2026-09-19) and by
 `test_every_modern_gemini_entry_omits_sampling_params`, which parses the version out of every
 `google_genai` entry's `id` and fails when a *new* one at ≥3.6 reintroduces a sampler — the pinned
 single-entry test can't catch that.

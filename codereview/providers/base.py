@@ -700,9 +700,10 @@ class ModelProvider(ABC):
            The ``CodeReviewReport`` instance itself, produced by chaining
            a ``PydanticOutputParser`` onto the model. Used by tool-use-less
            endpoints — currently the Bedrock Claude reasoning tiers, GPT-5.6
-           Sol, GLM 5, MiniMax M3, Kimi K3/K2.6 and the GLM-5.3 family — where the model
-           emits JSON via prompt format instructions instead of via
-           tool-calling.
+           Sol, GPT-6 Astra, GLM 5, Kimi K3/K2.6, Gemini 3.8 Flash and the
+           GLM-5.3 family on both NVIDIA and Z.AI, which is to say *every*
+           NVIDIA NIM entry — where the model emits JSON via prompt format
+           instructions instead of via tool-calling.
 
         Anything else (a string, a raw AIMessage, a list, etc.) is a
         contract violation. ``_execute_with_retry`` raises ``ValueError``

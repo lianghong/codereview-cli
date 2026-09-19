@@ -52,7 +52,7 @@ def test_model_aliases_exist():
     assert "opus" in MODEL_ALIASES
     assert "sonnet" in MODEL_ALIASES
     assert "haiku" in MODEL_ALIASES
-    assert "minimax-m3-nvidia" in MODEL_ALIASES
+    assert "glm53-flash-nvidia" in MODEL_ALIASES
     assert "kimi" in MODEL_ALIASES
     assert "glm" in MODEL_ALIASES
 
@@ -366,6 +366,22 @@ def test_real_registry_loads_without_any_conflict_warning(caplog):
 # Note the near-collisions already in this set: `moonshotai/kimi-k2.5` and
 # `minimaxai/minimax-m2.5` are the NVIDIA re-hosts (slash), which really are
 # dead; their Bedrock namesakes use a dot and must stay out.
+#
+# Re-audited 2026-09-19 (NVIDIA only — NIM is the shortest-lived block in the
+# registry). Two of the four remaining NVIDIA entries were dead, both HTTP 410
+# with NVIDIA's own EOL date and both absent from `GET /v1/models`:
+#   minimaxai/minimax-m3             — EOL 2026-09-09; zero `minimax*` ids left,
+#                                      and no MiniMax remains in the registry
+#                                      at all (the Bedrock re-host was cut as
+#                                      curation on 2026-08-29)
+#   deepseek-ai/deepseek-v4-pro-0813 — EOL 2026-09-14. This is the *dated GA*
+#                                      id the entry was re-pointed onto on
+#                                      2026-08-29 when the undated preview
+#                                      died; NIM retired the GA release faster
+#                                      than the preview, so a dated id is not a
+#                                      safe long-term target either.
+# `deepseek-ai/deepseek-v4-flash-0731` and `moonshotai/kimi-k3` were probed in
+# the same pass and answered HTTP 200; they stay out of this set.
 DEAD_UPSTREAM_FULL_IDS = {
     "minimaxai/minimax-m2.5",
     "moonshotai/kimi-k2.5",
@@ -381,6 +397,15 @@ DEAD_UPSTREAM_FULL_IDS = {
     "mistralai/mistral-small-4-119b-2603",
     "mistralai/mistral-medium-3.5-128b",
     "stepfun-ai/step-3.7-flash",
+    "minimaxai/minimax-m3",
+    "deepseek-ai/deepseek-v4-pro-0813",
+    # Sunset on a SCHEDULE rather than a 410: this id still answered HTTP 200
+    # on 2026-09-19, but every response carried NVIDIA's own in-band
+    # `deprecation: 2026-09-21T08:00:00Z`. It belongs here for the same reason
+    # as the 410s — pointing an entry at it is a bug — and it is the reason the
+    # NIM removal procedure now says to read the response HEADERS, not just the
+    # status.
+    "deepseek-ai/deepseek-v4-flash-0731",
 }
 
 # Azure entries are addressed by deployment_name, not full_id, and only work if
@@ -434,33 +459,36 @@ def test_retired_model_aliases_redirect_to_live_successors():
         # Kimi/DeepSeek-on-Azure: both deployments are gone from the resource,
         # and the direct APIs are the canonical owners of those families. These
         # names don't state a version, so redirecting is safe.
-        "kimi-azure": "kimi-k2.6",
-        "kimi25-azure": "kimi-k2.6",
+        "kimi-azure": "kimi-k3",
+        "kimi25-azure": "kimi-k3",
         "deepseek-v4-azure": "deepseek-v4-pro",
         "ds-v4-azure": "deepseek-v4-pro",
-        # GLM-on-NVIDIA is entirely gone (glm5 deprecated 2026-04-20, glm-5.1
-        # ~2026-07, glm-5.2 EOL 2026-08-21 — NIM serves no `z-ai/*` id now), so
-        # 2026-08-29 moved these onto Bedrock's `zai.glm-5`. That is the model
-        # they actually name: the spellings say GLM *5*. The NVIDIA-suffixed
-        # `glm5-nvidia` was deleted instead — see the counterpart guard.
-        "glm5": "zai.glm-5",
-        "glm-5": "zai.glm-5",
+        # GLM-on-NVIDIA went away in 2026-08 (glm5 deprecated 2026-04-20,
+        # glm-5.1 ~2026-07, glm-5.2 EOL 2026-08-21), so these first moved onto
+        # Bedrock's `zai.glm-5`. That entry was itself removed 2026-09-19 as
+        # curation, so they moved again, to the Z.AI-direct flagship — the
+        # family's canonical owner. They say GLM *5* without pinning a minor and
+        # GLM-5.3 is a GLM 5, so the names stay truthful. Every provider-suffixed
+        # GLM spelling was deleted instead — see the counterpart guard.
+        "glm5": "glm-5.3",
+        "glm-5": "glm-5.3",
         # GLM-on-Z.AI: 5.1 -> 5.2 -> 5.3, all at the same $1.40/$4.40
         # rate; the generation-neutral direct-provider names track the current
         # flagship while version-specific names are deleted.
         "zai-glm": "glm-5.3",
         "glm-zai": "glm-5.3",
-        # Gemini: 3 Pro shut down 2026-03-09; 3 Flash Preview deprecated in
-        # favour of the GA Gemini 3.6 Flash, which was itself removed 2026-08-29
-        # — so the generation-3 Flash names moved on again, to 3.7 Flash. They
-        # stay in this map because 3.7 IS a generation-3 Flash at the same
-        # $1.50/$7.50, same 1M context and same 64K output; the *minor*-version
-        # spellings (gemini36-flash, gemini3.6-flash) were deleted instead.
+        # Gemini: 3 Pro shut down 2026-03-09; the generation-3 Flash names have
+        # now walked forward three times — 3 Flash Preview -> 3.6 (2026-07-25)
+        # -> 3.7 (2026-08-29) -> 3.8 (2026-09-19) — because each hop landed on
+        # another generation-3 Flash at the same $1.50/$7.50, same 1M context and
+        # same 64K output, so the names never stopped being true. Every
+        # *minor*-version spelling (gemini36-flash, gemini3.6-flash,
+        # gemini37-flash, gemini3.7-flash) was deleted instead.
         "gemini-3-pro": "gemini-3.1-pro-preview",
         "gemini3-pro": "gemini-3.1-pro-preview",
-        "gemini-3-flash": "gemini-3.7-flash",
-        "gemini3-flash": "gemini-3.7-flash",
-        "g3flash": "gemini-3.7-flash",
+        "gemini-3-flash": "gemini-3.8-flash",
+        "gemini3-flash": "gemini-3.8-flash",
+        "g3flash": "gemini-3.8-flash",
         # ---- 2026-08-29 curation pass (nine live entries removed) ----
         # Claude Sonnet 4.6 removed in favour of Sonnet 5 (same $3/$15, 5x the
         # context). `sonnet` was the removed entry's *id* and names the tier, not
@@ -469,10 +497,10 @@ def test_retired_model_aliases_redirect_to_live_successors():
         "sonnet": "us.anthropic.claude-sonnet-5",
         "claude-sonnet": "us.anthropic.claude-sonnet-5",
         # Kimi K2.5 on *Bedrock* removed; the Moonshot direct API is the family's
-        # canonical owner and ships the newer K2.6 at a lower output price, so
-        # this is the same move `kimi-azure` made. Crosses a provider boundary,
-        # hence deprecated rather than advertised.
-        "kimi-bedrock": "kimi-k2.6",
+        # canonical owner, so this is the same move `kimi-azure` made. Crosses a
+        # provider boundary, hence deprecated rather than advertised. Now lands
+        # on K3, the direct API's flagship since 2026-09-19.
+        "kimi-bedrock": "kimi-k3",
         # GPT-5.5 on Bedrock removed; GPT-5.6 Sol is the only OpenAI entry left
         # on bedrock-mantle. `gpt-bedrock` names "the GPT on Bedrock", which Sol
         # now is — but following it forward DOUBLES the rate ($2.50/$15 ->
@@ -486,7 +514,7 @@ def test_retired_model_aliases_redirect_to_live_successors():
         # A removed entry's *id* is a --model spelling too, not just its
         # aliases — these were ids of removed entries and are easy to forget.
         "deepseek-v4-pro-azure": "deepseek-v4-pro",
-        "kimi-k2.5-azure": "kimi-k2.6",
+        "kimi-k2.5-azure": "kimi-k3",
     }
     for alias, live_full_id in expected.items():
         _, config = loader.resolve_model(alias)
@@ -612,7 +640,8 @@ RETIRED_ALIASES_DELETED_NOT_REDIRECTED = frozenset(
         # support and the tool-use structured-output path.
         "sonnet4.6",
         "claude-sonnet-4.6",
-        # Kimi K2.5 on Bedrock — `kimi-bedrock` migrated to Moonshot-direct K2.6.
+        # Kimi K2.5 on Bedrock — `kimi-bedrock` migrated to Moonshot-direct
+        # (K2.6 at the time, K3 since 2026-09-19).
         "kimi-k2.5-bedrock",
         "kimi25-bedrock",
         # Kimi K2.6 on NVIDIA — the surviving NIM Kimi is K3, a different
@@ -672,6 +701,65 @@ RETIRED_ALIASES_DELETED_NOT_REDIRECTED = frozenset(
         "mmed",
         "gpt5.6-sol",
         "sol",
+        # ---- 2026-09-19 removal pass: two more NIM endpoints answering 410 ----
+        # MiniMax M3 on NVIDIA (EOL 2026-09-09). `minimax-m3`/`mm3` state the
+        # generation, but note that even a version-neutral MiniMax name would be
+        # deleted here: NIM serves no `minimax*` id and the Bedrock re-host was
+        # cut on 2026-08-29, so nothing MiniMax-shaped remains to migrate onto —
+        # the `step-flash` case, repeated.
+        "minimax-m3",
+        "minimax-m3-nvidia",
+        "mm3-nvidia",
+        "mm3",
+        # DeepSeek-V4-Pro on NVIDIA (EOL 2026-09-14, the *dated GA* id). These
+        # read as version-neutral and `dsv4-flash-nvidia` is the same vendor,
+        # generation, provider and free tier — but Pro and Flash shipped as
+        # separate concurrent entries, so `dsv4-nvidia` meant "the Pro one" in
+        # opposition to `dsv4-flash-nvidia`. Redirecting would hand a caller who
+        # picked the 1.65T flagship the 284B budget model. Use
+        # `deepseek-v4-pro` (direct, billed) — the Flash-on-NIM entry that was
+        # the other candidate has since been removed too, see below.
+        "deepseek-v4-pro-nvidia",
+        "dsv4-nvidia",
+        "ds-v4-nvidia",
+        "deepseek-v4-nvidia",
+        # DeepSeek-V4-Flash on NVIDIA, removed later the same day on the
+        # `deprecation: 2026-09-21T08:00:00Z` header the live endpoint returned
+        # alongside its HTTP 200. Deleted rather than migrated: all three spell
+        # `-nvidia`, and the only surviving home for the model is the BILLED
+        # DeepSeek-direct entry on a different provider — the Qwen-on-NVIDIA
+        # case, where a silent free-to-billed provider switch is worse than an
+        # error a human reads and fixes. Use `dsv4-flash` (DeepSeek direct,
+        # billed) or `glm53-flash-nvidia` for the free high-volume NIM slot it
+        # vacated.
+        "deepseek-v4-flash-nvidia",
+        "dsv4-flash-nvidia",
+        "ds-v4-flash-nvidia",
+        # ---- 2026-09-19 curation pass: three LIVE entries removed on request ----
+        # Nothing here died upstream; all three endpoints still answer. Same rule
+        # as the 2026-08-29 pass.
+        #
+        # GLM 5 on Bedrock — `glm5`/`glm-5` migrated to Z.AI-direct GLM-5.3 (see
+        # the redirect map). The provider-suffixed pair is deleted: the suffix
+        # names a provider the GLM family is no longer on in this registry.
+        "glm5-bedrock",
+        "glm-5-bedrock",
+        # Gemini 3.7 Flash — 3.8 Flash is identical on price, context and output,
+        # so the generation-3 names migrated again; these pin the minor version
+        # and do not. Worth knowing what `--model gemini37-flash` used to buy
+        # that no surviving entry does: the tool-use structured-output path,
+        # live-proven while thinking. 3.8 Flash is on the prompt path.
+        "gemini-3.7-flash",
+        "gemini37-flash",
+        "gemini3.7-flash",
+        # Kimi K2.6 on Moonshot, replaced by K3 on the same provider. Deleted
+        # rather than migrated even though the family's canonical owner is
+        # unchanged, because K2.6 is still LIVE upstream at $0.95/$4.00 on 256K
+        # context: answering to its name from K3 would silently swap the model
+        # and roughly triple the bill. The version-neutral `kimi` is an
+        # advertised alias of K3 and is the right spelling for "current Kimi".
+        "kimi-k2.6",
+        "kimi26",
     }
 )
 
@@ -1072,6 +1160,60 @@ def test_deepseek_direct_uses_current_peak_pricing():
         assert config.pricing.output_per_million == output_rate
 
 
+def test_deepseek_v4_flash_uses_the_catalog_wire_id():
+    """DeepSeek renamed the wire id ``deepseek-v4-flash`` → ``deepseek-flash``.
+
+    The old spelling still answers — the server accepts it and rewrites it in
+    the response body — so a live review would never have surfaced the drift.
+    What breaks is model-access validation, which **exact-matches** the
+    prefix-stripped id against the catalog: the retired spelling is absent from
+    ``GET /v1/models``, so ``--validate`` reported a miss for a working model.
+    The entry ``id`` deliberately did not change, so no documented ``--model``
+    name moved.
+    """
+    loader = ConfigLoader()
+
+    provider, config = loader.resolve_model("deepseek-v4-flash")
+
+    assert provider == "deepseek"
+    assert config.full_id == "deepseek-flash"
+
+
+def test_kimi_k3_moonshot_matches_the_official_model_page():
+    """Kimi K3 on Moonshot direct: pricing and limits from the vendor's page.
+
+    Third-party aggregators disagreed with the vendor here ($1.95/$10.92 on
+    OpenRouter, $2.85/$14.25 on llm-stats vs the official $3.00/$15.00), and
+    the K2.6 entry this replaced shipped a *wrong* price for exactly that
+    reason — its own YAML comment admitted the page "wasn't directly
+    fetchable". An unread or invented pricing number is the worst kind of dead
+    config, because the next reader trusts it.
+
+    ``supports_tool_use`` is ``False`` by live reproduction, not by the
+    assume-prompt-parsing rule: a forced ``tool_choice='specified'`` returns
+    HTTP 400 *"incompatible with thinking enabled"*, and K3's thinking has no
+    off switch.
+    """
+    loader = ConfigLoader()
+
+    provider, config = loader.resolve_model("kimi-k3")
+
+    assert provider == "moonshot"
+    assert config.full_id == "kimi-k3"
+    assert config.pricing is not None
+    assert config.pricing.input_per_million == 3.00
+    assert config.pricing.output_per_million == 15.00
+    assert config.context_window == 1_048_576
+    assert config.supports_tool_use is False
+    assert config.inference_params is not None
+    assert config.inference_params.reasoning_effort == "high"
+    assert config.inference_params.max_output_tokens == 32768
+    # K3 fixes both server-side; sending either is an error, so the entry must
+    # omit them and let `_resolve_temperature(allow_none=True)` drop them.
+    assert config.inference_params.temperature is None
+    assert config.inference_params.top_p is None
+
+
 def test_kimi_k3_nvidia_matches_the_model_card():
     """Kimi K3 on NIM: card figures, and no thinking knob that does nothing.
 
@@ -1127,105 +1269,146 @@ def test_kimi_k3_nvidia_disables_tool_use():
         )
 
 
-def test_bare_kimi_k3_names_stay_reserved_for_the_direct_provider():
-    """The NIM re-host must not squat the canonical ``kimi-k3`` spellings.
+def test_bare_kimi_names_belong_to_the_direct_provider_not_the_nim_rehost():
+    """The reservation this test used to guard has now been claimed.
 
     Per ``docs/model-registry.md``, a vendor's direct API owns the bare aliases
-    and a re-host keeps provider-suffixed ones — which is why the K2.6 re-host
-    is ``kimi-nvidia-26``, not ``kimi-k2.6``. Moonshot direct ships K2.6 today;
-    when it gains K3 the bare names must be free for it, otherwise ``--model
-    kimi-k3`` would silently keep pointing at the free NIM trial endpoint.
+    and a re-host keeps provider-suffixed ones. While Moonshot-direct shipped
+    K2.6, ``kimi-k3``/``kimi3`` were held *unresolvable* so the NIM re-host could
+    not squat them. Moonshot-direct gained K3 on 2026-09-19, so the assertion
+    inverts: the bare names must now resolve, and resolve to ``moonshot`` —
+    if they answered from ``nvidia`` instead, ``--model kimi3`` would silently
+    hand a caller the free NIM trial endpoint rather than the billed flagship
+    they asked for.
     """
     loader = ConfigLoader()
-    for name in ("kimi-k3", "kimi3", "k3"):
+    for name in ("kimi-k3", "kimi3", "kimi"):
+        provider, config = loader.resolve_model(name)
+        assert provider == "moonshot", (
+            f"{name} must resolve to the Moonshot direct API (canonical owner "
+            f"of the Kimi family), got {provider!r}"
+        )
+        assert config.id == "kimi-k3"
+
+    # `k3` was never minted for anything and stays unresolvable — it names a
+    # generation with no vendor, and Kimi is not the only K-series family.
+    with pytest.raises(ValueError):
+        loader.resolve_model("k3")
+
+
+def test_no_deepseek_remains_on_nvidia_nim():
+    """Every DeepSeek-on-NIM spelling must fail fast — the lineage is gone.
+
+    Three endpoints in sequence: the undated previews
+    (``deepseek-ai/deepseek-v4-pro`` / ``-v4-flash``) were end-of-lifed
+    2026-08-07, the dated ``-v4-pro-0813`` followed on 2026-09-14, and
+    ``-v4-flash-0731`` — which was still answering HTTP 200 — returned
+    ``deprecation: 2026-09-21T08:00:00Z`` in its own response headers. All four
+    wire ids are in ``DEAD_UPSTREAM_FULL_IDS``.
+
+    Nothing migrated. The model stays reachable from its canonical owner
+    (``dsv4-flash`` on the DeepSeek direct provider), but that is billed where
+    NIM was free, so pointing a ``-nvidia`` name at it would make a silent
+    provider *and* billing switch — the Qwen-on-NVIDIA case.
+    """
+    loader = ConfigLoader()
+
+    for name in (
+        "deepseek-v4-flash-nvidia",
+        "dsv4-flash-nvidia",
+        "ds-v4-flash-nvidia",
+        "deepseek-v4-pro-nvidia",
+        "dsv4-nvidia",
+        "ds-v4-nvidia",
+        "deepseek-v4-nvidia",
+    ):
         with pytest.raises(ValueError):
             loader.resolve_model(name)
 
-
-def test_deepseek_v4_nvidia_entries_name_the_dated_ga_endpoints():
-    """Both NVIDIA DeepSeek-V4 entries must target the dated GA ids.
-
-    The undated preview ids (``deepseek-ai/deepseek-v4-pro`` /
-    ``-v4-flash``) were end-of-lifed 2026-08-07 and return HTTP 410 Gone;
-    ``DEAD_UPSTREAM_FULL_IDS`` guards against reintroducing them. This is the
-    positive half: the entries keep their generation-neutral ids and aliases
-    (the successors are drop-in), so only ``full_id`` moved, and a future
-    dated release must move it again rather than adding a parallel entry.
-    """
-    loader = ConfigLoader()
-    expected = {
-        "deepseek-v4-pro-nvidia": "deepseek-ai/deepseek-v4-pro-0813",
-        "deepseek-v4-flash-nvidia": "deepseek-ai/deepseek-v4-flash-0731",
+    # Belt and braces: no NVIDIA entry may name a DeepSeek wire id at all, so a
+    # future re-add has to come through this test rather than around it.
+    offenders = {
+        model_id: config.full_id
+        for model_id, (provider, config) in loader._models_by_id.items()
+        if provider == "nvidia" and config.full_id.startswith("deepseek-ai/")
     }
-    for model_id, full_id in expected.items():
-        provider, config = loader.resolve_model(model_id)
+    assert not offenders, (
+        f"NVIDIA entries naming a DeepSeek endpoint: {offenders}. NIM serves no "
+        f"reviewable DeepSeek as of 2026-09-19 — verify against the live "
+        f"catalog AND the response headers before re-adding one."
+    )
+
+
+def test_nvidia_glm53_entries_name_the_live_endpoints():
+    """The two GLM-5.3 entries on NIM must target the ids NVIDIA serves.
+
+    Both were verified live 2026-09-19 (HTTP 200, no ``deprecation`` header)
+    after three weeks in which NIM served no ``z-ai/*`` model at all. They are
+    provider-suffixed only: Z.AI direct is the canonical owner of the GLM family
+    and keeps the bare ``glm`` / ``glm-5.3`` / ``glm-flash`` spellings.
+    """
+    loader = ConfigLoader()
+
+    for name in ("glm-5.3-nvidia", "glm53-nvidia", "glm5.3-nvidia"):
+        provider, config = loader.resolve_model(name)
         assert provider == "nvidia"
-        assert config.full_id == full_id, (
-            f"{model_id} points at {config.full_id!r}; the live NIM catalog "
-            f"serves {full_id!r}"
+        assert config.full_id == "z-ai/glm-5.3"
+
+    for name in ("glm-5.3-flash-nvidia", "glm53-flash-nvidia", "glm-flash-nvidia"):
+        provider, config = loader.resolve_model(name)
+        assert provider == "nvidia"
+        assert config.full_id == "z-ai/glm-5.3-flash"
+
+    # The bare names still belong to Z.AI direct — a re-host must never take
+    # them over, or `--model glm` would silently move to NIM's trial tier.
+    for name in ("glm", "glm-5.3", "glm-flash", "glm5.3-flash"):
+        provider, _ = loader.resolve_model(name)
+        assert provider == "zai", f"{name!r} resolved to {provider!r}, not zai"
+
+    # Both are always-reasoning models on the prompt-parsing path, and both pin
+    # reasoning_effort rather than inheriting the card's `max` default, which
+    # would eat the output budget the report needs (NIM bills reasoning inside
+    # completion_tokens).
+    for name in ("glm53-nvidia", "glm53-flash-nvidia"):
+        _, config = loader.resolve_model(name)
+        assert config.supports_tool_use is False
+        assert config.inference_params is not None
+        assert config.inference_params.reasoning_effort == "high"
+
+
+def test_no_gemini_entry_claims_the_live_tool_use_path():
+    """Replaces the three ``gemini37_flash`` tests deleted with that entry.
+
+    Gemini 3.7 Flash was removed 2026-09-19 as curation (3.8 Flash is identical
+    on price, context and output). Its context/output and omitted-sampling pins
+    are already covered for 3.8 by
+    ``test_gemini38_flash_matches_the_published_model_card``, so only one thing
+    was actually lost: 3.7 held ``supports_tool_use: true``, earned by three
+    live runs on 2026-08-17 that each returned a valid ``CodeReviewReport``
+    while the model reasoned. It was the ONLY such entry in the registry and the
+    documented bar for flipping 3.8 or either GLM-5.3 entry off the prompt path.
+
+    This asserts the state that replaced it, so a future reader cannot mistake
+    "no Gemini is on the tool-use path" for an oversight: it is the
+    assume-prompt-parsing default, and re-earning ``true`` requires a fresh A/B,
+    not a citation of 3.7.
+    """
+    loader = ConfigLoader()
+    gemini_entries = [
+        (name, config)
+        for name, config in (
+            (n, loader.resolve_model(n)[1])
+            for n in ("gemini-3.1-pro", "gemini-3.8-flash")
         )
-
-    # The aliases carried over — a scripted `--model dsv4-nvidia` still works.
-    for alias in ("dsv4-nvidia", "ds-v4-nvidia", "deepseek-v4-nvidia"):
-        _, config = loader.resolve_model(alias)
-        assert config.full_id == "deepseek-ai/deepseek-v4-pro-0813"
-    for alias in ("dsv4-flash-nvidia", "ds-v4-flash-nvidia"):
-        _, config = loader.resolve_model(alias)
-        assert config.full_id == "deepseek-ai/deepseek-v4-flash-0731"
-
-
-def test_gemini37_flash_context_and_output_match_model_card():
-    """Gemini 3.7 Flash advertises a 1,048,576-token context and 64K output.
-
-    ``context_window`` is deliberately the conservative 1,000,000 rather than
-    the card's exact 1,048,576 (as the removed 3.6 entry also was): under-stating
-    the window only makes batches smaller, while over-stating it overflows.
-    """
-    loader = ConfigLoader()
-    provider, config = loader.resolve_model("gemini-3.7-flash")
-    assert provider == "google_genai"
-    assert config.full_id == "gemini-3.7-flash"
-    assert config.context_window == 1_000_000
-    assert config.inference_params is not None
-    assert config.inference_params.max_output_tokens == 65536
-
-
-def test_gemini37_flash_omits_sampling_params():
-    """From Gemini 3.6 Flash onward, temperature/top_p/top_k are deprecated.
-
-    Google's API ignores all three today and documents an HTTP 400 for future
-    model generations. The Google provider passes ``allow_none=True`` to
-    ``_resolve_temperature`` and drops ``top_p``/``top_k`` when unset, so
-    omitting ``default_temperature``/``default_top_p``/``default_top_k`` from
-    the YAML (loaded into ``temperature``/``top_p``/``top_k``) is what keeps
-    them off the wire.
-
-    This pinned 3.6 Flash until that entry was removed 2026-08-29; 3.7 Flash is
-    now the oldest Gemini entry the rule covers. The cutoff itself is still 3.6 —
-    see ``test_every_modern_gemini_entry_omits_sampling_params``, which is what
-    catches the *next* entry.
-    """
-    loader = ConfigLoader()
-    _, config = loader.resolve_model("gemini-3.7-flash")
-    assert config.inference_params is not None
-    assert config.inference_params.temperature is None
-    assert config.inference_params.top_p is None
-    assert config.inference_params.top_k is None
-
-
-def test_gemini37_flash_keeps_tool_use_path():
-    """Gemini 3.7 Flash earned the tool-use path with a live run.
-
-    The assume-prompt-parsing rule says a new thinking model ships
-    ``supports_tool_use: false`` until a live run proves otherwise. Three runs
-    on 2026-08-17 each returned a valid ``CodeReviewReport`` with
-    ``parsing_error`` None *and* non-zero ``output_token_details.reasoning``,
-    i.e. tool-use held while the model was actually thinking. Don't flip this
-    to ``false`` without a reproduction.
-    """
-    loader = ConfigLoader()
-    _, config = loader.resolve_model("gemini-3.7-flash")
-    assert config.supports_tool_use is True
+    ]
+    assert gemini_entries, "expected at least one Gemini entry to remain"
+    for name, config in gemini_entries:
+        if "flash" in name:
+            assert config.supports_tool_use is False, (
+                f"{name} must stay on the prompt path — the live run that "
+                "justified tool-use on a thinking Gemini belonged to 3.7 Flash, "
+                "which was removed 2026-09-19. Flipping this needs a new A/B."
+            )
 
 
 def test_gemini38_flash_matches_the_published_model_card():
@@ -1305,12 +1488,14 @@ def test_gpt6_astra_carries_both_pricing_tiers_for_its_wide_window():
 
 
 def test_generation_neutral_gemini_flash_alias_tracks_the_newest_flash():
-    """``gemini-flash`` tracks 3.8; inherited generation-3 names stay on 3.7.
+    """``gemini-flash`` and the generation-3 names both land on 3.8.
 
     The generation-neutral name moved 3.6 -> 3.7 -> 3.8 as each Flash model
-    shipped. The deprecated ``gemini-3-flash`` spellings were inherited by 3.7
-    when 3.6 was removed, and remain there while that endpoint is still live.
-    Minor-version names never redirect.
+    shipped. The deprecated ``gemini-3-flash`` spellings walked the same path one
+    hop behind — inherited by 3.7 when 3.6 was removed, then by 3.8 when 3.7 was
+    removed 2026-09-19 — so the two now coincide. That is expected, not a
+    duplicate: they differ in advertisement, not resolution. Minor-version names
+    never redirect.
     """
     loader = ConfigLoader()
 
@@ -1319,7 +1504,11 @@ def test_generation_neutral_gemini_flash_alias_tracks_the_newest_flash():
 
     for alias in ("gemini-3-flash", "gemini3-flash", "g3flash"):
         _, config = loader.resolve_model(alias)
-        assert config.id == "gemini-3.7-flash"
+        assert config.id == "gemini-3.8-flash"
+
+    for deleted_37 in ("gemini37-flash", "gemini3.7-flash", "gemini-3.7-flash"):
+        with pytest.raises(ValueError, match="Unknown model"):
+            loader.resolve_model(deleted_37)
 
     for deleted in ("gemini36-flash", "gemini3.6-flash", "gemini-3.6-flash"):
         with pytest.raises(ValueError, match="Unknown model"):
@@ -1502,8 +1691,10 @@ def test_canonical_owner_aliases_route_to_direct_api():
     loader = ConfigLoader()
     canonical_owners = {
         "deepseek-v4-pro": "deepseek",  # not NVIDIA's free re-host
-        "kimi": "moonshot",  # not Bedrock's K2.5 or NVIDIA's K2.6
-        "kimi-k2.6": "moonshot",
+        "kimi": "moonshot",  # not Bedrock's K2.5 or NVIDIA's K3 re-host
+        "kimi-k3": "moonshot",  # the bare K3 spelling, not `kimi-k3-nvidia`
+        "kimi3": "moonshot",
+        "glm": "zai",  # not the NIM re-host; the Bedrock GLM is gone
     }
     for alias, owner in canonical_owners.items():
         provider, _ = loader.resolve_model(alias)

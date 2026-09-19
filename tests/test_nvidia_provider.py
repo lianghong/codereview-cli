@@ -4,6 +4,7 @@ from unittest.mock import Mock, patch
 
 import httpx
 import pytest
+from langchain_nvidia_ai_endpoints import ChatNVIDIA
 
 from codereview.config.models import (
     InferenceParams,
@@ -137,15 +138,25 @@ def test_nvidia_provider_with_base_url(model_config, provider_config_with_base_u
         assert call_kwargs.get("base_url") == "https://custom-nim.example.com/v1"
 
 
-def test_nvidia_provider_does_not_pass_timeout(model_config, provider_config):
-    """`timeout` must NOT be passed to ChatNVIDIA.
+def test_nvidia_provider_passes_polling_timeout_as_the_client_timeout(
+    model_config, provider_config
+):
+    """`polling_timeout` must reach ChatNVIDIA as `timeout`.
 
-    Regression: ChatNVIDIA has no `timeout` field, so the kwarg fell into
-    model_kwargs and was merged into the request body. NVIDIA's server now
-    rejects unknown body params with HTTP 400 ("Unsupported parameter(s):
-    `timeout`"). The 202-polling timeout lives on the underlying _NVIDIAClient,
-    which ChatNVIDIA builds without forwarding this kwarg, so passing it never
-    controlled polling anyway.
+    This assertion is the reverse of what it used to be, and the flip is the
+    point. ChatNVIDIA once had no `timeout` field, so the kwarg fell through into
+    model_kwargs, was merged into the request body, and NVIDIA rejected it with
+    HTTP 400 ("Unsupported parameter(s): `timeout`"). The old test asserted it was
+    absent. The package then grew a real `timeout` kwarg, which left
+    ``polling_timeout`` as **dead config** — parsed from the YAML, carried on
+    NVIDIAConfig, never reaching the client — while the client's own default of 60
+    governed silently.
+
+    That default is not just a poll budget. ``_NVIDIAClient.timeout`` is *also*
+    the ``session.post`` read timeout, and every NIM entry is now an
+    always-reasoning model on the non-streaming path, so at 60s a real review
+    batch cannot finish: ``glm53-flash-nvidia`` on a 7-line file failed every
+    attempt with ``ReadTimeout: read timeout=60``.
     """
     with patch("codereview.providers.nvidia.ChatNVIDIA") as mock_nvidia:
         mock_instance = Mock()
@@ -156,10 +167,55 @@ def test_nvidia_provider_does_not_pass_timeout(model_config, provider_config):
 
         mock_nvidia.assert_called_once()
         call_kwargs = mock_nvidia.call_args[1]
-        assert "timeout" not in call_kwargs, (
-            "timeout must not be passed to ChatNVIDIA — NVIDIA rejects it as an "
-            "unsupported request-body parameter (HTTP 400)"
+        assert call_kwargs.get("timeout") == provider_config.polling_timeout, (
+            "polling_timeout must be forwarded to ChatNVIDIA as `timeout`, or it "
+            "is dead config and the client's 60s default silently applies — which "
+            "no always-reasoning NIM model can finish a batch within"
         )
+
+
+def test_nvidia_client_timeout_is_wired_and_does_not_reach_the_request_body():
+    """Drive the real ChatNVIDIA: timeout must land on the client, not the body.
+
+    The mock-level test above cannot tell the two destinations apart, and they are
+    exactly what went wrong historically — the same kwarg was once a body
+    parameter (HTTP 400) and is now a client transport option. So construct the
+    real thing and check both halves: ``_client.timeout`` carries the value, and
+    ``model_kwargs`` does not. Construction only; no network.
+
+    If a future package version moves `timeout` back into ``model_kwargs``, this
+    fails here rather than as an HTTP 400 on someone's review run.
+    """
+    provider_config = NVIDIAConfig(api_key="nvapi-test-key-12345", polling_timeout=900)
+    model_config = ModelConfig(
+        id="glm-5.3-flash-nvidia",
+        name="GLM-5.3-Flash (NVIDIA)",
+        full_id="z-ai/glm-5.3-flash",
+        pricing=PricingConfig(input_per_million=0.0, output_per_million=0.0),
+        inference_params=InferenceParams(reasoning_effort="high"),
+        supports_tool_use=False,
+    )
+
+    provider = NVIDIAProvider(model_config, provider_config)
+
+    client = provider.model
+    while not isinstance(client, ChatNVIDIA):
+        nxt = getattr(client, "bound", None) or getattr(client, "first", None)
+        assert nxt is not None, "could not unwrap the chain down to ChatNVIDIA"
+        client = nxt
+
+    assert client._client.timeout == 900, (
+        f"_NVIDIAClient.timeout is {client._client.timeout}, not the configured "
+        f"900 — polling_timeout is not reaching the client, so the package's 60s "
+        f"default governs both the 202 poll budget and the read timeout"
+    )
+    assert "timeout" not in (client.model_kwargs or {}), (
+        "timeout leaked into model_kwargs, which is merged into the request body; "
+        "NVIDIA rejects unknown body params with HTTP 400"
+    )
+    # The knob we *do* want in the body is still there, so this test can't pass
+    # by the chain being unwrapped to something inert.
+    assert client.model_kwargs.get("reasoning_effort") == "high"
 
 
 def test_analyze_batch(model_config, provider_config, mock_report):

@@ -243,7 +243,7 @@ def _message_deepseek():
 def _message_moonshot():
     from langchain_moonshot import ChatMoonshot
 
-    llm = ChatMoonshot(api_key="test-key-1234567890abcdef", model="kimi-k2.6")
+    llm = ChatMoonshot(api_key="test-key-1234567890abcdef", model="kimi-k3")
     return _invoke_chat_completions(llm)
 
 
@@ -276,9 +276,7 @@ def _message_nvidia():
     response.headers["Content-Type"] = "application/json"
     response.url = "https://integrate.api.nvidia.com/v1/chat/completions"
 
-    llm = ChatNVIDIA(
-        api_key="nvapi-test-1234567890abcdef", model="moonshotai/kimi-k2.6"
-    )
+    llm = ChatNVIDIA(api_key="nvapi-test-1234567890abcdef", model="moonshotai/kimi-k3")
     with patch.object(type(llm._client), "get_req", return_value=response):
         return llm.invoke("review this")
 

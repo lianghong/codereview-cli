@@ -55,7 +55,8 @@ them and `ModelConfig` isn't `extra="forbid"`. The CLI's real default `--model` 
 
 When the same model is exposed by both a vendor's direct API and a re-hoster
 (Bedrock/NVIDIA/Azure), the **direct API owns the canonical aliases**. E.g. `deepseek-v4-pro`
-routes to DeepSeek direct, not NVIDIA's free re-host (`dsv4-nvidia`); `kimi` and `kimi-k2.6`
+routes to DeepSeek direct — it held that name against NVIDIA's free re-host `dsv4-nvidia` until
+NIM end-of-lifed that endpoint on 2026-09-14; `kimi` and `kimi-k3`
 route to Moonshot direct, while NVIDIA's Kimi keeps `kimi-nvidia-3`/`kimi3-nvidia`. Re-host
 entries keep provider-suffixed aliases only.
 
@@ -63,6 +64,11 @@ The convention also decides which entry survives a curation pass: on 2026-08-29 
 MiniMax re-hosts on Bedrock were dropped in favour of the canonical owner (Moonshot direct) and
 the newer generation (MiniMax M3 on NVIDIA) respectively, because a re-host of something the
 registry already carries from its owner earns its place only on price, context or availability.
+
+That second case also shows the risk in keeping only the re-host: NIM end-of-lifed MiniMax M3 three
+weeks later (2026-09-09), so cutting the still-live Bedrock entry in favour of it left the registry
+with **no** MiniMax at all. When curation picks a free NIM entry over a billed one elsewhere, note
+that NIM is the registry's shortest-lived block and the choice is a bet on the endpoint.
 
 ## Generation-neutral aliases track the current generation
 
@@ -86,8 +92,10 @@ showed the other half of the rule while both entries were live: 3.6 **kept** its
 version-explicit `gemini-3-flash`/`gemini3-flash`/`g3flash` back-compat names, because a name
 that says "3" must not jump between live minor versions. Only the generation-neutral name
 travels. When the 3.6 entry was retired on 2026-08-29, all three names moved onto 3.7 as
-`deprecated_aliases`; they remain there while 3.7 is live even though `gemini-flash` now tracks
-3.8.
+`deprecated_aliases`. They moved once more when 3.7 itself was curated away on 2026-09-19, so all
+three now sit on 3.8 alongside `gemini-flash` — two hops, each following the rule rather than
+short-cutting it. 3.7's own version-explicit spellings (`gemini-3.7-flash`, `gemini37-flash`,
+`gemini3.7-flash`) were **deleted**, not migrated.
 
 `sonnet` was the deliberate exception for a while — it stayed on Sonnet 4.6 when Sonnet 5 shipped,
 because 4.6 was the cheaper daily driver and holding the bare name there was a pricing choice, not
@@ -111,9 +119,58 @@ Mistral Medium 3.5, Qwen3.5 397B, GLM-5.2 and Step 3.7 Flash all answer **HTTP 4
 NVIDIA's own EOL date in the body. `GET /v1/models` no longer lists them either, which is why
 neither `--list-models` (credential-free, reads the YAML) nor `--validate` (catalog visibility
 only, and a miss is a warning by design) could surface it — the entries looked healthy right up
-to the invocation. NIM retires endpoints on a rolling basis with no in-band deprecation signal,
-so treat the NVIDIA roster as the shortest-lived block in the registry and re-probe it whenever
-you touch this file. A 410 is *evidence*, not a judgement call: record the date it names.
+to the invocation. NIM retires endpoints on a rolling basis, so treat the NVIDIA roster as the
+shortest-lived block in the registry and re-probe it whenever you touch this file. A 410 is
+*evidence*, not a judgement call: record the date it names. (This pass concluded NIM gives "no
+in-band deprecation signal"; that turned out to be wrong — see the header rule below.)
+
+**A dated GA id is not a stable target either.** The 2026-09-19 pass re-probed the four surviving
+NVIDIA entries and found **two more dead** (20 → 19 models): `minimaxai/minimax-m3` (410, EOL
+2026-09-09) and `deepseek-ai/deepseek-v4-pro-0813` (410, EOL 2026-09-14). The second is the
+instructive one — that dated id was adopted on 2026-08-29 precisely *because* the undated preview
+had been end-of-lifed, and NIM then retired the GA release three weeks later, faster than the
+preview it replaced. So re-pointing a NIM entry at a dated id buys correctness today, not
+stability; the only durable response is to re-probe the block on every visit. Both entries'
+aliases were deleted rather than migrated, including the ones that read as version-neutral:
+`dsv4-nvidia` looked like it could follow the then-live `dsv4-flash-nvidia`, but Pro and Flash
+shipped as **separate concurrent entries**, so that name meant "the Pro one" in explicit opposition
+to the Flash spelling. When two tiers of one generation coexist as entries, each tier's names are
+version-explicit in effect even when they don't spell a version.
+
+**Read the response headers, not just the status — a 200 can carry its own sunset.** Later the same
+day, `deepseek-ai/deepseek-v4-flash-0731` was removed too, and it is the first entry in this
+registry retired on a *scheduled* sunset rather than a 410. It answered **HTTP 200** and produced a
+valid completion; what condemned it was a header:
+
+```
+deprecation: 2026-09-21T08:00:00Z
+```
+
+Every check this project had would have called that endpoint healthy — `--list-models` reads the
+YAML, `--validate` checks catalog visibility, and the removal procedure above says "probe a real
+completion", which succeeded. So the procedure now has a third step: **probe the completion with
+`curl -D -` and read the `deprecation` header.** Two consequences worth internalising. First, it
+means NIM *does* warn in-band, contradicting the 2026-08-29 conclusion above — the earlier pass had
+simply never looked at the headers, having only ever caught endpoints after they died. Second, a
+dated sunset in the future is still a dead entry: two days of life is not worth a registry entry,
+documented examples and a `nvidia_default` pointing at it, so it was removed on the strength of the
+header alone rather than waiting for the 410 to confirm what NVIDIA already told us.
+
+Its three aliases were deleted rather than migrated. They read as version-neutral and the model
+survives at its canonical owner (`dsv4-flash` on DeepSeek direct), but every spelling carries
+`-nvidia` and that target is **billed** where NIM was free — the Qwen-on-NVIDIA case, where a
+silent free-to-billed provider switch is worse than an error a human reads and fixes. No DeepSeek
+remains on NIM.
+
+**A dead prefix can come back, so don't write "never" into a removal note.** The same 2026-09-19
+pass *added* two entries to the block it had just cut down: `z-ai/glm-5.3` and `z-ai/glm-5.3-flash`
+(19 → 18 with DeepSeek-V4-Flash gone, then → 20). The GLM-5.2 removal note from three weeks
+earlier had recorded that "NIM now
+serves no `z-ai/*` model at all" — true when written, false three weeks later. That note was
+correct to delete the 5.2 aliases and is still correct to keep them deleted, because each of them
+spells a version 5.3 is not; what needed amending was only the claim about the prefix. Removal
+notes should record what a probe showed on a date, which stays true, rather than what a vendor will
+do, which does not.
 
 **Curation is the other reason to remove an entry, and it reads differently at every step.** A
 second 2026-08-29 pass cut nine more entries (27 → 18) at the user's direction: Opus 4.8, Sonnet
@@ -172,7 +229,12 @@ each reason generalizes:
 `glm5` / `glm-5` are the counter-example that shows the line: they migrated to `glm5-bedrock`,
 also a provider change, but the target *is* GLM 5 — the thing the name says. Being a
 `deprecated_alias` (resolvable, unadvertised) is the right home for a name that stays truthful
-about the model while changing where it comes from. `kimi-bedrock` → Moonshot's `kimi-k2.6` and
+about the model while changing where it comes from. (When the Bedrock re-host was curated away on
+2026-09-19 they moved again, onto Z.AI's `zhipuai/glm-5.3`. That one stretches the rule and the
+YAML says so: Z.AI serves a *distinct real* `glm-5`, so pointing `glm5` at 5.3 is a deliberate
+choice to track the family's current release, not an identity claim. The provider-explicit
+`glm5-bedrock`/`glm-5-bedrock`/`glm5b` were deleted, since the suffix names a provider that no
+longer serves it.) `kimi-bedrock` → Moonshot's `kimi-k3` and
 `gpt-bedrock` → `gpt5.6-sol-bedrock` are the same shape.
 
 ## `aliases` vs `deprecated_aliases` is purely a display split
@@ -207,10 +269,10 @@ misleading. Keep genuinely current alternative spellings in `aliases`.
 `tests/test_model_profile_drift.py`. Each LangChain partner package ships a `_MODEL_PROFILES`
 table in `<package>/data/_profiles.py`, read via the private
 `_get_default_model_profile(name)` — a plain dict lookup, so no credentials, no client, no
-network. 9 of 20 entries resolve one (Bedrock 4/5, Azure 2/2, DeepSeek 2/2, Google 1/3); the
+network. 9 of 18 entries resolve one (Bedrock 4/4, Azure 2/2, DeepSeek 2/2, Google 1/2); the
 misses are re-hosts and direct vendor APIs whose wire ids the tables don't carry (all of NVIDIA,
 Z.AI, Moonshot and `bedrock_openai`) plus anything newer than the installed package —
-`gemini-3.7-flash` and `gemini-3.8-flash` are currently in that last group.
+`gemini-3.8-flash` is currently the only one in that last group.
 
 **Neither side is authoritative**: the tables are generated from the community-curated
 [models.dev](https://github.com/sst/models.dev), and our `supports_tool_use` is *empirical* — the

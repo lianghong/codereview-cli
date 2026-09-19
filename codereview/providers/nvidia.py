@@ -47,8 +47,9 @@ def suppress_nvidia_warnings() -> Generator[None, None, None]:
     Suppresses warnings about:
     - Non-standard parameters (chat_template_kwargs) — emitted from
       langchain_core.utils.utils with stacklevel=7, so module filter won't work;
-      we filter by message pattern only. (The legacy `timeout` filter is kept
-      defensively but `timeout` is no longer passed — see _create_model.)
+      we filter by message pattern only. The `timeout` filter still matters:
+      `timeout` is passed again (see _create_model), and it guards against a
+      package version that treats it as a non-default parameter.
     - Unknown model types
     - Structured output support
     - Reasoning <think> tags stripped from structured output
@@ -154,20 +155,41 @@ class NVIDIAProvider(TokenTrackingMixin, ModelProvider):
             )
 
         # Build model parameters.
-        # NOTE: do NOT pass `timeout` here. ChatNVIDIA has no `timeout` field,
-        # so the kwarg falls into model_kwargs and is merged into the request
-        # body — NVIDIA's server rejects unknown body params with HTTP 400
-        # ("Unsupported parameter(s): `timeout`"). The 202-polling timeout
-        # lives on the underlying _NVIDIAClient, which ChatNVIDIA builds without
-        # forwarding constructor kwargs, so passing it here never controlled
-        # polling anyway. provider_config.polling_timeout is retained for
-        # documentation/future use but is not wired through this version of
-        # langchain-nvidia.
+        #
+        # `timeout` IS passed, and it is load-bearing — but read the history
+        # before touching it, because the correct answer here has flipped.
+        #
+        # It used to be actively harmful: ChatNVIDIA had no `timeout` field, so
+        # the kwarg fell through into model_kwargs, got merged into the request
+        # body, and NVIDIA rejected it with HTTP 400 ("Unsupported parameter(s):
+        # `timeout`"). The code was therefore changed to omit it, with a note
+        # saying `polling_timeout` was retained "for documentation/future use".
+        #
+        # The package has since grown a real `timeout` kwarg, which it pops
+        # BEFORE `init_kwargs.update(kwargs)` and forwards to the underlying
+        # `_NVIDIAClient` (`chat_models.py`), so it can no longer reach the body.
+        # That left `polling_timeout` as dead config: parsed from the YAML,
+        # carried on NVIDIAConfig, and never reaching the client — the same
+        # invisible-knob hazard as NVIDIAConfig.max_retries, and just as silent,
+        # because the field has a default that looks like it works.
+        #
+        # What the default cost us: `_NVIDIAClient.timeout` defaults to 60 and
+        # is BOTH the 202-poll budget *and* the `session.post` read timeout
+        # (`_common.py`) — its docstring only mentions the former, which is what
+        # makes this easy to get wrong. Every NIM entry is now an
+        # always-reasoning model on the non-streaming path, so nothing comes back
+        # until the whole response is generated; at 60s a real review batch
+        # cannot finish. Verified live: `glm53-flash-nvidia` on a 7-line file
+        # failed every attempt with `ReadTimeout: read timeout=60` and burned
+        # 7m05s doing it, because ReadTimeout is retryable and each retry hit the
+        # same wall. This is Bedrock's `read_timeout: 1800` problem, arriving on
+        # NVIDIA for the same reason.
         model_params: dict[str, Any] = {
             "model": self.model_config.full_id,
             "api_key": SecretStr(str(self.provider_config.api_key)),
             "max_tokens": self.max_tokens,
             "callbacks": self.callbacks if self.callbacks else None,
+            "timeout": self.provider_config.polling_timeout,
             # Must be passed to the client to have any effect: an
             # InMemoryRateLimiter is only consulted by the LangChain model it is
             # attached to. Every other provider wires it here; NVIDIA built one
