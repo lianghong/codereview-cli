@@ -97,14 +97,15 @@ codereview ./src --model sonnet
 codereview ./monorepo --model haiku --max-files 1000
 
 # Free tier models for development/testing (NVIDIA NIM)
-codereview ./src --model dsv4-flash-nvidia  # DeepSeek-V4-Flash-0731 (1M context, fast)
-codereview ./src --model minimax-m3         # MiniMax M3 (multimodal MoE, 1M context)
+codereview ./src --model glm53-flash-nvidia  # GLM-5.3-Flash (multimodal MoE, 1M context, fast)
+codereview ./src --model glm53-nvidia        # GLM-5.3 (753B MoE, 1M context — very slow, not for CI)
+codereview ./src --model kimi-nvidia-3       # Kimi K3 (multimodal MoE, 1M context, thinking)
 
 # GPT-5.4 - Frontier reasoning, 1.05M context (Azure default)
 codereview ./src --model gpt
 
-# Kimi K2.6 - 1T MoE, 256K context (Moonshot direct; `kimi-azure` also routes here)
-codereview ./src --model kimi-k2.6
+# Kimi K3 - 2.8T MoE, 1M context (Moonshot direct; `kimi-azure` also routes here)
+codereview ./src --model kimi-k3
 
 # Gemini 3.1 Pro - Most advanced reasoning, 1M context (Google GenAI)
 codereview ./src --model gemini-3.1-pro
@@ -112,9 +113,6 @@ codereview ./src --model gemini-3.1-pro
 # Gemini 3.8 Flash - latest Flash, long-horizon engineering + agents (Google GenAI)
 # (`gemini-flash` resolves here)
 codereview ./src --model gemini-3.8-flash
-
-# Gemini 3.7 Flash - previous Flash; live-verified tool-use path
-codereview ./src --model gemini-3.7-flash
 ```
 
 **Output with Model Information**:
@@ -206,11 +204,11 @@ codereview ./src \
 **Cost Comparison**:
 - Opus 5 (100 files): ~$1.50
 - GPT-5.4 (100 files): ~$0.75
+- Kimi K3 direct (100 files): ~$0.60
 - Gemini 3.1 Pro (100 files): ~$0.50
 - Gemini 3.8 Flash (100 files): ~$0.32
 - Sonnet (100 files): ~$0.30
 - DeepSeek-V4-Pro direct (100 files): ~$0.18
-- Kimi K2.6 direct (100 files): ~$0.12
 - Haiku (500 files): ~$0.20
 - NVIDIA NIM models: free during preview
 
@@ -806,7 +804,7 @@ diff before.md after.md
    ```
 
 2. **Choose Cost-Effective Models**:
-   - **NVIDIA NIM free tier** (DeepSeek-V4-Flash-0731, MiniMax M3, Kimi K3) for development and CI experimentation
+   - **NVIDIA NIM free tier** (DeepSeek-V4-Flash-0731, Kimi K3) for development and CI experimentation
    - **GLM-5.3-Flash direct** for budget-conscious production reviews ($0.15/$0.50 list per M, 1M context)
    - **DeepSeek-V4-Flash direct** when off-peak pricing or native tool calling is preferred ($0.44/$1.32 peak, half-price off peak)
    - **Haiku** for CI/CD quality gates (fastest, cheapest Bedrock option since Qwen3 Coder Next was removed 2026-08-29)

@@ -10,7 +10,7 @@ the rest of the CLI.
 Models with ``supports_tool_use: false`` (e.g. kimi-k2.6, whose thinking
 mode is incompatible with the tool_choice that ``.with_structured_output``
 would set) are routed through prompt-based JSON parsing via
-``PydanticOutputParser`` — same pattern as GLM 5 on Bedrock and MiniMax M3
+``PydanticOutputParser`` — same pattern as GLM 5 on Bedrock and Kimi K3
 on NVIDIA.
 """
 
@@ -84,9 +84,11 @@ class MoonshotProvider(TokenTrackingMixin, ModelProvider):
 
         self.top_p = None
         self.max_tokens = 16000
+        self.reasoning_effort: str | None = None
 
         if model_config.inference_params:
             self.top_p = model_config.inference_params.top_p
+            self.reasoning_effort = model_config.inference_params.reasoning_effort
             if model_config.inference_params.max_output_tokens:
                 self.max_tokens = model_config.inference_params.max_output_tokens
 
@@ -126,6 +128,17 @@ class MoonshotProvider(TokenTrackingMixin, ModelProvider):
             model_params["temperature"] = self.temperature
         if self.top_p is not None:
             model_params["top_p"] = self.top_p
+
+        # ChatMoonshot carries a native `reasoning_effort` field, so this is a
+        # typed constructor kwarg rather than a model_kwargs/extra_body smuggle
+        # (contrast nvidia.py, which has to put it in the payload by hand).
+        # Forwarded because K3 defaults to `max` effort and bills reasoning
+        # inside completion_tokens at $15/M output; without this line the YAML's
+        # `reasoning_effort: high` would be parsed, validated, carried on
+        # InferenceParams and never sent — the invisible-knob hazard that made
+        # NVIDIAConfig.polling_timeout dead config.
+        if self.reasoning_effort is not None:
+            model_params["reasoning_effort"] = self.reasoning_effort
 
         base_model = ChatMoonshot(**model_params)
 

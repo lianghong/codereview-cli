@@ -292,56 +292,43 @@ providers:
       # cross a provider and a billing boundary (billed Bedrock -> free NIM tier)
       # while claiming to be Bedrock. Joins the already-deleted `mm25`/`mm2.7`
       # names from the earlier MiniMax passes.
+      #
+      # 2026-09-19 UPDATE: the successor named above is gone too — NIM
+      # end-of-lifed `minimaxai/minimax-m3` on 2026-09-09, so NO MiniMax model
+      # remains anywhere in this registry and every MiniMax spelling now fails
+      # fast. `minimax.minimax-m2.5` on Bedrock was still ACTIVE when cut and
+      # deliberately stays out of DEAD_UPSTREAM_FULL_IDS, so it is the one
+      # re-add candidate if a MiniMax is wanted again.
 
-      # GLM 5 Model (Zhipu AI via Bedrock)
-      # Frontier-class model optimized for systems engineering
-      # 200K context window, 128K max output
-      # Best for: Complex reasoning, long-horizon agentic tasks
-      - id: glm5-bedrock
-        full_id: zai.glm-5
-        name: GLM 5 (Bedrock)
-        aliases:
-          - glm-5-bedrock
-        # Migrated here 2026-08-29 from the removed GLM-5.2 (NVIDIA) entry,
-        # whose endpoint NVIDIA end-of-lifed 2026-08-21 (see the removal note
-        # in the nvidia block). These version-neutral spellings say GLM *5*,
-        # and this entry is the GLM 5 they name — so unlike the NVIDIA-suffixed
-        # GLM names, which were deleted, these resolve to the model they
-        # advertise. Kept back-compat-only rather than promoted to `aliases`
-        # because reaching them now means a different provider and a billed
-        # endpoint instead of NIM's free tier. Hidden from --list-models
-        # unless --verbose.
-        deprecated_aliases:
-          - glm5
-          - glm-5
-        pricing:
-          # TBD - update when AWS publishes
-          input_per_million: 0.00
-          output_per_million: 0.00
-        inference_params:
-          # Lowered from 1.0 for non-creative code review.
-          # Model docs recommend 0.5-0.7 for structured tasks.
-          default_temperature: 0.5
-          default_top_p: 0.95
-          max_output_tokens: 128000
-        context_window: 200000
-        # GLM-5 is a thinking model with reasoning on by default
-        # (reasoning_effort defaults to max), so a forced tool_choice is
-        # auto-downgraded / returned as text while thinking — the same
-        # incompatibility observed on the retired GLM-5.2-on-Z.AI entry.
-        # Assume prompt-based JSON parsing until a live run proves tool-use.
-        supports_tool_use: false
-        capabilities:
-          - reasoning
-          - code_review
-          - code_generation
-          - agentic_tasks
-          - tool_use
-        notes: >-
-          Frontier-class model optimized for complex systems
-          engineering and long-horizon agentic tasks,
-          multi-step reasoning, advanced coding, tool-augmented
-          workflows. Prompt-based JSON parsing (thinking on by default).
+      # GLM 5 (Bedrock) — `zai.glm-5` — removed 2026-09-19 as CURATION, at
+      # explicit request. This was the GLM re-host on Bedrock; the GLM family
+      # is now served by its canonical owner (Z.AI direct, `glm` /
+      # `zhipuai/glm-5.3`) and by the free NIM re-host (`glm53-nvidia`), both
+      # of which are a full point release ahead of GLM 5 and both verified
+      # live 2026-09-19. The entry was a strictly older model on a third
+      # provider.
+      #
+      # NOT an upstream EOL, and deliberately NOT added to
+      # DEAD_UPSTREAM_FULL_IDS: `zai.glm-5` was live in the configured
+      # us-east-1 at the last check (2026-08-29, ListFoundationModels) and
+      # nothing suggests otherwise. It could not be re-verified at removal
+      # time — no `aws` CLI in the environment where this ran — which is
+      # exactly why it stays out of the dead list: that list means "pointing
+      # an entry here is a bug", and an unverified absence is not evidence.
+      # This is the re-add candidate if a GLM on Bedrock is wanted again.
+      #
+      # Alias disposition: `glm5` and `glm-5` MIGRATED onto the Z.AI-direct
+      # `zhipuai/glm-5.3` as deprecated_aliases. They name GLM *5* without
+      # pinning a minor version, and GLM-5.3 is a GLM 5 — the `gemini-3-flash`
+      # case, not the `sonnet4.6` case. Both the old and new targets are
+      # billed, so this does not repeat the Qwen-on-NVIDIA free-to-billed
+      # trap. One wrinkle recorded because it will look wrong later: Z.AI's
+      # catalog *does* serve a distinct `glm-5`, so the alias `glm-5` resolves
+      # to 5.3 rather than to the upstream model of the same name. That is the
+      # deliberate cost of keeping the name working; `--list-models --verbose`
+      # discloses it. The provider-explicit `glm-5-bedrock` and the entry id
+      # `glm5-bedrock` were DELETED — the provider suffix names a provider
+      # this model is no longer on, and no other entry may answer to it.
 
   # Azure OpenAI Provider
   azure_openai:
@@ -442,8 +429,18 @@ providers:
   nvidia:
     api_key: "${NVIDIA_API_KEY}"
     # base_url: "${NVIDIA_BASE_URL}"
-    # 15 min for 202 polling
-    polling_timeout: 900
+    # 30 min. This is BOTH the 202-poll budget and the `session.post` read
+    # timeout (_NVIDIAClient.timeout is one field serving both, despite a
+    # docstring naming only polling), so it is the ceiling on how long a single
+    # batch may take. 900 was not enough: `glm53-nvidia` completed a 7-line
+    # smoke review in 19m0s, which only finished because a ReadTimeout is
+    # retryable and the retry succeeded. Same trap as Bedrock's
+    # `read_timeout: 1800` and the same number for the same reason — an
+    # always-reasoning model on a non-streaming path emits no bytes until the
+    # whole response is generated, so a short read timeout is indistinguishable
+    # from an outage. Raising this costs nothing on a healthy request: it is a
+    # deadline, not a delay.
+    polling_timeout: 1800
     # Retry 504/502/503 up to 5 times
     max_retries: 5
     models:
@@ -467,76 +464,30 @@ providers:
       # forwarded by the NVIDIA provider, and still covered by
       # tests/test_nvidia_provider.py — it simply has no live user here now.
 
-      # MiniMax M2.7 (via NVIDIA)
-      # MoE: 230B total, 10B active (62 layers,
-      # 256 experts, 8 activated per token)
-      # 204,800 input context length
-      # Best for: Complex software engineering,
-      # agentic tool use, long-horizon workflows
-      # MiniMax M2.7 (NVIDIA) removed 2026-07-25: superseded by MiniMax M3
-      # below (1M context vs 204K, multimodal, same free endpoint). The M2.7
-      # endpoint is still live on NIM, so re-add from git history if needed.
-      # M3 is the only MiniMax on NIM; the M2.7/M2.5 aliases were deleted
-      # 2026-07-25 rather than migrated onto it.
-
-      # MiniMax M3 Preview (via NVIDIA)
-      # Multimodal MoE vision-language model:
-      # 428B total, ~22B active per token (A22B),
-      # ViT vision encoder for image/video; text-only output
-      # 1M-token input context; long-form video up to 30 min
-      # Best for: long-horizon coding (8+ hrs), agentic tool
-      # use, multimodal + long-context reasoning
-      # Note: reasoning/thinking model — routes through
-      #   prompt-based JSON parsing (supports_tool_use: false)
-      #   per the "assume prompt-parsing until a live run proves
-      #   tool-use" rule for new reasoning models.
-      - id: minimax-m3-nvidia
-        full_id: minimaxai/minimax-m3
-        name: MiniMax M3 (NVIDIA)
-        # Generation-neutral `minimax`/`mm` names track the current generation.
-        # M3-only names. The inherited M2.7/M2.5 aliases were deleted
-        # 2026-07-25 (see the note below the alias list).
-        aliases:
-          - minimax-m3
-          - mm3-nvidia
-          - mm3
-        # 2026-07-25: the M2.5 / M2.7 back-compat aliases (minimax-m2.5,
-        # mm25, minimax-m2.5-nvidia, mm2.5-nvidia, minimax-m2.7,
-        # minimax-m2.7-nvidia, mm2.7-nvidia, mm27) were deleted, not migrated -
-        # they named models whose NIM endpoints are gone. Use `minimax-m3`.
-        pricing:
-          # Free/non-commercial NVIDIA NIM trial endpoint
-          input_per_million: 0.00
-          output_per_million: 0.00
-        inference_params:
-          # MiniMax house recommendation (matches M2.7):
-          # temperature=1.0, top_p=0.95, top_k=40
-          default_temperature: 1.0
-          default_top_p: 0.95
-          default_top_k: 40
-          # Headroom for thinking tokens + report (matches M2.7)
-          max_output_tokens: 128000
-          # Interleaved thinking for deeper code analysis
-          enable_thinking: true
-          clear_thinking: false
-        # Input Context Length (ISL): 1,000,000
-        context_window: 1000000
-        # Reasoning model: forced tool_choice while thinking is
-        # unproven on this endpoint — prompt-based JSON parsing
-        supports_tool_use: false
-        architecture: "MoE (428B total, ~22B active, multimodal)"
-        capabilities:
-          - code_review
-          - code_generation
-          - reasoning
-          - agentic_tasks
-          - thinking
-          - multimodal
-        notes: >-
-          Multimodal MoE vision-language model (text/image/video
-          in, text out), 1M-token context, long-form video to
-          30 min, long-horizon coding (8+ hrs). Non-commercial
-          NVIDIA NIM trial endpoint. Prompt-based JSON parsing.
+      # MiniMax M2.7 (NVIDIA) removed 2026-07-25 (superseded by M3) and
+      # MiniMax M3 (NVIDIA) removed 2026-09-19 — the whole MiniMax-on-NIM
+      # lineage is dead, and with it every MiniMax model in this registry:
+      #   minimaxai/minimax-m2.5  NIM deprecated 2026-05-12
+      #   minimaxai/minimax-m2.7  still live when dropped as superseded
+      #   minimaxai/minimax-m3    HTTP 410 Gone, EOL 2026-09-09
+      # Probed 2026-09-19: `GET /v1/models` returns ZERO ids under the
+      # `minimax` prefix, and a completion against `minimaxai/minimax-m3`
+      # answers 410 with NVIDIA's own message ("has reached its end of life on
+      # 2026-09-09T09:00:00Z"). A dead endpoint, not a judgement call. NIM
+      # publishes no MiniMax successor, and the Bedrock re-host
+      # (`minimax.minimax-m2.5`) was cut in the 2026-08-29 curation pass, so
+      # there is nothing MiniMax-shaped anywhere to migrate onto.
+      #
+      # Every identifier was DELETED, not redirected: `minimax-m3`, `mm3-nvidia`,
+      # `mm3` and the entry id `minimax-m3-nvidia`. Same reasoning as
+      # `step-flash` and the Qwen family below — a MiniMax name resolving to a
+      # non-MiniMax model is worse than the error a human reads and fixes.
+      #
+      # What the registry loses: its only `enable_thinking`/`clear_thinking`
+      # user and its only multimodal NIM entry besides `kimi-k3-nvidia`, which
+      # now carries the multimodal-on-NIM slot alone (also free, 1,048,576
+      # context vs M3's 1,000,000, also prompt-path). Re-add from git history if
+      # NVIDIA publishes a MiniMax successor.
 
       # Qwen3 Coder 480B (NVIDIA) removed 2026-07-25 and Qwen3.5 397B A17B
       # (NVIDIA) removed 2026-08-29 — the whole Qwen-on-NIM lineage is dead:
@@ -559,123 +510,73 @@ providers:
       # NO Qwen model remains anywhere in the registry - see the Qwen removal
       # note in the bedrock block. Every Qwen spelling now fails fast.
 
-      # DeepSeek-V4-Pro-0813 (via NVIDIA) - DeepSeek AI
-      # MoE: 1.65T total, 49B active parameters
-      # Hybrid attention (CSA + HCA) + Manifold-Constrained
-      # Hyper-Connections + attached DSpark speculative-decoding module
-      # Best for: Long-context coding, agentic workflows
+      # DeepSeek-V4-Pro (NVIDIA) removed 2026-09-19 — NIM end-of-lifed the
+      # *dated GA* id this entry was re-pointed onto only three weeks earlier:
+      #   deepseek-ai/deepseek-v4-pro        EOL 2026-08-07 (the preview)
+      #   deepseek-ai/deepseek-v4-pro-0813   EOL 2026-09-14, HTTP 410 Gone
+      # Probed 2026-09-19 against `GET /v1/models` (absent) and a completion
+      # (410, "has reached its end of life on 2026-09-14T08:00:00Z"). The only
+      # `deepseek-ai/*` ids NIM still serves are `deepseek-v4-flash-0731` (the
+      # sibling entry below) and the ancient `deepseek-coder-6.7b-instruct`, so
+      # there is no Pro-tier successor on this provider. Note the pattern: NIM
+      # retired the GA release faster than the preview it replaced — a dated id
+      # here is not a stable target, so re-probe this pair whenever you touch
+      # this file.
       #
-      # 2026-08-29: re-pointed from `deepseek-ai/deepseek-v4-pro` (the
-      #   preview), which NVIDIA end-of-lifed 2026-08-07 and which now
-      #   answers HTTP 410 Gone — a dead endpoint, not merely superseded.
-      #   `-0813` is DeepSeek's GA release of the same model line ("It
-      #   supersedes the preview model" per the card), so this entry's id
-      #   and aliases carry over unchanged rather than being migrated: the
-      #   id is generation-neutral and the successor is a drop-in.
-      #   Verified against GET /v1/models and a live completion.
-      # Note: the card now names the reasoning levels low / high / max —
-      #   the preview's Non-think / Think-High / Think-Max naming is gone.
-      #   Non-thinking is the endpoint's default (verified live: no
-      #   `reasoning_content` in the reply without a `reasoning_effort`),
-      #   and `chat_template_kwargs.thinking: false` is still accepted, so
-      #   it is kept below to state the intent rather than lean on a
-      #   default. Non-think is also what keeps this entry on the tool-use
-      #   path: a forced `tool_choice` returned a real `tool_calls` entry.
-      - id: deepseek-v4-pro-nvidia
-        full_id: deepseek-ai/deepseek-v4-pro-0813
-        name: DeepSeek-V4-Pro-0813 (NVIDIA)
-        # NVIDIA-suffixed aliases only — the bare names `deepseek-v4`,
-        # `deepseek-v4-pro`, `dsv4` are now claimed by the direct DeepSeek
-        # API provider (canonical owner of the model).
-        aliases:
-          - ds-v4-nvidia
-          - dsv4-nvidia
-          - deepseek-v4-nvidia
-        pricing:
-          # Free endpoint on build.nvidia.com
-          input_per_million: 0.00
-          output_per_million: 0.00
-        inference_params:
-          # NVIDIA model card evaluates -0813 at temp=1.0, top_p=0.95
-          default_temperature: 1.0
-          default_top_p: 0.95
-          max_output_tokens: 16384
-          # Non-think mode for deterministic code review
-          # (reasoning_effort high/max would add reasoning overhead;
-          # reviewer prompt is sufficiently constrained). Also what
-          # keeps the forced tool_choice of the tool-use path working.
-          thinking: false
-        context_window: 1000000
-        architecture: "MoE (1.65T total, 49B active)"
-        capabilities:
-          - code_review
-          - code_generation
-          - reasoning
-          - agentic_tasks
-          - tool_use
-        notes: >-
-          Official GA release superseding the V4-Pro preview.
-          1M-token context, hybrid Compressed Sparse + Heavily
-          Compressed Attention, Manifold-Constrained
-          Hyper-Connections, DSpark speculative decoding,
-          low/high/max reasoning effort. MIT-licensed.
+      # All three aliases were DELETED, not migrated onto the surviving Flash
+      # entry: `ds-v4-nvidia`, `dsv4-nvidia`, `deepseek-v4-nvidia`, plus the
+      # entry id `deepseek-v4-pro-nvidia`. The names look version-neutral, and
+      # `dsv4-flash-nvidia` is the same vendor, same generation, same provider
+      # and the same free tier — but Pro and Flash shipped as SEPARATE
+      # concurrent entries here, so `dsv4-nvidia` has always meant "the Pro one"
+      # in explicit opposition to `dsv4-flash-nvidia`. Redirecting it would
+      # silently hand a caller who chose the 1.65T flagship the 284B budget
+      # model. Use `dsv4-flash-nvidia` (free, on NIM) or `deepseek-v4-pro`
+      # (DeepSeek direct, the family's canonical owner, same 1.65T model —
+      # but BILLED at $1.32/$3.96 per M).
+      #
+      # Evidence that outlives the entry: `thinking: false` on Pro-0813 was
+      # *not* load-bearing (it reasoned only when asked), whereas on
+      # Flash-0731 it is — see the sibling entry's note, which is now the only
+      # record of that contrast.
 
-      # DeepSeek-V4-Flash-0731 (via NVIDIA) - DeepSeek AI
-      # MoE: 284B total, 13B active parameters, 1M token context
-      # Best for: Fast, high-volume code review; cheap CI runs
+      # DeepSeek-V4-Flash (NVIDIA) removed 2026-09-19 — and this one was
+      # removed on a SCHEDULED sunset, not a 410, which is a first for this
+      # file. `deepseek-ai/deepseek-v4-flash-0731` still answered HTTP 200 the
+      # day it was dropped, but the response carried NVIDIA's own
+      # machine-readable sunset in-band:
       #
-      # 2026-08-29: re-pointed from `deepseek-ai/deepseek-v4-flash`
-      #   alongside the V4-Pro entry above — NVIDIA end-of-lifed the
-      #   undated preview id on the same date (2026-08-07) and it answers
-      #   HTTP 410 Gone. `-0731` is the live dated release; same drop-in
-      #   reasoning, so id and aliases carry over unchanged.
-      # Note: `thinking: false` below is LOAD-BEARING here, and this entry
-      #   differs from V4-Pro-0813 on exactly this point. Verified live
-      #   2026-08-29: Flash-0731 reasons *by default* (two probes returned
-      #   `reasoning_content`, one burning the whole 400-token budget on
-      #   reasoning and returning no content at all), whereas Pro-0813 does
-      #   not. With `thinking: false` the reply carries no
-      #   `reasoning_content` **and** a forced `tool_choice` comes back as a
-      #   real `tool_calls` entry — which is what makes the tool-use path
-      #   (no `supports_tool_use` override) correct for this entry. Remove
-      #   the flag and this becomes a thinking model on the forced
-      #   `tool_choice` path: the project's classic literal-text failure,
-      #   with reasoning also eating the 16384-token output budget.
-      - id: deepseek-v4-flash-nvidia
-        full_id: deepseek-ai/deepseek-v4-flash-0731
-        name: DeepSeek-V4-Flash-0731 (NVIDIA)
-        # NVIDIA-suffixed aliases only — the bare names `deepseek-v4-flash`,
-        # `dsv4-flash`, `dsv4f` are claimed by the direct DeepSeek API
-        # provider (canonical owner of the model).
-        aliases:
-          - dsv4-flash-nvidia
-          - ds-v4-flash-nvidia
-        pricing:
-          # Free endpoint on build.nvidia.com
-          input_per_million: 0.00
-          output_per_million: 0.00
-        inference_params:
-          # Mirror V4-Pro NVIDIA: model card evaluates at temp=1.0, top_p=0.95
-          default_temperature: 1.0
-          default_top_p: 0.95
-          max_output_tokens: 16384
-          # Required, not cosmetic — see the note above the entry: this is
-          # what turns off Flash-0731's default-on reasoning, which in turn
-          # is what keeps the forced tool_choice of the tool-use path
-          # working and stops reasoning from consuming max_output_tokens.
-          thinking: false
-        context_window: 1000000
-        architecture: "MoE (284B total, 13B active)"
-        capabilities:
-          - code_review
-          - code_generation
-          - reasoning
-          - agentic_tasks
-          - tool_use
-        notes: >-
-          1M-token context, fast/cheap sibling of V4-Pro-0813 for
-          high-volume review and CI. MIT-licensed, low/high/max
-          reasoning effort, native tool calling on NVIDIA NIM.
+      #   deprecation: 2026-09-21T08:00:00Z
+      #
+      # Probe the HEADERS, not just the status. A 200 with a `deprecation`
+      # header is a dead entry with a date on it, and the usual "verify against
+      # the live endpoint" check reads it as healthy. Worth knowing that NIM
+      # emits this: it is the only advance warning this registry has ever got.
+      #
+      # With the Pro-0813 sibling end-of-lifed 2026-09-14 (note above), NIM now
+      # serves no reviewable DeepSeek at all — only the ancient
+      # `deepseek-coder-6.7b-instruct`. The model itself stays reachable from
+      # its canonical owner as `dsv4-flash` on the DeepSeek direct provider,
+      # but that is BILLED where this was free.
+      #
+      # All three identifiers were DELETED, not migrated: the entry id
+      # `deepseek-v4-flash-nvidia` plus `dsv4-flash-nvidia` and
+      # `ds-v4-flash-nvidia`. Every one carries the `-nvidia` suffix, and the
+      # only place to send them is the billed DeepSeek-direct entry on a
+      # different provider — the same "silently moves the user from a free
+      # endpoint to a billed one" case that deleted the Qwen-on-NVIDIA names.
+      #
+      # Evidence worth preserving, since this entry was its only record:
+      # `thinking: false` was LOAD-BEARING here and NOT on Pro-0813, which is
+      # why this entry alone among the NIM thinking models sat on the tool-use
+      # path. Verified live 2026-08-29: Flash-0731 reasoned *by default* (two
+      # probes returned `reasoning_content`, one burning a whole 400-token
+      # budget on reasoning and returning no content at all); with
+      # `thinking: false` the reply carried no `reasoning_content` **and** a
+      # forced `tool_choice` came back as a real `tool_calls` entry. Pro-0813
+      # reasoned only when asked. If NVIDIA ships a V4-Flash successor, re-probe
+      # that flag rather than assuming it carries over — and note the free
+      # high-volume slot it vacated is now held by `glm53-flash-nvidia` below.
 
       # Kimi K3 (via NVIDIA) - Moonshot AI flagship
       # MoE: 2.8T total, 104B active, 896 experts (16 routed + 2 shared
@@ -759,9 +660,16 @@ providers:
 
       # GLM-5.2 (NVIDIA) removed 2026-08-29: `z-ai/glm-5.2` is GONE from the
       # live NIM catalog and a completion answers HTTP 410 — NVIDIA end-of-lifed
-      # it 2026-08-21. NIM now serves no `z-ai/*` model at all, closing out the
-      # whole GLM-on-NVIDIA lineage (z-ai/glm5 deprecated 2026-04-20 ->
-      # z-ai/glm-5.1 deprecated ~2026-07 -> z-ai/glm-5.2 EOL 2026-08-21).
+      # it 2026-08-21, closing out the GLM-on-NVIDIA lineage as it then stood
+      # (z-ai/glm5 deprecated 2026-04-20 -> z-ai/glm-5.1 deprecated ~2026-07 ->
+      # z-ai/glm-5.2 EOL 2026-08-21).
+      #
+      # 2026-09-19 UPDATE: GLM is BACK on NIM — `z-ai/glm-5.3` and
+      # `z-ai/glm-5.3-flash` are listed and both answer HTTP 200 (entries
+      # below). That does NOT revive any 5.2 name: the deletions below stand,
+      # because every one of them spells a version GLM-5.3 is not. This is the
+      # counter-example to reading a whole-prefix disappearance as permanent —
+      # "NIM serves no `z-ai/*` at all" was true for three weeks.
       #
       # The NVIDIA-suffixed names were DELETED (`glm52` - the entry id - plus
       # `glm52-nvidia`, `glm5.2-nvidia`, `glm-5.2-nvidia`, `glm5-nvidia`):
@@ -775,6 +683,136 @@ providers:
       # to reach, which is why they stay `deprecated_aliases` — resolvable, but
       # not advertised by --list-models. For a current direct GLM use Z.AI's
       # `glm` / `zhipuai/glm-5.3`; version-specific 5.2 names are retired.
+
+      # GLM-5.3 (via NVIDIA) — Z.ai text-only flagship, added 2026-09-19.
+      # MoE: 753B total / ~40B active, 78 layers (3 dense + 75 MoE), 256 routed
+      # experts top-8 + 1 shared, DeepSeek Sparse Attention (2,048 tokens per
+      # query), 1 MTP draft layer. Same base model as GLM-5.2 — every gain came
+      # from post-training. Best for: repo-scale agentic coding and whole-repo
+      # review at 1M context.
+      #
+      # Verified live 2026-09-19: listed by `GET /v1/models` and a completion
+      # returns HTTP 200 with no `deprecation` header.
+      #
+      # LATENCY WARNING, measured not guessed: a 13-token prompt at
+      # `reasoning_effort=low` capped to 8 output tokens took **4m50s**
+      # wall-clock. This endpoint serves an NVFP4-quantized checkpoint on
+      # two-node GB300 workers with CPU KV-cache offloading, and the
+      # non-streaming path returns nothing until generation finishes, so a real
+      # review batch is far slower than every other entry in this file: a
+      # **7-line** single-file review measured **19m0s** end to end (exit 0, a
+      # genuine structured report). That is the floor, not the average — it is
+      # what this endpoint costs to review almost nothing. The provider-level
+      # `polling_timeout: 1800` above exists for this entry; at the old 900 the
+      # same run only survived on a ReadTimeout retry. Also expect
+      # NVIDIA-gateway 504s, which `max_retries: 5` with the 4s 504 base wait is
+      # there to absorb. Prefer `glm-5.3-flash-nvidia` below (3m03s on the same
+      # file) for anything resembling a CI run.
+      - id: glm-5.3-nvidia
+        full_id: z-ai/glm-5.3
+        # NVIDIA-suffixed aliases only — the bare `glm`, `glm-5.3`, `glm5.3`
+        # are claimed by the Z.AI direct provider, canonical owner of the GLM
+        # family. Deliberately NOT reusing `glm5-nvidia`/`glm5.2-nvidia` etc:
+        # those were deleted with the 5.2 entry and must keep failing fast.
+        name: GLM-5.3 (NVIDIA)
+        aliases:
+          - glm53-nvidia
+          - glm5.3-nvidia
+        pricing:
+          # Free endpoint on build.nvidia.com
+          input_per_million: 0.00
+          output_per_million: 0.00
+        inference_params:
+          # Mirror the Z.AI-direct GLM-5.3 entry: temperature 1.0, and omit
+          # top_p so the server keeps its documented default.
+          default_temperature: 1.0
+          max_output_tokens: 32768
+          # The card's default is `max`. Pin `high` instead: reasoning bills
+          # inside completion_tokens on NIM, so max effort eats the output
+          # budget the report needs, and this endpoint is slow enough already
+          # (see the latency warning). `max` is not expressible here anyway —
+          # InferenceParams.reasoning_effort is Literal[none|low|medium|high].
+          reasoning_effort: high
+          # NOTE: `clear_thinking: true` is deliberately NOT set even though
+          # both cards recommend it "for chat scenarios". It clears reasoning
+          # from PRIOR turns, and a review request is single-turn, so it would
+          # be an inert knob — and this file already carries the cost of one of
+          # those (see the reasoning_effort note in the Mistral removal block).
+        # Card figure: 1,048,576 (the Z.AI-direct sibling rounds to 1,000,000).
+        context_window: 1048576
+        # Reasoning is always on with no off switch — the constant
+        # forced-tool_choice-while-thinking profile, same as Kimi K3 above and
+        # both Z.AI-direct GLM-5.3 entries. The card's "tool calls are emitted
+        # in OpenAI-compatible form" is not evidence that a FORCED tool_choice
+        # survives thinking, which is what .with_structured_output sets, so the
+        # assume-prompt-parsing rule applies. Flip to true only if a live
+        # review run proves otherwise.
+        supports_tool_use: false
+        architecture: "MoE (753B total, ~40B active, DeepSeek sparse attention)"
+        capabilities:
+          - code_review
+          - code_generation
+          - reasoning
+          - agentic_tasks
+          - thinking
+          - long_horizon_agentic
+        notes: >-
+          Z.ai text-only flagship on NIM's free tier, 1M-token context,
+          always-on reasoning at low/high/max effort. Leads CyberGym for
+          vulnerability discovery, which makes it a strong security reviewer.
+          MIT-like licence (a Model-as-a-Service operator above $10B revenue
+          needs a Z.ai security review). Served NVFP4-quantized, so outputs
+          may differ from full precision in edge cases, and it is by far the
+          slowest endpoint in this registry. Prompt-based JSON parsing.
+
+      # GLM-5.3-Flash (via NVIDIA) — first natively multimodal GLM-5, added
+      # 2026-09-19. MoE: 320B total / 18B active, 45 layers in a hybrid
+      # attention stack (34 KDA linear-attention + 11 DeepSeek-sparse, every
+      # fourth), Manifold-Constrained Hyper-Connections, 288 routed experts
+      # top-8, a vision encoder, 1 MTP layer; 30T-token multimodal
+      # pre-training. Best for: high-volume review and CI, multimodal review
+      # (text + up to 8 images in, text out).
+      #
+      # Verified live 2026-09-19: HTTP 200, no `deprecation` header, and
+      # `reasoning_effort` accepted. Answered in seconds, unlike its sibling
+      # above — native FP8 on 8xH100 rather than NVFP4 on GB300.
+      - id: glm-5.3-flash-nvidia
+        full_id: z-ai/glm-5.3-flash
+        name: GLM-5.3-Flash (NVIDIA)
+        # NVIDIA-suffixed only; `glm-flash`, `glm53-flash`, `glm5.3-flash`
+        # belong to the Z.AI direct entry.
+        aliases:
+          - glm53-flash-nvidia
+          - glm-flash-nvidia
+        pricing:
+          # Free endpoint on build.nvidia.com
+          input_per_million: 0.00
+          output_per_million: 0.00
+        inference_params:
+          # Mirror the Z.AI-direct GLM-5.3-Flash entry.
+          default_temperature: 1.0
+          default_top_p: 0.95
+          max_output_tokens: 32768
+          # Same reasoning as the sibling above.
+          reasoning_effort: high
+        context_window: 1048576
+        # Always-on reasoning; see the sibling entry for why the prompt path.
+        supports_tool_use: false
+        architecture: "MoE (320B total, 18B active; hybrid sparse/linear attention, multimodal)"
+        capabilities:
+          - code_review
+          - code_generation
+          - reasoning
+          - agentic_tasks
+          - thinking
+          - multimodal
+        notes: >-
+          Native multimodal GLM-5 (text/image in, text out), 1M-token context,
+          always-on reasoning at low/high/max effort, and roughly a tenth of
+          GLM-5.2's price on the vendor's own API — free here on NIM's trial
+          tier. The fast, cheap NIM default for high-volume review; use
+          `glm53-nvidia` when you want the 753B flagship and can wait. MIT.
+          Prompt-based JSON parsing.
 
       # Step 3.5 Flash (NVIDIA) removed 2026-07-25 and Step 3.7 Flash (NVIDIA)
       # removed 2026-08-29 — no StepFun model remains on NIM:
@@ -837,6 +875,20 @@ providers:
           - gemini-flash
           - gemini38-flash
           - gemini3.8-flash
+        # Back-compat only: resolves, but hidden from --list-models
+        # (see --list-models --verbose). Absorbed 2026-09-19 from the removed
+        # Gemini 3.7 Flash entry, which had inherited them from 3.6 Flash
+        # (2026-08-29) and before that from Gemini 3 Flash Preview
+        # (2026-07-25). They state generation *3* without pinning a minor, and
+        # 3.8 Flash is a generation-3 Flash at the same $1.50/$7.50, the same
+        # 1M context and the same 64K output cap, so following them forward
+        # does not change what the name claims. Deprecated rather than
+        # advertised because all three were minted for models several
+        # releases back.
+        deprecated_aliases:
+          - gemini-3-flash
+          - gemini3-flash
+          - g3flash
         pricing:
           # Verified: ai.google.dev/gemini-api/docs/pricing (2026-09-09).
           # Record the standard rate rather than the introductory
@@ -867,69 +919,36 @@ providers:
           Sampling params are deprecated and omitted. Uses prompt-based
           structured output until a live run proves tool use while thinking.
 
-      # Gemini 3.7 Flash - previous Flash generation (August 2026)
-      # 1M token context, 64K output, thinking at low/medium/high
-      - id: gemini-3.7-flash
-        full_id: gemini-3.7-flash
-        name: Gemini 3.7 Flash
-        aliases:
-          - gemini37-flash
-          - gemini3.7-flash
-        # Back-compat only: resolves, but hidden from --list-models
-        # (see --list-models --verbose).
-        # Inherited 2026-08-29 from the removed Gemini 3.6 Flash entry, which had
-        # in turn absorbed them from Gemini 3 Flash Preview (2026-07-25). They
-        # state generation *3*, and 3.7 Flash is a generation-3 Flash at the same
-        # $1.50/$7.50, same 1M context and same 64K output - so unlike a
-        # `sonnet4.6`-style name, following them forward doesn't change what the
-        # name claims. Deprecated rather than advertised because two of the three
-        # were minted for a model two releases back.
-        deprecated_aliases:
-          - gemini-3-flash
-          - gemini3-flash
-          - g3flash
-        pricing:
-          # Verified: ai.google.dev/gemini-api/docs/pricing (2026-08-17).
-          # Same standard rate as 3.6 Flash. Google is running an introductory
-          # discount - $0.75/$3.75 through 2026-12-31, reverting to
-          # $1.50/$7.50 on 2027-01-01 - and the standard rate is what's
-          # recorded, matching the 3.6 entry. Estimates therefore over-state
-          # cost during the promo rather than under-stating it after it ends.
-          input_per_million: 1.50
-          output_per_million: 7.50
-        inference_params:
-          # temperature/top_p/top_k are DEPRECATED from Gemini 3.6 Flash onward:
-          # the API ignores them today and Google documents an HTTP 400 for
-          # future model generations, so all three are omitted deliberately.
-          # The Google provider passes allow_none=True to _resolve_temperature,
-          # so an absent default_temperature means no temperature is sent at
-          # all. This applies to EVERY Gemini entry added from here on (3.1 Pro
-          # predates the deprecation and keeps its own).
-          max_output_tokens: 65536
-        context_window: 1000000
-        capabilities:
-          - code_review
-          - reasoning
-          - multimodal
-          - tool_use
-          - agentic_tasks
-          - computer_use
-          - thinking
-        notes: >-
-          Previous Flash generation (August 2026), built for complex
-          coding, agentic workflows and reliable multi-step execution. 1M-token
-          context (1,048,576), up to 64K output. Thinking supported at low,
-          medium and high; "minimal" is rejected with an error. Sampling params
-          (temperature/top_p/top_k) are deprecated and omitted. Keeps the
-          tool-use path (no supports_tool_use override): the model card lists
-          Structured outputs and Function calling as Supported, and three live
-          runs on 2026-08-17 each returned a valid CodeReviewReport with
-          parsing_error None - each with output_token_details.reasoning > 0, so
-          thinking was active on the runs that succeeded, which is the
-          condition the assume-prompt-parsing rule exists for.
-
-      # Gemini 3 Flash Preview removed 2026-07-25 and Gemini 3.6 Flash removed
-      # 2026-08-29; Gemini 3.7 and 3.8 Flash are the live Flash entries:
+      # Gemini 3.7 Flash — `gemini-3.7-flash` — removed 2026-09-19 as
+      # CURATION, at explicit request. Verified still live the same day
+      # (present in `GET /v1beta/models`; a completion returned 503
+      # "experiencing high demand", which is load, not deprecation). Removed
+      # because 3.8 Flash supersedes it at the IDENTICAL $1.50/$7.50, identical
+      # 1M context and identical 64K output cap — the same
+      # strict-duplicate-of-a-newer-sibling reasoning that retired 3.6 Flash.
+      #
+      # ⚠️ COST OF THIS REMOVAL, recorded because it cannot be recovered by
+      # reading the remaining entries: 3.7 Flash was the ONLY entry in the
+      # registry that had won `supports_tool_use: true` back with a live run
+      # while thinking (three runs, 2026-08-17, each a valid CodeReviewReport
+      # with parsing_error None and output_token_details.reasoning > 0). It was
+      # the documented bar for ever flipping 3.8 Flash or either GLM-5.3 entry
+      # off the prompt path, and the reference case for "a thinking model CAN
+      # keep the tool-use path". With it gone, no entry anywhere in this file
+      # demonstrates that; the evidence survives only in git history and in
+      # docs/structured-output.md. Re-establishing the bar means re-running
+      # that A/B, not citing 3.7.
+      #
+      # Alias disposition: the generation-3 names `gemini-3-flash`,
+      # `gemini3-flash` and `g3flash` MIGRATED onto gemini-3.8-flash as
+      # deprecated_aliases — 3.8 is a generation-3 Flash at the same price and
+      # the same limits, so the names stay truthful, exactly as they did when
+      # they moved 3.6 → 3.7. The version-explicit `gemini37-flash`,
+      # `gemini3.7-flash` and the entry id `gemini-3.7-flash` were DELETED: a
+      # name that pins the minor version must not answer from a different one.
+      # Gemini 3 Flash Preview removed 2026-07-25, Gemini 3.6 Flash removed
+      # 2026-08-29, Gemini 3.7 Flash removed 2026-09-19 (note above);
+      # gemini-3.8-flash is now the only live Flash entry:
       #   gemini-3-flash-preview  DEPRECATED upstream (announced 2025-12-17),
       #     with gemini-3.6-flash named as its replacement. Still live on the
       #     API; re-add from git history for the cheaper $0.50/$3.00 rate.
@@ -1002,7 +1021,18 @@ providers:
       # DeepSeek V4 Flash - cost-efficient instant model
       # Same 1M context, much cheaper, faster
       - id: deepseek-v4-flash
-        full_id: deepseek-v4-flash
+        # Renamed upstream. `GET /v1/models` on 2026-09-19 lists exactly
+        # `deepseek-flash` and `deepseek-v4-pro` — there is no
+        # `deepseek-v4-flash` row. The old spelling still answers HTTP 200, but
+        # the response body's own `model` field comes back as `deepseek-flash`,
+        # so it is an undocumented legacy alias the server silently rewrites.
+        # Point `full_id` at the id the server reports: an out-of-catalog alias
+        # is invisible until the day it 404s, and this registry's
+        # model-access validation exact-matches against the catalog, so the
+        # old value would have reported a miss for a model that is present.
+        # The entry `id` stays `deepseek-v4-flash` so no documented
+        # `--model` name changes.
+        full_id: deepseek-flash
         name: DeepSeek-V4-Flash
         aliases:
           - dsv4-flash
@@ -1044,65 +1074,119 @@ providers:
   moonshot:
     api_key: "${KIMI_API_KEY}"
     base_url: "https://api.moonshot.cn/v1"
-    request_timeout: 300
+    # 10 min. Raised 300 -> 600 when K3 replaced K2.6 (2026-09-19): K3 is an
+    # always-thinking 1M-context model with a 32K output budget, which is the
+    # exact profile that made NVIDIA's 900s too small. Unlike NIM it is fast --
+    # MEASURED, not assumed: a live review of a 6-line file completed in 26.4s
+    # end to end, two batches' worth of headroom inside the old 300 already. The
+    # extra margin is for a *real* batch (~100K input, think-heavy), which no
+    # probe here has timed. Raising a deadline costs nothing on a healthy
+    # request, and the NVIDIA lesson is that a run which exceeds the ceiling but
+    # still exits 0 -- because a ReadTimeout happens to be retryable -- hides the
+    # misconfiguration while doubling the bill. Set from the slowest entry this
+    # provider serves, not the typical one.
+    request_timeout: 600
     models:
-      # Kimi K2.6 - flagship long-horizon agentic coding model
-      # 1T MoE, 32B active, 384 experts, 256K context
-      - id: kimi-k2.6
-        full_id: kimi-k2.6
-        name: Kimi K2.6 (Moonshot)
+      # Kimi K3 — Moonshot's flagship, upgraded from K2.6 on 2026-09-19.
+      # MoE: 2.8T total / 104B active, 896 experts (16 routed + 2 shared per
+      # token), Kimi Delta Attention + Attention Residuals, Stable LatentMoE,
+      # native visual understanding, 1M context. First open-weight model in the
+      # 3-trillion-parameter class.
+      #
+      # Verified live 2026-09-19 against api.moonshot.cn: listed by
+      # `GET /v1/models` (alongside kimi-k2.7-code, kimi-k2.7-code-highspeed
+      # and kimi-k2.6), and a completion returns HTTP 200 with no `deprecation`
+      # header.
+      #
+      # ACCESS NOTE: K3 is a flagship tier — Moonshot unlocks it only after a
+      # successful top-up (minimum $1). A brand-new key that works for K2.6 can
+      # still be refused here, and that is an account state, not a config bug.
+      - id: kimi-k3
+        full_id: kimi-k3
+        name: Kimi K3 (Moonshot)
+        # This entry is the canonical owner of the bare Kimi names (the NIM
+        # re-host `kimi-k3-nvidia` keeps provider-suffixed ones only, and its
+        # comment already reserves `kimi3` for exactly this entry).
         aliases:
           - kimi
-          - kimi26
+          - kimi3
         # Back-compat only: resolves, but hidden from --list-models
         # (see --list-models --verbose).
-        # Absorbed from the removed Kimi K2.5 (Azure) entry, whose Foundry
-        # deployment is gone (2026-07-25), and from the removed Kimi K2.5
-        # (Bedrock) entry (2026-08-29 - see the removal note in the bedrock
-        # block). Both are version-neutral names for the Kimi family whose
-        # provider suffix no longer holds; this entry is the family's canonical
-        # owner, so it inherits them unadvertised.
+        # The first four were absorbed from the removed Kimi K2.5 (Azure) entry,
+        # whose Foundry deployment is gone (2026-07-25), and the removed Kimi
+        # K2.5 (Bedrock) entry (2026-08-29); they are version-neutral names for
+        # the Kimi family whose provider suffix no longer holds. Inherited again
+        # here because this entry replaced K2.6 as the family's canonical owner.
+        #
+        # The version-explicit `kimi26` and the old entry id `kimi-k2.6` were
+        # DELETED rather than migrated: K2.6 is a different, still-live model
+        # (Moonshot still serves it at $0.95/$4.00 on 256K context), so
+        # answering to its name from K3 would silently swap a model AND
+        # roughly triple the bill. Re-add K2.6 as its own entry from git
+        # history if it is wanted alongside K3.
         deprecated_aliases:
           - kimi-k2.5-azure
           - kimi-azure
           - kimi25-azure
           - kimi-bedrock
         pricing:
-          # Moonshot list price (https://platform.moonshot.ai/pricing)
-          # Update if upstream changes; treat as a starting estimate
-          # since the docs page wasn't directly fetchable at config time.
-          input_per_million: 0.60
-          output_per_million: 2.50
+          # Authoritative: platform.moonshot.ai/docs/pricing/chat, fetched
+          # 2026-09-19. Cache-hit input is $0.30 and caching is automatic with
+          # no opt-in, so a repeated long prefix bills well under the figure
+          # here — this records the cache-MISS rate, which over-states rather
+          # than under-states. Note this replaces a wrong number: the K2.6
+          # entry carried $0.60/$2.50 with a comment admitting the page "wasn't
+          # directly fetchable at config time", and K2.6's real rate was
+          # $0.95/$4.00.
+          input_per_million: 3.00
+          output_per_million: 15.00
         inference_params:
-          # Moonshot's K2.6 server-side enforces temperature=1.0 and
-          # top_p=0.95 (same constraint as K2.5 with thinking enabled).
-          # Sending any other value yields HTTP 400:
-          #   "invalid temperature: only 1 is allowed for this model".
-          # K2.6 is trained for sufficient determinism at fixed t=1.0;
-          # do NOT lower for code review here.
-          default_temperature: 1.0
-          default_top_p: 0.95
-          max_output_tokens: 16384
-        context_window: 262144
-        # Moonshot's server rejects `tool_choice='specified'` while
-        # K2.6's implicit thinking mode is enabled (HTTP 400:
-        # "tool_choice 'specified' is incompatible with thinking
-        # enabled"). `.with_structured_output()` would set exactly
-        # that tool_choice under the hood, so we route K2.6 through
-        # prompt-based JSON parsing instead — same pattern as MiniMax
-        # M2.5 on Bedrock and DeepSeek-V4-Pro on Azure.
+          # temperature=1.0, top_p=0.95, n=1 and both penalties are FIXED
+          # server-side on K3 and the model card says to omit them from
+          # requests — so both are omitted here rather than sent at their
+          # fixed values. MoonshotProvider passes allow_none=True to
+          # _resolve_temperature, so an absent default_temperature sends no
+          # temperature at all; a probe with neither field returned HTTP 200.
+          # This is a change from the K2.6 entry, which sent both explicitly.
+          #
+          # The card's reasoning_effort default is `max`. Pin `high`: reasoning
+          # bills inside completion_tokens at $15/M output, so max effort both
+          # inflates the bill and eats the budget the report needs.
+          # `max` is not expressible anyway —
+          # InferenceParams.reasoning_effort is Literal[none|low|medium|high].
+          reasoning_effort: high
+          # Server default is 131072, ceiling 1048576. 32768 matches the
+          # kimi-k3-nvidia sibling: thinking cannot be switched off and
+          # reasoning is billed inside completion_tokens, so the report needs
+          # headroom above the reasoning it follows — but not 128K of it at
+          # this output price.
+          max_output_tokens: 32768
+        context_window: 1048576
+        # LIVE-VERIFIED, not assumed (2026-09-19): a forced tool_choice of the
+        # exact shape `.with_structured_output()` emits —
+        # {"type":"function","function":{"name":...}} — returns HTTP 400
+        # "tool_choice 'specified' is incompatible with thinking enabled",
+        # byte-identical to K2.6's failure, and K3 has thinking permanently on
+        # with no off switch. So this is one of the few `false` values in this
+        # file backed by a reproduction rather than by the
+        # assume-prompt-parsing rule. The card does advertise `json_schema`
+        # structured output and `tool_choice="required"`, neither of which is
+        # the forced-single-function form LangChain uses — don't let the card
+        # talk you into flipping this without re-running the probe.
         supports_tool_use: false
-        architecture: "MoE (1T total, 32B active, 384 experts)"
+        architecture: "MoE (2.8T total, 104B active, 896 experts)"
         capabilities:
           - reasoning
           - code_review
           - code_generation
           - long_horizon_agentic
+          - multimodal
           - structured_output
           - thinking
         notes: >-
-          Long-horizon agentic coding with thinking mode. Tool use
-          conflicts with thinking on Moonshot's server, so structured
+          Flagship long-horizon agentic coding and knowledge work with
+          always-on thinking and a 1M-token context. Tool use conflicts with
+          thinking on Moonshot's server (reproduced 2026-09-19), so structured
           output is produced via prompt-based JSON parsing
           (PydanticOutputParser) — see supports_tool_use above.
 
@@ -1128,6 +1212,17 @@ providers:
           - glm5.3
           - zai-glm
           - glm-zai
+        # Back-compat only: resolves, but hidden from --list-models
+        # (see --list-models --verbose). Absorbed 2026-09-19 from the removed
+        # GLM 5 (Bedrock) entry, which had itself absorbed them from the
+        # GLM-5.2 (NVIDIA) entry NVIDIA end-of-lifed 2026-08-21. They say
+        # GLM *5* without pinning a minor, and this is a GLM 5 — see the
+        # removal note in the bedrock block for the full disposition,
+        # including why `glm-5` resolving here rather than to Z.AI's own
+        # `glm-5` is intended.
+        deprecated_aliases:
+          - glm5
+          - glm-5
         pricing:
           # Official pay-as-you-go rates, verified 2026-09-09.
           input_per_million: 1.40
@@ -1491,10 +1586,13 @@ defaults:
   bedrock_default: opus5
   azure_default: gpt-5.4
   # Updated 2026-08-29: was mistral-medium-nvidia, whose endpoint NVIDIA EOL'd.
-  nvidia_default: deepseek-v4-flash-nvidia
+  # Updated 2026-09-19: was deepseek-v4-flash-nvidia, sunset 2026-09-21. The
+  # Flash GLM rather than the 753B flagship — `glm53-nvidia` took 4m50s to
+  # return 8 tokens when probed, which is not a sane default.
+  nvidia_default: glm-5.3-flash-nvidia
   zai_default: zhipuai/glm-5.3
   deepseek_default: deepseek-v4-pro
-  moonshot_default: kimi-k2.6
+  moonshot_default: kimi-k3
   aws_region: us-west-2
   max_tokens: 16000
 

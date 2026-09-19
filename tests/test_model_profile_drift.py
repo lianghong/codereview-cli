@@ -63,10 +63,6 @@ _ALLOWED_DIVERGENCES: dict[tuple[str, str, str], str] = {
         "Opus 4.8 (entry removed 2026-08-29; the reproduction is recorded in "
         "docs/structured-output.md)"
     ),
-    ("bedrock", "glm5-bedrock", "structured_output"): (
-        "thinking on by default (reasoning_effort=max); forced tool_choice "
-        "auto-downgraded or returned as text"
-    ),
     # New in langchain-aws 1.7.6, which added an Opus 5 profile where 1.6.3 had
     # none — so this divergence appeared on a dependency bump, not on a change
     # to our YAML. Ours wins here on evidence: Opus 5 is the single entry whose
@@ -96,13 +92,12 @@ _ALLOWED_DIVERGENCES: dict[tuple[str, str, str], str] = {
     # to fix. Revisit when a live run says otherwise.
     #
     # This group was four entries until 2026-08-29, when the kimi-k2.5-bedrock,
-    # minimax-m2.5-bedrock and qwen-next-bedrock entries were removed; their
-    # allowlist rows went with them, since `test_allowlist_has_no_stale_entries`
-    # rejects permission for a divergence that no longer exists.
-    ("bedrock", "glm5-bedrock", "max_output_tokens"): (
-        "profile says 101376, exactly half its 202752 input window; the YAML's "
-        "128000 comes from Zhipu's card. Unverified live"
-    ),
+    # minimax-m2.5-bedrock and qwen-next-bedrock entries were removed, and is now
+    # empty: glm5-bedrock — the last Bedrock re-host of a third-party model — was
+    # curated away on 2026-09-19 and took the final row with it. Both of its rows
+    # went, the max_output_tokens one and a structured_output one, because
+    # `test_allowlist_has_no_stale_entries` rejects permission for a divergence
+    # that no longer exists. Bedrock now serves Claude only.
 }
 
 
@@ -348,9 +343,9 @@ def test_allowlist_has_no_stale_entries():
 #
 # The empty ones are empty for a reason, not by oversight:
 #   nvidia         — NIM's re-host ids (`moonshotai/kimi-k3`,
-#                    `deepseek-ai/deepseek-v4-pro-0813`) aren't in the table; it
-#                    carries older NIM models only
-#   moonshot       — the table has kimi-k2.5, not our kimi-k2.6
+#                    `deepseek-ai/deepseek-v4-flash-0731`) aren't in the table;
+#                    it carries older NIM models only
+#   moonshot       — the table has kimi-k2.5, not our kimi-k3
 #   zai            — GLM isn't in langchain-openai's table at all
 #   bedrock_openai — its id is `openai.gpt-5.6-sol`, not `gpt-5.6-sol`; see
 #                    test_rehosted_ids_are_not_mapped_onto_direct_api_profiles
