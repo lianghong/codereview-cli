@@ -85,14 +85,27 @@ def test_analyzer_legacy_model_id_mapping(mock_provider):
     ):
         mock_factory.return_value.create_provider.return_value = mock_provider
 
-        analyzer = CodeAnalyzer(model_id="global.anthropic.claude-opus-4-6-v1")
-
-        # The legacy Opus 4.6 wire id maps to the "opus" alias, which now
-        # resolves to Opus 5 (generation-neutral alias convention).
-        assert analyzer.model_name == "opus"
-        mock_factory.return_value.create_provider.assert_called_once_with(
-            "opus", None, callbacks=None, project_context=None
+        analyzer = CodeAnalyzer(
+            model_id="global.anthropic.claude-haiku-4-5-20251001-v1:0"
         )
+
+        # The legacy Haiku 4.5 wire id maps to the "haiku" alias, which still
+        # names the same model.
+        assert analyzer.model_name == "haiku"
+        mock_factory.return_value.create_provider.assert_called_once_with(
+            "haiku", None, callbacks=None, project_context=None
+        )
+
+
+def test_analyzer_no_longer_maps_opus_46_onto_a_newer_generation(mock_provider):
+    """A pinned Opus 4.6 wire id must not silently become Opus 5.5."""
+    with (
+        patch("codereview.analyzer.ProviderFactory") as mock_factory,
+        pytest.warns(DeprecationWarning),
+    ):
+        mock_factory.return_value.create_provider.return_value = mock_provider
+        analyzer = CodeAnalyzer(model_id="global.anthropic.claude-opus-4-6-v1")
+        assert analyzer.model_name == "global.anthropic.claude-opus-4-6-v1"
 
 
 def test_analyzer_delegates_to_provider(mock_provider, sample_batch):

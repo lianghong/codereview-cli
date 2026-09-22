@@ -670,8 +670,8 @@ def validate_provider_credentials(
     "-m",
     "model_name",
     type=ModelChoice(),
-    default="opus5",
-    help="Model to use (default: opus5). Use --list-models to see all options.",
+    default="opus5.5",
+    help="Model to use (default: opus5.5). Use --list-models to see all options.",
 )
 @click.option(
     "--static-analysis",
@@ -849,7 +849,7 @@ def run_review(
     directory: Path,
     *,
     console: Console,
-    model_name: str = "opus5",
+    model_name: str = "opus5.5",
     output: Path | None = None,
     output_format: str = "markdown",
     severity: str = "info",

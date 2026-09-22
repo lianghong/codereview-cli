@@ -43,7 +43,7 @@ Comprehensive guide for using the Code Review CLI tool effectively.
 **For AWS Bedrock (default):**
 - [ ] AWS credentials configured
 - [ ] Bedrock access enabled in AWS Console
-- [ ] Claude Opus 5 model access approved (the default model)
+- [ ] Claude Opus 5.5 model access approved (the default model)
 - [ ] IAM permissions include `bedrock:InvokeModel`
 - [ ] Tool installed and `codereview` command available
 
@@ -58,9 +58,9 @@ Comprehensive guide for using the Code Review CLI tool effectively.
 **For Google Generative AI (optional):**
 - [ ] `GOOGLE_API_KEY` environment variable set (get from aistudio.google.com/apikey)
 
-**For OpenAI-on-Bedrock — GPT-5.6 Sol / GPT-6 Astra (optional):**
+**For OpenAI-on-Bedrock — GPT-5.6 Sol / GPT-6 Astra / GPT-6 Sol / GPT-6 Luna (optional):**
 - [ ] `OPENAI_API_KEY` set to an Amazon Bedrock API key (bearer token, not an openai.com key)
-- [ ] `OPENAI_BASE_URL` set to a `bedrock-mantle` endpoint. **The two entries' Regions do not overlap** — GPT-5.6 Sol is In-Region us-east-1 / us-east-2, GPT-6 Astra is us-west-2 only — but you do *not* need one export each: both entries declare `region:` in `models.yaml` and the provider rewrites the Region label of this URL per model. Whichever Region you name here, both models resolve to theirs. An entry *without* `region:` uses the URL as-is, and a Region that doesn't serve the model 404s the model id rather than falling back
+- [ ] `OPENAI_BASE_URL` set to a `bedrock-mantle` endpoint. **The entries' Regions do not all overlap** — GPT-5.6 Sol is In-Region us-east-1 / us-east-2, GPT-6 Astra is us-west-2 only, GPT-6 Sol and Luna are us-east-1 only — but you do *not* need one export each: every entry declares `region:` in `models.yaml` and the provider rewrites the Region label of this URL per model. Whichever Region you name here, each model resolves to its own. An entry *without* `region:` uses the URL as-is, and a Region that doesn't serve the model 404s the model id rather than falling back
 
 ## Typical Workflows
 
@@ -373,7 +373,7 @@ Provides:
 
 Match the model to your use case:
 
-**Opus 5** - Critical reviews (AWS Bedrock, default):
+**Opus 5.5** - Critical reviews (AWS Bedrock, default; `opus` resolves here):
 ```bash
 codereview ./src/auth --model opus
 ```
@@ -424,6 +424,13 @@ codereview ./src --model gpt6
 ```
 Astra is the only entry with **tiered** pricing: Bedrock charges $11/$55 per M for a request at or below 272K input tokens and **$22/$82.50 above it**. The threshold is per *request*, not per run — five 100K batches total 500K tokens and still bill entirely at the cheap rate — so each batch is priced on its own size, and `--dry-run` tells you how many of them cross the break. A smaller `--batch-size` can put a run back in the cheap tier.
 
+**GPT-6 Sol / GPT-6 Luna (Bedrock)** - the mid and low-cost GPT-6 tiers, 1M context, 128K output (**us-east-1 only**):
+```bash
+codereview ./src --model gpt6-sol     # $2.20/$11 per M, $4.40/$16.50 above 272K
+codereview ./src --model gpt6-luna    # $0.11/$0.55 per M, $0.22/$0.825 above 272K
+```
+Same per-request tiering as Astra. **These rates are derived, not published:** AWS listed no Sol/Luna price on 2026-09-23, so the entries carry OpenAI's list price ×1.1, the In-Region premium Astra's published rate shows. Treat the cost estimate as provisional until AWS publishes.
+
 **DeepSeek-V4-Pro / V4-Flash** - direct API, native tool calling, 1M context:
 ```bash
 codereview ./src --model deepseek-v4-pro     # Flagship
@@ -456,15 +463,18 @@ Kimi family), so the NVIDIA re-host is reachable only under its provider-suffixe
 Be aware of costs and choose models accordingly:
 
 **AWS Bedrock:**
-- **Fable 5**: Deepest tier, always-on adaptive thinking, 1M context ($10/M input, $50/M output)
-- **Opus 5**: Latest reasoning, default model, best for code review, 1M context ($5/M input, $25/M output)
-- **Sonnet 5**: Balanced option for daily use, 1M context ($3/M input, $15/M output)
+- **Fable 5**: Deepest tier, always-on adaptive thinking, 1M context ($11/M input, $55/M output — Geo-US profile, 10% over the global rate)
+- **Opus 5.5**: Default model, newest Opus, always-on adaptive thinking, 1M context, Global cross-Region profile ($4/M input, $20/M output)
+- **Opus 5**: Previous default, best for code review, 1M context ($5.50/M input, $27.50/M output — Geo-US profile, 10% over the global rate)
+- **Sonnet 5**: Balanced option for daily use, 1M context ($2.20/M input, $11/M output — the $2/$10 launch price became standard, plus the Geo-US 10%)
 - **Haiku 4.5**: Cheapest Bedrock entry, 200K context ($1/M input, $5/M output) — became the cheapest when Qwen3 Coder Next ($0.50/$1.20) was removed 2026-08-29
 - **Kimi K3**: Moonshot's flagship via Converse on the Global cross-Region profile, 1M context, always-on thinking ($3/M input, $15/M output — same as Moonshot direct; the `us.` geo profile would be $3.30/$16.50). The only non-Claude Bedrock entry, added 2026-09-23
 
 **OpenAI-on-Bedrock (`bedrock-mantle`):**
 - **GPT-5.6 Sol**: OpenAI's coding tier, 272K context ($5/M input, $30/M output) — twice GPT-5.5's rate, which this entry replaced 2026-08-29. us-east-1 / us-east-2
 - **GPT-6 Astra**: OpenAI's most capable model, 1M context, tiered pricing ($11/M input, $55/M output for a request at or below 272K input tokens; $22/$82.50 above). us-west-2 only — a Region it and Sol don't share, handled by the entry's `region:` rather than by re-exporting `OPENAI_BASE_URL`
+- **GPT-6 Sol**: mid GPT-6 tier, 1M context, tiered ($2.20/M input, $11/M output at or below 272K; $4.40/$16.50 above). us-east-1 only. Derived rate — AWS unpublished
+- **GPT-6 Luna**: cheapest GPT-6 tier, 1M context, tiered ($0.11/M input, $0.55/M output at or below 272K; $0.22/$0.825 above). us-east-1 only. Derived rate — AWS unpublished
 
 **Azure OpenAI:**
 - **GPT-5.4**: Frontier reasoning, 1.05M context, default Azure ($2.50/M input, $15/M output)
@@ -493,7 +503,7 @@ Be aware of costs and choose models accordingly:
 - Focus on critical paths first
 - The tool displays estimated cost after each run
 - Use NVIDIA NIM free tier for development/testing
-- For high-volume CI, **GLM-5.3-Flash** ($0.15/$0.50 list) is the cheapest paid option; DeepSeek-V4-Flash costs $0.44/$1.32 at peak and half that off peak
+- For high-volume CI, **GLM-5.3-Flash** ($0.15/$0.50 list) is the cheapest paid option after GPT-6 Luna ($0.11/$0.55, tiered above 272K); DeepSeek-V4-Flash costs $0.44/$1.32 at peak and half that off peak
 
 ### 11. Act on Findings Systematically
 
@@ -658,7 +668,8 @@ codereview --list-models
 codereview --list-models --verbose
 
 # AWS Bedrock - Claude models
-codereview ./src --model opus     # Claude Opus 5 (default, reasoning model, 1M context)
+codereview ./src --model opus     # Claude Opus 5.5 (default; newest Opus, reasoning model, 1M context)
+codereview ./src --model opus5    # Claude Opus 5 (previous default, reasoning model, 1M context)
 codereview ./src --model fable    # Claude Fable 5 (deepest tier, always-on thinking, 1M context)
 codereview ./src --model sonnet   # Claude Sonnet 5 (balanced, 1M context; `sonnet5` too)
 codereview ./src --model haiku    # Claude Haiku 4.5 (fastest, cheapest Bedrock entry)
@@ -699,15 +710,18 @@ codereview ./src --model kimi               # Short alias
 # OPENAI_BASE_URL export serves both.
 codereview ./src --model gpt5.6             # GPT-5.6 Sol (OpenAI flagship, best coding model, 272K)
 codereview ./src --model gpt6               # GPT-6 Astra (OpenAI's most capable; tiered above 272K)
+codereview ./src --model gpt6-sol           # GPT-6 Sol (mid tier; us-east-1 only)
+codereview ./src --model gpt6-luna          # GPT-6 Luna (cheapest GPT-6; us-east-1 only)
 ```
 
 **When to use each model:**
 
 | Model | Provider | Use Case | Pricing |
 |-------|----------|----------|---------|
-| **Opus 5** (default) | AWS Bedrock | Latest reasoning, critical reviews, best code review / bug finding, 1M context | $5/M input, $25/M output |
-| **Fable 5** | AWS Bedrock | Deepest Claude tier, always-on adaptive thinking, 1M context (pinned to us-east-1) | $10/M input, $50/M output |
-| **Sonnet 5** | AWS Bedrock | Daily development, PR reviews, near-Opus at Sonnet price, 1M context (owns `sonnet`) | $3/M input, $15/M output |
+| **Opus 5** | AWS Bedrock | Previous default; best code review / bug finding, 1M context | $5.50/M input, $27.50/M output |
+| **Opus 5.5** (default) | AWS Bedrock | Newest Opus, always-on adaptive thinking, 1M context (owns `opus`) | $4/M input, $20/M output |
+| **Fable 5** | AWS Bedrock | Deepest Claude tier, always-on adaptive thinking, 1M context (pinned to us-east-1) | $11/M input, $55/M output |
+| **Sonnet 5** | AWS Bedrock | Daily development, PR reviews, near-Opus at Sonnet price, 1M context (owns `sonnet`) | $2.20/M input, $11/M output |
 | **Haiku 4.5** | AWS Bedrock | Large codebases, CI/CD integration, cheapest Bedrock entry, 200K context | $1/M input, $5/M output |
 | **GPT-5.4** | Azure OpenAI | Frontier reasoning, default Azure, 1.05M context | $2.50/M input, $15/M output |
 | **GPT-5.4 Pro** | Azure OpenAI | Deeper reasoning, hardest problems | $30/M input, $180/M output |
@@ -721,6 +735,8 @@ codereview ./src --model gpt6               # GPT-6 Astra (OpenAI's most capable
 | **Kimi K3** | Moonshot direct | 2.8T MoE, 104B active, 1M context, always-on thinking, agentic — the only Kimi outside NVIDIA | $3/M input, $15/M output |
 | **GPT-5.6 Sol (Bedrock)** | OpenAI-on-Bedrock | OpenAI flagship, best coding model, 272K context, `bedrock-mantle` endpoint (In-Region us-east-1/us-east-2) | $5/M input, $30/M output |
 | **GPT-6 Astra (Bedrock)** | OpenAI-on-Bedrock | OpenAI's most capable model, text + image in, 128K output, `bedrock-mantle` us-west-2 only; 1M context, tiered pricing above 272K input tokens per request | $11/M input, $55/M output |
+| **GPT-6 Sol (Bedrock)** | OpenAI-on-Bedrock | Mid GPT-6 tier, 1M context, 128K output, us-east-1 only; tiered above 272K (derived rate) | $2.20/M input, $11/M output |
+| **GPT-6 Luna (Bedrock)** | OpenAI-on-Bedrock | Cheapest GPT-6 tier — high-volume/CI, 1M context, us-east-1 only; tiered above 272K (derived rate) | $0.11/M input, $0.55/M output |
 
 *NVIDIA NIM models are currently in free preview tier.
 
@@ -873,7 +889,7 @@ For projects with 1000+ files:
 
 | Scenario | Recommended Model | Provider | Estimated Cost* |
 |----------|-------------------|----------|-----------------|
-| 100 files, critical review | Opus 5 | AWS Bedrock | $0.30-$1.50 |
+| 100 files, critical review | Opus 5.5 | AWS Bedrock | $0.30-$1.50 |
 | 100 files, daily review | Sonnet 5 | AWS Bedrock | $0.10-$0.40 |
 | 1000 files, bulk scan | Haiku 4.5 | AWS Bedrock | $0.10-$0.50 |
 | Development/testing | DeepSeek-V4-Flash-0731 | NVIDIA NIM | Free |

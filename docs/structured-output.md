@@ -52,10 +52,12 @@ which is consistent with all of the above.
 |---|---|---|---|---|
 | Claude Fable 5 (Bedrock) | adaptive (always on, can't disable) | `false` | prompt | Same forced-`tool_choice`-while-thinking conflict reproduced on Opus 4.8 (see below), but **constant** rather than intermittent — thinking can't be disabled. Also rejects `temperature`/`top_p`/`top_k`; requires one-time `provider_data_share` data-retention opt-in |
 | **Claude Opus 5 (Bedrock)** | **on by default** (effort-controlled) | `false` | prompt | **Documented, not assumed**: the Bedrock model card lists *Structured outputs: Not Supported* on both `bedrock-runtime` and `bedrock-mantle`. Thinking-on-by-default also reproduces the Opus 4.8 forced-`tool_choice` conflict. Current CLI default; also needs `read_timeout: 1800` (Fable 5's non-streaming-Converse problem) |
+| **Claude Opus 5.5 (Bedrock)** | **always on, no off switch** (effort-controlled, default medium) | `false` | prompt | **Model card + observed behaviour**: the Bedrock model card lists *Structured outputs: Not Supported* on both endpoints (as Opus 5's does); the forced-`tool_choice` failure itself is the observed one from `de5e2fc`, not an Anthropic API restriction (see below). Not A/B-tested with `true`. Live 2026-09-23 on the prompt path: `codereview/providers/` (3 files, ~25K input) finished clean in 53s. Rejects `temperature`, 128K output cap, `read_timeout: 1800`. Owns `opus`/`claude-opus` since 2026-09-23 |
 | Claude Sonnet 5 (Bedrock) | adaptive (on by default, server-side) | `false` | prompt | Same forced-`tool_choice`-while-thinking conflict as Opus 4.8 — first Sonnet tier with adaptive thinking on by default. Also rejects `temperature`/`top_p`/`top_k`. No `provider_data_share` opt-in (unlike Fable 5); geo-US routes from the us-west-2 default. Owns the generation-neutral `sonnet`/`claude-sonnet` since the Sonnet 4.6 entry was removed 2026-08-29 |
 | Claude Haiku 4.5 (Bedrock) | opt-in, and we never ask | `true` | tool-use | Thinking is off unless requested and this entry doesn't request it, so there is no forced-`tool_choice` conflict to route around — and since the 2026-08-29 curation pass this is the **only** Bedrock entry on the tool-use path. Keep it that way when trimming: it is the case that proves the Bedrock tool-use path still works at all. Takes `temperature` (0.1) |
 | GPT-5.6 Sol (**Bedrock** `bedrock-mantle` OpenAI-compat) | adaptive (server-side) | `false` | prompt | The reasoning-only failure mode **live-verified on GPT-5.5** at this same endpoint (entry removed 2026-08-29): think-heavy batches came back `tool_calls=[]` with no `parsed` → "no 'parsed' field", intermittently. **Responses API only** (Chat Completions not supported → `use_responses_api: true` required), no `temperature`/`top_p`. Sol tier = OpenAI's best coding model; In-Region us-east-1/us-east-2 only |
 | GPT-6 Astra (**Bedrock** `bedrock-mantle` OpenAI-compat) | adaptive (server-side) | `false` | prompt | **Live-verified 2026-09-13 by A/B on `codereview/providers/`** (2 batches, ~98K input): with `true`, batch 1 died on `ResponseError(code='server_error')` from the Responses API after burning the retry budget — 3m06s for a half-finished review; with `false`, both batches finished in 37.4s with 4 issues. **A different symptom from GPT-5.5's** reasoning-only `tool_calls=[]`/no-`parsed` response — this endpoint 500s instead — but the same root cause and fix. A trivial batch passes forced `tool_choice` cleanly, so only a think-heavy target reproduces it. Keep Responses for reasoning summaries; no `temperature`/`top_p`. us-west-2 only |
+| GPT-6 Sol / GPT-6 Luna (**Bedrock** `bedrock-mantle` OpenAI-compat) | adaptive (server-side) | `false` | prompt | **Assumed, not A/B-verified** (added 2026-09-23). The reasoning-model rule plus OpenAI's note that function calling on these tiers needs `reasoning_effort: none`; Astra's A/B is the nearest evidence. One small review each completed on the prompt path. us-east-1 only |
 | GPT-5.4 / 5.4 Pro (**Azure**) | reasoning | `true` | tool-use | Azure deployment tolerates forced `tool_choice`; Bedrock's endpoint does not |
 | **Kimi K3 (NVIDIA)** | **always on, no off switch** | `false` | prompt | 2.8T/104B MoE, 1M context, native multimodal. Model card: *"Thinking is always enabled"* — so this is the **constant** forced-`tool_choice`-while-thinking profile (like Fable 5), not the intermittent one. Tool-use unverified: NIM's free tier 429'd every forced-`tool_choice` probe, so the assume-prompt-parsing rule decides it. K3 on Moonshot-direct is prompt-path too, and there it is **live-verified** rather than assumed — see the row below, which is the best available evidence for this one. Effort levels are low/high/max, but **no `reasoning_effort` is set** — `InferenceParams` only permits up to `high` and the wire spelling couldn't be verified |
 | **Kimi K3 (Moonshot)** | **always on (server-side), no off switch** | `false` | prompt | **Live-verified 2026-09-19, not assumed**: a forced `tool_choice='specified'` returns HTTP 400 *"tool_choice 'specified' is incompatible with thinking enabled"* — the vendor names the conflict in the error string. Byte-identical to the K2.6 failure this entry replaced, and K3 cannot turn thinking off, so it is **constant** rather than intermittent. 2.8T/104B MoE, 1M context; `reasoning_effort: high` is pinned down from the card's `max` default and forwarded by `moonshot.py` |
@@ -165,12 +167,16 @@ contradicts.
 
 ## Per-model detail
 
-**Kimi K3 on NVIDIA and on Moonshot, Claude Opus 5, Sonnet 5 and
-Fable 5 on Bedrock, GPT-5.6 Sol and GPT-6 Astra on `bedrock-mantle`, Gemini 3.8 Flash, and the
-GLM-5.3 family on both Z.AI and NVIDIA** lack usable tool-based structured output — 12 of the 18
+**Kimi K3 on NVIDIA, Moonshot and Bedrock, Claude Opus 5.5, Opus 5, Sonnet 5 and
+Fable 5 on Bedrock, GPT-5.6 Sol and GPT-6 Astra, Sol and Luna on `bedrock-mantle` (Sol/Luna
+assumed), Gemini 3.8 Flash, and the GLM-5.3 family on both Z.AI and NVIDIA** lack usable
+tool-based structured output — 16 of the 22
 entries.
 
-- **Opus 5** is the one case with vendor confirmation rather than inference: its Bedrock model
+- **Opus 5.5** carries the same model-card line as Opus 5 and nothing more — no A/B run with
+  `true`. Don't cite Anthropic's tool-use docs for it: they document forced tool use as
+  supported with adaptive thinking.
+- **Opus 5** was the first case with vendor confirmation rather than inference: its Bedrock model
   card lists *Structured outputs: Not Supported* for both `bedrock-runtime` and
   `bedrock-mantle`, and thinking is on by default (a breaking change from Opus 4.8, where it
   was off unless requested) so it also hits the forced-`tool_choice`-while-thinking conflict.

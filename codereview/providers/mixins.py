@@ -391,7 +391,7 @@ class TokenTrackingMixin:
         the accumulated total would charge a long-context rate no request ever
         incurred. For a flat-priced model the two are arithmetically identical
         (``sum(tokens_i) * rate == sum(tokens_i * rate)``), so nothing changes
-        for the twenty entries without a tier.
+        for the nineteen entries without a tier.
 
         Args:
             input_tokens: Number of input tokens to add

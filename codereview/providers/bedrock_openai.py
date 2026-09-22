@@ -101,12 +101,14 @@ class BedrockOpenAIProvider(TokenTrackingMixin, ModelProvider):
         # temperature/top_p; allow_none preserves that opt-out (no
         # default_temperature in YAML). It stays a per-entry opt-out rather
         # than an unconditional drop because this endpoint also serves models
-        # that accept both — Grok 4.3 did, at card defaults 0.7/0.95.
+        # that accept both — Grok 4.3 did, at card defaults 0.7/0.95. The
+        # opt-out covers --temperature too: GPT-6 answers it with HTTP 400.
         self.temperature = self._resolve_temperature(
             override=temperature,
             model_config=model_config,
             provider_default=0.3,
             allow_none=True,
+            drop_override_on_opt_out=True,
         )
 
         # Inference params

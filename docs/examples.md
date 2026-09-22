@@ -87,8 +87,12 @@ codereview ./large-project --max-files 50
 Choose the right model for your use case:
 
 ```bash
-# High-quality review with Opus (critical code)
+# High-quality review with Opus (critical code) - `opus` is Opus 5.5
 codereview ./src/auth --model opus
+
+# Pin a specific Opus generation
+codereview ./src/auth --model opus5.5   # Claude Opus 5.5 (the default model), $4/$20
+codereview ./src/auth --model opus5     # Claude Opus 5 (the previous default), $5.50/$27.50
 
 # Balanced review with Sonnet (daily development)
 codereview ./src --model sonnet
@@ -103,6 +107,9 @@ codereview ./src --model kimi-nvidia-3       # Kimi K3 (multimodal MoE, 1M conte
 
 # GPT-5.4 - Frontier reasoning, 1.05M context (Azure default)
 codereview ./src --model gpt
+
+# GPT-6 Luna - cheapest GPT-6 tier on Bedrock (us-east-1), 1M context — high-volume/CI
+codereview ./src --model gpt6-luna
 
 # Kimi K3 - 2.8T MoE, 1M context (Moonshot direct; `kimi-azure` also routes here)
 codereview ./src --model kimi-k3

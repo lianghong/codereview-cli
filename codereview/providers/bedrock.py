@@ -105,12 +105,16 @@ class BedrockProvider(TokenTrackingMixin, ModelProvider):
         self.region = model_config.region or provider_config.region
 
         # Determine temperature; allow_none preserves opt-out for reasoning
-        # models (e.g. Opus 5) that set inference_params.temperature = None.
+        # models (e.g. Opus 5) that set inference_params.temperature = None,
+        # and drop_override_on_opt_out keeps --temperature from reaching
+        # Converse for them - Opus 5.5 and Kimi K3 reject it with a
+        # non-retryable ValidationException, losing every batch.
         self.temperature = self._resolve_temperature(
             override=temperature,
             model_config=model_config,
             provider_default=0.1,
             allow_none=True,
+            drop_override_on_opt_out=True,
         )
 
         # Get model-specific inference parameters
