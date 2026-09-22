@@ -498,9 +498,10 @@ def test_retired_model_aliases_redirect_to_live_successors():
         "claude-sonnet": "us.anthropic.claude-sonnet-5",
         # Kimi K2.5 on *Bedrock* removed; the Moonshot direct API is the family's
         # canonical owner, so this is the same move `kimi-azure` made. Crosses a
-        # provider boundary, hence deprecated rather than advertised. Now lands
-        # on K3, the direct API's flagship since 2026-09-19.
-        "kimi-bedrock": "kimi-k3",
+        # provider boundary, hence deprecated rather than advertised. Since
+        # 2026-09-23 Kimi K3 is on Bedrock, so the name is back on a Bedrock
+        # entry as a plain alias — same $3/$15, no billing change.
+        "kimi-bedrock": "global.moonshotai.kimi-k3",
         # GPT-5.5 on Bedrock removed; GPT-5.6 Sol is the only OpenAI entry left
         # on bedrock-mantle. `gpt-bedrock` names "the GPT on Bedrock", which Sol
         # now is — but following it forward DOUBLES the rate ($2.50/$15 ->

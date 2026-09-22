@@ -234,8 +234,9 @@ about the model while changing where it comes from. (When the Bedrock re-host wa
 YAML says so: Z.AI serves a *distinct real* `glm-5`, so pointing `glm5` at 5.3 is a deliberate
 choice to track the family's current release, not an identity claim. The provider-explicit
 `glm5-bedrock`/`glm-5-bedrock`/`glm5b` were deleted, since the suffix names a provider that no
-longer serves it.) `kimi-bedrock` → Moonshot's `kimi-k3` and
-`gpt-bedrock` → `gpt5.6-sol-bedrock` are the same shape.
+longer serves it.) `kimi-bedrock` → Moonshot's `kimi-k3` was the same shape until 2026-09-23,
+when Kimi K3 reached Bedrock and the name moved back onto `kimi-k3-bedrock` as a plain alias — a
+parked version-neutral name goes home once its suffix is true again. `gpt-bedrock` → `gpt5.6-sol-bedrock` are the same shape.
 
 ## `aliases` vs `deprecated_aliases` is purely a display split
 
@@ -269,9 +270,9 @@ misleading. Keep genuinely current alternative spellings in `aliases`.
 `tests/test_model_profile_drift.py`. Each LangChain partner package ships a `_MODEL_PROFILES`
 table in `<package>/data/_profiles.py`, read via the private
 `_get_default_model_profile(name)` — a plain dict lookup, so no credentials, no client, no
-network. 9 of 18 entries resolve one (Bedrock 4/4, Azure 2/2, DeepSeek 2/2, Google 1/2); the
+network. 9 of 19 entries resolve one (Bedrock 4/5, Azure 2/2, DeepSeek 2/2, Google 1/2); the
 misses are re-hosts and direct vendor APIs whose wire ids the tables don't carry (all of NVIDIA,
-Z.AI, Moonshot and `bedrock_openai`) plus anything newer than the installed package —
+Z.AI, Moonshot and `bedrock_openai`, plus `kimi-k3-bedrock`) plus anything newer than the installed package —
 `gemini-3.8-flash` is currently the only one in that last group.
 
 **Neither side is authoritative**: the tables are generated from the community-curated

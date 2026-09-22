@@ -459,7 +459,8 @@ Be aware of costs and choose models accordingly:
 - **Fable 5**: Deepest tier, always-on adaptive thinking, 1M context ($10/M input, $50/M output)
 - **Opus 5**: Latest reasoning, default model, best for code review, 1M context ($5/M input, $25/M output)
 - **Sonnet 5**: Balanced option for daily use, 1M context ($3/M input, $15/M output)
-- **Haiku 4.5**: Cheapest Bedrock entry, 200K context ($1/M input, $5/M output) — became the cheapest when Qwen3 Coder Next ($0.50/$1.20) was removed 2026-08-29. Bedrock now serves Claude only — the GLM 5 re-host was curated away 2026-09-19
+- **Haiku 4.5**: Cheapest Bedrock entry, 200K context ($1/M input, $5/M output) — became the cheapest when Qwen3 Coder Next ($0.50/$1.20) was removed 2026-08-29
+- **Kimi K3**: Moonshot's flagship via Converse on the Global cross-Region profile, 1M context, always-on thinking ($3/M input, $15/M output — same as Moonshot direct; the `us.` geo profile would be $3.30/$16.50). The only non-Claude Bedrock entry, added 2026-09-23
 
 **OpenAI-on-Bedrock (`bedrock-mantle`):**
 - **GPT-5.6 Sol**: OpenAI's coding tier, 272K context ($5/M input, $30/M output) — twice GPT-5.5's rate, which this entry replaced 2026-08-29. us-east-1 / us-east-2
@@ -639,7 +640,7 @@ Choose the right model for your needs. Use short model names (aliases supported)
 
 `--list-models` advertises only the current, recommended aliases. A handful of
 version-*neutral* names inherited from removed models (`glm5`, `kimi-azure`,
-`kimi-bedrock`, `gemini-3-flash`, `gpt-bedrock`, …) still resolve to their successor
+`gemini-3-flash`, `gpt-bedrock`, …) still resolve to their successor
 and are shown as `+N deprecated`; add `--verbose` to see them spelled out.
 Version-*explicit* aliases of removed models (`opus4.6`, `opus4.8`, `glm51`, `mm25`,
 `kimi25`, `step35`, `gpt5.4-bedrock`, `gpt5.5-bedrock`, `gemini-3.6-flash`,
