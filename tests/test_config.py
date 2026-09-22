@@ -1571,6 +1571,27 @@ def test_gpt6_astra_carries_both_pricing_tiers_for_its_wide_window():
     assert config.pricing.long_output_per_million == 82.50
 
 
+def test_gpt56_sol_matches_the_published_model_card_pricing():
+    """GPT-5.6 Sol bills the card's In-Region rates, both tiers.
+
+    The entry carried a $5/$30 flat rate from the launch for a month; the
+    Bedrock card (checked 2026-09-23) says $4.40/$22 at 272K input tokens or
+    fewer and $8.80/$33 above. The window is still 272K, so the long tier is
+    unreachable today; it is pinned so that raising the window can't underbill.
+    """
+    _, config = ConfigLoader().resolve_model("gpt5.6")
+
+    assert config.pricing is not None
+    assert (config.pricing.input_per_million, config.pricing.output_per_million) == (
+        4.40,
+        22.00,
+    )
+    assert config.pricing.has_long_context_tier
+    assert config.pricing.long_context_threshold_tokens == 272_000
+    assert config.pricing.long_input_per_million == 8.80
+    assert config.pricing.long_output_per_million == 33.00
+
+
 @pytest.mark.parametrize(
     ("alias", "entry_id", "full_id", "short", "long"),
     [

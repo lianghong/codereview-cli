@@ -117,7 +117,7 @@ def test_only_the_requests_over_the_threshold_pay_the_long_rate():
 
 
 def test_per_request_accrual_equals_the_old_flat_multiplication():
-    """The nineteen untiered entries must be unaffected, to the cent.
+    """Untiered entries must be unaffected, to the cent.
 
     ``sum(tokens_i) * rate == sum(tokens_i * rate)``, so switching from one
     multiplication over the totals to an accumulator cannot move an untiered

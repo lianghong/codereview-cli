@@ -471,7 +471,7 @@ Be aware of costs and choose models accordingly:
 - **Kimi K3**: Moonshot's flagship via Converse on the Global cross-Region profile, 1M context, always-on thinking ($3/M input, $15/M output — same as Moonshot direct; the `us.` geo profile would be $3.30/$16.50). The only non-Claude Bedrock entry, added 2026-09-23
 
 **OpenAI-on-Bedrock (`bedrock-mantle`):**
-- **GPT-5.6 Sol**: OpenAI's coding tier, 272K context ($5/M input, $30/M output) — twice GPT-5.5's rate, which this entry replaced 2026-08-29. us-east-1 / us-east-2
+- **GPT-5.6 Sol**: OpenAI's coding tier, 272K context ($4.40/M input, $22/M output) — 1.5–1.8× GPT-5.5's rate, which this entry replaced 2026-08-29. us-east-1 / us-east-2
 - **GPT-6 Astra**: OpenAI's most capable model, 1M context, tiered pricing ($11/M input, $55/M output for a request at or below 272K input tokens; $22/$82.50 above). us-west-2 only — a Region it and Sol don't share, handled by the entry's `region:` rather than by re-exporting `OPENAI_BASE_URL`
 - **GPT-6 Sol**: mid GPT-6 tier, 1M context, tiered ($2.20/M input, $11/M output at or below 272K; $4.40/$16.50 above). us-east-1 only. Derived rate — AWS unpublished
 - **GPT-6 Luna**: cheapest GPT-6 tier, 1M context, tiered ($0.11/M input, $0.55/M output at or below 272K; $0.22/$0.825 above). us-east-1 only. Derived rate — AWS unpublished
@@ -733,7 +733,7 @@ codereview ./src --model gpt6-luna          # GPT-6 Luna (cheapest GPT-6; us-eas
 | **GLM-5.3** | Z.AI direct | Latest text flagship, always-on reasoning, 1M context | $1.40/M input, $4.40/M output |
 | **GLM-5.3-Flash** | Z.AI direct | Low-cost multimodal sibling, 1M context | List $0.15/M input, $0.50/M output |
 | **Kimi K3** | Moonshot direct | 2.8T MoE, 104B active, 1M context, always-on thinking, agentic — the only Kimi outside NVIDIA | $3/M input, $15/M output |
-| **GPT-5.6 Sol (Bedrock)** | OpenAI-on-Bedrock | OpenAI flagship, best coding model, 272K context, `bedrock-mantle` endpoint (In-Region us-east-1/us-east-2) | $5/M input, $30/M output |
+| **GPT-5.6 Sol (Bedrock)** | OpenAI-on-Bedrock | OpenAI flagship, best coding model, 272K context, `bedrock-mantle` endpoint (In-Region us-east-1/us-east-2) | $4.40/M input, $22/M output |
 | **GPT-6 Astra (Bedrock)** | OpenAI-on-Bedrock | OpenAI's most capable model, text + image in, 128K output, `bedrock-mantle` us-west-2 only; 1M context, tiered pricing above 272K input tokens per request | $11/M input, $55/M output |
 | **GPT-6 Sol (Bedrock)** | OpenAI-on-Bedrock | Mid GPT-6 tier, 1M context, 128K output, us-east-1 only; tiered above 272K (derived rate) | $2.20/M input, $11/M output |
 | **GPT-6 Luna (Bedrock)** | OpenAI-on-Bedrock | Cheapest GPT-6 tier — high-volume/CI, 1M context, us-east-1 only; tiered above 272K (derived rate) | $0.11/M input, $0.55/M output |

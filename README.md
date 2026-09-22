@@ -360,7 +360,7 @@ export OPENAI_BASE_URL="https://bedrock-mantle.us-east-1.api.aws/openai/v1"
 ```bash
 # GPT-5.6 Sol - OpenAI flagship, best coding model, 272K context (Responses API)
 # (the GPT-5.5 and Grok 4.3 entries were removed 2026-08-29; `gpt-bedrock`
-#  resolves here, at twice GPT-5.5's rate — see the migration table)
+#  resolves here, at a higher rate than GPT-5.5 — see the migration table)
 codereview /path/to/code --model gpt5.6
 codereview /path/to/code --model gpt5.6-bedrock   # or gpt-5.6, gpt5.6-sol-bedrock
 
@@ -467,7 +467,7 @@ codereview /path/to/code -m kimi
 | **GLM-5.3 (Z.AI)** | **Z.AI direct** | **Latest text flagship, always-on reasoning, 1M context** | **$1.40** | **$4.40** |
 | **GLM-5.3-Flash (Z.AI)** | **Z.AI direct** | **Low-cost multimodal sibling, 1M context (list rate)** | **$0.15** | **$0.50** |
 | **Kimi K3** | **Moonshot direct** | **2.8T MoE, 104B active, 1M context, always-on thinking, agentic (owns `kimi`)** | **$3.00** | **$15.00** |
-| **GPT-5.6 Sol (Bedrock)** | **OpenAI-on-Bedrock** | **OpenAI flagship, best coding model, 272K context, `bedrock-mantle` endpoint us-east-1/2 (owns `gpt-bedrock`)** | **$5.00** | **$30.00** |
+| **GPT-5.6 Sol (Bedrock)** | **OpenAI-on-Bedrock** | **OpenAI flagship, best coding model, 272K context, `bedrock-mantle` endpoint us-east-1/2 (owns `gpt-bedrock`)** | **$4.40** | **$22.00** |
 | **GPT-6 Astra (Bedrock)** | **OpenAI-on-Bedrock** | **OpenAI's most capable model, text + image in, 128K output, `bedrock-mantle` endpoint us-west-2 only. 1M context; tiered pricing — a request over 272K input tokens bills $22/$82.50** | **$11.00** | **$55.00** |
 | **GPT-6 Sol (Bedrock)** | **OpenAI-on-Bedrock** | **Mid GPT-6 tier, 1M context, 128K output, `bedrock-mantle` us-east-1 only; tiered above 272K ($4.40/$16.50). Derived rate — AWS unpublished** | **$2.20** | **$11.00** |
 | **GPT-6 Luna (Bedrock)** | **OpenAI-on-Bedrock** | **Cheapest GPT-6 tier, 1M context, 128K output, `bedrock-mantle` us-east-1 only; tiered above 272K ($0.22/$0.825). Derived rate — AWS unpublished** | **$0.11** | **$0.55** |
@@ -830,7 +830,7 @@ version-pinning names are deleted on exactly the same rule.
 | `grok`, `grok-4.3`, `grok43`, `grok-bedrock`, `grok-4.3-bedrock` | **nothing** — xAI leaves the registry entirely, and resolving a Grok name to an OpenAI model would be a vendor swap. `xai.grok-4.3` is still live on `bedrock-mantle`; re-add a YAML entry (no provider code needed) |
 | `mistral-small`, `mistral-small-4`, `mistral-small-nvidia`, `ms4`, `mistral-medium`, `mistral-medium-3.5`, `mistral-medium-nvidia`, `mm35`, `mmed` | **nothing** — NIM retired both endpoints and carries no Mistral successor, so no Mistral model remains in this registry |
 | `step35`, `step-3.5-flash`, `step-3.7-flash`, `step-3.7`, `step37`, `step37-nvidia`, `step-flash`, `step-nvidia` | **nothing** — NIM serves no StepFun model any more |
-| `gpt5.4-bedrock`, `gpt5.5-bedrock` | `gpt5.6` (GPT-5.6 Sol). `gpt-bedrock` still resolves, now to Sol — but at **twice** GPT-5.5's rate ($2.50/$15 → $5/$30) and a narrower window (400K → 272K) |
+| `gpt5.4-bedrock`, `gpt5.5-bedrock` | `gpt5.6` (GPT-5.6 Sol). `gpt-bedrock` still resolves, now to Sol — but at a **higher** rate than GPT-5.5 ($2.50/$15 → $4.40/$22) and a narrower window (400K → 272K) |
 | `gpt5.6-sol`, `sol` | `gpt5.6` |
 | `gpt54p` | `gpt54-pro` (or `gpt-pro`) |
 | `dsv4pro`, `dsv4f` | `dsv4-pro`, `dsv4-flash` |
