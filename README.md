@@ -18,7 +18,7 @@
 - ✅ **Registry cleanup (11 entries removed)** — every model probed against its live provider endpoint; superseded, region-unavailable, and dead entries dropped. 30 models remained, 32 with Gemini 3.7 Flash and Kimi K3.
 - ⚠️ **Second cleanup pass, 2026-08-29 (5 more entries removed)** — re-probing every entry found **half the NVIDIA NIM roster dead**: `mistralai/mistral-small-4-119b-2603` (EOL 2026-07-27), `qwen/qwen3.5-397b-a17b` (2026-07-27), `mistralai/mistral-medium-3.5-128b` (2026-08-07), `z-ai/glm-5.2` (2026-08-21) and `stepfun-ai/step-3.7-flash` (2026-08-28) all answer **HTTP 410 Gone** with NVIDIA's own end-of-life date. NIM now serves no Mistral, Qwen, GLM or StepFun model at all. **27 models remained.** These failed at invocation time only — the catalog no longer lists them, so neither `--list-models` nor `--validate` (which checks catalog visibility) could have caught it.
 - ➖ **Curation pass, 2026-08-29 (9 more entries removed, 27 → 18)** — this one is **not** a dead-endpoint cleanup: **all nine endpoints are live and were probed to confirm it.** Removed: Claude Opus 4.8, Claude Sonnet 4.6, Kimi K2.5 (Bedrock), Qwen3-Coder-Next (Bedrock), MiniMax M2.5 (Bedrock), Kimi K2.6 (NVIDIA), Gemini 3.6 Flash, GPT-5.5 (Bedrock) and Grok 4.3 (Bedrock). What it costs, stated plainly so re-adding is an informed choice: Bedrock's cheapest entry goes from **$0.50/M → $1.00/M** (`haiku`), Bedrock keeps exactly **one** entry on the tool-use structured-output path (`haiku`), and `bedrock_openai`'s cheapest goes from **$1.25/M → $5.00/M** with a narrower window (400K → 272K). Every removal site in `models.yaml` carries a dated comment saying what the probe showed and what was lost.
-- ⚠️ **Alias cleanup (94 aliases deleted)** — `--list-models` now advertises only current names. Version-explicit aliases of removed models (`opus4.6`, `opus4.8`, `glm51`, `mm25`, `mm2.5-bedrock`, `kimi25`, `step35`, `gpt5.4-bedrock`, `gpt5.5-bedrock`, `gemini-3.6-flash`, `grok-4.3`, `mistral-small`, `qwen3.5`, `glm52`, `step-3.7-flash`, …) were **deleted**, not redirected: they now fail fast instead of silently resolving to a newer model with different pricing and behavior. Version-neutral names (`glm5`, `kimi-azure`, `kimi-bedrock`, `gemini-3-flash`, `gpt-bedrock`, …) still resolve and are listed under `--list-models --verbose`; `sonnet`/`claude-sonnet` moved onto Sonnet 5 as fully advertised aliases. Names were deleted rather than migrated where the whole family left the registry (`qwen*`, `grok*`, `step*`) or where a migration would have crossed a free/billed provider boundary. See [Migrating deleted aliases](#migrating-deleted-aliases).
+- ⚠️ **Alias cleanup (94 aliases deleted)** — `--list-models` now advertises only current names. Version-explicit aliases of removed models (`opus4.6`, `opus4.8`, `glm51`, `mm25`, `mm2.5-bedrock`, `kimi25`, `step35`, `gpt5.4-bedrock`, `gpt5.5-bedrock`, `gemini-3.6-flash`, `grok-4.3`, `mistral-small`, `qwen3.5`, `glm52`, `step-3.7-flash`, …) were **deleted**, not redirected: they now fail fast instead of silently resolving to a newer model with different pricing and behavior. Version-neutral names (`glm5`, `kimi-azure`, `gemini-3-flash`, `gpt-bedrock`, …) still resolve and are listed under `--list-models --verbose`; `sonnet`/`claude-sonnet` moved onto Sonnet 5 as fully advertised aliases. Names were deleted rather than migrated where the whole family left the registry (`qwen*`, `grok*`, `step*`) or where a migration would have crossed a free/billed provider boundary. See [Migrating deleted aliases](#migrating-deleted-aliases).
 - ✅ **`--fail-on <severity>`** — CI merge gate: exits 2 when issues at that severity or above are found, distinct from exit 1 (the run itself failed). Independent of `--severity`, and applied after the report is written
 - ✅ **New `Correctness` category** — logic errors, edge cases, error paths, race conditions, and resource leaks are no longer filed as "Code Quality" next to naming nits
 - ✅ **`--tool-timeout`** — override the static-analysis subprocess timeout (default 120s) for slow C++/mypy runs
@@ -34,7 +34,7 @@ A LangChain-based CLI tool that provides comprehensive, intelligent code reviews
 
 ## Features
 
-- **Multi-Provider Support** (8 providers): AWS Bedrock (Claude), Azure OpenAI (GPT-5.4, GPT-5.4 Pro), NVIDIA NIM (GLM-5.3, GLM-5.3-Flash, Kimi K3), Google GenAI (Gemini 3.1 Pro / 3.8 Flash), DeepSeek direct (V4-Pro, V4-Flash), Z.AI (GLM-5.3, GLM-5.3-Flash), Moonshot direct (Kimi K3), and OpenAI-on-Bedrock (GPT-5.6 Sol, GPT-6 Astra via the `bedrock-mantle` OpenAI-compatible endpoint)
+- **Multi-Provider Support** (8 providers): AWS Bedrock (Claude, Kimi K3), Azure OpenAI (GPT-5.4, GPT-5.4 Pro), NVIDIA NIM (GLM-5.3, GLM-5.3-Flash, Kimi K3), Google GenAI (Gemini 3.1 Pro / 3.8 Flash), DeepSeek direct (V4-Pro, V4-Flash), Z.AI (GLM-5.3, GLM-5.3-Flash), Moonshot direct (Kimi K3), and OpenAI-on-Bedrock (GPT-5.6 Sol, GPT-6 Astra via the `bedrock-mantle` OpenAI-compatible endpoint)
 - **AI-Powered Analysis**: Leverages Claude Opus 5, Claude Sonnet 5, GPT-5.4, GPT-5.6 Sol, GPT-6 Astra, DeepSeek-V4-Pro, Kimi K3, GLM-5.3, Gemini 3.1 Pro, Gemini 3.8 Flash, and other leading models for deep code understanding
 - **Multi-Language Support**: Reviews Python, Go, Shell Script, C++, Java, JavaScript, and TypeScript codebases
 - **Smart Batching**: Automatically groups files for efficient token usage
@@ -112,6 +112,11 @@ codereview /path/to/code --aws-profile your-profile
 2. Navigate to "Model access" in your region
 3. Request access to "Anthropic Claude Opus 5" (the default model)
 4. Wait for approval (usually instant for supported regions)
+
+Kimi K3 (`--model kimi-bedrock`) is served only through cross-Region inference profiles — the
+entry uses the Global profile `global.moonshotai.kimi-k3` ($3/$15 per M, same as Moonshot
+direct). For US data residency, switch its `full_id` to `us.moonshotai.kimi-k3` in
+`models.yaml` and its pricing to $3.30/$16.50.
 
 ### 3. Verify IAM Permissions
 
@@ -435,6 +440,7 @@ codereview /path/to/code -m kimi
 | Opus 5 | AWS Bedrock | Latest reasoning, default model, best for code review, 1M context | $5.00 | $25.00 |
 | Sonnet 5 | AWS Bedrock | Claude 5 gen, near-Opus at Sonnet price, 1M context (owns `sonnet`) | $3.00 | $15.00 |
 | Haiku 4.5 | AWS Bedrock | Fast, economical, large codebases — cheapest Bedrock entry, and the only one on the native tool-use path | $1.00 | $5.00 |
+| Kimi K3 (Bedrock) | AWS Bedrock | 2.8T MoE / 104B active, 1M context, always-on thinking; Global cross-Region profile, AWS credentials instead of a Moonshot key (owns `kimi-bedrock`) | $3.00 | $15.00 |
 | GPT-5.4 | Azure OpenAI | Frontier reasoning, 1.05M context, default Azure | $2.50 | $15.00 |
 | GPT-5.4 Pro | Azure OpenAI | Deeper reasoning, hardest problems | $30.00 | $180.00 |
 | GLM-5.3-Flash (NVIDIA) | NVIDIA NIM | 320B MoE / 18B active, 1M context, multimodal input, always-on reasoning; the fast free NIM default | Free* | Free* |
@@ -446,7 +452,7 @@ codereview /path/to/code -m kimi
 | **DeepSeek-V4-Flash** | **DeepSeek direct** | **1M context, lower-cost sibling; peak rate shown** | **$0.44** | **$1.32** |
 | **GLM-5.3 (Z.AI)** | **Z.AI direct** | **Latest text flagship, always-on reasoning, 1M context** | **$1.40** | **$4.40** |
 | **GLM-5.3-Flash (Z.AI)** | **Z.AI direct** | **Low-cost multimodal sibling, 1M context (list rate)** | **$0.15** | **$0.50** |
-| **Kimi K3** | **Moonshot direct** | **2.8T MoE, 104B active, 1M context, always-on thinking, agentic (owns `kimi`, and `kimi-bedrock`)** | **$3.00** | **$15.00** |
+| **Kimi K3** | **Moonshot direct** | **2.8T MoE, 104B active, 1M context, always-on thinking, agentic (owns `kimi`)** | **$3.00** | **$15.00** |
 | **GPT-5.6 Sol (Bedrock)** | **OpenAI-on-Bedrock** | **OpenAI flagship, best coding model, 272K context, `bedrock-mantle` endpoint us-east-1/2 (owns `gpt-bedrock`)** | **$5.00** | **$30.00** |
 | **GPT-6 Astra (Bedrock)** | **OpenAI-on-Bedrock** | **OpenAI's most capable model, text + image in, 128K output, `bedrock-mantle` endpoint us-west-2 only. 1M context; tiered pricing — a request over 272K input tokens bills $22/$82.50** | **$11.00** | **$55.00** |
 
@@ -797,7 +803,7 @@ version-pinning names are deleted on exactly the same rule.
 | `opus4.7`, `opus-4.7`, `claude-opus-4.7`, `claude-opus-47`, `opus4.6`, `opus-4.6`, `claude-opus-4.6`, `opus4.8`, `opus-4.8`, `claude-opus-4.8`, `claude-opus-48` | `opus5` (or `opus`) — identical $5/$25, context and output for 4.8 |
 | `sonnet4.6`, `claude-sonnet-4.6` | `sonnet5` — `sonnet`/`claude-sonnet` now resolve there too. Same $3/$15 with 5x the context; note 4.6 accepted `--temperature` and used the tool-use path, and Sonnet 5 does neither |
 | `minimax-m2.7`, `minimax-m2.7-nvidia`, `mm2.7-nvidia`, `mm27`, `minimax-m2.5-nvidia`, `mm2.5-nvidia`, `minimax-m2.5`, `mm25`, `minimax-m2.5-bedrock`, `mm2.5-bedrock`, `minimax-m3`, `minimax-m3-nvidia`, `mm3-nvidia`, `mm3` | **nothing** — no MiniMax model remains anywhere in the registry. NIM end-of-lifed `minimaxai/minimax-m3` on 2026-09-09 and serves no MiniMax at all; the Bedrock re-host was cut as curation on 2026-08-29 while still live. `kimi-nvidia-3` is the closest free NIM stand-in (multimodal, 1M context, thinking) |
-| `kimi-k2.5-nvidia`, `kimi-k2.5`, `kimi25`, `kimi-k2.5-bedrock`, `kimi25-bedrock` | `kimi` / `kimi-k3` (Moonshot direct). `kimi-bedrock`, `kimi-azure`, `kimi25-azure` and `kimi-k2.5-azure` still resolve, now to Moonshot's K3 |
+| `kimi-k2.5-nvidia`, `kimi-k2.5`, `kimi25`, `kimi-k2.5-bedrock`, `kimi25-bedrock` | `kimi` / `kimi-k3` (Moonshot direct), or `kimi-bedrock` for Kimi K3 on Bedrock. `kimi-azure`, `kimi25-azure` and `kimi-k2.5-azure` still resolve, now to Moonshot's K3 |
 | `kimi-k2.6-nvidia`, `kimi-nvidia-26`, `kimi26-nvidia` | `kimi-nvidia-3` (Kimi K3 on NVIDIA, free) or `kimi` (K3 on Moonshot). The NIM K2.6 endpoint is still listed upstream but is not provisioned for every account; K3 is a different generation, so these names don't follow it |
 | `kimi-k2.6`, `kimi26` | **nothing** — the Moonshot entry was upgraded to **K3** on 2026-09-19 and these version-explicit names were deleted rather than migrated. K2.6 is a *different, still-live* model at roughly a third of K3's price ($0.95/$4.00 vs $3.00/$15.00); silently pointing them at K3 would swap the model and triple the bill. Use `kimi` / `kimi-k3` deliberately, or restore the K2.6 entry from git history — no provider code is needed |
 | `glm5-bedrock`, `glm-5-bedrock`, `glm5b` | `glm` / `zhipuai/glm-5.3` (Z.AI direct), which is a point release ahead, or the free `glm53-nvidia`. The Bedrock re-host was removed 2026-09-19 as **curation** at explicit request — `zai.glm-5` was **not** re-verified as dead, so this is not an upstream EOL. The version-neutral `glm5`/`glm-5` migrated to Z.AI's 5.3 entry; the provider-explicit spellings were deleted, since the suffix names a provider that no longer serves it. Note Z.AI does serve a distinct real `glm-5`, so `glm5` resolving to 5.3 is a deliberate choice, not an identity |
@@ -818,7 +824,7 @@ version-pinning names are deleted on exactly the same rule.
 | `gemini-3.6-flash`, `gemini36-flash`, `gemini3.6-flash`, `g36flash` | `gemini-3.8-flash` — identical $1.50/$7.50, 1M context and 64K output, which is why the generation-3 names `gemini-3-flash`/`gemini3-flash`/`g3flash` migrated (first to 3.7, then to 3.8 when 3.7 was curated away). `gemini-flash` also tracks 3.8 |
 | `kimi-moonshot` | `kimi` |
 
-Version-*neutral* aliases (`glm5`, `kimi-azure`, `kimi-bedrock`, `gemini-3-flash`,
+Version-*neutral* aliases (`glm5`, `kimi-azure`, `gemini-3-flash`,
 `gpt-bedrock`, …) were kept and still resolve to their successor — run
 `codereview --list-models --verbose` to see them. `sonnet`/`claude-sonnet` are the one pair
 promoted to fully advertised aliases, because Sonnet 5 genuinely is the current Sonnet.

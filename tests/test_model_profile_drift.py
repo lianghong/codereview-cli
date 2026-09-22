@@ -97,7 +97,9 @@ _ALLOWED_DIVERGENCES: dict[tuple[str, str, str], str] = {
     # curated away on 2026-09-19 and took the final row with it. Both of its rows
     # went, the max_output_tokens one and a structured_output one, because
     # `test_allowlist_has_no_stale_entries` rejects permission for a divergence
-    # that no longer exists. Bedrock now serves Claude only.
+    # that no longer exists. kimi-k3-bedrock (2026-09-23) needs no row:
+    # langchain-aws ships no profile for `moonshotai.kimi-k3`, so there is
+    # nothing to diverge from.
 }
 
 

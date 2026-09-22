@@ -107,6 +107,9 @@ codereview ./src --model gpt
 # Kimi K3 - 2.8T MoE, 1M context (Moonshot direct; `kimi-azure` also routes here)
 codereview ./src --model kimi-k3
 
+# Kimi K3 on AWS Bedrock - same model and $3/$15 price, AWS credentials instead of KIMI_API_KEY
+codereview ./src --model kimi-bedrock
+
 # Gemini 3.1 Pro - Most advanced reasoning, 1M context (Google GenAI)
 codereview ./src --model gemini-3.1-pro
 
