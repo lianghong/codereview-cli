@@ -32,12 +32,62 @@ def test_default_exclude_extensions():
 
 
 def test_config_loader_default_model():
-    """Test ConfigLoader loads default model configuration."""
+    """The CLI's real `--model` default resolves, and is Opus 5.5.
+
+    Read off the Click option rather than restated, so a default changed in
+    cli.py can't leave this test resolving the previous one (it did: this
+    test pinned "opus5" by name while the default was being moved).
+    """
+    from codereview.cli import main
+
+    default = next(p.default for p in main.params if p.name == "model_name")
+    assert default == "opus5.5"
     loader = ConfigLoader()
-    provider, model_config = loader.resolve_model("opus")
+    provider, model_config = loader.resolve_model(default)
     assert provider == "bedrock"
-    assert model_config.name == "Claude Opus 5"
+    assert model_config.name == "Claude Opus 5.5"
     assert model_config.pricing.input_per_million > 0
+
+
+# Anthropic's global-endpoint list price per model (platform.claude.com
+# pricing page, 2026-09-23). Sonnet 5's $2/$10 launch price became standard
+# when the scheduled rise to $3/$15 was cancelled.
+_CLAUDE_GLOBAL_LIST_PRICE = {
+    "claude-fable-5": (10.00, 50.00),
+    "claude-opus-5": (5.00, 25.00),
+    "claude-opus-5-5": (4.00, 20.00),
+    "claude-sonnet-5": (2.00, 10.00),
+    "claude-haiku-4-5-20251001-v1:0": (1.00, 5.00),
+}
+
+
+def test_bedrock_claude_pricing_carries_the_regional_premium():
+    """A `us.` (geo) profile bills 1.1x the global rate; `global.` bills 1x.
+
+    Bedrock's regional/geo endpoints carry a 10% premium over global for every
+    Claude model from 4.5 on. The `us.` entries were registered at the global
+    rate, so every cost estimate for the default model was 10% low. Every
+    Bedrock Claude entry must be classified here, so a new one can't ship at
+    the wrong multiplier.
+    """
+    loader = ConfigLoader()
+    seen = set()
+    for model in loader.list_models()["bedrock"]:
+        full_id = model.full_id or ""
+        if full_id.startswith("anthropic."):
+            prefix, rest = "", full_id.removeprefix("anthropic.")
+        else:
+            prefix, _, rest = full_id.partition(".anthropic.")
+            if not rest:
+                continue  # not a Claude entry (e.g. global.moonshotai.kimi-k3)
+        assert rest in _CLAUDE_GLOBAL_LIST_PRICE, f"{model.id}: add its list price"
+        assert prefix in ("us", "global"), f"{model.id}: unknown profile {prefix}"
+        seen.add(rest)
+        multiplier = 1.1 if prefix == "us" else 1.0
+        list_in, list_out = _CLAUDE_GLOBAL_LIST_PRICE[rest]
+        assert model.pricing.input_per_million == pytest.approx(list_in * multiplier)
+        assert model.pricing.output_per_million == pytest.approx(list_out * multiplier)
+    assert seen == set(_CLAUDE_GLOBAL_LIST_PRICE)
 
 
 def test_system_prompt_exists():
@@ -60,8 +110,10 @@ def test_model_aliases_exist():
 def test_resolve_model_id_with_alias():
     """Test resolving short model names to full IDs via ConfigLoader."""
     loader = ConfigLoader()
+    # `opus` moved from Opus 5 to Opus 5.5 when the 5.5 entry was added
+    # (2026-09-23); opus5 keeps its version-explicit names.
     provider, model_config = loader.resolve_model("opus")
-    assert model_config.full_id == "us.anthropic.claude-opus-5"
+    assert model_config.full_id == "global.anthropic.claude-opus-5-5"
 
     # `sonnet` moved from Sonnet 4.6 to Sonnet 5 when the 4.6 entry was removed
     # (2026-08-29) — generation-neutral names track the current generation.
@@ -81,7 +133,7 @@ def test_resolve_model_id_case_insensitive():
     # Aliases in YAML are lowercase, so we test that lowercase works
     provider1, model1 = loader.resolve_model("opus")
     provider2, model2 = loader.resolve_model("sonnet")
-    assert model1.name == "Claude Opus 5"
+    assert model1.name == "Claude Opus 5.5"
     assert model2.name == "Claude Sonnet 5"
 
 
@@ -162,7 +214,33 @@ def test_opus5_omits_sampling_params():
     assert config.inference_params.top_k is None
 
 
-def test_generation_neutral_opus_alias_tracks_opus5():
+def test_opus55_matches_the_live_probe_and_model_card():
+    """Opus 5.5: 1M context / 128K output, no sampling params, long read timeout.
+
+    Probed live 2026-09-23 on Converse: ``temperature`` is rejected with a
+    ValidationException, maxTokens 128000 is accepted and 128001 refused.
+    Adaptive thinking is always on and the Converse call is non-streaming, so
+    it needs the same read_timeout as opus5/fable5.
+    """
+    loader = ConfigLoader()
+    provider, config = loader.resolve_model("opus5.5")
+    assert provider == "bedrock"
+    assert config.full_id == "global.anthropic.claude-opus-5-5"
+    assert config.context_window == 1_000_000
+    assert config.read_timeout is not None and config.read_timeout >= 1800
+    assert config.supports_tool_use is False
+    params = config.inference_params
+    assert params is not None
+    assert params.max_output_tokens == 128_000
+    assert (params.temperature, params.top_p, params.top_k) == (None, None, None)
+    # Global-endpoint rate; the `us.` geo profile would be 10% higher.
+    assert (config.pricing.input_per_million, config.pricing.output_per_million) == (
+        4.00,
+        20.00,
+    )
+
+
+def test_generation_neutral_opus_alias_tracks_the_newest_opus():
     """The bare Opus aliases must resolve to the newest Opus entry.
 
     ``_register_model`` last-write-wins within a single provider (it only warns
@@ -170,7 +248,11 @@ def test_generation_neutral_opus_alias_tracks_opus5():
     silently shadow this alias depending on YAML order.
     """
     loader = ConfigLoader()
-    for alias in ("opus", "claude-opus", "claude-opus-5", "opus-5"):
+    for alias in ("opus", "claude-opus", "claude-opus-5.5", "opus-5.5"):
+        _, config = loader.resolve_model(alias)
+        assert config.id == "opus5.5", f"{alias!r} resolved to {config.id!r}"
+    # The version-explicit Opus 5 names stay on Opus 5.
+    for alias in ("claude-opus-5", "opus-5", "claude-opus5"):
         _, config = loader.resolve_model(alias)
         assert config.id == "opus5", f"{alias!r} resolved to {config.id!r}"
 
@@ -210,7 +292,7 @@ def test_model_id_conflict_detection(caplog):
 
     # Simulate registering same ID from different provider
     mock_config = ModelConfig(
-        id="opus",  # Already registered by bedrock (as an opus5 alias)
+        id="opus",  # Already registered by bedrock (as an opus5.5 alias)
         name="Fake Opus",
         aliases=[],
         pricing=PricingConfig(input_per_million=1.0, output_per_million=1.0),
@@ -227,7 +309,7 @@ def test_model_id_conflict_detection(caplog):
     # Original should still be registered (first wins)
     provider, config = loader.resolve_model("opus")
     assert provider == "bedrock"
-    assert config.name == "Claude Opus 5"
+    assert config.name == "Claude Opus 5.5"
 
 
 def test_same_provider_model_name_conflict_is_warned(caplog):
@@ -261,7 +343,7 @@ def test_same_provider_model_name_conflict_is_warned(caplog):
     assert "Model name conflict" in caplog.text
     assert "some-other-bedrock-entry" in caplog.text
     # Names both sides so the message is actionable.
-    assert "opus5" in caplog.text or "Claude Opus 5" in caplog.text
+    assert "opus5.5" in caplog.text or "Claude Opus 5.5" in caplog.text
 
     # Documented last-write-wins semantics preserved.
     provider, config = loader.resolve_model("opus")
@@ -1101,6 +1183,7 @@ def test_adaptive_thinking_claude_models_disable_tool_use():
     not established.
     Opus 5 has independent confirmation: its Bedrock model card lists
     "Structured outputs: Not Supported" on bedrock-runtime and bedrock-mantle.
+    Opus 5.5 has the same card entry.
 
     ``opus4.8`` is no longer in this list because that entry was removed
     2026-08-29 (superseded by opus5 at identical pricing) — the *evidence* it
@@ -1108,7 +1191,7 @@ def test_adaptive_thinking_claude_models_disable_tool_use():
     reproduction is written down rather than just cited.
     """
     loader = ConfigLoader()
-    for alias in ("opus5", "sonnet5", "fable5"):
+    for alias in ("opus5.5", "opus5", "sonnet5", "fable5"):
         _, config = loader.resolve_model(alias)
         assert config.supports_tool_use is False, (
             f"{alias} is an adaptive-thinking model and must set "
@@ -1486,6 +1569,60 @@ def test_gpt6_astra_carries_both_pricing_tiers_for_its_wide_window():
     assert config.pricing.long_context_threshold_tokens == 272_000
     assert config.pricing.long_input_per_million == 22.00
     assert config.pricing.long_output_per_million == 82.50
+
+
+@pytest.mark.parametrize(
+    ("alias", "entry_id", "full_id", "short", "long"),
+    [
+        (
+            "gpt6-sol",
+            "gpt6-sol-bedrock",
+            "openai.gpt-6-sol",
+            (2.20, 11.00),
+            (4.40, 16.50),
+        ),
+        (
+            "gpt6-luna",
+            "gpt6-luna-bedrock",
+            "openai.gpt-6-luna",
+            (0.11, 0.55),
+            (0.22, 0.825),
+        ),
+    ],
+)
+def test_gpt6_sol_and_luna_match_the_live_probe(alias, entry_id, full_id, short, long):
+    """GPT-6 Sol/Luna on ``bedrock-mantle`` (added 2026-09-23).
+
+    Live ``/v1/models`` listed both ids in us-east-1 only (us-east-2 and
+    us-west-2 404 them), so each entry must pin that Region — otherwise the
+    usual us-east-2 ``OPENAI_BASE_URL`` 404s every batch. Both reject
+    ``temperature`` (HTTP 400). Their 1M window reaches past the 272K price
+    break, so the long tier must be configured, same as Astra. The rates are
+    OpenAI's list price x1.1 (In-Region) until AWS publishes Bedrock figures.
+    """
+    loader = ConfigLoader()
+    provider, config = loader.resolve_model(alias)
+
+    assert provider == "bedrock_openai"
+    assert (config.id, config.full_id) == (entry_id, full_id)
+    assert config.region == "us-east-1"
+    assert config.use_responses_api is True
+    assert config.supports_tool_use is False
+    assert config.context_window == 1_000_000
+    params = config.inference_params
+    assert params is not None
+    assert params.max_output_tokens == 128_000
+    assert (params.temperature, params.top_p) == (None, None)
+
+    pricing = config.pricing
+    assert (pricing.input_per_million, pricing.output_per_million) == short
+    assert pricing.has_long_context_tier
+    assert pricing.long_context_threshold_tokens == 272_000
+    assert (pricing.long_input_per_million, pricing.long_output_per_million) == long
+
+    # The bare GPT-6 names stay on the flagship.
+    _, astra = loader.resolve_model("gpt6")
+    assert astra.id == "gpt6-astra-bedrock"
 
 
 def test_generation_neutral_gemini_flash_alias_tracks_the_newest_flash():

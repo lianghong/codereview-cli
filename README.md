@@ -8,6 +8,9 @@
 
 ## 🎉 What's New (Unreleased)
 
+- ✅ **Claude Opus 5.5 (Bedrock)** — newest Opus tier at $4/$20 per M (below Opus 5's $5.50/$27.50), 1M context, 128K output, always-on adaptive thinking (`--model opus5.5`). **It is now the default model**, replacing Opus 5, and the generation-neutral `opus`/`claude-opus` resolve to it; `opus5`/`claude-opus-5`/`opus-5` keep pointing at Opus 5.
+- ⚠️ **Bedrock Claude cost estimates corrected (2026-09-23)** — the `us.` (Geo-US) inference-profile entries were priced at Anthropic's *global* rate, but Bedrock charges a 10% premium on regional/geo endpoints for every Claude model from 4.5 on. Opus 5 is now $5.50/$27.50 and Fable 5 $11/$55, both up 10%. Sonnet 5 goes *down*, to $2.20/$11: its $2/$10 launch price became the standard price when the planned rise to $3/$15 was cancelled. Opus 5.5 and Haiku 4.5 use `global.` profiles and are unchanged
+- ✅ **GPT-6 Sol and GPT-6 Luna (Bedrock)** — the mid and low-cost GPT-6 tiers on `bedrock-mantle`, 1M context, 128K output, Responses API (`--model gpt6-sol`, `--model gpt6-luna`). Both are served from **us-east-1 only** (each entry's `region:` handles it), both are tiered above 272K input tokens like Astra, and `gpt6` still means Astra. **Their rates are derived, not published** — AWS had no Sol/Luna price on 2026-09-23, so the entries carry OpenAI's list price ×1.1 (the In-Region premium Astra's published rate shows); check your bill before trusting the estimate
 - ✅ **Gemini 3.8 Flash (Google)** — newest Flash generation for long-horizon software engineering and autonomous agents, with 1M context and 64K output (`--model gemini-3.8-flash`, or `gemini-flash`). It starts on prompt-based structured output until a live review proves forced tool use while thinking. Gemini 3.7 Flash was removed on 2026-09-19 as curation, and 3.8 absorbed its generation-neutral names — see the migration table
 - ✅ **3 new providers**: DeepSeek direct API (`deepseek-v4-pro`, `deepseek-v4-flash`), Z.AI (`zhipuai/glm-5.3`, `zhipuai/glm-5.3-flash`), Moonshot/Kimi (`kimi-k3`). 8 providers total now (incl. OpenAI-on-Bedrock).
 - ✅ **GPT-6 Astra (Bedrock)** — OpenAI's most capable model, GA on the OpenAI-compatible `bedrock-mantle` endpoint 2026-09-08, text + image input, 128K output (`--model gpt6`). Two caveats worth knowing before you switch: it is the first entry with **tiered** pricing — Bedrock bills Astra at $11/$55 per M up to 272K input tokens and **$22/$82.50 above it**, per request, so a batch that crosses the break costs double and `--dry-run` names how many do; and `bedrock-mantle` serves it from **us-west-2 only**, mutually exclusive with GPT-5.6 Sol's us-east-1/us-east-2 — each entry declares its `region:` and the provider rewrites the Region label of your `OPENAI_BASE_URL` per model, so one export reaches both
@@ -30,12 +33,12 @@
 - ✅ **AWS error redaction** — STS/Bedrock validation errors no longer leak SCP fragments or IAM policy details
 - ✅ **All 1208 tests passing**, ruff/format/mypy clean
 
-A LangChain-based CLI tool that provides comprehensive, intelligent code reviews for Python, Go, Shell Script, C++, Java, JavaScript, and TypeScript projects using Claude, GPT-5.4, GPT-5.6 Sol, GPT-6 Astra, Gemini, DeepSeek-V4-Pro, Kimi K3, GLM-5.3, and other leading models through AWS Bedrock, Azure OpenAI, NVIDIA NIM, Google Generative AI, DeepSeek, Z.AI, and Moonshot.
+A LangChain-based CLI tool that provides comprehensive, intelligent code reviews for Python, Go, Shell Script, C++, Java, JavaScript, and TypeScript projects using Claude, GPT-5.4, GPT-5.6 Sol, GPT-6 Astra, GPT-6 Sol, GPT-6 Luna, Gemini, DeepSeek-V4-Pro, Kimi K3, GLM-5.3, and other leading models through AWS Bedrock, Azure OpenAI, NVIDIA NIM, Google Generative AI, DeepSeek, Z.AI, and Moonshot.
 
 ## Features
 
 - **Multi-Provider Support** (8 providers): AWS Bedrock (Claude, Kimi K3), Azure OpenAI (GPT-5.4, GPT-5.4 Pro), NVIDIA NIM (GLM-5.3, GLM-5.3-Flash, Kimi K3), Google GenAI (Gemini 3.1 Pro / 3.8 Flash), DeepSeek direct (V4-Pro, V4-Flash), Z.AI (GLM-5.3, GLM-5.3-Flash), Moonshot direct (Kimi K3), and OpenAI-on-Bedrock (GPT-5.6 Sol, GPT-6 Astra via the `bedrock-mantle` OpenAI-compatible endpoint)
-- **AI-Powered Analysis**: Leverages Claude Opus 5, Claude Sonnet 5, GPT-5.4, GPT-5.6 Sol, GPT-6 Astra, DeepSeek-V4-Pro, Kimi K3, GLM-5.3, Gemini 3.1 Pro, Gemini 3.8 Flash, and other leading models for deep code understanding
+- **AI-Powered Analysis**: Leverages Claude Opus 5.5, Claude Opus 5, Claude Sonnet 5, GPT-5.4, GPT-5.6 Sol, GPT-6 Astra, GPT-6 Sol, GPT-6 Luna, DeepSeek-V4-Pro, Kimi K3, GLM-5.3, Gemini 3.1 Pro, Gemini 3.8 Flash, and other leading models for deep code understanding
 - **Multi-Language Support**: Reviews Python, Go, Shell Script, C++, Java, JavaScript, and TypeScript codebases
 - **Smart Batching**: Automatically groups files for efficient token usage
 - **Structured Output**: Get categorized issues with severity levels and actionable suggestions
@@ -61,7 +64,7 @@ A LangChain-based CLI tool that provides comprehensive, intelligent code reviews
   - DeepSeek API key from [platform.deepseek.com](https://platform.deepseek.com/api_keys) — `DEEPSEEK_API_KEY` (V4-Pro, V4-Flash)
   - Z.AI API key from [z.ai](https://z.ai) — `ZAI_API_KEY` (GLM-5.3 / 5.3-Flash; international)
   - Moonshot/Kimi API key from [platform.moonshot.cn](https://platform.moonshot.cn) — `KIMI_API_KEY` (Kimi K3; international keys from `platform.moonshot.ai` work too — override `base_url`)
-  - Amazon Bedrock API key (bearer token) for OpenAI-on-Bedrock — `OPENAI_API_KEY` + `OPENAI_BASE_URL` (GPT-5.6 Sol, GPT-6 Astra via the `bedrock-mantle` OpenAI-compatible endpoint — these two models' Regions do not overlap, but each entry's `region:` resolves that, so one base URL serves both)
+  - Amazon Bedrock API key (bearer token) for OpenAI-on-Bedrock — `OPENAI_API_KEY` + `OPENAI_BASE_URL` (GPT-5.6 Sol, GPT-6 Astra, GPT-6 Sol, GPT-6 Luna via the `bedrock-mantle` OpenAI-compatible endpoint — these models' Regions do not all overlap, but each entry's `region:` resolves that, so one base URL serves them all)
 
 ### Install with uv (recommended)
 
@@ -110,7 +113,7 @@ codereview /path/to/code --aws-profile your-profile
 
 1. Go to AWS Console > Bedrock
 2. Navigate to "Model access" in your region
-3. Request access to "Anthropic Claude Opus 5" (the default model)
+3. Request access to "Anthropic Claude Opus 5.5" (the default model)
 4. Wait for approval (usually instant for supported regions)
 
 Kimi K3 (`--model kimi-bedrock`) is served only through cross-Region inference profiles — the
@@ -347,8 +350,8 @@ export OPENAI_API_KEY="<your-amazon-bedrock-api-key>"
 # Any bedrock-mantle Region works — each model entry declares the Region that
 # actually serves it (`region:` in models.yaml) and the provider rewrites the
 # Region label of this URL per model. GPT-5.6 Sol is In-Region us-east-1 /
-# us-east-2 only, GPT-6 Astra is us-west-2 only, and one export now reaches
-# both; scheme, host and path still come from here.
+# us-east-2 only, GPT-6 Astra is us-west-2 only, GPT-6 Sol/Luna are us-east-1
+# only, and one export now reaches all of them; scheme, host and path still come from here.
 export OPENAI_BASE_URL="https://bedrock-mantle.us-east-1.api.aws/openai/v1"
 ```
 
@@ -368,6 +371,13 @@ codereview /path/to/code --model gpt5.6-bedrock   # or gpt-5.6, gpt5.6-sol-bedro
 # instead of $11/$55, and --dry-run says which batches those are.
 codereview /path/to/code --model gpt6
 codereview /path/to/code --model gpt6-bedrock     # or gpt-6, gpt6-astra-bedrock
+
+# GPT-6 Sol / GPT-6 Luna - the mid and low-cost GPT-6 tiers (Responses API)
+# us-east-1 only — a third Region, again handled by the entry's `region:`.
+# Pricing is DERIVED (OpenAI list x1.1, the In-Region premium Astra carries);
+# AWS hadn't published a rate for either on 2026-09-23.
+codereview /path/to/code --model gpt6-sol         # or gpt-6-sol, gpt6-sol-bedrock
+codereview /path/to/code --model gpt6-luna        # or gpt-6-luna, gpt6-luna-bedrock
 ```
 
 > **Tip:** GPT-5.6 also ships cheaper tiers — Terra (`openai.gpt-5.6-terra`, $2.50/$15) for balanced everyday work and Luna (`openai.gpt-5.6-luna`, $1/$6) for high-volume/CI. Add either the same way as the Sol entry in `models.yaml` if you want a lower-cost run.
@@ -377,7 +387,7 @@ codereview /path/to/code --model gpt6-bedrock     # or gpt-6, gpt6-astra-bedrock
 ### Basic Usage
 
 ```bash
-# Uses Claude Opus 5 by default
+# Uses Claude Opus 5.5 by default
 codereview /path/to/your/codebase
 ```
 
@@ -392,7 +402,8 @@ codereview --list-models --verbose
 
 # AWS Bedrock Models (Claude family)
 codereview /path/to/code --model fable5    # Claude Fable 5 (Mythos-class, 1M context)
-codereview /path/to/code --model opus      # Claude Opus 5 (latest, default, 1M context)
+codereview /path/to/code --model opus      # Claude Opus 5.5 (the default model since 2026-09-23; newest Opus, 1M context)
+codereview /path/to/code --model opus5     # Claude Opus 5 (the previous default, 1M context)
 codereview /path/to/code --model sonnet    # Claude Sonnet 5 (1M context; `sonnet` moved here 2026-08-29)
 codereview /path/to/code --model haiku     # Claude Haiku 4.5 (fastest, cheapest Bedrock entry)
 
@@ -425,6 +436,8 @@ codereview /path/to/code --model kimi               # Short alias
 # OpenAI-on-Bedrock (bedrock-mantle OpenAI-compatible endpoint; bearer-key auth)
 codereview /path/to/code --model gpt5.6             # GPT-5.6 Sol (OpenAI flagship, best coding model)
 codereview /path/to/code --model gpt6               # GPT-6 Astra (OpenAI's most capable; us-west-2 only)
+codereview /path/to/code --model gpt6-sol           # GPT-6 Sol (mid tier; us-east-1 only)
+codereview /path/to/code --model gpt6-luna          # GPT-6 Luna (cheapest GPT-6; us-east-1 only)
 
 # Short aliases work too
 codereview /path/to/code -m haiku
@@ -436,9 +449,10 @@ codereview /path/to/code -m kimi
 
 | Model | Provider | Use Case | Input $/M | Output $/M |
 |-------|----------|----------|-----------|------------|
-| Fable 5 | AWS Bedrock | Mythos-class, always-on thinking, 1M context | $10.00 | $50.00 |
-| Opus 5 | AWS Bedrock | Latest reasoning, default model, best for code review, 1M context | $5.00 | $25.00 |
-| Sonnet 5 | AWS Bedrock | Claude 5 gen, near-Opus at Sonnet price, 1M context (owns `sonnet`) | $3.00 | $15.00 |
+| Fable 5 | AWS Bedrock | Mythos-class, always-on thinking, 1M context | $11.00 | $55.00 |
+| Opus 5.5 | AWS Bedrock | **Default model.** Newest Opus, always-on adaptive thinking, 1M context; Global cross-Region profile (owns `opus`) | $4.00 | $20.00 |
+| Opus 5 | AWS Bedrock | Previous default, best for code review, 1M context | $5.50 | $27.50 |
+| Sonnet 5 | AWS Bedrock | Claude 5 gen, near-Opus at Sonnet price, 1M context (owns `sonnet`) | $2.20 | $11.00 |
 | Haiku 4.5 | AWS Bedrock | Fast, economical, large codebases — cheapest Bedrock entry, and the only one on the native tool-use path | $1.00 | $5.00 |
 | Kimi K3 (Bedrock) | AWS Bedrock | 2.8T MoE / 104B active, 1M context, always-on thinking; Global cross-Region profile, AWS credentials instead of a Moonshot key (owns `kimi-bedrock`) | $3.00 | $15.00 |
 | GPT-5.4 | Azure OpenAI | Frontier reasoning, 1.05M context, default Azure | $2.50 | $15.00 |
@@ -455,6 +469,8 @@ codereview /path/to/code -m kimi
 | **Kimi K3** | **Moonshot direct** | **2.8T MoE, 104B active, 1M context, always-on thinking, agentic (owns `kimi`)** | **$3.00** | **$15.00** |
 | **GPT-5.6 Sol (Bedrock)** | **OpenAI-on-Bedrock** | **OpenAI flagship, best coding model, 272K context, `bedrock-mantle` endpoint us-east-1/2 (owns `gpt-bedrock`)** | **$5.00** | **$30.00** |
 | **GPT-6 Astra (Bedrock)** | **OpenAI-on-Bedrock** | **OpenAI's most capable model, text + image in, 128K output, `bedrock-mantle` endpoint us-west-2 only. 1M context; tiered pricing — a request over 272K input tokens bills $22/$82.50** | **$11.00** | **$55.00** |
+| **GPT-6 Sol (Bedrock)** | **OpenAI-on-Bedrock** | **Mid GPT-6 tier, 1M context, 128K output, `bedrock-mantle` us-east-1 only; tiered above 272K ($4.40/$16.50). Derived rate — AWS unpublished** | **$2.20** | **$11.00** |
+| **GPT-6 Luna (Bedrock)** | **OpenAI-on-Bedrock** | **Cheapest GPT-6 tier, 1M context, 128K output, `bedrock-mantle` us-east-1 only; tiered above 272K ($0.22/$0.825). Derived rate — AWS unpublished** | **$0.11** | **$0.55** |
 
 *NVIDIA NIM models are currently in free preview tier. Models with thinking mode use interleaved reasoning for deeper code analysis. Several Bedrock models display "TBD" until AWS publishes official pricing — the CLI renders unpriced models as `Estimated cost: TBD` instead of `$0.0000`.
 
@@ -767,8 +783,9 @@ Error: DeploymentNotFound (Azure)
 
 Every batch fails with the same 404 and the run ends with `All N batch(es) failed`. The model
 id is real — it just doesn't exist *in the Region your endpoint names*, and `bedrock-mantle`
-returns 404 rather than redirecting. The two entries on this provider have **no Region in
-common**: GPT-6 Astra is us-west-2 only, GPT-5.6 Sol is In-Region us-east-1 / us-east-2.
+returns 404 rather than redirecting. The entries on this provider have **no Region common to
+all of them**: GPT-6 Astra is us-west-2 only, GPT-6 Sol and Luna are us-east-1 only, GPT-5.6 Sol
+is In-Region us-east-1 / us-east-2.
 
 `OPENAI_BASE_URL` is provider-wide, so the Region comes from **the model entry**: each carries
 `region:` in `models.yaml`, and the provider rewrites the Region label of your configured URL
@@ -800,8 +817,8 @@ version-pinning names are deleted on exactly the same rule.
 
 | Deleted alias(es) | Use instead |
 |---|---|
-| `opus4.7`, `opus-4.7`, `claude-opus-4.7`, `claude-opus-47`, `opus4.6`, `opus-4.6`, `claude-opus-4.6`, `opus4.8`, `opus-4.8`, `claude-opus-4.8`, `claude-opus-48` | `opus5` (or `opus`) — identical $5/$25, context and output for 4.8 |
-| `sonnet4.6`, `claude-sonnet-4.6` | `sonnet5` — `sonnet`/`claude-sonnet` now resolve there too. Same $3/$15 with 5x the context; note 4.6 accepted `--temperature` and used the tool-use path, and Sonnet 5 does neither |
+| `opus4.7`, `opus-4.7`, `claude-opus-4.7`, `claude-opus-47`, `opus4.6`, `opus-4.6`, `claude-opus-4.6`, `opus4.8`, `opus-4.8`, `claude-opus-4.8`, `claude-opus-48` | `opus5` — the same $5/$25 list price (billed $5.50/$27.50 on its `us.` profile), context and output as 4.8; `opus` now means Opus 5.5 |
+| `sonnet4.6`, `claude-sonnet-4.6` | `sonnet5` — `sonnet`/`claude-sonnet` now resolve there too. Cheaper than 4.6's $3/$15 (Sonnet 5's $2/$10 list, $2.20/$11 on the `us.` profile) with 5x the context; note 4.6 accepted `--temperature` and used the tool-use path, and Sonnet 5 does neither |
 | `minimax-m2.7`, `minimax-m2.7-nvidia`, `mm2.7-nvidia`, `mm27`, `minimax-m2.5-nvidia`, `mm2.5-nvidia`, `minimax-m2.5`, `mm25`, `minimax-m2.5-bedrock`, `mm2.5-bedrock`, `minimax-m3`, `minimax-m3-nvidia`, `mm3-nvidia`, `mm3` | **nothing** — no MiniMax model remains anywhere in the registry. NIM end-of-lifed `minimaxai/minimax-m3` on 2026-09-09 and serves no MiniMax at all; the Bedrock re-host was cut as curation on 2026-08-29 while still live. `kimi-nvidia-3` is the closest free NIM stand-in (multimodal, 1M context, thinking) |
 | `kimi-k2.5-nvidia`, `kimi-k2.5`, `kimi25`, `kimi-k2.5-bedrock`, `kimi25-bedrock` | `kimi` / `kimi-k3` (Moonshot direct), or `kimi-bedrock` for Kimi K3 on Bedrock. `kimi-azure`, `kimi25-azure` and `kimi-k2.5-azure` still resolve, now to Moonshot's K3 |
 | `kimi-k2.6-nvidia`, `kimi-nvidia-26`, `kimi26-nvidia` | `kimi-nvidia-3` (Kimi K3 on NVIDIA, free) or `kimi` (K3 on Moonshot). The NIM K2.6 endpoint is still listed upstream but is not provisioned for every account; K3 is a different generation, so these names don't follow it |
@@ -1004,7 +1021,7 @@ For issues, questions, or contributions:
 
 Current release: **v0.4.0** — Claude Opus 4.8 integration (new default, 1M context); model-registry audit (retired dead NVIDIA/Google endpoints with aliases redirected to live successors, fixed Opus 4.7 context/output, refreshed DeepSeek-V4-Pro pricing); added DeepSeek-V4-Flash and Step 3.7 Flash on NVIDIA; LangChain dependency hardening (version caps + pinned community packages); review-prompt improvements (linter-deference gating, Critical/High protected from issue cap, line-number guidance).
 
-Since v0.4.0 (unreleased) the default moved to **Claude Opus 5** and the registry was cut to 18
+Since v0.4.0 (unreleased) the default moved to **Claude Opus 5**, then to **Claude Opus 5.5** (2026-09-23), and the registry was cut to 18
 entries across the two 2026-08-29 passes, so the Opus 4.8 and Step 3.7 Flash entries that release
 introduced are gone — see [What's New](#whats-new) and the [CHANGELOG](CHANGELOG.md).
 

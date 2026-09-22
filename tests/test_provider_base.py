@@ -167,6 +167,58 @@ def test_resolve_temperature_precedence(
     assert result == expected
 
 
+@pytest.mark.parametrize(
+    "params, expected",
+    [
+        # Opted out (params present, no default_temperature): override dropped.
+        (_Params(None), None),
+        # A model with its own default accepts the override.
+        (_Params(0.2), 0.7),
+        # No inference_params at all is not an opt-out.
+        (None, 0.7),
+    ],
+)
+def test_drop_override_on_opt_out_ignores_temperature_for_opted_out_models(
+    params, expected, caplog
+):
+    """`--temperature` must not reach a model that opted out of it.
+
+    Opus 5.5 / Kimi K3 on Bedrock and GPT-6 on bedrock-mantle reject the
+    parameter with a non-retryable error, so forwarding it lost every batch
+    the moment Opus 5.5 became the default.
+    """
+    result = ModelProvider._resolve_temperature(
+        override=0.7,
+        model_config=_Cfg(params),
+        provider_default=0.3,
+        allow_none=True,
+        drop_override_on_opt_out=True,
+    )
+    assert result == expected
+    assert ("Ignoring --temperature" in caplog.text) == (expected is None)
+
+
+@pytest.mark.parametrize("model", ["opus5.5", "kimi-bedrock", "gpt6-sol"])
+def test_bedrock_providers_never_send_temperature_to_an_opted_out_model(
+    model, monkeypatch
+):
+    """End to end through the real constructors, not the static helper."""
+    from codereview.config import get_config_loader
+    from codereview.providers.factory import ProviderFactory
+
+    # gpt6-sol reads OPENAI_* at config-load time; don't depend on the shell.
+    monkeypatch.setenv("OPENAI_API_KEY", "test-bedrock-key-1234567890")
+    monkeypatch.setenv(
+        "OPENAI_BASE_URL", "https://bedrock-mantle.us-east-1.api.aws/openai/v1"
+    )
+    get_config_loader.cache_clear()
+    try:
+        provider = ProviderFactory().create_provider(model, 0.7)
+    finally:
+        get_config_loader.cache_clear()
+    assert provider.temperature is None
+
+
 @pytest.mark.parametrize("bad", [-0.1, 2.1, 5.0])
 def test_resolve_temperature_rejects_out_of_range_override(bad):
     """An out-of-range CLI override raises before any provider is built."""

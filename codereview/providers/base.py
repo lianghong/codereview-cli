@@ -418,6 +418,7 @@ class ModelProvider(ABC):
         model_config: Any,
         provider_default: float,
         allow_none: bool = False,
+        drop_override_on_opt_out: bool = False,
     ) -> float | None:
         """Resolve the effective temperature for a provider.
 
@@ -426,11 +427,22 @@ class ModelProvider(ABC):
         explicitly sets ``temperature=None`` (reasoning models like Claude
         Opus 5) stays None.
 
+        ``drop_override_on_opt_out`` extends that opt-out to the override: an
+        entry with ``inference_params`` but no ``default_temperature`` ignores
+        ``--temperature`` (with a warning) instead of sending it. For providers
+        whose endpoint *rejects* the parameter on those models, forwarding it
+        loses every batch on a non-retryable 400/ValidationException — Opus
+        5.5 and Kimi K3 on Bedrock, GPT-6 on bedrock-mantle. Opus 5 only
+        survived it because langchain-aws's model profile stripped the key;
+        a model the installed package has no profile for gets no such help.
+
         Args:
             override: Caller-supplied temperature (usually from CLI), or None
             model_config: ModelConfig with optional ``inference_params``
             provider_default: Fallback when no other value is set
             allow_none: If True, preserves an explicit None from inference_params
+            drop_override_on_opt_out: If True (requires ``allow_none``), an
+                opted-out model ignores ``override`` too
 
         Returns:
             Effective temperature, or None for reasoning models when allow_none
@@ -438,14 +450,24 @@ class ModelProvider(ABC):
         Raises:
             ValueError: If override is outside [0.0, 2.0]
         """
+        params = getattr(model_config, "inference_params", None)
+        opted_out = allow_none and params is not None and params.temperature is None
+
         if override is not None:
             if not 0.0 <= override <= 2.0:
                 raise ValueError(
                     f"Temperature must be between 0.0 and 2.0, got {override}"
                 )
+            if drop_override_on_opt_out and opted_out:
+                logging.warning(
+                    "Ignoring --temperature %s: %s does not accept a sampling "
+                    "temperature.",
+                    override,
+                    getattr(model_config, "name", "this model"),
+                )
+                return None
             return override
 
-        params = getattr(model_config, "inference_params", None)
         if params is not None:
             if params.temperature is not None:
                 return float(params.temperature)

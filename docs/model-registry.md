@@ -49,7 +49,7 @@ $22/$82.50 above). Two things to know before adding one:
 The `defaults:` block (`zai_default`, `bedrock_default`, …) and a model's
 `capabilities`/`architecture`/`notes` keys are **informational only** — no Pydantic class reads
 them and `ModelConfig` isn't `extra="forbid"`. The CLI's real default `--model` is hardcoded
-(`opus5`) in `cli.py`; changing a `*_default` won't change runtime behavior.
+(`opus5.5`) in `cli.py`; changing a `*_default` won't change runtime behavior.
 
 ## Canonical-owner convention
 
@@ -73,8 +73,9 @@ that NIM is the registry's shortest-lived block and the choice is a bet on the e
 ## Generation-neutral aliases track the current generation
 
 Bare family names (`opus`, `claude-opus`) belong to the newest entry in that family — they moved
-to `opus5` when Opus 5 shipped, and a superseded entry keeps version-explicit names only until
-it's retired.
+to `opus5` when Opus 5 shipped and on to `opus5.5` on 2026-09-23, and a superseded entry keeps
+version-explicit names only until it's retired. The CLI default is a separate decision: it names
+an entry `id` (`opus5.5` since 2026-09-23), not an alias, so moving `opus` doesn't move the default.
 
 Two traps when doing this:
 
@@ -270,10 +271,10 @@ misleading. Keep genuinely current alternative spellings in `aliases`.
 `tests/test_model_profile_drift.py`. Each LangChain partner package ships a `_MODEL_PROFILES`
 table in `<package>/data/_profiles.py`, read via the private
 `_get_default_model_profile(name)` — a plain dict lookup, so no credentials, no client, no
-network. 9 of 19 entries resolve one (Bedrock 4/5, Azure 2/2, DeepSeek 2/2, Google 1/2); the
+network. 9 of 22 entries resolve one (Bedrock 4/6, Azure 2/2, DeepSeek 2/2, Google 1/2); the
 misses are re-hosts and direct vendor APIs whose wire ids the tables don't carry (all of NVIDIA,
 Z.AI, Moonshot and `bedrock_openai`, plus `kimi-k3-bedrock`) plus anything newer than the installed package —
-`gemini-3.8-flash` is currently the only one in that last group.
+`gemini-3.8-flash` and `opus5.5` (`global.anthropic.claude-opus-5-5`) are currently that last group.
 
 **Neither side is authoritative**: the tables are generated from the community-curated
 [models.dev](https://github.com/sst/models.dev), and our `supports_tool_use` is *empirical* — the

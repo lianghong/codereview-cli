@@ -34,8 +34,13 @@ providers:
           - fable-5
           - fable
         pricing:
-          input_per_million: 10.00
-          output_per_million: 50.00
+          # Geo-US (`us.`) rate: Anthropic's $10/$50 list price + the 10%
+          # Bedrock regional/geo premium over global that applies to every
+          # Claude model from 4.5 on (platform.claude.com pricing page,
+          # 2026-09-23). Stays on `us.` rather than `global.` because the
+          # data-retention opt-in above is per-region account state.
+          input_per_million: 11.00
+          output_per_million: 55.00
         inference_params:
           # Fable 5 requires temperature to be 1.0-or-unset, top_p to be
           # >=0.99-or-unset, and rejects top_k entirely (Bedrock model card,
@@ -79,13 +84,11 @@ providers:
         # generated. Same condition that forced Fable 5's override; think-heavy
         # batches outlast the provider-default read_timeout (300s).
         read_timeout: 1800
-        # Generation-neutral aliases track the current generation, so `opus`
-        # and `claude-opus` point here. This entry also absorbed the
-        # version-explicit aliases of the removed Opus 4.7 / 4.6 entries
-        # (2026-07-25) so existing --model invocations keep resolving.
+        # Version-explicit aliases only. The generation-neutral `opus` and
+        # `claude-opus` moved to opus5.5 on 2026-09-23 (generation-neutral
+        # aliases track the current generation); the CLI default model
+        # moved to opus5.5 the same day.
         aliases:
-          - opus
-          - claude-opus
           - claude-opus-5
           - opus-5
           - claude-opus5
@@ -93,12 +96,14 @@ providers:
         # opus-4.7, claude-opus-4.7, claude-opus-47, opus4.6, opus-4.6,
         # claude-opus-4.6) were deleted, not migrated - `--model opus4.6` now
         # fails fast rather than silently resolving to a two-generations-newer
-        # model. Use `opus` (generation-neutral) or `opus5`.
+        # model. Use `opus5` (`opus` now means Opus 5.5).
         pricing:
-          # Verified: AWS Bedrock model card / Anthropic pricing (July 2026).
-          # Unchanged from Opus 4.8.
-          input_per_million: 5.00
-          output_per_million: 25.00
+          # Geo-US (`us.`) rate: Anthropic's $5/$25 list price (unchanged from
+          # Opus 4.8) + the 10% Bedrock regional/geo premium over global for
+          # Claude 4.5+ (platform.claude.com pricing page, 2026-09-23). Was
+          # registered at the global rate until then, under-reporting 10%.
+          input_per_million: 5.50
+          output_per_million: 27.50
         inference_params:
           # Reasoning model - temperature/top_p/top_k not supported.
           # default_temperature omitted intentionally.
@@ -135,6 +140,60 @@ providers:
           so no provider_data_share opt-in (unlike Fable 5). Geo-US inference
           profile; In-Region us-east-1, Geo/Global route more broadly.
 
+      # Claude Opus 5.5 - added 2026-09-23 (launched 2026-09-22, EOL no
+      # sooner than 2027-09-22). Verified live 2026-09-23:
+      # `anthropic.claude-opus-5-5` is ACTIVE in us-east-1, us-east-2 and
+      # us-west-2 but INFERENCE_PROFILE-only, so full_id must be a profile id;
+      # both `us.` and `global.` answer a Converse call from us-east-1.
+      #
+      # GLOBAL, not the `us.` geo profile opus5 uses, on price (same call as
+      # kimi-k3-bedrock): Anthropic lists Opus 5.5 at $4/$20 per M, and
+      # Bedrock regional/geo endpoints carry a 10% premium over global for
+      # every Claude model from 4.5 on (platform.claude.com pricing page,
+      # fetched 2026-09-23) - so `us.` would be $4.40/$22. Switch full_id to
+      # `us.anthropic.claude-opus-5-5` and pricing to 4.40/22.00 if US data
+      # residency matters more than the 10%.
+      #
+      # The CLI's default model since 2026-09-23 (cli.py `--model` default).
+      - id: opus5.5
+        full_id: global.anthropic.claude-opus-5-5
+        name: Claude Opus 5.5
+        # Adaptive thinking is always on and cannot be disabled (model card),
+        # and the Converse call is non-streaming - same condition as opus5.
+        read_timeout: 1800
+        # Generation-neutral `opus`/`claude-opus` moved here from opus5
+        # (2026-09-23); opus5 keeps its version-explicit names.
+        aliases:
+          - opus
+          - claude-opus
+          - claude-opus-5.5
+          - opus-5.5
+          - claude-opus-5-5
+        pricing:
+          # Verified: platform.claude.com/docs/en/about-claude/pricing
+          # (2026-09-23), global-endpoint rate. Cheaper than Opus 5's
+          # $5/$25 list price ($5.50/$27.50 on its us. profile).
+          input_per_million: 4.00
+          output_per_million: 20.00
+        inference_params:
+          # Live 2026-09-23: `temperature` is rejected with a
+          # ValidationException ("deprecated for this model"), and
+          # maxTokens 128000 is accepted while 128001 is refused.
+          max_output_tokens: 128000
+        context_window: 1000000
+        # The Bedrock model card lists "Structured outputs: Not Supported"
+        # on bedrock-runtime and bedrock-mantle (as Opus 5's does), and the
+        # forced-tool_choice failure is *observed* on the always-thinking
+        # Claude tiers (commit de5e2fc) - not an Anthropic API restriction,
+        # which documents forced tool use as supported with adaptive thinking.
+        supports_tool_use: false
+        notes: >-
+          Newest Opus tier (September 2026). 1M-token context, up to 128K
+          output, knowledge cutoff June 2026. Adaptive thinking always on -
+          effort (low/medium/high/xhigh/max, default medium) controls depth.
+          Structured output uses prompt-based JSON parsing
+          (supports_tool_use: false). Global cross-region inference profile.
+
       # Opus 4.7 and Opus 4.6 removed 2026-07-25, Opus 4.8 removed 2026-08-29:
       # the whole pre-5 Opus tier is gone. 4.7/4.6 were superseded by
       # opus4.8/opus5 at identical $5/$25 pricing (4.6 also had only a 200K
@@ -146,7 +205,7 @@ providers:
       # specific 4.8-vs-5 comparison is ever needed. Every 4.8 identifier was
       # DELETED, not migrated — the entry id `opus4.8` plus `claude-opus-4.8`,
       # `opus-4.8` and `claude-opus-48` all state a version, and `opus`/
-      # `claude-opus` were already on opus5.
+      # `claude-opus` were already on opus5 (and moved on to opus5.5 on 2026-09-23).
 
       - id: sonnet5
         full_id: us.anthropic.claude-sonnet-5
@@ -162,12 +221,13 @@ providers:
           - sonnet-5
           - claude-sonnet5
         pricing:
-          # Standard rates ($3/$15). A launch promo of $2/$10 runs through
-          # 2026-08-31 on both Bedrock and Anthropic; we register the durable
-          # standard price so cost previews don't silently under-report once
-          # the promo lapses (unchanged from Sonnet 4.6's rates).
-          input_per_million: 3.00
-          output_per_million: 15.00
+          # Geo-US (`us.`) rate: $2/$10 list + the 10% Bedrock regional/geo
+          # premium for Claude 4.5+. The $2/$10 launch price became the
+          # STANDARD price - the scheduled 2026-09-01 rise to $3/$15 was
+          # cancelled (platform.claude.com pricing page, 2026-09-23), so the
+          # $3/$15 this entry carried until then over-reported ~36%.
+          input_per_million: 2.20
+          output_per_million: 11.00
         inference_params:
           # Sonnet 5 rejects temperature/top_p/top_k with a 400 (same
           # constraint as Opus 5 and Fable 5) - omit all sampling params.
@@ -1643,6 +1703,95 @@ providers:
           ONLY — which is mutually exclusive with GPT-5.6 Sol's us-east-1 /
           us-east-2, since OPENAI_BASE_URL is provider-wide.
 
+      # GPT-6 Sol and GPT-6 Luna — the coding and high-volume tiers of the GPT-6
+      # family, alongside Astra above. Added 2026-09-23. Evidence, because
+      # neither has a Bedrock model card yet (the model-cards index listed only
+      # GPT-6 Astra on 2026-09-23):
+      #   - Live /v1/models on bedrock-mantle (2026-09-23): `openai.gpt-6-sol`
+      #     and `openai.gpt-6-luna` are listed in us-east-1 ONLY. us-east-2 and
+      #     us-west-2 404 both ids ("does not exist") — so each entry pins
+      #     `region: us-east-1`, the same mechanism that serves Sol 5.6/Astra.
+      #   - Live probes: `temperature` -> HTTP 400 unsupported_parameter; both
+      #     Responses and Chat Completions return 200. max_output_tokens is
+      #     NOT enforced at the edge (256000 returned 200), so the 128K cap
+      #     below comes from OpenAI's model pages, not from a rejection.
+      #   - OpenAI model pages (developers.openai.com, 2026-09-23): 1,050,000
+      #     context (922K max input), 128K output, reasoning effort
+      #     none/low/medium(default)/high/xhigh/max.
+      #
+      # PRICING IS DERIVED, NOT PUBLISHED. aws.amazon.com/bedrock/pricing lists
+      # no rate for either model yet. The numbers below are OpenAI's Standard
+      # list prices x1.1 — AWS's stated In-Region fee, and the rule Astra's
+      # published Bedrock rates obey exactly (OpenAI $10/$50, $20/$75 ->
+      # Bedrock $11/$55, $22/$82.50). Replace with the Bedrock figures once
+      # they're published. Tiered like Astra: the threshold is per REQUEST.
+      #
+      # supports_tool_use: false on both under the assume-prompt-parsing rule —
+      # no forced-tool_choice A/B was run. Supporting evidence: OpenAI's pages
+      # say function calling on Chat Completions needs reasoning_effort `none`,
+      # i.e. the tool path and reasoning conflict for this family, and both
+      # Sol 5.6 and Astra fail it live on this same endpoint.
+      - id: gpt6-sol-bedrock
+        full_id: openai.gpt-6-sol
+        name: GPT-6 Sol (Bedrock)
+        # us-east-1 ONLY on bedrock-mantle as of 2026-09-23 (see above).
+        region: us-east-1
+        aliases:
+          - gpt6-sol
+          - gpt-6-sol
+        pricing:
+          # OpenAI $2/$10 short, $4/$15 long, x1.1 In-Region (derived).
+          input_per_million: 2.20
+          output_per_million: 11.00
+          long_context_threshold_tokens: 272000
+          long_input_per_million: 4.40
+          long_output_per_million: 16.50
+        inference_params:
+          # Reasoning model — no default_temperature/top_p (live 400).
+          max_output_tokens: 128000
+        # Chat Completions works too, but Responses carries reasoning
+        # summaries — same choice as Astra.
+        use_responses_api: true
+        # Round number under the 1.05M window, same as Astra; the batcher's
+        # budget subtracts max_output, which keeps input under the 922K cap.
+        context_window: 1000000
+        supports_tool_use: false
+        notes: >-
+          OpenAI GPT-6 Sol — GPT-6's coding/agentic tier — on Amazon Bedrock
+          via bedrock-mantle (bearer key, ChatOpenAI + base_url). 1.05M
+          context, 128K output, no temperature/top_p, tiered pricing at 272K
+          input per request. us-east-1 only. Bedrock rates derived from
+          OpenAI's list price + 10% until AWS publishes them.
+
+      - id: gpt6-luna-bedrock
+        full_id: openai.gpt-6-luna
+        name: GPT-6 Luna (Bedrock)
+        # us-east-1 ONLY on bedrock-mantle as of 2026-09-23 (see above).
+        region: us-east-1
+        aliases:
+          - gpt6-luna
+          - gpt-6-luna
+        pricing:
+          # OpenAI $0.10/$0.50 short, $0.20/$0.75 long, x1.1 In-Region
+          # (derived). The cheapest entry on this provider by far.
+          input_per_million: 0.11
+          output_per_million: 0.55
+          long_context_threshold_tokens: 272000
+          long_input_per_million: 0.22
+          long_output_per_million: 0.825
+        inference_params:
+          # Reasoning model — no default_temperature/top_p (live 400).
+          max_output_tokens: 128000
+        use_responses_api: true
+        context_window: 1000000
+        supports_tool_use: false
+        notes: >-
+          OpenAI GPT-6 Luna — GPT-6's high-volume, lowest-cost tier — on
+          Amazon Bedrock via bedrock-mantle. 1.05M context, 128K output, no
+          temperature/top_p, tiered pricing at 272K input per request.
+          us-east-1 only. Bedrock rates derived from OpenAI's list price + 10%
+          until AWS publishes them.
+
       # Grok 4.3 (Bedrock) removed 2026-08-29, and with it xAI leaves this
       # registry entirely — there is no other Grok entry on any provider.
       # `xai.grok-4.3` is still LIVE on bedrock-mantle, so this was CURATION, and
@@ -1650,7 +1799,7 @@ providers:
       # deciding not to re-add it:
       #   - It was the CHEAPEST entry on bedrock_openai by a wide margin
       #     ($1.25/$2.50 against GPT-5.6 Sol's $5/$30 — 12x on output). This
-      #     provider now starts at $5/$30.
+      #     provider started at $5/$30 until GPT-6 Luna ($0.11/$0.55) arrived.
       #   - It had the widest context here (1M vs Sol's 272K).
       #   - It was the ONLY entry on this provider that ACCEPTED temperature/top_p
       #     (card defaults 0.7/0.95; we sent 0.3 for deterministic review) and so

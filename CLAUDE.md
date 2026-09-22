@@ -8,7 +8,7 @@ LangChain-based CLI for AI code review across **8 providers**: AWS Bedrock, Azur
 
 **Stack:** Python 3.14, LangChain (1.3+), Pydantic V2, Click, Rich, AWS Bedrock, Azure OpenAI, NVIDIA NIM, Google GenAI, DeepSeek (`langchain-deepseek`), Z.AI (`langchain-openai` + custom base_url), Moonshot (`langchain-moonshot`).
 
-For the live model list with pricing/aliases run `uv run codereview --list-models` — that output is authoritative; the YAML in `codereview/config/models.yaml` is the source of truth. Default model: **Claude Opus 5**.
+For the live model list with pricing/aliases run `uv run codereview --list-models` — that output is authoritative; the YAML in `codereview/config/models.yaml` is the source of truth. Default model: **Claude Opus 5.5**.
 
 ## Deep-dive docs
 
@@ -50,7 +50,7 @@ uv run ruff format codereview/ tests/
 uv run isort codereview/ tests/
 
 # Run the tool
-uv run codereview /path/to/code                           # default: opus5
+uv run codereview /path/to/code                           # default: opus5.5
 uv run codereview ./src --model sonnet --output report.md
 uv run codereview ./src --static-analysis --severity high
 uv run codereview ./src --dry-run                          # preview cost/files
@@ -65,7 +65,7 @@ uv run codereview ./src --output report.json --format json # CI-friendly
 
 | Option | Description | Default |
 |---|---|---|
-| `--model, -m` | Model ID or alias (`--list-models` to see) | opus5 |
+| `--model, -m` | Model ID or alias (`--list-models` to see) | opus5.5 |
 | `--output, -o` | Export report (md or json) | None |
 | `--format, -f` | `markdown` or `json` | markdown |
 | `--severity, -s` | Min severity to **display**: critical/high/medium/low/info | info |
@@ -135,7 +135,7 @@ codereview/config/
 
 **Secrets via env vars** (expanded with `${VAR}` syntax in YAML): `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_ENDPOINT`, `NVIDIA_API_KEY`, `GOOGLE_API_KEY`, `DEEPSEEK_API_KEY`, `ZAI_API_KEY`, `KIMI_API_KEY`, `OPENAI_API_KEY` + `OPENAI_BASE_URL` (OpenAI-on-Bedrock). AWS Bedrock (Converse path) uses the standard credential chain; OpenAI-on-Bedrock uses a Bedrock API key (bearer token) instead.
 
-**Doc-only YAML:** the `defaults:` block (`zai_default`, `bedrock_default`, …) and a model's `capabilities`/`architecture`/`notes` keys are **informational only** — nothing reads them and `ModelConfig` isn't `extra="forbid"`. The CLI's real default `--model` is hardcoded (`opus5`) in `cli.py`.
+**Doc-only YAML:** the `defaults:` block (`zai_default`, `bedrock_default`, …) and a model's `capabilities`/`architecture`/`notes` keys are **informational only** — nothing reads them and `ModelConfig` isn't `extra="forbid"`. The CLI's real default `--model` is hardcoded (`opus5.5`) in `cli.py`.
 
 **`ConfigLoader` must forward every key it parses** (`loader.py`). A key in `models.yaml` but absent from the `<Name>Config` construction is invisible — no error, and the setting appears to work because the field has a default; it shipped sixteen times, and an unread *pricing* number is the worst version because the next reader trusts it. Wire a new knob through `_parse_model_config` **and** the Pydantic model (`test_every_pricing_and_inference_key_in_the_yaml_is_actually_read`); a comment in the YAML is not configuration. **Parsed onto `InferenceParams` is not the same as sent** — the hazard repeats in each provider's `_create_model`: `inference_params.reasoning_effort` is forwarded only by `nvidia.py` (request payload) and `moonshot.py` (`ChatMoonshot` kwarg), and is silently dead elsewhere. Resolve it in `__init__` under the existing `if model_config.inference_params:` guard — it's Optional, and reading it unguarded breaks every provider test that builds a config without one.
 
@@ -159,7 +159,7 @@ Keep the hard-fail vs warning split **consistent across providers** — an incon
 
 ## Adding things
 
-**New model:** add an entry under the matching provider in `codereview/config/models.yaml`. Fields: `id`, `full_id` (provider's identifier), `name`, `aliases` (never repeat the `id` — `_check_alias_hygiene` rejects it), `deprecated_aliases` (only for names inherited from a removed entry), `pricing.input_per_million`/`output_per_million`, `inference_params`, `context_window`. For a reasoning/thinking model also set `supports_tool_use: false` (→ `docs/structured-output.md`), omit `default_temperature`, and on Bedrock add `read_timeout: 1800`.
+**New model:** add an entry under the matching provider in `codereview/config/models.yaml`. Fields: `id`, `full_id` (provider's identifier), `name`, `aliases` (never repeat the `id` — `_check_alias_hygiene` rejects it), `deprecated_aliases` (only for names inherited from a removed entry), `pricing.input_per_million`/`output_per_million`, `inference_params`, `context_window`. For a reasoning/thinking model also set `supports_tool_use: false` (→ `docs/structured-output.md`), omit `default_temperature`, and on Bedrock add `read_timeout: 1800`. **A Bedrock Claude entry on a `us.` (geo) profile prices at 1.1× Anthropic's global list rate**; `global.` prices at 1×. The `us.` entries shipped at the global rate, understating every default-model estimate by 10% (`test_bedrock_claude_pricing_carries_the_regional_premium`, which also needs the new model's list price).
 
 **New provider:** subclass `ModelProvider` in `codereview/providers/`, implementing `analyze_batch`, `_create_model`, `_create_chain`, `_extract_token_usage`, `_is_retryable_error`, `_calculate_backoff`, `validate_credentials`. Add one row to `_PROVIDER_REGISTRY` (`providers/factory.py`), the `<Name>Config` class to `config/models.py`, a parsing branch to `config/loader.py`, and the env-var to `cli.py`'s Provider Setup table — that table is hand-written prose where `models.yaml`'s `${VAR}` references are authoritative, so `test_provider_setup_table_covers_every_configured_provider` and `test_provider_setup_table_names_the_env_vars_models_yaml_actually_reads` tie them together (rows match by substring; `bedrock` is exempt from the second direction, documenting boto3's variables). A URL-taking provider also needs a `_cleartext_<name>` builder in `_CLEARTEXT_BUILDERS` (`tests/test_provider_result_shape_contract.py`).
 
@@ -220,7 +220,7 @@ Fixtures live in `tests/fixtures/sample_code/` (verifies inclusion + exclusion l
 
 - **Pydantic V1 compat warning** under Python 3.14 is upstream from LangChain — harmless.
 - **Most reasoning models reject `temperature`/`top_p`** (every Claude 5 tier, the GPT-5.x/6 entries, Kimi K3 on Bedrock — probe a new one) — omit `default_temperature`; Bedrock and Azure pass `allow_none=True` to `_resolve_temperature`. **Gemini sampling params are deprecated from 3.6 Flash onward** — omit all three for every new Gemini entry (3.1 Pro keeps theirs); `test_gemini38_flash_matches_the_published_model_card` pins the only current Flash and `test_every_modern_gemini_entry_omits_sampling_params` catches the next entry.
-- **13 of 19 entries ship `supports_tool_use: false`**; the six on tool-use are Haiku 4.5, both Azure GPT-5.4s, Gemini 3.1 Pro and both DeepSeek-direct entries. Live evidence beats the rule where it exists (Opus 5's vendor card, GPT-6 Astra's and Kimi K3 (Bedrock)'s A/B runs, Kimi K3 (Moonshot)'s HTTP 400), and the lesson from two of those A/Bs is the one to keep: **a trivial forced-`tool_choice` probe passes and proves nothing** — only a think-heavy real review reproduces the failure. **No entry holds a live-proven `true` on a thinking model**; the bar for flipping one is three clean runs with `parsing_error` None and `output_token_details.reasoning > 0`. An **Azure Foundry deployment of an open-weight model** needs `false` too (SGLang/vLLM reject a forced `tool_choice` without `--enable-auto-tool-choice`; `test_supports_tool_use_false_uses_prompt_parsing`). Which entries are which, with the evidence → `docs/structured-output.md`
+- **16 of 22 entries ship `supports_tool_use: false`**; the six on tool-use are Haiku 4.5, both Azure GPT-5.4s, Gemini 3.1 Pro and both DeepSeek-direct entries. Live evidence beats the rule where it exists (Opus 5's and Opus 5.5's Bedrock model cards, GPT-6 Astra's and Kimi K3 (Bedrock)'s A/B runs, Kimi K3 (Moonshot)'s HTTP 400), and the lesson from two of those A/Bs is the one to keep: **a trivial forced-`tool_choice` probe passes and proves nothing** — only a think-heavy real review reproduces the failure. **No entry holds a live-proven `true` on a thinking model**; the bar for flipping one is three clean runs with `parsing_error` None and `output_token_details.reasoning > 0`. An **Azure Foundry deployment of an open-weight model** needs `false` too (SGLang/vLLM reject a forced `tool_choice` without `--enable-auto-tool-choice`; `test_supports_tool_use_false_uses_prompt_parsing`). Which entries are which, with the evidence → `docs/structured-output.md`
 - **`use_responses_api: true`** for GPT-5.x in `models.yaml` — the ChatCompletion API does not support reasoning summaries for these.
 - **Concurrent batches:** `TokenTrackingMixin._track_tokens` and `CodeAnalyzer.skipped_files` are lock-guarded. Don't add other shared mutable state to providers without a lock, and don't attach a `StreamingCallbackHandler` under `max_workers > 1` (that's the concurrent-`Live` overlap above).
 - **OpenAI-on-Bedrock is NOT the `bedrock` provider.** `bedrock_openai` is `ChatOpenAI` + `base_url` against `bedrock-mantle` with a Bedrock **bearer key**, not SigV4 Converse. `full_id` must be a **literal** (an unset `${VAR}` expands to `""` and breaks `--list-models`). Entries whose Regions don't overlap each carry **`region:`**, which `_resolve_base_url` uses to rewrite the Region label of `OPENAI_BASE_URL`: **derive from the configured URL, never a host template**; **a host with no Region label passes through unchanged**; **`require_https` runs on the *resolved* URL**. `--validate` can't catch a wrong Region. **Tiered pricing is per *request*, never per run** — tier selection lives in `TokenTrackingMixin._track_tokens` (`--dry-run`: `_estimate_tiered_cost`), the three `long_*` pricing keys are all-or-none, and **every cost consumer reads `estimate_cost()` / `ReviewMetrics.input_cost`+`output_cost`, never `tokens × rate`** (`test_no_new_consumer_recomputes_cost_from_a_rate`). Regions, rates and history → `docs/providers.md`

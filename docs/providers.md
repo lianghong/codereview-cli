@@ -331,9 +331,13 @@ a run; `create_provider` reports the real error.
 ## Sampling params
 
 **Reasoning models** (Claude Opus 5, Claude Sonnet 5, Claude Fable 5, GPT-5.4 / 5.4 Pro on Azure,
-GPT-5.6 Sol and GPT-6 Astra on Bedrock, DeepSeek-V4-Pro) don't accept `temperature`/`top_p`. Bedrock and Azure
+GPT-5.6 Sol, GPT-6 Astra/Sol/Luna, Opus 5.5 and Kimi K3 on Bedrock, DeepSeek-V4-Pro) don't accept `temperature`/`top_p`. Bedrock and Azure
 providers both pass `allow_none=True` to `_resolve_temperature`; omit `default_temperature` from
-`inference_params` for new reasoning models.
+`inference_params` for new reasoning models. Bedrock and OpenAI-on-Bedrock also pass
+`drop_override_on_opt_out=True`, so an explicit `--temperature` is **ignored with a warning** for an
+opted-out entry instead of being sent. Opus 5 only ever survived it because langchain-aws's model
+profile stripped the key; Opus 5.5 and Kimi K3 have no profile, so Converse got it and answered with
+a non-retryable `ValidationException` on every batch, and GPT-6 on mantle answers with a 400.
 
 Being a reasoning model does not by itself mean the sampling params are refused — xAI's Grok 4.3
 was reasoning-first *and* accepted `temperature`/`top_p` (card defaults 0.7/0.95), which is why its
@@ -437,6 +441,29 @@ knowledge cutoff 2026-04-30. Two properties are unlike anything else in the regi
   [Tiered pricing is a property of one request](#tiered-pricing-is-a-property-of-one-request-not-of-a-run).
   What the clamp cost while it stood was review *quality*, not money: ~4x more batches, and each
   batch only ever sees its own files, so cross-file findings were lost.
+
+**GPT-6 Sol** (`openai.gpt-6-sol`, id `gpt6-sol-bedrock`, aliases `gpt6-sol`/`gpt-6-sol`) and
+**GPT-6 Luna** (`openai.gpt-6-luna`, id `gpt6-luna-bedrock`, aliases `gpt6-luna`/`gpt-6-luna`)
+joined 2026-09-23 as the mid and low-cost GPT-6 tiers. The generation-neutral `gpt6`/`gpt-6`
+stay on Astra, the flagship. What a live probe of both showed that day:
+
+- **us-east-1 only** — a third Region, distinct from both Astra's and GPT-5.6 Sol's, so each
+  entry carries `region: us-east-1`. A us-east-2 base URL reached both through the rewrite.
+- **Temperature returns HTTP 400**, so neither entry sets `default_temperature`; both Responses
+  and Chat Completions answered 200, and `use_responses_api: true` is kept for reasoning
+  summaries, matching the other GPT entries.
+- **The pricing is derived, not published.** Neither model had a Bedrock model card or a row on
+  the AWS pricing page. The entries carry OpenAI's list price ×1.1 — the In-Region premium that
+  Astra's *published* Bedrock rate shows against OpenAI's — tiered at the same 272K threshold:
+  Sol $2.20/$11 ($4.40/$16.50 above), Luna $0.11/$0.55 ($0.22/$0.825 above). Replace them with
+  the AWS rates once published; until then a `--dry-run` or post-run cost is provisional.
+- **`supports_tool_use: false` is assumed, not A/B-verified** — the reasoning-model rule, plus
+  OpenAI's own note that function calling on these tiers needs `reasoning_effort: none`. Two
+  live reviews on `codereview/providers --max-files 3` completed on the prompt path (Sol 28s,
+  Luna 15s). Flip it only on the three-clean-runs bar in `docs/structured-output.md`.
+- `max_output_tokens: 128000` comes from OpenAI's model pages; the edge did not enforce a lower
+  cap in the probe. `context_window` is clamped to 1M like Astra's (OpenAI lists 1.05M with a
+  922K max input).
 
 **The `bedrock_openai` provider is not OpenAI-only, and the code still proves it.** xAI's
 **Grok 4.3** rode the same `bedrock-mantle` OpenAI-compatible endpoint (model id `xai.grok-4.3`,

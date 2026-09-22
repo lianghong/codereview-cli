@@ -65,11 +65,12 @@ _ALLOWED_DIVERGENCES: dict[tuple[str, str, str], str] = {
     ),
     # New in langchain-aws 1.7.6, which added an Opus 5 profile where 1.6.3 had
     # none — so this divergence appeared on a dependency bump, not on a change
-    # to our YAML. Ours wins here on evidence: Opus 5 is the single entry whose
-    # `false` rests on *vendor documentation* rather than an observed failure,
-    # and the profile is community-curated (models.dev) with a `last_updated` of
-    # 2026-07-24, three days after the model shipped. Flipping the YAML on it
-    # would put forced tool_choice on the CLI's default model.
+    # to our YAML. Ours wins here on evidence: Opus 5's `false` rests on its
+    # Bedrock model card (Opus 5.5's card says the same, but it has no profile
+    # to diverge from yet), and the profile is community-curated (models.dev)
+    # with a `last_updated` of 2026-07-24, three days after the model shipped.
+    # Flipping the YAML on it would put forced tool_choice on the previous
+    # default model.
     ("bedrock", "opus5", "structured_output"): (
         "the Bedrock model card lists 'Structured outputs: Not Supported' on "
         "both bedrock-runtime and bedrock-mantle; the profile's True is "
