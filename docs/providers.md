@@ -393,7 +393,7 @@ Bedrock OpenAI-compatible endpoint does.
 Sol/Terra/Luna family) is Responses-API-only, rejects
 `temperature`/`top_p`, and its `full_id` is a real published wire id rather than a console
 literal. It's OpenAI's best coding model, so it's the code-review pick of the family; In-Region
-only us-east-1 / us-east-2. It is also, at $5/$30 per million, **twice the price of the GPT-5.5
+only us-east-1 / us-east-2. It is also, at $4.40/$22 per million, **1.5–1.8× the price of the GPT-5.5
 entry it replaced** ($2.50/$15) and narrower (272K vs 400K) — which is why `gpt-bedrock` sits in
 `deprecated_aliases`, resolvable but unadvertised, rather than in `aliases`.
 

@@ -1484,7 +1484,7 @@ providers:
       #   openai.gpt-5.4  superseded at identical $2.50/$15 by 5.5.
       #   openai.gpt-5.5  superseded by GPT-5.6 Sol, which is OpenAI's best
       #     coding model to date. Two things you give up, recorded because the
-      #     successor is not a free upgrade: Sol costs 2x ($5/$30 vs $2.50/$15),
+      #     successor is not a free upgrade: Sol costs more ($4.40/$22 vs $2.50/$15),
       #     and 5.5 had the wider context window (400K vs Sol's 272K). If
       #     per-token cost matters more than coding rank, the GPT-5.6 Terra
       #     ($2.50/$15) and Luna ($1/$6) tiers are the intended replacements -
@@ -1540,18 +1540,27 @@ providers:
         # Back-compat only: resolves, but hidden from --list-models
         # (see --list-models --verbose).
         # Inherited 2026-08-29 from the removed GPT-5.5 (Bedrock) entry. Kept
-        # unadvertised because following it forward DOUBLES the per-token rate
-        # ($2.50/$15 -> $5/$30) and narrows the context window (400K -> 272K);
+        # unadvertised because following it forward raises the per-token rate
+        # ($2.50/$15 -> $4.40/$22) and narrows the context window (400K -> 272K);
         # see the removal note above.
         deprecated_aliases:
           - gpt-bedrock
         pricing:
-          # OpenAI list price for Sol (per the GPT-5.6 launch): $5 in / $30 out
-          # per 1M. Cache reads get the 90% discount ($0.50); cache writes bill
-          # at 1.25x input. Only input/output are read by the bedrock_openai
-          # pricing path (extra keys ignored).
-          input_per_million: 5.00
-          output_per_million: 30.00
+          # Verified 2026-09-23 against the Bedrock model card
+          # (model-card-openai-gpt-56-sol): In-Region, which is all
+          # bedrock-mantle offers, bills $4.40/$22 per 1M at 272K input tokens
+          # or fewer and $8.80/$33 above; the card's 10% In-Region fee is
+          # already included. This replaced a $5/$30 flat rate taken from the
+          # launch, which overestimated every request this entry can send.
+          # context_window stays 272000 (below) although the card now says
+          # 1M, so the long tier is unreachable today; it is recorded so that
+          # raising the window cannot silently underbill. Cache reads $0.44,
+          # 30m cache writes $5.50 are not read by the pricing path.
+          input_per_million: 4.40
+          output_per_million: 22.00
+          long_context_threshold_tokens: 272000
+          long_input_per_million: 8.80
+          long_output_per_million: 33.00
         inference_params:
           # No default_temperature/top_p — GPT-5.6 reasoning models reject them
           # (as did GPT-5.5/5.4 on this endpoint). Reasoning effort defaults
@@ -1741,6 +1750,11 @@ providers:
           - gpt-6-sol
         pricing:
           # OpenAI $2/$10 short, $4/$15 long, x1.1 In-Region (derived).
+          # DERIVED, not published: AWS had no GPT-6 Sol/Luna model card on
+          # 2026-09-23. The x1.1 is AWS's own stated rule ("Commercial
+          # In-Region prices include a 10% fee over OpenAI rates"), and it
+          # reproduces the published Astra and GPT-5.6 Sol cards exactly.
+          # Replace with the card's numbers once it exists.
           input_per_million: 2.20
           output_per_million: 11.00
           long_context_threshold_tokens: 272000
@@ -1773,7 +1787,8 @@ providers:
           - gpt-6-luna
         pricing:
           # OpenAI $0.10/$0.50 short, $0.20/$0.75 long, x1.1 In-Region
-          # (derived). The cheapest entry on this provider by far.
+          # (derived). The cheapest entry on this provider by far. Same
+          # derivation and caveat as GPT-6 Sol above.
           input_per_million: 0.11
           output_per_million: 0.55
           long_context_threshold_tokens: 272000
@@ -1798,8 +1813,8 @@ providers:
       # it is the removal in this pass that costs the most, so read this before
       # deciding not to re-add it:
       #   - It was the CHEAPEST entry on bedrock_openai by a wide margin
-      #     ($1.25/$2.50 against GPT-5.6 Sol's $5/$30 — 12x on output). This
-      #     provider started at $5/$30 until GPT-6 Luna ($0.11/$0.55) arrived.
+      #     ($1.25/$2.50 against GPT-5.6 Sol's $4.40/$22 — ~9x on output). This
+      #     provider started at $4.40/$22 until GPT-6 Luna ($0.11/$0.55) arrived.
       #   - It had the widest context here (1M vs Sol's 272K).
       #   - It was the ONLY entry on this provider that ACCEPTED temperature/top_p
       #     (card defaults 0.7/0.95; we sent 0.3 for deterministic review) and so
