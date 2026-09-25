@@ -698,9 +698,9 @@ providers:
       # the live endpoint" check reads it as healthy. Worth knowing that NIM
       # emits this: it is the only advance warning this registry has ever got.
       #
-      # With the Pro-0813 sibling end-of-lifed 2026-09-14 (note above), NIM now
-      # serves no reviewable DeepSeek at all — only the ancient
-      # `deepseek-coder-6.7b-instruct`. The model itself stays reachable from
+      # With the Pro-0813 sibling end-of-lifed 2026-09-14 (note above), this
+      # removal left no reviewable DeepSeek in the NIM registry until V4.1-Flash
+      # was added below on 2026-09-25. V4-Flash itself stays reachable from
       # its canonical owner as `dsv4-flash` on the DeepSeek direct provider,
       # but that is BILLED where this was free.
       #
@@ -722,6 +722,50 @@ providers:
       # reasoned only when asked. If NVIDIA ships a V4-Flash successor, re-probe
       # that flag rather than assuming it carries over — and note the free
       # high-volume slot it vacated is now held by `glm53-flash-nvidia` below.
+
+      # DeepSeek-V4.1-Flash (NVIDIA), added 2026-09-25.
+      # Source: https://build.nvidia.com/deepseek-ai/deepseek-v4.1-flash
+      # GET /v1/models lists this exact undated id. It is a new version, not
+      # the retired V4-Flash-0731 endpoint; keep the deleted V4 aliases retired.
+      # Live prompt-path smoke: a 3-line Python file completed in 3m55s with
+      # a valid JSON report and the expected empty-list division finding.
+      - id: deepseek-v4.1-flash-nvidia
+        full_id: deepseek-ai/deepseek-v4.1-flash
+        name: DeepSeek-V4.1-Flash (NVIDIA)
+        # Re-host aliases stay provider-suffixed; bare DeepSeek names belong
+        # to the direct API.
+        aliases:
+          - dsv41-flash-nvidia
+          - dsv4.1-flash-nvidia
+        pricing:
+          # NVIDIA Build lists a free endpoint; same trial-tier convention as
+          # the other NIM entries, not DeepSeek-direct API pricing.
+          input_per_million: 0.0
+          output_per_million: 0.0
+        inference_params:
+          # NVIDIA's example and API schema default to 262144 output tokens
+          # (not a separate model output limit). Leave sampling server-side:
+          # its documented defaults are temperature 1.0 and top_p 0.95.
+          max_output_tokens: 262144
+          # No thinking toggle or reasoning_effort: the page exposes reasoning
+          # without an off switch, and its benchmark's numeric effort (100)
+          # is not a documented NIM request field or our low/medium/high enum.
+        # Combined input + output window from NVIDIA's model card.
+        context_window: 1048576
+        # Reasoning is enabled by default. Advertised function calling does
+        # not prove forced tool_choice works for reviews; use prompt parsing.
+        supports_tool_use: false
+        architecture: "MoE (552B total, 8B active prefill / 16B active decode)"
+        capabilities:
+          - code_review
+          - code_generation
+          - reasoning
+          - agentic_tasks
+          - multimodal
+        notes: >-
+          DeepSeek-V4.1-Flash on NVIDIA NIM's free endpoint. Text/image input,
+          text output, 1M combined context; this CLI reviews text source files.
+          Prompt-based JSON parsing with server-default reasoning and sampling.
 
       # Kimi K3 (via NVIDIA) - Moonshot AI flagship
       # MoE: 2.8T total, 104B active, 896 experts (16 routed + 2 shared

@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **DeepSeek-V4.1-Flash on NVIDIA NIM** (`deepseek-ai/deepseek-v4.1-flash`):
+  select `deepseek-v4.1-flash-nvidia`, `dsv41-flash-nvidia`, or
+  `dsv4.1-flash-nvidia`. NVIDIA's
+  [model page](https://build.nvidia.com/deepseek-ai/deepseek-v4.1-flash)
+  specifies a 1,048,576-token combined context and a 262,144-token example
+  output budget. Uses the existing NVIDIA provider, free-tier pricing,
+  server-default sampling/reasoning, and prompt-based JSON parsing. Retired V4
+  aliases remain retired; DeepSeek-direct aliases keep their existing routes.
+
 - **GLM-5.3 and GLM-5.3-Flash on NVIDIA NIM (free tier), 17 → 20 models.** GLM is
   back on NIM. Both `z-ai/glm-5.3` and `z-ai/glm-5.3-flash` are listed by `GET
   /v1/models` and were verified live on 2026-09-19 (HTTP 200, no `deprecation`

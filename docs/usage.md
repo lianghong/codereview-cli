@@ -496,7 +496,10 @@ Be aware of costs and choose models accordingly:
 - **Kimi K3**: 2.8T MoE, 104B active, 1M context, always-on thinking, agentic ($3/M input, $15/M output) — replaced K2.6 on 2026-09-19, a 3x rise over K2.6's real $0.95/$4.00
 
 **NVIDIA NIM (Free Tier):**
-- **GLM-5.3, GLM-5.3-Flash, Kimi K3**: Currently free — the whole surviving NIM roster (Kimi K2.6-on-NVIDIA was removed 2026-08-29; MiniMax M3, DeepSeek-V4-Pro-0813 and DeepSeek-V4-Flash-0731 were end-of-lifed and removed 2026-09-19, so no DeepSeek remains on NIM)
+
+- **DeepSeek-V4.1-Flash, GLM-5.3, GLM-5.3-Flash, Kimi K3**: Currently free.
+  DeepSeek-V4.1-Flash uses new NVIDIA-specific aliases; the retired V4-Pro and
+  V4-Flash aliases are not redirected.
 
 **Cost optimization tips:**
 - Use `--max-files` to limit scope
@@ -678,10 +681,9 @@ codereview ./src --model haiku    # Claude Haiku 4.5 (fastest, cheapest Bedrock 
 codereview ./src --model gpt           # GPT-5.4 (frontier reasoning, default Azure)
 codereview ./src --model gpt-pro       # GPT-5.4 Pro (deeper reasoning variant)
 
-# NVIDIA NIM (free tier — these three are the whole surviving roster. Mistral,
-# Qwen, GLM-5.2 and StepFun were end-of-lifed and removed 2026-08-29; MiniMax M3,
-# DeepSeek-V4-Pro-0813 and DeepSeek-V4-Flash-0731 followed on 2026-09-19, so no
-# DeepSeek remains on NIM. GLM returned the same day at 5.3.)
+# NVIDIA NIM (free tier; the retired DeepSeek V4 aliases remain retired)
+# DeepSeek-V4.1-Flash (552B MoE, 1M context, reasoning)
+codereview ./src --model dsv41-flash-nvidia
 codereview ./src --model glm53-flash-nvidia  # GLM-5.3-Flash (320B/18B MoE, 1M context, multimodal, fast)
 codereview ./src --model glm53-nvidia        # GLM-5.3 (753B/40B MoE, 1M context — but ~19 min for a one-file review)
 codereview ./src --model kimi-nvidia-3       # Kimi K3 (2.8T/104B MoE, 1M context, multimodal, always-on thinking)
@@ -726,6 +728,7 @@ codereview ./src --model gpt6-luna          # GPT-6 Luna (cheapest GPT-6; us-eas
 | **GPT-5.4** | Azure OpenAI | Frontier reasoning, default Azure, 1.05M context | $2.50/M input, $15/M output |
 | **GPT-5.4 Pro** | Azure OpenAI | Deeper reasoning, hardest problems | $30/M input, $180/M output |
 | **Kimi K3 (NVIDIA)** | NVIDIA NIM | Free tier, 2.8T/104B MoE, 1M context, multimodal (text+image in), always-on thinking | Free* |
+| **DeepSeek-V4.1-Flash (NVIDIA)** | NVIDIA NIM | Free tier, 552B MoE, 1M context, reasoning, prompt-based JSON output | Free* |
 | **Gemini 3.1 Pro** | Google GenAI | Most advanced reasoning, 1M context (3 Pro retired 2026-03-09) | $2/M input, $12/M output |
 | **Gemini 3.8 Flash** | Google GenAI | Current Flash: long-horizon engineering and autonomous agents, 1M context, 64K output (owns `gemini-flash`) | $1.50/M input, $7.50/M output |
 | **DeepSeek-V4-Pro** | DeepSeek direct | 1M context, three reasoning modes, native tool calling | Peak $1.32/M input, $3.96/M output |

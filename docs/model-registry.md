@@ -160,8 +160,24 @@ header alone rather than waiting for the 410 to confirm what NVIDIA already told
 Its three aliases were deleted rather than migrated. They read as version-neutral and the model
 survives at its canonical owner (`dsv4-flash` on DeepSeek direct), but every spelling carries
 `-nvidia` and that target is **billed** where NIM was free — the Qwen-on-NVIDIA case, where a
-silent free-to-billed provider switch is worse than an error a human reads and fixes. No DeepSeek
-remains on NIM.
+silent free-to-billed provider switch is worse than an error a human reads and fixes. That
+removal left no DeepSeek entry on NIM until V4.1-Flash was added on 2026-09-25.
+
+**DeepSeek-V4.1-Flash is a new release, not a revival of the V4 endpoints.**
+Its [NVIDIA page](https://build.nvidia.com/deepseek-ai/deepseek-v4.1-flash)
+and live catalog name `deepseek-ai/deepseek-v4.1-flash`. It registers as
+`deepseek-v4.1-flash-nvidia` with `dsv41-flash-nvidia` / `dsv4.1-flash-nvidia`.
+The retired V4 aliases and dead wire ids stay retired. The guard in
+`tests/test_config.py` now rejects those known-dead endpoints rather than banning
+the entire `deepseek-ai/` prefix. The model uses prompt parsing under the
+reasoning-model rule; neither the old `thinking: false` switch nor another
+model's `reasoning_effort: high` is carried forward without a documented request
+contract.
+
+On 2026-09-25 a live CLI review of a three-line Python function completed in
+3m55s, identified its empty-list division bug, and exported valid JSON. The
+short completion/header probes timed out, so no conclusion about a
+`deprecation` header was recorded for this endpoint.
 
 **A dead prefix can come back, so don't write "never" into a removal note.** The same 2026-09-19
 pass *added* two entries to the block it had just cut down: `z-ai/glm-5.3` and `z-ai/glm-5.3-flash`

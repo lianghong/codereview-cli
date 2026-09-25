@@ -1380,8 +1380,8 @@ def test_bare_kimi_names_belong_to_the_direct_provider_not_the_nim_rehost():
         loader.resolve_model("k3")
 
 
-def test_no_deepseek_remains_on_nvidia_nim():
-    """Every DeepSeek-on-NIM spelling must fail fast — the lineage is gone.
+def test_retired_deepseek_v4_nvidia_names_stay_retired():
+    """Retired V4 names must not silently select V4.1 or DeepSeek direct.
 
     Three endpoints in sequence: the undated previews
     (``deepseek-ai/deepseek-v4-pro`` / ``-v4-flash``) were end-of-lifed
@@ -1390,7 +1390,9 @@ def test_no_deepseek_remains_on_nvidia_nim():
     ``deprecation: 2026-09-21T08:00:00Z`` in its own response headers. All four
     wire ids are in ``DEAD_UPSTREAM_FULL_IDS``.
 
-    Nothing migrated. The model stays reachable from its canonical owner
+    V4.1-Flash returned to the registry on 2026-09-25 with version-specific
+    NVIDIA aliases. The old V4 names still must not migrate: they name a
+    different release. V4 stays reachable from its canonical owner
     (``dsv4-flash`` on the DeepSeek direct provider), but that is billed where
     NIM was free, so pointing a ``-nvidia`` name at it would make a silent
     provider *and* billing switch — the Qwen-on-NVIDIA case.
@@ -1409,17 +1411,18 @@ def test_no_deepseek_remains_on_nvidia_nim():
         with pytest.raises(ValueError):
             loader.resolve_model(name)
 
-    # Belt and braces: no NVIDIA entry may name a DeepSeek wire id at all, so a
-    # future re-add has to come through this test rather than around it.
+    # Forbid known-dead endpoints, not the vendor prefix: NIM can publish a
+    # new DeepSeek version without bringing the retired V4 endpoints back.
     offenders = {
         model_id: config.full_id
         for model_id, (provider, config) in loader._models_by_id.items()
-        if provider == "nvidia" and config.full_id.startswith("deepseek-ai/")
+        if provider == "nvidia"
+        and config.full_id.startswith("deepseek-ai/")
+        and config.full_id in DEAD_UPSTREAM_FULL_IDS
     }
     assert not offenders, (
-        f"NVIDIA entries naming a DeepSeek endpoint: {offenders}. NIM serves no "
-        f"reviewable DeepSeek as of 2026-09-19 — verify against the live "
-        f"catalog AND the response headers before re-adding one."
+        f"NVIDIA entries naming retired DeepSeek endpoints: {offenders}. "
+        f"Use a current endpoint verified against the live catalog and headers."
     )
 
 

@@ -8,6 +8,8 @@
 
 ## 🎉 What's New (Unreleased)
 
+- ✅ **DeepSeek-V4.1-Flash on NVIDIA NIM**: `--model dsv41-flash-nvidia`,
+  1M context, reasoning, and prompt-based JSON output via NVIDIA's free endpoint.
 - ✅ **Claude Opus 5.5 (Bedrock)** — newest Opus tier at $4/$20 per M (below Opus 5's $5.50/$27.50), 1M context, 128K output, always-on adaptive thinking (`--model opus5.5`). **It is now the default model**, replacing Opus 5, and the generation-neutral `opus`/`claude-opus` resolve to it; `opus5`/`claude-opus-5`/`opus-5` keep pointing at Opus 5.
 - ⚠️ **Bedrock Claude cost estimates corrected (2026-09-23)** — the `us.` (Geo-US) inference-profile entries were priced at Anthropic's *global* rate, but Bedrock charges a 10% premium on regional/geo endpoints for every Claude model from 4.5 on. Opus 5 is now $5.50/$27.50 and Fable 5 $11/$55, both up 10%. Sonnet 5 goes *down*, to $2.20/$11: its $2/$10 launch price became the standard price when the planned rise to $3/$15 was cancelled. Opus 5.5 and Haiku 4.5 use `global.` profiles and are unchanged
 - ✅ **GPT-6 Sol and GPT-6 Luna (Bedrock)** — the mid and low-cost GPT-6 tiers on `bedrock-mantle`, 1M context, 128K output, Responses API (`--model gpt6-sol`, `--model gpt6-luna`). Both are served from **us-east-1 only** (each entry's `region:` handles it), both are tiered above 272K input tokens like Astra, and `gpt6` still means Astra. **Their rates are derived, not published** — AWS had no Sol/Luna price on 2026-09-23, so the entries carry OpenAI's list price ×1.1 (the In-Region premium Astra's published rate shows); check your bill before trusting the estimate
@@ -37,7 +39,7 @@ A LangChain-based CLI tool that provides comprehensive, intelligent code reviews
 
 ## Features
 
-- **Multi-Provider Support** (8 providers): AWS Bedrock (Claude, Kimi K3), Azure OpenAI (GPT-5.4, GPT-5.4 Pro), NVIDIA NIM (GLM-5.3, GLM-5.3-Flash, Kimi K3), Google GenAI (Gemini 3.1 Pro / 3.8 Flash), DeepSeek direct (V4-Pro, V4-Flash), Z.AI (GLM-5.3, GLM-5.3-Flash), Moonshot direct (Kimi K3), and OpenAI-on-Bedrock (GPT-5.6 Sol, GPT-6 Astra via the `bedrock-mantle` OpenAI-compatible endpoint)
+- **Multi-Provider Support** (8 providers): AWS Bedrock (Claude, Kimi K3), Azure OpenAI (GPT-5.4, GPT-5.4 Pro), NVIDIA NIM (DeepSeek-V4.1-Flash, GLM-5.3, GLM-5.3-Flash, Kimi K3), Google GenAI (Gemini 3.1 Pro / 3.8 Flash), DeepSeek direct (V4-Pro, V4-Flash), Z.AI (GLM-5.3, GLM-5.3-Flash), Moonshot direct (Kimi K3), and OpenAI-on-Bedrock (GPT-5.6 Sol, GPT-6 Astra via the `bedrock-mantle` OpenAI-compatible endpoint)
 - **AI-Powered Analysis**: Leverages Claude Opus 5.5, Claude Opus 5, Claude Sonnet 5, GPT-5.4, GPT-5.6 Sol, GPT-6 Astra, GPT-6 Sol, GPT-6 Luna, DeepSeek-V4-Pro, Kimi K3, GLM-5.3, Gemini 3.1 Pro, Gemini 3.8 Flash, and other leading models for deep code understanding
 - **Multi-Language Support**: Reviews Python, Go, Shell Script, C++, Java, JavaScript, and TypeScript codebases
 - **Smart Batching**: Automatically groups files for efficient token usage
@@ -59,7 +61,7 @@ A LangChain-based CLI tool that provides comprehensive, intelligent code reviews
 - **At least one of the following:**
   - AWS account with Bedrock access (Claude Opus 5 / Sonnet 5 / Haiku 4.5 / Fable 5, GLM 5)
   - Azure OpenAI resource with model deployment (GPT-5.4, GPT-5.4 Pro) — `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`
-  - NVIDIA API key from [build.nvidia.com](https://build.nvidia.com) — `NVIDIA_API_KEY` (GLM-5.3, GLM-5.3-Flash, Kimi K3; free tier available)
+  - NVIDIA API key from [build.nvidia.com](https://build.nvidia.com) — `NVIDIA_API_KEY` (DeepSeek-V4.1-Flash, GLM-5.3, GLM-5.3-Flash, Kimi K3; free tier available)
   - Google API key from [AI Studio](https://aistudio.google.com/apikey) — `GOOGLE_API_KEY` (Gemini 3.1 Pro / 3.8 Flash)
   - DeepSeek API key from [platform.deepseek.com](https://platform.deepseek.com/api_keys) — `DEEPSEEK_API_KEY` (V4-Pro, V4-Flash)
   - Z.AI API key from [z.ai](https://z.ai) — `ZAI_API_KEY` (GLM-5.3 / 5.3-Flash; international)
@@ -180,9 +182,9 @@ codereview --list-models  # Should show Azure models
 
 ## NVIDIA NIM Configuration (Alternative Provider)
 
-NVIDIA NIM provides access to GLM-5.3, GLM-5.3-Flash and Kimi K3 — with a free tier for development.
+NVIDIA NIM provides access to [DeepSeek-V4.1-Flash](https://build.nvidia.com/deepseek-ai/deepseek-v4.1-flash), GLM-5.3, GLM-5.3-Flash and Kimi K3 — with a free tier for development.
 
-**NIM endpoints are retired without notice, and the failure is invisible until you invoke one.** A retired endpoint disappears from the catalog and answers `HTTP 410 Gone` with its end-of-life date, so `--list-models` (credential-free) and `--validate` (catalog visibility only) both still report green. The 2026-08-29 audit found five of ten entries dead this way — Mistral Small 4, Mistral Medium 3.5, Qwen3.5, GLM-5.2 and Step 3.7 Flash — and the 2026-09-19 re-probe found two of the four survivors dead as well: MiniMax M3 (EOL 2026-09-09) and DeepSeek-V4-Pro-0813 (EOL 2026-09-14), leaving the two models above. Note that V4-Pro-**0813** was the dated GA id adopted only three weeks earlier when the undated preview was retired, so pinning a dated id is not protection. If a NIM model starts failing every batch, probe `https://integrate.api.nvidia.com/v1/models` before assuming it's your key.
+**NIM endpoints can be retired, and catalog visibility does not prove invocability.** A retired endpoint disappears from the catalog and answers `HTTP 410 Gone` with its end-of-life date. `--list-models` reads local configuration, while `--validate` checks catalog visibility and treats a miss as a warning. The previous DeepSeek V4 endpoints were retired in August–September 2026; V4-Flash-0731 advertised its September 21 sunset in a `deprecation` response header while still returning HTTP 200. V4.1-Flash is a separate endpoint with new aliases. If a NIM model starts failing every batch, check `https://integrate.api.nvidia.com/v1/models` and the completion response headers.
 
 ### 1. Get API Key
 
@@ -199,12 +201,12 @@ export NVIDIA_API_KEY="nvapi-your-key-here"
 ### 3. Use NVIDIA Models
 
 ```bash
+# DeepSeek-V4.1-Flash - 552B MoE, 1M context, reasoning enabled by default.
+# Full CLI id: deepseek-v4.1-flash-nvidia; also dsv4.1-flash-nvidia.
+codereview /path/to/code --model dsv41-flash-nvidia
+
 # GLM-5.3-Flash - the fast, free NIM default: 320B/18B MoE, 1M context, native
 # multimodal, always-on reasoning. Bare `glm-flash` stays reserved for Z.AI direct.
-# (no DeepSeek remains on NIM - the V4-Pro endpoints were end-of-lifed 2026-08-07
-#  and 2026-09-14, and V4-Flash-0731 was sunset 2026-09-21, so `dsv4-flash-nvidia`
-#  and `dsv4-nvidia` were removed; use `dsv4-flash` / `deepseek-v4-pro` on
-#  DeepSeek's own billed API)
 codereview /path/to/code --model glm53-flash-nvidia
 
 # GLM-5.3 - Z.ai's 753B/40B text flagship, 1M context, leads CyberGym for
@@ -219,7 +221,19 @@ codereview /path/to/code --model glm53-nvidia
 codereview /path/to/code --model kimi-nvidia-3
 ```
 
-**Note:** NVIDIA NIM models are currently in free tier. No charges apply during the preview period. All three remaining NIM entries are always-reasoning models with no off switch, so all three use prompt-based JSON parsing rather than native tool calling, and all three pin `reasoning_effort: high` instead of inheriting the model cards' `max` default — NIM bills reasoning inside `completion_tokens`, so max effort eats the output budget the review report needs. **`glm53-nvidia` is by far the slowest entry in the registry** (NVFP4 on GB300; a probe took ~5 minutes to return 8 tokens, and a real review of a single 7-line file took **19 minutes**, versus 3 minutes for Flash); use `glm53-flash-nvidia` for CI and high-volume runs.
+**Note:** NVIDIA NIM models are currently in free tier. All four entries use
+prompt-based JSON parsing with reasoning enabled. DeepSeek-V4.1-Flash keeps
+NVIDIA's sampling and reasoning defaults and requests the example's 262,144-token
+output budget within its 1,048,576-token combined context. The other NIM entries
+pin `reasoning_effort: high`; reasoning consumes output tokens that the review
+report also needs. **`glm53-nvidia` is by far the slowest entry in the registry**
+(NVFP4 on GB300; a probe took ~5 minutes to return 8 tokens, and a real review of
+a single 7-line file took **19 minutes**, versus 3 minutes for Flash); use
+`glm53-flash-nvidia` for CI and high-volume runs.
+
+The retired `dsv4-flash-nvidia` / `dsv4-nvidia` aliases still fail explicitly.
+Use `dsv41-flash-nvidia` for the new NVIDIA release, or `dsv4-flash` /
+`deepseek-v4-pro` for the billed V4 models on DeepSeek's direct API.
 
 For GLM, Kimi, Qwen, Mistral, MiniMax and DeepSeek-V4-**Pro**, the surviving routes are on other providers: GLM-5.3 and GLM-5.3-Flash via Z.AI direct (`--model glm` / `glm-flash`, which also own `glm5`/`glm-5` since the GLM 5 Bedrock re-host was curated away 2026-09-19), Kimi K3 via Moonshot direct (`--model kimi`), DeepSeek-V4-Pro via DeepSeek direct (`--model deepseek-v4-pro`, billed at $1.32/$3.96). Nothing in this registry replaces the retired Mistral or StepFun endpoints; no Qwen model remains anywhere in it (the Bedrock entry was removed 2026-08-29); and no MiniMax remains either, since NIM end-of-lifed M3 on 2026-09-09 after the Bedrock re-host had already been curated away. Every `qwen*`, `mistral*`, `step*` and `minimax*` spelling now fails fast.
 
@@ -458,6 +472,7 @@ codereview /path/to/code -m kimi
 | GPT-5.4 | Azure OpenAI | Frontier reasoning, 1.05M context, default Azure | $2.50 | $15.00 |
 | GPT-5.4 Pro | Azure OpenAI | Deeper reasoning, hardest problems | $30.00 | $180.00 |
 | GLM-5.3-Flash (NVIDIA) | NVIDIA NIM | 320B MoE / 18B active, 1M context, multimodal input, always-on reasoning; the fast free NIM default | Free* | Free* |
+| DeepSeek-V4.1-Flash (NVIDIA) | NVIDIA NIM | 552B MoE, 1M context, reasoning; prompt-based JSON output | Free* | Free* |
 | GLM-5.3 (NVIDIA) | NVIDIA NIM | 753B MoE / 40B active, 1M context, leads CyberGym for vulnerability discovery; **very slow** (NVFP4 on GB300) | Free* | Free* |
 | Kimi K3 (NVIDIA) | NVIDIA NIM | 2.8T MoE / 104B active, 1M context, multimodal input, always-on thinking | Free* | Free* |
 | Gemini 3.1 Pro | Google GenAI | Most advanced reasoning, 1M context (supersedes retired 3 Pro) | $2.00 | $12.00 |

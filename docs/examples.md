@@ -101,6 +101,8 @@ codereview ./src --model sonnet
 codereview ./monorepo --model haiku --max-files 1000
 
 # Free tier models for development/testing (NVIDIA NIM)
+# DeepSeek-V4.1-Flash (552B MoE, 1M context, reasoning)
+codereview ./src --model dsv41-flash-nvidia
 codereview ./src --model glm53-flash-nvidia  # GLM-5.3-Flash (multimodal MoE, 1M context, fast)
 codereview ./src --model glm53-nvidia        # GLM-5.3 (753B MoE, 1M context — very slow, not for CI)
 codereview ./src --model kimi-nvidia-3       # Kimi K3 (multimodal MoE, 1M context, thinking)
@@ -814,7 +816,7 @@ diff before.md after.md
    ```
 
 2. **Choose Cost-Effective Models**:
-   - **NVIDIA NIM free tier** (DeepSeek-V4-Flash-0731, Kimi K3) for development and CI experimentation
+   - **NVIDIA NIM free tier** (DeepSeek-V4.1-Flash, GLM-5.3-Flash, Kimi K3) for development and CI experimentation
    - **GLM-5.3-Flash direct** for budget-conscious production reviews ($0.15/$0.50 list per M, 1M context)
    - **DeepSeek-V4-Flash direct** when off-peak pricing or native tool calling is preferred ($0.44/$1.32 peak, half-price off peak)
    - **Haiku** for CI/CD quality gates (fastest, cheapest Bedrock option since Qwen3 Coder Next was removed 2026-08-29)
