@@ -42,6 +42,9 @@ dependencies = [
     # Pydantic v3 is on the roadmap (deprecated-in-v2 items get removed) — cap <3.
     "pydantic>=2.13.5,<3",
     "pyyaml>=6.0.3",
+    # Prettier supports JSON5 configs; decode escaped keys before deciding
+    # whether their plugin declarations would execute repository code.
+    "json5>=0.12.1,<1",
     "tiktoken>=0.14.0",
 ]
 

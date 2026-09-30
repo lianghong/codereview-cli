@@ -29,13 +29,14 @@ uv run codereview ./src -m sonnet --static-analysis --output report.md
 
 ### Repo-Supplied Configs That Execute Code
 
-Three of these tools load code the *reviewed repository* provides:
+These tools can load code the *reviewed repository* provides:
 
 | Tool | Config | What it executes |
 |---|---|---|
 | **Mypy** | `mypy.ini`, `.mypy.ini`, `setup.cfg`, `pyproject.toml` with a `plugins =` entry in the mypy section | imports the named Python module |
 | **ESLint** | `eslint.config.{js,mjs,cjs,ts}`, `.eslintrc.{js,cjs,mjs}` | the config file *is* JavaScript |
 | **ESLint / Prettier** | `.eslintrc.json`/`.eslintrc.yaml`, `.prettierrc*`, `package.json` with a `plugins` key | loads the named plugin module |
+| **golangci-lint** | `.golangci.*` with custom linters | Go plugin |
 
 Reviewing an untrusted repository would otherwise run that code with your
 privileges. By default the affected tool is **skipped** with a visible reason;
@@ -45,9 +46,19 @@ privileges. By default the affected tool is **skipped** with a visible reason;
 uv run codereview ./src --static-analysis --trust-repo-config
 ```
 
-Detection is on content, not filename: an ordinary `pyproject.toml` with a
-`[tool.mypy]` section but no `plugins` entry still runs mypy. Configs that can't
-be read, or that exceed 512 KB, are treated as risky.
+Data configs are decoded as JSON, JSON5, YAML, TOML, or INI before checking
+code-loading keys. An ordinary `pyproject.toml` with a `[tool.mypy]` section
+but no `plugins` entry still runs mypy. Checks include parent directories and,
+for ESLint/Prettier, descendants, matching their upward configuration discovery.
+Symlinked configs, unreadable or invalid configs, and configs over 512 KB are
+treated as risky. Shared files are scoped to the relevant tool's section.
+ESLint's `extends`/`parser` declarations and Prettier shared-config module
+references also require `--trust-repo-config`.
+Mypy uses the nearest applicable config and stops at `.git`/`.hg`; configs
+shadowed by a nearer one or above that boundary do not trigger a skip.
+
+Ruff runs with `--no-fix --no-fix-only`, so repository settings requesting
+automatic fixes cannot modify source files during a review.
 
 ---
 
@@ -872,15 +883,19 @@ mypy still reported `passed: True`.
 
 Two design rules, both deliberate:
 
-- **Detect on *content*, not presence.** Suffix-executable configs (`eslint.config.js`) are risky
-  by existing; data configs are risky only when `_PLUGIN_DECLARATION` matches — and for mypy, only
-  inside its own `[mypy]`/`[tool.mypy]` section. Refusing every repo that merely ships a
+- **Detect on decoded *content*, not presence.** Executable configs
+  (`eslint.config.js`) are risky by existing; data configs are parsed before
+  checking code-loading keys, including escaped spellings such as JSON's
+  `"\u0070lugins"`. Shared files are scoped to the relevant tool's section.
+  Refusing every repo that merely ships a
   `pyproject.toml` would trade away the feature's whole point (linter output that matches *that*
   project's CI) for a threat that isn't there. This repository is asserted not-false-positived by
   `test_this_repository_is_not_false_positived`.
-- **Fail closed.** An `OSError` reading the config, or one over `_MAX_CONFIG_SCAN_BYTES` (512 KB),
-  counts as risky — an unreadable file is exactly what an attacker would arrange if that bypassed
-  the check.
+- **Fail closed.** A symlinked config, a read/parse failure, or a file over
+  `_MAX_CONFIG_SCAN_BYTES` (512 KB) counts as risky. Ancestor configs are checked
+  even when the selected review directory is only `repo/src`; descendants are
+  also checked for tools that resolve config per file. Symlinks must never be
+  silently omitted when the tool loads them.
 
 The skip message must say the tool's **findings are missing from this review**; a silently-absent
 tool reads as "clean". Neutralizing flags exist (`mypy --config-file=`,

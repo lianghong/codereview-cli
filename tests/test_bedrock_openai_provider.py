@@ -106,8 +106,9 @@ def test_gpt55_uses_prompt_parsing_and_responses_api(
         # No tool-calling structured output requested.
         mock_instance.with_structured_output.assert_not_called()
         assert provider._use_prompt_parsing is True
-        # Chain ends with the PydanticOutputParser.
-        assert provider.chain.last is provider._output_parser
+        result = provider.chain.last.invoke('{"summary": "ok", "issues": []}')
+        assert result["parsed"].summary == "ok"
+        assert result["parsing_error"] is None
 
         kwargs = mock_openai.call_args.kwargs
         # Responses API enabled; temperature/top_p NOT forwarded (reasoning).

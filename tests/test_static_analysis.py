@@ -2,6 +2,7 @@
 
 import json
 import logging
+import shutil
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -1490,6 +1491,176 @@ def test_nested_plugin_declaration_is_detected(tmp_path):
     assert analyzer._find_executable_config("prettier") is not None
 
 
+@pytest.mark.parametrize("target_kind", ["internal", "external", "missing"])
+@pytest.mark.parametrize(
+    "filename,tool",
+    [
+        (".prettierrc.cjs", "prettier"),
+        (".prettierrc.json", "prettier"),
+        ("eslint.config.mjs", "eslint"),
+    ],
+)
+def test_symlinked_config_never_starts_the_tool(tmp_path, filename, tool, target_kind):
+    """The tool loads symlinked configs; missing targets cannot be cleared either."""
+    root = tmp_path / "repo"
+    root.mkdir()
+    target = (
+        root / "payload" if target_kind == "internal" else tmp_path / "external-config"
+    )
+    if target_kind != "missing":
+        target.write_text('{"plugins": ["./evil.cjs"]}\n')
+    (root / filename).symlink_to(target)
+    with patch.object(StaticAnalyzer, "_check_available_tools", return_value=[tool]):
+        analyzer = StaticAnalyzer(root)
+    with patch("codereview.static_analysis.subprocess.run") as run:
+        result = analyzer.run_tool(tool)
+    run.assert_not_called()
+    assert result.errors and filename in result.errors[0]
+
+
+@pytest.mark.parametrize(
+    "filename,body,tool",
+    [
+        (".prettierrc.cjs", "module.exports = {};", "prettier"),
+        ("eslint.config.mjs", "export default [];", "eslint"),
+        ("mypy.ini", "[mypy]\nplugins = ./evil.py\n", "mypy"),
+        (".golangci.yml", "linters:\n  settings:\n    custom: {}\n", "golangci-lint"),
+    ],
+)
+def test_parent_config_never_starts_the_tool(tmp_path, filename, body, tool):
+    """Reviewing repo/src must check repo's configs, which tools discover upward."""
+    (tmp_path / filename).write_text(body)
+    selected = tmp_path / "src" / "nested"
+    selected.mkdir(parents=True)
+    with patch.object(StaticAnalyzer, "_check_available_tools", return_value=[tool]):
+        analyzer = StaticAnalyzer(selected)
+    with patch("codereview.static_analysis.subprocess.run") as run:
+        result = analyzer.run_tool(tool)
+    run.assert_not_called()
+    assert result.errors and filename in result.errors[0]
+
+
+def test_mypy_safe_nearest_config_shadows_parent_plugins(tmp_path):
+    """Do not skip mypy for an ancestor config that the tool would never load."""
+    (tmp_path / "mypy.ini").write_text("[mypy]\nplugins = ./unused.py\n")
+    selected = tmp_path / "src"
+    selected.mkdir()
+    (selected / "mypy.ini").write_text("[mypy]\nstrict = true\n")
+    with patch.object(StaticAnalyzer, "_check_available_tools", return_value=[]):
+        analyzer = StaticAnalyzer(selected)
+    assert analyzer._find_executable_config("mypy") is None
+
+
+@pytest.mark.parametrize("marker_kind", ["directory", "file"])
+def test_mypy_parent_lookup_stops_at_repository_root(tmp_path, marker_kind):
+    """Honor both ordinary Git roots and worktree .git files."""
+    (tmp_path / "mypy.ini").write_text("[mypy]\nplugins = ./unused.py\n")
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    if marker_kind == "directory":
+        (repo / ".git").mkdir()
+    else:
+        (repo / ".git").write_text("gitdir: elsewhere\n")
+    selected = repo / "src"
+    selected.mkdir()
+    with patch.object(StaticAnalyzer, "_check_available_tools", return_value=[]):
+        analyzer = StaticAnalyzer(selected)
+    assert analyzer._find_executable_config("mypy") is None
+
+
+@pytest.mark.parametrize(
+    "filename,body,tool",
+    [
+        (".prettierrc.json", r'{"\u0070lugins": ["./evil.cjs"]}', "prettier"),
+        (".prettierrc", r'{"\u0070lugins": ["./evil.cjs"]}', "prettier"),
+        (".prettierrc.yaml", '"\\u0070lugins": [./evil.cjs]\n', "prettier"),
+        (".prettierrc.json5", r"{\u0070lugins: ['./evil.cjs'],}", "prettier"),
+        (".prettierrc.toml", '"\\u0070lugins" = ["./evil.cjs"]\n', "prettier"),
+        ("package.json", r'{"prettier": {"\u0070lugins": ["./evil.cjs"]}}', "prettier"),
+        ("package.json", '{"prettier": "./shared-config.cjs"}', "prettier"),
+        ("pyproject.toml", '[tool.mypy]\n"\\u0070lugins" = ["./evil.py"]\n', "mypy"),
+        (
+            ".golangci.json",
+            r'{"linters": {"settings": {"\u0063ustom": {}}}}',
+            "golangci-lint",
+        ),
+        (".eslintrc.json", r'{"\u0070lugins": ["evil"]}', "eslint"),
+        (".eslintrc.json", '{"extends": "./evil.cjs"}', "eslint"),
+        (".eslintrc.json", '{"parser": "./evil.cjs"}', "eslint"),
+        (".prettierrc.json", '{"semi":', "prettier"),
+    ],
+)
+def test_decoded_code_loading_config_never_starts_the_tool(
+    tmp_path, filename, body, tool
+):
+    """Escaped keys and shared-config references must be checked after decoding."""
+    (tmp_path / filename).write_text(body)
+    with patch.object(StaticAnalyzer, "_check_available_tools", return_value=[tool]):
+        analyzer = StaticAnalyzer(tmp_path)
+    with patch("codereview.static_analysis.subprocess.run") as run:
+        result = analyzer.run_tool(tool)
+    run.assert_not_called()
+    assert result.errors and filename in result.errors[0]
+
+
+@pytest.mark.parametrize(
+    "filename,body,tool",
+    [
+        (
+            ".prettierrc.json5",
+            "{semi: false, // comment\n trailingComma: 'all',}",
+            "prettier",
+        ),
+        (
+            "package.json",
+            '{"plugins": ["unrelated"], "prettier": {"semi": false}}',
+            "prettier",
+        ),
+        (
+            "pyproject.toml",
+            '[tool.other]\nplugins = ["unrelated"]\n[tool.mypy]\nstrict = true\n',
+            "mypy",
+        ),
+        (
+            ".prettierrc.yaml",
+            "options: &options\n  semi: false\nself: *options\n",
+            "prettier",
+        ),
+        (".prettierrc.yaml", "self: &self\n  child: *self\n", "prettier"),
+    ],
+)
+def test_decoded_ordinary_configs_are_not_false_positived(
+    tmp_path, filename, body, tool
+):
+    """Respect format semantics, tool sections, and cyclic YAML aliases."""
+    (tmp_path / filename).write_text(body)
+    with patch.object(StaticAnalyzer, "_check_available_tools", return_value=[]):
+        analyzer = StaticAnalyzer(tmp_path)
+    assert analyzer._find_executable_config(tool) is None
+
+
+@pytest.mark.parametrize("setting", ["fix", "fix-only"])
+def test_ruff_never_modifies_source_even_with_repo_fix_settings(tmp_path, setting):
+    """Run installed Ruff: repository fix settings must not mutate reviewed files."""
+    executable = shutil.which("ruff")
+    if executable is None:
+        pytest.skip("Ruff is not installed")
+    original = 'import os\nprint("hello")\n'
+    source = tmp_path / "example.py"
+    source.write_text(original)
+    (tmp_path / "pyproject.toml").write_text(
+        f'[tool.ruff]\n{setting} = true\n[tool.ruff.lint]\nselect = ["F401"]\n'
+    )
+    with patch.object(StaticAnalyzer, "_check_available_tools", return_value=["ruff"]):
+        analyzer = StaticAnalyzer(tmp_path)
+    analyzer._tool_paths["ruff"] = str(Path(executable).resolve())
+    result = analyzer.run_tool("ruff")
+    assert source.read_text() == original
+    assert result.passed is False
+    assert result.issues_count == 1
+    assert not result.errors
+
+
 def test_config_scan_ignores_node_modules(tmp_path):
     """A config the tool itself ignores is not a vector, and counting it costs coverage.
 
@@ -1508,8 +1679,8 @@ def test_config_scan_ignores_node_modules(tmp_path):
     assert analyzer._find_executable_config("prettier") is None
 
 
-def test_mypy_config_lookup_stays_top_level(tmp_path):
-    """mypy reads config from the cwd only, so a nested file is not its config.
+def test_mypy_config_lookup_does_not_scan_descendants(tmp_path):
+    """mypy searches upward from cwd, so a nested file is not its config.
 
     Scanning tree-wide for mypy would skip it on any repo vendoring a
     ``setup.cfg`` in a subpackage, which is not a vector.

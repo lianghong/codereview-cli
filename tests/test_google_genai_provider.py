@@ -569,8 +569,8 @@ def test_google_genai_honors_supports_tool_use_false(provider_config):
 
         mock_instance.with_structured_output.assert_not_called()
         assert provider._use_prompt_parsing is True
-        # Chain must end with the PydanticOutputParser, and the system prompt
-        # must carry the format instructions it relies on.
-        assert provider.chain.last is provider._output_parser
+        result = provider.chain.last.invoke('{"summary": "ok", "issues": []}')
+        assert result["parsed"].summary == "ok"
+        assert result["parsing_error"] is None
         prompt = provider._build_batch_system_prompt({"x.py": "code"})
         assert "json" in prompt.lower()

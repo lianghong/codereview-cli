@@ -526,6 +526,136 @@ def test_responses_api_usage_survives_the_full_provider_path():
     )
 
 
+@pytest.mark.parametrize(("provider_key", "api_name"), list(_usage_cases()))
+@pytest.mark.parametrize("malformed_first", [False, True])
+def test_prompt_parsing_preserves_billed_usage_for_every_provider(
+    provider_key, api_name, malformed_first
+):
+    """Run the complete chain with messages produced by the installed vendor client.
+
+    Both a success and a malformed response followed by a retry must bill the
+    exact vendor counts, including reasoning tokens. No accounting seam is mocked.
+    """
+    from langchain_core.runnables import RunnableLambda
+
+    from codereview.models import CodeReviewReport
+    from codereview.providers.base import RetryConfig
+
+    raw = _USAGE_MATRIX[provider_key][1][api_name]()
+    valid = raw.model_copy(update={"content": '{"summary": "ok", "issues": []}'})
+    responses = iter(
+        [raw.model_copy(update={"content": "invalid JSON"}), valid]
+        if malformed_first
+        else [valid]
+    )
+    model_config = _model_config(supports_tool_use=False)
+    patch_target, build = _USAGE_MATRIX[provider_key][0](model_config)
+    with patch(patch_target, return_value=RunnableLambda(lambda _: next(responses))):
+        provider = build()
+    report = provider._execute_with_retry(
+        {"system_prompt": "review", "batch_context": "x = 1"},
+        RetryConfig(max_retries=1, validation_retry_sleep=0.0),
+        "x = 1",
+    )
+    assert isinstance(report, CodeReviewReport)
+    attempts = 2 if malformed_first else 1
+    assert provider.total_input_tokens == attempts * IN_TOKENS
+    assert provider.total_output_tokens == attempts * OUT_TOKENS
+    cost = provider.estimate_cost()
+    assert cost["total_cost"] == pytest.approx(
+        attempts * (IN_TOKENS + OUT_TOKENS * 2) / 1_000_000
+    )
+
+
+def test_prompt_parse_exhaustion_still_bills_every_reported_attempt():
+    """A permanently malformed batch retains charges even when no report parses."""
+    from langchain_core.runnables import RunnableLambda
+
+    from codereview.providers.base import OutputParsingRetryError, RetryConfig
+
+    raw = _message_openai_compat(
+        "https://bedrock-mantle.us-east-1.api.aws/openai/v1",
+        responses_api=True,
+    ).model_copy(update={"content": "invalid JSON"})
+    patch_target, build = _provider_bedrock_openai(
+        _model_config(supports_tool_use=False, use_responses_api=True)
+    )
+    with patch(patch_target, return_value=RunnableLambda(lambda _: raw)):
+        provider = build()
+    with pytest.raises(OutputParsingRetryError):
+        provider._execute_with_retry(
+            {"system_prompt": "review", "batch_context": "x = 1"},
+            RetryConfig(max_retries=1, validation_retry_sleep=0.0),
+            "x = 1",
+        )
+    assert provider.total_input_tokens == 2 * IN_TOKENS
+    assert provider.total_output_tokens == 2 * OUT_TOKENS
+
+
+def test_prompt_parse_without_usage_retains_estimation_fallback():
+    """An endpoint omitting metadata still bills estimated rejected and valid output."""
+    from langchain_core.messages import AIMessage
+    from langchain_core.runnables import RunnableLambda
+
+    from codereview.providers.base import RetryConfig
+
+    rejected = "invalid JSON" * 100
+    valid = '{"summary": "ok", "issues": []}'
+    responses = iter([AIMessage(content=rejected), AIMessage(content=valid)])
+    patch_target, build = _provider_bedrock_openai(
+        _model_config(supports_tool_use=False)
+    )
+    with patch(patch_target, return_value=RunnableLambda(lambda _: next(responses))):
+        provider = build()
+    provider._execute_with_retry(
+        {"system_prompt": "review", "batch_context": "x = 1"},
+        RetryConfig(max_retries=1, validation_retry_sleep=0.0),
+        "x = 1",
+    )
+    assert provider.total_output_tokens > provider._estimate_tokens(rejected)
+    assert provider.total_input_tokens > 0
+
+
+def test_registered_gpt61_response_usage_selects_the_correct_pricing_tier():
+    """Replay a real SDK response through the registered model's complete chain."""
+    from openai.types.responses import Response
+
+    from codereview.config import get_config_loader
+    from codereview.providers.bedrock_openai import BedrockOpenAIProvider
+
+    _, model_config = get_config_loader().resolve_model("gpt6.1-sol")
+    provider = BedrockOpenAIProvider(
+        model_config,
+        BedrockOpenAIConfig(
+            api_key="test-key-1234567890abcdef",
+            base_url="https://bedrock-mantle.us-east-2.api.aws/openai/v1",
+        ),
+    )
+    payload = copy.deepcopy(_RESPONSES_PAYLOAD)
+    payload["output"][0]["content"][0]["text"] = '{"summary": "ok", "issues": []}'
+    payload["usage"].update(
+        input_tokens=300_000, output_tokens=9_000, total_tokens=309_000
+    )
+    payload["usage"]["output_tokens_details"]["reasoning_tokens"] = 8_500
+    raw_response = Mock()
+    raw_response.parse.return_value = Response.model_validate(payload)
+    raw_response.headers = {}
+    with patch.object(
+        provider.model.root_client.responses, "with_raw_response", create=True
+    ) as response_client:
+        response_client.create.return_value = raw_response
+        response_client.parse.return_value = raw_response
+        report = provider.analyze_batch(1, 1, {"example.py": "x = 1"}, max_retries=0)
+    assert report.summary == "ok"
+    assert provider.total_input_tokens == 300_000
+    assert provider.total_output_tokens == 9_000
+    cost = provider.estimate_cost()
+    assert cost["total_cost"] == pytest.approx(
+        (300_000 * 4.4 + 9_000 * 16.5) / 1_000_000
+    )
+    assert cost["long_context_requests"] == 1
+
+
 def test_every_provider_is_covered_by_the_usage_matrix():
     """A new provider must appear above, not silently skip usage coverage.
 

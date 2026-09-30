@@ -3,17 +3,11 @@
 ``_execute_with_retry`` (providers/base.py) accepts exactly two result shapes
 from a provider's chain:
 
-1. an ``include_raw=True`` dict ``{"raw": ..., "parsed": CodeReviewReport}`` —
-   produced by ``with_structured_output(CodeReviewReport, include_raw=True)`` on
-   the tool-calling path, and
-2. a bare ``CodeReviewReport`` — produced by appending a ``PydanticOutputParser``
-   to the chain on the prompt-parsing path.
-
-Providers that honor ``supports_tool_use`` must produce shape (1) when it's
-True and shape (2) when it's False. These tests assert that structural contract
-for each such provider in BOTH modes, so a provider whose chain wiring drifts
-(e.g. forgets ``include_raw=True``, or doesn't append the parser) is caught —
-without depending on a live model call.
+Both built-in paths produce an ``include_raw=True``-shaped dict
+``{"raw": ..., "parsed": CodeReviewReport, "parsing_error": ...}``.
+The prompt parser must preserve the raw response too, so reasoning tokens
+survive successful parsing and malformed responses are billed before retries.
+A bare ``CodeReviewReport`` remains accepted for legacy/custom provider chains.
 """
 
 from unittest.mock import MagicMock, patch
@@ -151,11 +145,12 @@ def test_tool_use_mode_requests_include_raw_structured_output(provider_key):
 
 
 @pytest.mark.parametrize("provider_key", sorted(_TWO_MODE_BUILDERS))
-def test_prompt_parse_mode_appends_pydantic_parser(provider_key):
-    """supports_tool_use=False → chain ends with the PydanticOutputParser.
+def test_prompt_parse_mode_preserves_raw_response(provider_key):
+    """supports_tool_use=False parses JSON while preserving its raw response."""
+    from langchain_core.messages import AIMessage
 
-    That parser is what yields the documented bare-CodeReviewReport shape.
-    """
+    from codereview.models import CodeReviewReport
+
     model_config = _model_config(supports_tool_use=False)
     patch_target, build = _TWO_MODE_BUILDERS[provider_key](model_config)
 
@@ -170,9 +165,11 @@ def test_prompt_parse_mode_appends_pydantic_parser(provider_key):
         )
         # No tool-calling structured output on this path.
         instance.with_structured_output.assert_not_called()
-        # The chain's final runnable is the provider's PydanticOutputParser, so
-        # a model text response is coerced into a CodeReviewReport.
-        assert provider.chain.last is provider._output_parser
+        raw = AIMessage(content='{"summary": "ok", "issues": []}')
+        result = provider.chain.last.invoke(raw)
+        assert result["raw"] is raw
+        assert isinstance(result["parsed"], CodeReviewReport)
+        assert result["parsing_error"] is None
 
 
 # ---------------------------------------------------------------------------

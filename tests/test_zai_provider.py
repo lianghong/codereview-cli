@@ -246,9 +246,9 @@ def test_zai_glm53_uses_prompt_parsing(glm53_model_config, provider_config):
         # No tool-calling structured output should have been requested.
         mock_instance.with_structured_output.assert_not_called()
         assert provider._use_prompt_parsing is True
-        # Chain ends with the PydanticOutputParser so a fenced-JSON text
-        # response is still converted into a CodeReviewReport.
-        assert provider.chain.last is provider._output_parser
+        result = provider.chain.last.invoke('{"summary": "ok", "issues": []}')
+        assert result["parsed"].summary == "ok"
+        assert result["parsing_error"] is None
 
 
 def test_zai_prompt_parser_strips_markdown_fences():

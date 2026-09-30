@@ -11,6 +11,7 @@ from langchain_core.exceptions import ContextOverflowError, OutputParserExceptio
 from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.rate_limiters import InMemoryRateLimiter
+from langchain_core.runnables import RunnableLambda
 from pydantic import ValidationError
 
 from codereview.models import CodeReviewReport
@@ -125,9 +126,8 @@ class ModelProvider(ABC):
         Models with ``supports_tool_use`` get ``.with_structured_output(
         CodeReviewReport, include_raw=True)`` — ``include_raw`` is required to
         read real token counts from the raw ``AIMessage``. Tool-use-less models
-        get the base model back and ``_use_prompt_parsing`` is set, which makes
-        ``_create_chain`` append the ``PydanticOutputParser`` and
-        ``_build_batch_system_prompt`` inject the JSON format instructions.
+        get the base model back and ``_use_prompt_parsing`` is set. The chain
+        parses its JSON while retaining the raw message for usage accounting.
 
         ``kwargs`` are forwarded to ``with_structured_output`` for provider
         quirks (e.g. Google's ``method="json_schema"``).
@@ -142,14 +142,24 @@ class ModelProvider(ABC):
     def _create_chain(self) -> Any:
         """Create the LangChain chain: prompt template piped into the model.
 
-        On the prompt-parsing path (``_use_prompt_parsing`` set by
-        ``_apply_structured_output``) the ``PydanticOutputParser`` is appended
-        so the model's JSON text is coerced into a ``CodeReviewReport``.
-        Providers normally inherit this as-is.
+        Both built-in paths return raw/parsed/parsing_error so billed usage
+        survives successful parsing and rejected attempts alike.
         """
         if self._use_prompt_parsing:
-            return BATCH_PROMPT_TEMPLATE | self.model | self._output_parser
+            return (
+                BATCH_PROMPT_TEMPLATE
+                | self.model
+                | RunnableLambda(self._parse_prompt_response)
+            )
         return BATCH_PROMPT_TEMPLATE | self.model
+
+    def _parse_prompt_response(self, raw: Any) -> dict[str, Any]:
+        """Parse model JSON while retaining the raw response and its usage."""
+        try:
+            parsed = self._output_parser.invoke(raw)
+        except (OutputParserException, ValidationError) as error:
+            return {"raw": raw, "parsed": None, "parsing_error": error}
+        return {"raw": raw, "parsed": parsed, "parsing_error": None}
 
     @abstractmethod
     def analyze_batch(
@@ -635,7 +645,7 @@ class ModelProvider(ABC):
         """
         return (0, 0)
 
-    def _track_usage_from_raw(self, raw: Any) -> None:
+    def _track_usage_from_raw(self, raw: Any) -> bool:
         """Bill a response the provider produced but we could not parse.
 
         Reported counts only — deliberately no estimation fallback. On the
@@ -646,9 +656,8 @@ class ModelProvider(ABC):
         (Bedrock and every OpenAI-compatible endpoint do, even on a response we
         reject), the charge is recorded exactly.
 
-        Failures are swallowed: this runs on the way to raising a retryable
-        error, and an accounting problem must not replace the parse error the
-        caller needs to see.
+        Returns whether reported usage was billed. Failures are swallowed so
+        accounting cannot replace the parse error the caller needs to see.
         """
         try:
             input_tokens, output_tokens = self._extract_token_usage(raw)
@@ -656,22 +665,20 @@ class ModelProvider(ABC):
             logging.debug(
                 "Token usage unavailable for unparsed response", exc_info=True
             )
-            return
+            return False
         if input_tokens or output_tokens:
             self._track_tokens(input_tokens, output_tokens)
+            return True
+        return False
 
     def _track_usage_from_parse_failure(
         self, error: OutputParserException, input_estimate_text: str
     ) -> None:
         """Bill an attempt the ``PydanticOutputParser`` rejected.
 
-        The prompt-parsing chain is ``prompt | model | parser``, so a parse
-        failure raises from the *parser* and the ``AIMessage`` is gone by the
-        time we see the exception — there is no usage metadata to read, only
-        the rejected text the parser attached as ``llm_output``. Estimation is
-        therefore not a shortcut here, it is the same accounting the success
-        branch on this path already uses: a ``CodeReviewReport`` carries no
-        metadata either, so both its token counts are estimated too.
+        Fallback only: the built-in prompt-parsing chain preserves its raw
+        message and bills vendor usage first. This hook covers a response with
+        no usage metadata, or a custom chain that raises past the raw message.
 
         This matters most where it hurts most. Reasoning models on the
         prompt-parsing path (GPT-5.6 Sol on Bedrock, Opus 5) intermittently
@@ -704,7 +711,7 @@ class ModelProvider(ABC):
         Two return shapes are valid; ``_execute_with_retry`` branches on
         ``isinstance(result, dict)`` and dispatches accordingly.
 
-        1. ``include_raw=True`` shape (tool-using models, default path):
+        1. Raw/parsed shape (both built-in output paths):
            A dict with the keys::
 
                {
@@ -713,19 +720,12 @@ class ModelProvider(ABC):
                    "parsing_error": Exception | None,
                }
 
-           Produced by ``base_model.with_structured_output(
-           CodeReviewReport, include_raw=True)`` in providers that use
-           tool-calling for structured output (Bedrock, Azure, NVIDIA,
-           Google, Z.AI, DeepSeek, Moonshot tool-use cases).
+           Produced by tool-use structured output with ``include_raw=True``,
+           or by ``_parse_prompt_response`` for prompt-based JSON parsing.
 
-        2. Direct ``CodeReviewReport`` shape (prompt-parsing fallback):
-           The ``CodeReviewReport`` instance itself, produced by chaining
-           a ``PydanticOutputParser`` onto the model. Used by tool-use-less
-           endpoints — currently the Bedrock Claude reasoning tiers, GPT-5.6
-           Sol, GPT-6 Astra, GLM 5, Kimi K3/K2.6, Gemini 3.8 Flash and the
-           GLM-5.3 family on both NVIDIA and Z.AI, which is to say *every*
-           NVIDIA NIM entry — where the model emits JSON via prompt format
-           instructions instead of via tool-calling.
+        2. Direct ``CodeReviewReport`` shape (custom/legacy fallback):
+           Still accepted for provider overrides that return only a parsed
+           report. Without a raw message these calls use estimated usage.
 
         Anything else (a string, a raw AIMessage, a list, etc.) is a
         contract violation. ``_execute_with_retry`` raises ``ValueError``
@@ -763,8 +763,8 @@ class ModelProvider(ABC):
         - _extract_token_usage(): extracts tokens from response metadata
 
         Handles two result formats:
-        - dict from include_raw=True: {"raw": AIMessage, "parsed": CodeReviewReport}
-        - CodeReviewReport directly from prompt-parsing path (e.g., DeepSeek-R1)
+        - raw/parsed dict from both built-in output paths
+        - CodeReviewReport directly from custom/legacy chains
 
         Args:
             chain_input: Input dictionary for the chain
@@ -808,7 +808,13 @@ class ModelProvider(ABC):
                         # output tokens cost the most are exactly the ones that
                         # trigger this. Estimation is not a substitute: it can't
                         # see the thinking tokens the vendor bills.
-                        self._track_usage_from_raw(raw)
+                        billed = self._track_usage_from_raw(raw)
+                        if not billed and isinstance(
+                            parsing_error, OutputParserException
+                        ):
+                            self._track_usage_from_parse_failure(
+                                parsing_error, input_estimate_text
+                            )
 
                         msg = "Structured output parsing failed"
                         if parsing_error:
@@ -831,7 +837,7 @@ class ModelProvider(ABC):
                     self._track_tokens(input_tokens, output_tokens)
                     return parsed
 
-                # Handle direct CodeReviewReport (prompt-parsing path)
+                # Handle direct CodeReviewReport (custom/legacy fallback)
                 if result is None:
                     raise ValueError(
                         "Model returned None - structured output parsing failed"
@@ -886,9 +892,8 @@ class ModelProvider(ABC):
                 last_error = e
 
                 # Bill the rejected attempt. The include_raw path already does
-                # this at its `parsed is None` branch; the prompt-parsing path
-                # raises from the parser, past the AIMessage, so the rejected
-                # text on the exception is the only record of what was charged.
+                # this at its `parsed is None` branch. A custom chain may still
+                # raise past its raw message; estimate only on that fallback.
                 if isinstance(e, OutputParserException):
                     self._track_usage_from_parse_failure(e, input_estimate_text)
 

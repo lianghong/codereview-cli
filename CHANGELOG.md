@@ -1177,6 +1177,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Close static-analysis configuration bypasses.** Detect symlinked and
+  parent-directory configs before tools start, and decode JSON/JSON5/YAML/TOML/INI
+  keys so escaped plugin declarations cannot evade the trust gate. Shared files
+  are scoped to the tool's section; ESLint module references and Prettier shared
+  configs are gated too. Ruff explicitly disables fixes and fix-only mode to
+  keep reviews from modifying source.
+- **Preserve billed usage through prompt parsing.** Retain raw responses on
+  successful and malformed JSON results, including reasoning tokens. Rejected
+  attempts are billed before retries, and estimation remains a fallback for
+  responses lacking usage. This corrects token totals and cost estimates for
+  GPT-6.1 Sol, Grok 4.7, and other prompt-parsing models.
+
 - **OpenAI-on-Bedrock validation displays the model's resolved endpoint.**
   `--validate` previously showed the original `OPENAI_BASE_URL` Region even when
   the client used the model's `region:` override. It now reports the same URL

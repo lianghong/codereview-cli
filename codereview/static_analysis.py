@@ -1,5 +1,6 @@
 """Static analysis integration for code quality tools across multiple languages."""
 
+import configparser
 import json
 import logging
 import os
@@ -7,10 +8,14 @@ import re
 import shutil
 import subprocess  # nosec B404 - required for running static analysis tools
 import threading
+import tomllib
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TypedDict
+
+import json5
+import yaml
 
 # Per-tool regexes that pull an authoritative issue count from the tool's
 # own summary line. Falling back to substring counting (BASE_INDICATORS
@@ -214,7 +219,7 @@ class StaticAnalyzer:
         "ruff": {
             "name": "Ruff",
             "description": "Fast Python linter",
-            "command": ["ruff", "check"],
+            "command": ["ruff", "check", "--no-fix", "--no-fix-only"],
             "language": "python",
         },
         "ruff-format": {
@@ -389,19 +394,16 @@ class StaticAnalyzer:
     # correctly". A control an attacker bypasses by moving one file down a
     # directory is not a control.
     #
-    # ``declaration`` is the regex that makes a *data* config risky, per tool:
-    # ``plugins`` for mypy/ESLint/Prettier, ``custom`` for golangci-lint. It is
-    # deliberately not one global pattern — widening the shared regex to
-    # ``(plugins|custom)`` would make any ``custom`` key in a repo's
-    # ``pyproject.toml``/``setup.cfg`` skip mypy, and those are shared files
-    # whose other sections have nothing to do with mypy loading code.
+    # Decode data configs before checking the keys: a textual regex misses
+    # JSON's "\\u0070lugins", which Prettier decodes and loads normally.
+    # Triggers are per tool, and shared files are scoped to that tool's section.
     _CONFIG_EXECUTION_RISK: dict[str, dict[str, Any]] = {
         "mypy": {
-            # mypy reads the first of these that exists; a `plugins =` key in
-            # any of them names Python modules mypy imports.
-            "names": ("mypy.ini", ".mypy.ini", "setup.cfg", "pyproject.toml"),
+            # mypy searches the cwd and parents for the first applicable
+            # config; its plugins key names Python modules it imports.
+            "names": ("mypy.ini", ".mypy.ini", "pyproject.toml", "setup.cfg"),
             "suffixes": (),
-            "section": ("[mypy]", "[tool.mypy]"),
+            "keys": ("plugins",),
             "tree_wide": False,
         },
         "eslint": {
@@ -424,7 +426,7 @@ class StaticAnalyzer:
                 ".eslintrc.cjs",
                 ".eslintrc.mjs",
             ),
-            "section": (),
+            "keys": ("plugins", "extends", "parser"),
             "tree_wide": True,
         },
         "prettier": {
@@ -451,7 +453,7 @@ class StaticAnalyzer:
                 "prettier.config.mts",
                 "prettier.config.cts",
             ),
-            "section": (),
+            "keys": ("plugins",),
             "tree_wide": True,
         },
         "golangci-lint": {
@@ -469,8 +471,7 @@ class StaticAnalyzer:
                 ".golangci.json",
             ),
             "suffixes": (),
-            "section": (),
-            "declaration": re.compile(r"""["']?custom["']?\s*[=:]""", re.IGNORECASE),
+            "keys": ("custom",),
             "tree_wide": False,
         },
     }
@@ -490,13 +491,6 @@ class StaticAnalyzer:
     # config bigger than this is not a config; reading it wholesale would be the
     # memory problem, so it counts as risky (fail closed) rather than skipped.
     _MAX_CONFIG_SCAN_BYTES = 512 * 1024
-
-    # Matches a ``plugins`` declaration in INI/TOML/JSON/YAML config. Broad on
-    # purpose: a false positive costs one skipped tool on a repo that really
-    # does load plugins (the risky case), a false negative executes attacker
-    # code. Erring toward detection is the only safe direction here. Per-tool
-    # overrides live in ``_CONFIG_EXECUTION_RISK["<tool>"]["declaration"]``.
-    _PLUGIN_DECLARATION = re.compile(r"""["']?plugins["']?\s*[=:]""", re.IGNORECASE)
 
     # Default per-tool subprocess timeout in seconds. Caller can override via
     # the constructor; CLI exposes this as --tool-timeout. 120s covers most
@@ -727,13 +721,10 @@ class StaticAnalyzer:
         2. A data config (INI/TOML/JSON/YAML) that declares ``plugins`` — the
            declaration names modules the tool then imports.
 
-        How far to look is per tool, from ``tree_wide``. mypy and golangci-lint
-        read config from the working directory, so the top level is the entire
-        search path. ESLint and Prettier resolve config **per linted file**,
-        walking up from each file's own directory, so a config anywhere in the
-        tree executes — ``run_tool`` hands Prettier explicit paths from
-        anywhere. A top-level-only check there was bypassable by moving one
-        file down a directory (verified against Prettier 3.x / ESLint v10.8.0).
+        Ancestor directories are included because tools discover configs above
+        the selected review directory. ``tree_wide`` also includes descendants
+        for ESLint/Prettier, which resolve config per linted file. Symlinked
+        configs count too: the tools load them regardless of their target.
 
         A config that cannot be read counts as risky: an unreadable file is
         exactly what an attacker would arrange if the check could be skipped by
@@ -748,62 +739,138 @@ class StaticAnalyzer:
         candidates = self._config_candidates(
             set(risk["suffixes"]) | set(risk["names"]),
             tree_wide=bool(risk.get("tree_wide")),
+            stop_at_repo_root=tool_name == "mypy",
         )
+        if tool_name == "mypy":
+            # mypy uses the nearest applicable config, in this filename order,
+            # and stops walking at .git/.hg (including a worktree's .git file).
+            order = {name: index for index, name in enumerate(risk["names"])}
+            candidates.sort(
+                key=lambda path: (-len(path.parts), order.get(path.name, -1))
+            )
 
         executable_by_existing = set(risk["suffixes"])
-        declaration = risk.get("declaration") or self._PLUGIN_DECLARATION
-        sections = risk["section"]
-
         for candidate in candidates:
-            if candidate.name in executable_by_existing:
+            if candidate.name in executable_by_existing or candidate.is_symlink():
                 return candidate
             try:
-                if candidate.stat().st_size > self._MAX_CONFIG_SCAN_BYTES:
+                if (
+                    not candidate.is_file()
+                    or candidate.stat().st_size > self._MAX_CONFIG_SCAN_BYTES
+                ):
                     return candidate
-                text = candidate.read_text(encoding="utf-8", errors="replace")
-            except OSError:
-                return candidate
-            # For mypy, a `plugins` key only matters inside its own section —
-            # pyproject.toml and setup.cfg are shared files and a `plugins` key
-            # belonging to some other tool is not mypy loading anything.
-            if sections and not any(section in text for section in sections):
-                continue
-            if declaration.search(text):
+                text = candidate.read_text(encoding="utf-8")
+                data = self._parse_tool_config(candidate, text)
+                if tool_name == "mypy":
+                    if candidate.name == "pyproject.toml":
+                        tool_data = data.get("tool", {})
+                        if "mypy" not in tool_data:
+                            continue
+                        data = tool_data["mypy"]
+                    else:
+                        if "mypy" not in data:
+                            continue
+                        data = data["mypy"]
+                elif tool_name == "prettier" and candidate.name == "package.json":
+                    data = data.get("prettier", {})
+                # Prettier also accepts a shared-config module name as a string.
+                if tool_name == "prettier" and isinstance(data, str) and data:
+                    return candidate
+                if self._contains_config_key(data, set(risk["keys"])):
+                    return candidate
+                if tool_name == "mypy":
+                    return None  # A farther config is shadowed by this one.
+            except (
+                OSError,
+                ValueError,
+                TypeError,
+                AttributeError,
+                configparser.Error,
+                yaml.YAMLError,
+                RecursionError,
+            ):
+                # Unknown/invalid syntax cannot be cleared as safe; the tool's
+                # parser may accept it or decode it differently.
                 return candidate
         return None
 
-    def _config_candidates(self, filenames: set[str], *, tree_wide: bool) -> list[Path]:
+    @staticmethod
+    def _parse_tool_config(candidate: Path, text: str) -> Any:
+        """Decode the config using its format, including escaped key names."""
+        if candidate.suffix == ".toml":
+            return tomllib.loads(text)
+        if candidate.suffix in {".ini", ".cfg"}:
+            parser = configparser.ConfigParser(interpolation=None, strict=False)
+            parser.read_string(text)
+            return {section: dict(parser[section]) for section in parser.sections()}
+        if candidate.suffix == ".json5":
+            return json5.loads(text)
+        if candidate.suffix == ".json":
+            return json.loads(text)
+        # Extensionless .prettierrc/.eslintrc support YAML (including JSON).
+        return yaml.safe_load(text)
+
+    @staticmethod
+    def _contains_config_key(data: Any, keys: set[str]) -> bool:
+        """Find code-loading keys in decoded mappings, without recursive loops."""
+        pending = [data]
+        visited: set[int] = set()
+        while pending:
+            value = pending.pop()
+            if not isinstance(value, (dict, list)) or id(value) in visited:
+                continue
+            visited.add(id(value))
+            if isinstance(value, dict):
+                if any(str(key).lower() in keys for key in value):
+                    return True
+                pending.extend(value.values())
+            else:
+                pending.extend(value)
+        return False
+
+    def _config_candidates(
+        self,
+        filenames: set[str],
+        *,
+        tree_wide: bool,
+        stop_at_repo_root: bool = False,
+    ) -> list[Path]:
         """Config files named in *filenames* that exist, in deterministic order.
 
-        ``tree_wide=False`` inspects only the analyzed directory's top level.
-        ``tree_wide=True`` walks the tree, pruning ``_CONFIG_SCAN_PRUNE_DIRS``
-        — the directories the tools themselves ignore, so a config inside one
-        is not a vector and counting it would cost real coverage.
+        Both modes include the root and ancestors. ``tree_wide=True`` also
+        walks descendants, pruning ``_CONFIG_SCAN_PRUNE_DIRS``. Symlinks are
+        retained and treated as risky rather than silently cleared.
 
         Sorted so the reported path (and therefore the skip message) is the
         same on every run, matching the determinism guarantee the file-list
         truncation makes.
         """
-        if not tree_wide:
-            top = [self.directory / name for name in filenames]
-            return sorted(p for p in top if p.is_file())
-
-        found: list[Path] = []
+        found: set[Path] = set()
         try:
-            for dirpath, dirnames, files in os.walk(self.directory):
-                dirnames[:] = [
-                    d for d in dirnames if d not in self._CONFIG_SCAN_PRUNE_DIRS
-                ]
-                base = Path(dirpath)
-                for name in files:
-                    if name in filenames:
-                        candidate = base / name
-                        # A symlinked config could point outside the tree; the
-                        # tools would still load it, but _validate_file_path is
-                        # the established boundary for what this repo owns.
-                        if candidate.is_symlink():
-                            continue
-                        found.append(candidate)
+            for directory in (self.directory, *self.directory.parents):
+                for name in filenames:
+                    candidate = directory / name
+                    if candidate.is_symlink() or candidate.is_file():
+                        found.add(candidate)
+                if stop_at_repo_root and any(
+                    (directory / marker).exists() for marker in (".git", ".hg")
+                ):
+                    break
+            if tree_wide:
+
+                def raise_walk_error(error: OSError) -> None:
+                    raise error
+
+                for dirpath, dirnames, files in os.walk(
+                    self.directory, onerror=raise_walk_error
+                ):
+                    dirnames[:] = [
+                        d for d in dirnames if d not in self._CONFIG_SCAN_PRUNE_DIRS
+                    ]
+                    base = Path(dirpath)
+                    for name in files:
+                        if name in filenames:
+                            found.add(base / name)
         except OSError as e:
             # Fail closed: a tree we cannot enumerate is not a tree we can
             # clear. Report the directory itself so the skip message names

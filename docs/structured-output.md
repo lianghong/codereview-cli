@@ -10,6 +10,9 @@ Default is `.with_structured_output(CodeReviewReport, include_raw=True)`. `inclu
 required to read real token counts from the raw `AIMessage`.
 
 Models with `supports_tool_use: false` in `models.yaml` use `PydanticOutputParser` instead.
+Both paths retain the raw response alongside the parsed report and any parsing
+error, so vendor usage, including reasoning tokens, survives parsing and is
+counted on rejected attempts before retries.
 **The routing lives once in `base.py`**: providers call `self._apply_structured_output(base_model)`
 from `_create_model` (extra kwargs forwarded, e.g. Google's `method="json_schema"`), and the
 base class owns `_use_prompt_parsing`, `_output_parser` (cached property), the default

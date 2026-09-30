@@ -16,7 +16,7 @@ calls into.
 | `get_pricing` / `get_model_display_name` | **public** | Used by cost reporting and the renderer; `get_pricing` is mandatory for every provider. |
 | `supports_token_streaming` | **hook (classmethod, optional)** | Defaults to `True`. Override to `False` — with the reason in the docstring — if the client never delivers a token to a callback, or `--stream` will serialize the run for nothing. Must stay answerable from the class (no `self`, no credentials): the CLI calls it before constructing the provider. `tests/test_streaming_contract.py::test_the_non_streaming_provider_set_is_exactly_the_documented_one` fails until the new provider is classified either way. |
 | `_create_model` | **hook (required)** | Build the LangChain client. Enforce HTTPS here via `require_https` (`mixins.py`), **not** in `validate_credentials`: `_create_model` runs from `__init__`, so a caller that never calls `--validate` still can't ship an API key to `http://` (CWE-319). Pydantic's `HttpUrl` accepts `http://`, so `require_https` is the only thing enforcing it. Call it before the client is constructed — fail *closed*, with the credential never reaching a client instance. End with `return self._apply_structured_output(base_model)`. |
-| `_create_chain` | **base-provided** | Default pipes the prompt template into the model, appending the `PydanticOutputParser` on the prompt-parsing path. Override only for genuinely custom chains. |
+| `_create_chain` | **base-provided** | Keeps raw usage on both output paths. |
 | `_extract_token_usage` | **hook (required)** | OpenAI-compatible providers should delegate to `extract_openai_token_usage` (mixins.py). |
 | `_is_retryable_error` / `_calculate_backoff` | **hook (required)** | OpenAI-compatible providers should use `is_openai_retryable_error` + `parse_retry_after` (mixins.py); keep any provider-specific base-wait local (see Azure). |
 | `_execute_with_retry`, `_prepare_batch_context`, `_build_batch_system_prompt`, `_resolve_temperature`, `_resolve_max_retries`, `_build_rate_limiter` | **base-provided** | Inherited from `ModelProvider`; call them, don't override unless you have a specific reason. `_build_rate_limiter` only *builds* the limiter — an `InMemoryRateLimiter` throttles nothing unless it is passed to the client, so `_create_model` must also put `"rate_limiter": self.rate_limiter` in `model_params`. NVIDIA built one and dropped it, which left concurrent batches hammering NIM until 429s. |
@@ -200,16 +200,18 @@ think-heavy batches; the retry is what makes those runs complete.
 those tokens regardless. Omitting them made `--dry-run` estimates look accurate while real runs
 under-reported cost by exactly the retried batches — the expensive ones.
 
-**The prompt-parsing path needs its own hook for the same reason**: an `OutputParserException`
-raises from the *parser*, past the `AIMessage`, so there is no usage metadata left to read —
-`_track_usage_from_parse_failure` estimates from the prompt text plus the rejected output the
-parser attaches as `llm_output`, called from the retry `except` in `_execute_with_retry`.
-Estimating isn't a shortcut there: a `CodeReviewReport` carries no metadata either, so the
-*success* branch of that path is already estimated, and every `supports_tool_use: false`
-reasoning model (Opus 5, GPT-5.6 Sol, GLM-5.3, K3, …) is exactly the kind that
-burns several billed attempts on a think-heavy batch. Swallow accounting failures to
-`logging.debug` — this runs on the way to a retry or a raise and must never mask the parse
-error.
+**Prompt parsing must preserve the raw message too.** `_parse_prompt_response`
+wraps the `PydanticOutputParser` and returns `raw`, `parsed`, and `parsing_error`,
+matching the tool-use result shape. The retry loop reads vendor usage on success
+and bills a rejected response before retrying. This matters for reasoning models,
+including GPT-6.1 Sol and Grok 4.7: estimating from visible JSON cannot recover
+billed reasoning tokens or reliably choose the request's pricing tier.
+
+`_track_usage_from_parse_failure` is an estimation fallback only, used when the
+rejected response has no reported usage or a custom chain raises past its raw
+message. A direct `CodeReviewReport` remains accepted for custom/legacy chains,
+with estimated usage when metadata is absent. Swallow accounting failures to
+`logging.debug`; they must never mask the parse error.
 
 ### `AIMessage` carries usage in two independent places
 
