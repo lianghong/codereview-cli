@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **GPT-6.1 Sol and Grok 4.7 on AWS Bedrock.** AWS model cards and live
+  requests were checked on 2026-09-29. GPT-6.1 Sol uses Mantle in us-east-1
+  (`openai.gpt-6.1-sol`, alias `gpt6.1-sol`), 1M context, 131,072 output tokens,
+  and published pricing of $2.20/$11 per million through 272K input tokens
+  per request, $4.40/$16.50 above. It uses Responses without sampling params.
+  Grok 4.7 uses native Converse and standard AWS credentials with the US
+  profile `us.xai.grok-4.7`, pinned to us-east-1, 500K context, a 16K review
+  output budget, and 1800s read timeout. Its Geo-US Standard rates are
+  $2.20/$6.60 per million. Both use prompt-based JSON parsing; forced tool
+  use while reasoning has not been A/B-verified. `grok`/`grok-bedrock` now
+  resolve to 4.7; 4.3-specific aliases stay deleted. Existing GPT-6 aliases
+  keep their models.
+
 - **DeepSeek-V4.1-Flash on NVIDIA NIM** (`deepseek-ai/deepseek-v4.1-flash`):
   select `deepseek-v4.1-flash-nvidia`, `dsv41-flash-nvidia`, or
   `dsv4.1-flash-nvidia`. NVIDIA's
@@ -1163,6 +1176,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   long-context tier note quoted a cached rate alongside the input/output pair.
 
 ### Fixed
+
+- **OpenAI-on-Bedrock validation displays the model's resolved endpoint.**
+  `--validate` previously showed the original `OPENAI_BASE_URL` Region even when
+  the client used the model's `region:` override. It now reports the same URL
+  as the client. Registry-to-client tests cover the Mantle entries from each
+  US Mantle Region. Live checks on 2026-09-29 confirmed GPT-6 Sol in us-east-1 and
+  Astra in us-west-2, with both returning 404 in us-east-2; complete CLI reviews
+  succeeded with automatic routing from a us-east-2 export.
+- **Explicit GPT-6 Astra aliases:** `gpt6-astra` and `gpt-6-astra` now resolve
+  alongside `gpt6`, matching the existing `gpt6-sol` and `gpt6-luna` spellings.
+
 - **Six providers let their client SDK retry *underneath* our retry loop,
   multiplying every attempt.** `_create_model` never passed `max_retries`, so
   each SDK filled in its own default and nested loops multiplied rather than

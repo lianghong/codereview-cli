@@ -422,7 +422,11 @@ codereview ./src --model gpt5.6
 ```bash
 codereview ./src --model gpt6
 ```
-Astra is the only entry with **tiered** pricing: Bedrock charges $11/$55 per M for a request at or below 272K input tokens and **$22/$82.50 above it**. The threshold is per *request*, not per run — five 100K batches total 500K tokens and still bill entirely at the cheap rate — so each batch is priced on its own size, and `--dry-run` tells you how many of them cross the break. A smaller `--batch-size` can put a run back in the cheap tier.
+Astra has **tiered** pricing: Bedrock charges $11/$55 per million tokens for
+a request at or below 272K input tokens and **$22/$82.50 above it**. The
+threshold is per *request*, not per run: five 100K batches total 500K tokens
+and still bill at the short-context rate. `--dry-run` identifies batches
+crossing the threshold; a smaller `--batch-size` can keep batches below it.
 
 **GPT-6 Sol / GPT-6 Luna (Bedrock)** - the mid and low-cost GPT-6 tiers, 1M context, 128K output (**us-east-1 only**):
 ```bash
@@ -430,6 +434,35 @@ codereview ./src --model gpt6-sol     # $2.20/$11 per M, $4.40/$16.50 above 272K
 codereview ./src --model gpt6-luna    # $0.11/$0.55 per M, $0.22/$0.825 above 272K
 ```
 Same per-request tiering as Astra. **These rates are derived, not published:** AWS listed no Sol/Luna price on 2026-09-23, so the entries carry OpenAI's list price ×1.1, the In-Region premium Astra's published rate shows. Treat the cost estimate as provisional until AWS publishes.
+
+**GPT-6.1 Sol (Bedrock)** uses Mantle in **us-east-1 only**, with the existing
+`OPENAI_API_KEY`/`OPENAI_BASE_URL` setup. The entry rewrites the URL Region
+automatically. It has 1M context and a 131,072-token output cap. AWS-published
+Standard rates are $2.20/$11 per million up to 272K input tokens per request,
+and $4.40/$16.50 above that threshold, including the regional premium.
+
+```bash
+rtk proxy uv run codereview ./src --model gpt6.1-sol
+rtk proxy uv run codereview --model gpt6.1-sol --validate
+```
+
+**Grok 4.7 (Bedrock)** uses native Converse and standard AWS credentials
+through `us.xai.grok-4.7`. Its source Region is pinned to **us-east-1**,
+with a 500K context window, 16K review output budget, and 1800s read timeout.
+The bare `xai.grok-4.7` ID cannot replace the US inference profile.
+Geo-US Standard pricing is $2.20/$6.60 per million tokens.
+The installed AWS SDK also accepts `AWS_BEARER_TOKEN_BEDROCK`, which was
+used for the successful live review. Native `--validate` still requires
+standard AWS credentials or a profile for its STS identity check.
+
+```bash
+rtk proxy uv run codereview ./src --model grok-4.7
+rtk proxy uv run codereview ./src --model grok --aws-profile my-profile
+```
+
+Both entries start on prompt-based JSON parsing under the reasoning-model
+rule. These registrations add models; existing GPT-6 Sol/Astra names still
+select their original entries.
 
 **DeepSeek-V4-Pro / V4-Flash** - direct API, native tool calling, 1M context:
 ```bash
@@ -658,8 +691,9 @@ and are shown as `+N deprecated`; add `--verbose` to see them spelled out.
 Version-*explicit* aliases of removed models (`opus4.6`, `opus4.8`, `glm51`, `mm25`,
 `kimi25`, `step35`, `gpt5.4-bedrock`, `gpt5.5-bedrock`, `gemini-3.6-flash`,
 `grok-4.3`, …) were deleted in the 2026-07-25 and 2026-08-29 cleanups and now fail
-fast — as are the whole `qwen*`, `grok*` and `step*` families, which have no
-successor left in the registry. See
+fast — as do the `qwen*` and `step*` families, which have no successor left
+in the registry. The generation-neutral `grok`/`grok-bedrock` aliases now
+resolve to Grok 4.7; 4.3-specific aliases remain deleted. See
 [Migrating Deleted Aliases](../README.md#migrating-deleted-aliases) for the full
 replacement table.
 

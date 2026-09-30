@@ -589,10 +589,11 @@ def test_retired_model_aliases_redirect_to_live_successors():
         # now is — but following it forward DOUBLES the rate ($2.50/$15 ->
         # $5/$30), which is why it stays a deprecated_alias.
         "gpt-bedrock": "openai.gpt-5.6-sol",
-        # Deliberately NOT in this map, though the convention's default would put
-        # them here: every `qwen*` and `grok*` spelling. Both families left the
-        # registry entirely in the same pass, so there is no successor that is
-        # honestly the same thing — see the counterpart guard.
+        # Grok returned on 2026-09-29. Generation-neutral names now resolve
+        # to 4.7; every 4.3-specific spelling remains deleted.
+        "grok": "us.xai.grok-4.7",
+        "grok-bedrock": "us.xai.grok-4.7",
+        # Every qwen* spelling is still deleted: no successor remains.
         #
         # A removed entry's *id* is a --model spelling too, not just its
         # aliases — these were ids of removed entries and are easy to forget.
@@ -759,17 +760,11 @@ RETIRED_ALIASES_DELETED_NOT_REDIRECTED = frozenset(
         "gemini3.6-flash",
         # GPT-5.5 on Bedrock — `gpt-bedrock` migrated to GPT-5.6 Sol.
         "gpt5.5-bedrock",
-        # Grok 4.3 on Bedrock — xAI leaves the registry entirely, so even
-        # `grok`/`grok-bedrock` are deleted: resolving a Grok name to an OpenAI
-        # model would be a vendor swap, not a version bump. Costliest removal of
-        # the pass — it was bedrock_openai's cheapest entry ($1.25/$2.50 vs
-        # $5/$30), its widest context (1M vs 272K), and its only entry accepting
-        # temperature/top_p.
+        # Grok 4.3-specific names stay deleted when 4.7 returns. The neutral
+        # grok/grok-bedrock aliases now belong to 4.7, not an OpenAI model.
         "grok-4.3-bedrock",
-        "grok",
         "grok-4.3",
         "grok43",
-        "grok-bedrock",
         # Redundant/cryptic short forms of live models, dropped as noise.
         "gpt54p",
         "glm5b",
@@ -1533,12 +1528,67 @@ def test_gpt6_astra_matches_the_published_model_card():
     assert provider == "bedrock_openai"
     assert config.id == "gpt6-astra-bedrock"
     assert config.full_id == "openai.gpt-6-astra"
+    assert config.region == "us-west-2"
     assert config.use_responses_api is True
     assert config.supports_tool_use is False
     assert config.inference_params is not None
     assert config.inference_params.max_output_tokens == 128000
     assert config.inference_params.temperature is None
     assert config.inference_params.top_p is None
+
+
+@pytest.mark.parametrize("alias", ["gpt6-astra", "gpt-6-astra"])
+def test_explicit_gpt6_astra_aliases_resolve_to_the_flagship(alias):
+    provider, config = ConfigLoader().resolve_model(alias)
+    assert provider == "bedrock_openai"
+    assert config.full_id == "openai.gpt-6-astra"
+    assert config.region == "us-west-2"
+
+
+@pytest.mark.parametrize(
+    "alias",
+    [
+        "gpt6.1-sol-bedrock",
+        "gpt6.1-sol",
+        "gpt-6.1-sol",
+        "gpt61-sol",
+        "gpt6.1",
+        "gpt-6.1",
+    ],
+)
+def test_gpt61_sol_matches_the_aws_mantle_model_card(alias):
+    provider, config = ConfigLoader().resolve_model(alias)
+    assert provider == "bedrock_openai"
+    assert config.full_id == "openai.gpt-6.1-sol"
+    assert config.region == "us-east-1"
+    assert config.context_window == 1_000_000
+    assert config.use_responses_api
+    assert not config.supports_tool_use
+    assert config.inference_params is not None
+    assert config.inference_params.max_output_tokens == 131_072
+    assert config.inference_params.temperature is None
+    assert config.inference_params.top_p is None
+    assert config.pricing.rates_for_request(272_000) == (2.20, 11.00)
+    assert config.pricing.rates_for_request(272_001) == (4.40, 16.50)
+
+
+@pytest.mark.parametrize(
+    "alias", ["grok-4.7-bedrock", "grok-4.7", "grok47", "grok", "grok-bedrock"]
+)
+def test_grok47_uses_a_us_runtime_profile_and_geo_pricing(alias):
+    provider, config = ConfigLoader().resolve_model(alias)
+    assert provider == "bedrock"
+    assert config.full_id == "us.xai.grok-4.7"
+    assert config.region == "us-east-1"
+    assert config.read_timeout == 1800
+    assert config.context_window == 500_000
+    assert not config.supports_tool_use
+    assert config.inference_params is not None
+    assert config.inference_params.max_output_tokens == 16_000
+    assert config.inference_params.temperature is None
+    assert config.inference_params.top_p is None
+    assert config.pricing.rates_for_request(500_000) == (2.20, 6.60)
+    assert not config.pricing.has_long_context_tier
 
 
 def test_gpt6_astra_carries_both_pricing_tiers_for_its_wide_window():

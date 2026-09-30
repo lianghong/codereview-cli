@@ -329,14 +329,18 @@ class BedrockOpenAIProvider(TokenTrackingMixin, ModelProvider):
             )
             return result
 
-        if not is_https_url(self.provider_config.base_url):
+        # Report the same endpoint _create_model uses. The provider-level
+        # export may name a different Region from this model, so showing it
+        # here falsely suggests that the request will go to that Region.
+        base_url = self._resolve_base_url()
+        if not is_https_url(base_url):
             result.valid = False
             result.add_check(
                 "Base URL", False, "base_url must be an HTTPS URL with a host"
             )
             return result
 
-        result.add_check("Base URL", True, f"Endpoint: {self.provider_config.base_url}")
+        result.add_check("Base URL", True, f"Endpoint: {base_url}")
 
         wire_model = self.model_config.full_id or self.model_config.id
         result.add_check("Model", True, f"Model: {wire_model}")

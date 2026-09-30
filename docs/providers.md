@@ -417,8 +417,12 @@ knowledge cutoff 2026-04-30. Two properties are unlike anything else in the regi
   break a working self-hosted endpoint over a cosmetic mismatch. The HTTPS gate runs on the
   *resolved* URL, so a Region override can't smuggle the bearer key onto `http://`. Don't widen
   Astra's Region from memory — the model card's `bedrock-mantle` availability table had exactly
-  one row on 2026-09-13. Note `--validate` cannot catch a wrong Region: it has no model in scope
-  and checks only the provider-level URL, so the Region is first exercised on invoke.
+  one row on 2026-09-13, and still lists only us-west-2 on 2026-09-29.
+  `--validate` has the selected model in scope and displays its **resolved**
+  URL; it checks key presence and HTTPS without making a connection test.
+  Availability and invocation permissions are first exercised on invoke.
+  Short-term Bedrock API keys are Region-specific and must match the resolved
+  endpoint.
 - **`supports_tool_use: false` is live-verified here, not assumed** (2026-09-13). A/B on
   `codereview/providers/` — 2 batches, ~98K input tokens, on the us-west-2 mantle base. With
   `true`, batch 1 of 2 died on `ResponseError(code='server_error', message='The server had an
@@ -465,7 +469,40 @@ stay on Astra, the flagship. What a live probe of both showed that day:
   cap in the probe. `context_window` is clamped to 1M like Astra's (OpenAI lists 1.05M with a
   922K max input).
 
-**The `bedrock_openai` provider is not OpenAI-only, and the code still proves it.** xAI's
+**GPT-6.1 Sol** (`openai.gpt-6.1-sol`, id `gpt6.1-sol-bedrock`) uses the
+same Mantle provider, with `region: us-east-1`. The
+[AWS model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-1-sol.html)
+was checked on 2026-09-29: Mantle is us-east-1 only, with 1M context and
+131,072 output tokens. Responses probes returned 200 in us-east-1, 404 in
+us-east-2, and 400 for `temperature`. No sampling params are configured;
+reasoning uses the server default and output uses prompt parsing. Published
+Mantle Standard pricing is $2.20/$11 per million up to 272K input tokens
+per request and $4.40/$16.50 above, including the 10% regional premium.
+Runtime would require `us.openai.gpt-6.1-sol`; the bare Mantle ID and the
+Runtime profile are not interchangeable. No global profile exists at launch.
+Existing GPT-6 Sol and Astra aliases retain their original entries.
+
+**Grok 4.7 is registered under native `bedrock`, not `bedrock_openai`.**
+The [AWS card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-xai-grok-4-7.html)
+documents Runtime cross-Region invocation: `us.xai.grok-4.7` or
+`global.xai.grok-4.7`, rather than an in-Region bare model ID. Converse
+requests with the US profile returned 200 from us-east-1 and us-west-2 on
+2026-09-29. The entry pins the source Region to us-east-1, uses standard
+AWS credentials, and prices at the published Geo-US Standard $2.20/$6.60
+per million. The cheaper $2/$6 rates belong to the global profile.
+Its 500K context comes from the card; 16K output is a conservative review
+budget, not a claim about the model's maximum output. Always-on reasoning
+plus non-streaming Converse requires `read_timeout: 1800`. Effort is left
+at the server default and forced tool use remains unverified, so it uses
+prompt parsing. `grok`/`grok-bedrock` now select 4.7; version-specific 4.3
+aliases remain deleted.
+The installed AWS SDK also supports `AWS_BEARER_TOKEN_BEDROCK`; the live
+review used that credential source and exported valid JSON. Native
+`--validate` still requires standard AWS credentials for STS identity,
+so this environment's bearer-only setup fails preflight despite successful
+invocation. GPT-6.1 Sol passed both its Mantle preflight and live review.
+
+**The `bedrock_openai` provider can also serve xAI models.** xAI's
 **Grok 4.3** rode the same `bedrock-mantle` OpenAI-compatible endpoint (model id `xai.grok-4.3`,
 base_url `https://bedrock-mantle.{region}.api.aws/openai/v1`) through this provider until its
 entry was cut on 2026-08-29 — the endpoint is live, only the registry row is gone. Nothing in the

@@ -382,6 +382,45 @@ providers:
           no sampling params. Uses the standard AWS credential chain rather
           than a Moonshot key. Prompt-based JSON parsing.
 
+      # Grok 4.7 — AWS model card checked 2026-09-29:
+      # https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-xai-grok-4-7.html
+      # Runtime requires a cross-Region inference profile, not the bare
+      # xai.grok-4.7 id. Converse with us.xai.grok-4.7 returned HTTP 200
+      # from both us-east-1 and us-west-2. Pin a documented US source Region
+      # so a non-US provider default cannot invalidate the US profile.
+      - id: grok-4.7-bedrock
+        full_id: us.xai.grok-4.7
+        name: Grok 4.7 (Bedrock)
+        region: us-east-1
+        # Always-on reasoning + non-streaming Converse: no response bytes
+        # until generation finishes. Use the thinking-model timeout.
+        read_timeout: 1800
+        aliases:
+          - grok-4.7
+          - grok47
+          - grok
+          - grok-bedrock
+        pricing:
+          # Published Standard Geo-US rates, including the 10% premium.
+          # The cheaper $2/$6 Global rate requires a global. profile.
+          input_per_million: 2.20
+          output_per_million: 6.60
+        inference_params:
+          # Conservative review output budget, not an asserted model cap.
+          # Omit sampling params; leave reasoning effort at server default.
+          max_output_tokens: 16000
+        context_window: 500000
+        # New reasoning model: prompt parsing until forced tool use is
+        # verified on a thinking-heavy target, even though AWS lists it.
+        supports_tool_use: false
+        notes: >-
+          xAI Grok 4.7 on Bedrock Runtime through Converse and the US
+          cross-Region inference profile. Standard AWS credentials,
+          us-east-1 source Region, 500K context, 16K review output budget,
+          1800s read timeout, server-default reasoning. Geo-US Standard
+          pricing $2.20/$6.60 per million; prompt-based JSON parsing.
+          Grok 4.3 version-specific aliases remain retired.
+
       # Kimi K2.5 (Bedrock) removed 2026-08-29: `moonshotai.kimi-k2.5` is still
       # ACTIVE on Bedrock (ListFoundationModels, 2026-08-29) - this was CURATION.
       # It was a re-host of a model this registry already carries from its
@@ -1689,6 +1728,8 @@ providers:
           - gpt6
           - gpt-6
           - gpt6-bedrock
+          - gpt6-astra
+          - gpt-6-astra
         pricing:
           # bedrock-mantle is In-Region us-west-2, so these are the In-Region
           # rates: SHORT context ($11 / $55 per 1M) for a request at or below
@@ -1851,6 +1892,46 @@ providers:
           us-east-1 only. Bedrock rates derived from OpenAI's list price + 10%
           until AWS publishes them.
 
+      # GPT-6.1 Sol — AWS model card checked 2026-09-29:
+      # https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-1-sol.html
+      # Mantle is us-east-1 ONLY; use the unprefixed id on that endpoint.
+      # Runtime instead requires us.openai.gpt-6.1-sol (no global. profile
+      # at launch). Live Responses: us-east-1 -> 200, us-east-2 -> 404,
+      # temperature -> 400 unsupported_parameter.
+      - id: gpt6.1-sol-bedrock
+        full_id: openai.gpt-6.1-sol
+        name: GPT-6.1 Sol (Bedrock)
+        region: us-east-1
+        aliases:
+          - gpt6.1-sol
+          - gpt-6.1-sol
+          - gpt61-sol
+          - gpt6.1
+          - gpt-6.1
+        pricing:
+          # Published Mantle Standard rates, already including 10%.
+          # Long-context rates apply to the entire request above 272K.
+          input_per_million: 2.20
+          output_per_million: 11.00
+          long_context_threshold_tokens: 272000
+          long_input_per_million: 4.40
+          long_output_per_million: 16.50
+        inference_params:
+          # No default_temperature/top_p — live temperature rejection.
+          max_output_tokens: 131072
+        use_responses_api: true
+        context_window: 1000000
+        supports_tool_use: false
+        notes: >-
+          OpenAI GPT-6.1 Sol through Bedrock Mantle, us-east-1 only.
+          Bearer-key auth using OPENAI_API_KEY and OPENAI_BASE_URL;
+          the provider rewrites the URL Region per model. Responses API,
+          1M context, 131072 output cap from the AWS card, no sampling params,
+          server-default reasoning, prompt-based JSON parsing. Published
+          pricing $2.20/$11 per million up to 272K input tokens per request,
+          $4.40/$16.50 above. Existing GPT-6 Sol and Astra names stay on
+          their respective entries.
+
       # Grok 4.3 (Bedrock) removed 2026-08-29, and with it xAI leaves this
       # registry entirely — there is no other Grok entry on any provider.
       # `xai.grok-4.3` is still LIVE on bedrock-mantle, so this was CURATION, and
@@ -1874,6 +1955,9 @@ providers:
       # model remains to migrate them onto, so the family fails fast rather than
       # answering from OpenAI (same reasoning as `step-flash` and `qwen`). Also
       # deleted: `grok-4.3`, `grok43` and the entry id `grok-4.3-bedrock`.
+      # 2026-09-29 UPDATE: Grok 4.7 is registered under bedrock above via
+      # Runtime/Converse, not Mantle. grok/grok-bedrock now name that entry;
+      # every 4.3-specific name remains deleted.
 
 # Default model configuration
 defaults:

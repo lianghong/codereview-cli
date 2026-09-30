@@ -5,6 +5,7 @@ from unittest.mock import Mock, patch
 import pytest
 from openai import RateLimitError
 
+from codereview.config import ConfigLoader
 from codereview.config.models import (
     BedrockOpenAIConfig,
     InferenceParams,
@@ -13,6 +14,7 @@ from codereview.config.models import (
 )
 from codereview.models import CodeReviewReport, ReviewMetrics
 from codereview.providers.bedrock_openai import BedrockOpenAIProvider
+from codereview.providers.factory import ProviderFactory
 
 
 @pytest.fixture
@@ -340,3 +342,56 @@ def test_region_override_does_not_bypass_the_https_gate():
     with patch("codereview.providers.bedrock_openai.ChatOpenAI"):
         with pytest.raises(ValueError, match="must use HTTPS"):
             BedrockOpenAIProvider(_astra_config(), config)
+
+
+@pytest.mark.parametrize("configured_region", ["us-east-1", "us-east-2", "us-west-2"])
+@pytest.mark.parametrize(
+    ("alias", "wire_model", "model_region"),
+    [
+        ("gpt5.6", "openai.gpt-5.6-sol", "us-east-1"),
+        ("gpt6", "openai.gpt-6-astra", "us-west-2"),
+        ("gpt6-sol", "openai.gpt-6-sol", "us-east-1"),
+        ("gpt6-luna", "openai.gpt-6-luna", "us-east-1"),
+        ("gpt6.1-sol", "openai.gpt-6.1-sol", "us-east-1"),
+    ],
+)
+def test_registry_routes_each_model_and_reports_the_effective_endpoint(
+    monkeypatch, configured_region, alias, wire_model, model_region
+):
+    """Exercise YAML -> loader -> factory -> client, including --validate.
+
+    Live Responses probes on 2026-09-29 returned 200 for Sol in us-east-1
+    and Astra in us-west-2, but 404 for both in us-east-2. Hand-built configs
+    alone cannot catch a missing region in the YAML or loader.
+    """
+    configured_url = f"https://bedrock-mantle.{configured_region}.api.aws/openai/v1"
+    expected_url = f"https://bedrock-mantle.{model_region}.api.aws/openai/v1"
+    monkeypatch.setenv("OPENAI_API_KEY", "test-bedrock-key-1234567890abcdef")
+    monkeypatch.setenv("OPENAI_BASE_URL", configured_url)
+    factory = ProviderFactory(ConfigLoader())
+
+    with patch("codereview.providers.bedrock_openai.ChatOpenAI") as client:
+        client.return_value = Mock()
+        provider = factory.create_provider(alias)
+
+    assert client.call_args.kwargs["model"] == wire_model
+    assert client.call_args.kwargs["base_url"] == expected_url
+    assert provider.provider_config.base_url == configured_url
+    result = provider.validate_credentials()
+    assert result.valid
+    assert ("Base URL", True, f"Endpoint: {expected_url}") in result.checks
+
+
+def test_validation_reports_a_custom_gateway_without_rewriting_it():
+    config = BedrockOpenAIConfig(
+        api_key="test-bedrock-key-1234567890abcdef",
+        base_url="https://gateway.internal.example.com/openai/v1",
+    )
+    with patch("codereview.providers.bedrock_openai.ChatOpenAI"):
+        provider = BedrockOpenAIProvider(_astra_config(), config)
+
+    assert (
+        "Base URL",
+        True,
+        "Endpoint: https://gateway.internal.example.com/openai/v1",
+    ) in provider.validate_credentials().checks

@@ -92,6 +92,35 @@ def test_no_model_region_uses_provider_region(model_config, provider_config):
         assert mock_bedrock.call_args.kwargs["region_name"] == "us-west-2"
 
 
+def test_grok47_registry_builds_converse_in_a_us_region_with_a_long_timeout():
+    """The actual YAML entry must reach Runtime with its US profile.
+
+    A generic region-override fixture cannot catch registering Grok under
+    the Mantle provider or dropping its profile prefix in the real registry.
+    """
+    from codereview.config import ConfigLoader
+    from codereview.providers.factory import ProviderFactory
+
+    loader = ConfigLoader()
+    # A user-configured non-US default must not redirect the US profile.
+    loader._providers["bedrock"] = BedrockConfig(region="eu-west-1", read_timeout=300)
+    with patch("codereview.providers.bedrock.ChatBedrockConverse") as client:
+        client.return_value = Mock()
+        provider = ProviderFactory(loader).create_provider("grok-4.7")
+
+    kwargs = client.call_args.kwargs
+    assert kwargs["model"] == "us.xai.grok-4.7"
+    assert kwargs["region_name"] == "us-east-1"
+    assert kwargs["config"].read_timeout == 1800
+    assert kwargs["config"].retries["max_attempts"] == 0
+    assert kwargs["max_tokens"] == 16000
+    assert "temperature" not in kwargs
+    assert kwargs["additional_model_request_fields"] is None
+    assert kwargs["disable_streaming"] is True
+    client.return_value.with_structured_output.assert_not_called()
+    assert provider._use_prompt_parsing
+
+
 def test_model_read_timeout_overrides_provider_read_timeout(provider_config):
     """A model-level read_timeout (e.g. fable5's always-on adaptive thinking
     pushes non-streaming Converse calls past the 300s provider default) wins

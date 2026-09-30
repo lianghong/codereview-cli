@@ -238,10 +238,11 @@ each reason generalizes:
   Bedrock), silently. The provider suffix is part of what the name states; treat it like a
   version. The curation pass then removed that Bedrock entry too, which took the *bare* `qwen` and
   `qwen-coder` with it — reason one, applied a second time to the same family.
-- `grok` / `grok-bedrock` — no xAI model remains after Grok 4.3 was cut. `bedrock_openai` still
-  *supports* Grok (the provider is not OpenAI-only), so this is the case where a live endpoint,
-  working code and zero registry entries coexist: the names must still fail, because there is no
-  entry for them to name.
+- `grok` / `grok-bedrock` — no xAI model remained after Grok 4.3 was cut.
+  Those aliases failed until Grok 4.7 returned on 2026-09-29 under native
+  `bedrock` with `us.xai.grok-4.7`. They now name 4.7 as current aliases.
+  The version-specific `grok-4.3`, `grok43`, and `grok-4.3-bedrock` names
+  remain deleted; returning a vendor does not revive its retired versions.
 
 `glm5` / `glm-5` are the counter-example that shows the line: they migrated to `glm5-bedrock`,
 also a provider change, but the target *is* GLM 5 — the thing the name says. Being a
