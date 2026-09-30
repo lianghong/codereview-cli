@@ -329,8 +329,8 @@ class TestBedrockValidation:
 
                 # full_id uses global. prefix for cross-region inference
                 model_config = ModelConfig(
-                    id="opus5",
-                    name="Claude Opus 5",
+                    id="opus5.5",
+                    name="Claude Opus 5.5",
                     full_id="global.anthropic.claude-opus-5",
                     pricing=PricingConfig(
                         input_per_million=5.0, output_per_million=25.0

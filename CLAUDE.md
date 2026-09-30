@@ -4,11 +4,22 @@ Guidance for Claude Code working in this repository.
 
 ## Project
 
-LangChain-based CLI for AI code review across **8 providers**: AWS Bedrock, Azure OpenAI, NVIDIA NIM, Google GenAI, DeepSeek direct, Z.AI (Zhipu international), Moonshot (Kimi), and OpenAI-on-Bedrock (GPT-5.x/GPT-6 via Bedrock's OpenAI-compatible `bedrock-mantle` endpoint — the provider is not OpenAI-only, it also fits xAI Grok, whose entry was cut in the 2026-08-29 curation pass). Reviews **Python, Go, Shell, C++, Java, JS, TS** with structured output (severity, line numbers, suggested fixes).
+LangChain-based CLI for AI code review across **8 providers**: AWS Bedrock,
+Azure OpenAI, NVIDIA NIM, Google GenAI, DeepSeek direct, Z.AI (Zhipu
+international), Moonshot (Kimi), and OpenAI-on-Bedrock (GPT-6/GPT-6.1 via
+Bedrock's OpenAI-compatible `bedrock-mantle` endpoint). The Mantle provider
+also supports non-OpenAI models; the retired Grok 4.3 entry used it, while
+current Grok 4.7 uses native Bedrock Converse. Reviews **Python, Go, Shell,
+C++, Java, JS, TS** with structured output (severity, line numbers, suggested
+fixes).
 
 **Stack:** Python 3.14, LangChain (1.3+), Pydantic V2, Click, Rich, AWS Bedrock, Azure OpenAI, NVIDIA NIM, Google GenAI, DeepSeek (`langchain-deepseek`), Z.AI (`langchain-openai` + custom base_url), Moonshot (`langchain-moonshot`).
 
 For the live model list with pricing/aliases run `uv run codereview --list-models` — that output is authoritative; the YAML in `codereview/config/models.yaml` is the source of truth. Default model: **Claude Opus 5.5**.
+
+As of 2026-09-30 there are **23 models**. `sonnet` selects **Sonnet 5.5**
+on a Global profile; deprecated `gpt-bedrock` selects **GPT-6.1 Sol**.
+Opus 5, Sonnet 5, and GPT-5.6 Sol version-specific names are retired.
 
 ## Deep-dive docs
 
@@ -220,7 +231,7 @@ Fixtures live in `tests/fixtures/sample_code/` (verifies inclusion + exclusion l
 
 - **Pydantic V1 compat warning** under Python 3.14 is upstream from LangChain — harmless.
 - **Most reasoning models reject `temperature`/`top_p`** (every Claude 5 tier, the GPT-5.x/6 entries, Kimi K3 on Bedrock — probe a new one) — omit `default_temperature`; Bedrock and Azure pass `allow_none=True` to `_resolve_temperature`. **Gemini sampling params are deprecated from 3.6 Flash onward** — omit all three for every new Gemini entry (3.1 Pro keeps theirs); `test_gemini38_flash_matches_the_published_model_card` pins the only current Flash and `test_every_modern_gemini_entry_omits_sampling_params` catches the next entry.
-- **16 of 22 entries ship `supports_tool_use: false`**; the six on tool-use are Haiku 4.5, both Azure GPT-5.4s, Gemini 3.1 Pro and both DeepSeek-direct entries. Live evidence beats the rule where it exists (Opus 5's and Opus 5.5's Bedrock model cards, GPT-6 Astra's and Kimi K3 (Bedrock)'s A/B runs, Kimi K3 (Moonshot)'s HTTP 400), and the lesson from two of those A/Bs is the one to keep: **a trivial forced-`tool_choice` probe passes and proves nothing** — only a think-heavy real review reproduces the failure. **No entry holds a live-proven `true` on a thinking model**; the bar for flipping one is three clean runs with `parsing_error` None and `output_token_details.reasoning > 0`. An **Azure Foundry deployment of an open-weight model** needs `false` too (SGLang/vLLM reject a forced `tool_choice` without `--enable-auto-tool-choice`; `test_supports_tool_use_false_uses_prompt_parsing`). Which entries are which, with the evidence → `docs/structured-output.md`
+- **17 of 23 entries ship `supports_tool_use: false`**; the six on tool-use are Haiku 4.5, both Azure GPT-5.4s, Gemini 3.1 Pro and both DeepSeek-direct entries. Live evidence beats the rule where it exists (Opus 5.5's and Sonnet 5.5's Bedrock model cards, GPT-6 Astra's and Kimi K3 (Bedrock)'s A/B runs, Kimi K3 (Moonshot)'s HTTP 400), and the lesson from two of those A/Bs is the one to keep: **a trivial forced-`tool_choice` probe passes and proves nothing** — only a think-heavy real review reproduces the failure. **No entry holds a live-proven `true` on a thinking model**; the bar for flipping one is three clean runs with `parsing_error` None and `output_token_details.reasoning > 0`. An **Azure Foundry deployment of an open-weight model** needs `false` too (SGLang/vLLM reject a forced `tool_choice` without `--enable-auto-tool-choice`; `test_supports_tool_use_false_uses_prompt_parsing`). Which entries are which, with the evidence → `docs/structured-output.md`
 - **`use_responses_api: true`** for GPT-5.x in `models.yaml` — the ChatCompletion API does not support reasoning summaries for these.
 - **Concurrent batches:** `TokenTrackingMixin._track_tokens` and `CodeAnalyzer.skipped_files` are lock-guarded. Don't add other shared mutable state to providers without a lock, and don't attach a `StreamingCallbackHandler` under `max_workers > 1` (that's the concurrent-`Live` overlap above).
 - **OpenAI-on-Bedrock is NOT the `bedrock` provider.** `bedrock_openai` is `ChatOpenAI` + `base_url` against `bedrock-mantle` with a Bedrock **bearer key**, not SigV4 Converse. `full_id` must be a **literal** (an unset `${VAR}` expands to `""` and breaks `--list-models`). Entries whose Regions don't overlap each carry **`region:`**, which `_resolve_base_url` uses to rewrite the Region label of `OPENAI_BASE_URL`: **derive from the configured URL, never a host template**; **a host with no Region label passes through unchanged**; **`require_https` runs on the *resolved* URL**. `--validate` can't catch a wrong Region. **Tiered pricing is per *request*, never per run** — tier selection lives in `TokenTrackingMixin._track_tokens` (`--dry-run`: `_estimate_tiered_cost`), the three `long_*` pricing keys are all-or-none, and **every cost consumer reads `estimate_cost()` / `ReviewMetrics.input_cost`+`output_cost`, never `tokens × rate`** (`test_no_new_consumer_recomputes_cost_from_a_rate`). Regions, rates and history → `docs/providers.md`

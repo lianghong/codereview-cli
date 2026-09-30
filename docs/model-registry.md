@@ -3,6 +3,25 @@
 Background for the Configuration rules in `CLAUDE.md`. Read this before adding, renaming or
 removing a model entry, or before adding a config key.
 
+The registry contains **23 models across eight providers as of 2026-09-30**.
+`codereview --list-models` is authoritative; the current provider counts are:
+
+| Provider | Models |
+| --- | ---: |
+| AWS Bedrock (native Converse) | 6 |
+| Azure OpenAI | 2 |
+| NVIDIA NIM | 4 |
+| Google GenAI | 2 |
+| DeepSeek direct | 2 |
+| Z.AI | 2 |
+| Moonshot direct | 1 |
+| OpenAI-on-Bedrock (Mantle) | 4 |
+
+The default is **Opus 5.5**. `sonnet`/`claude-sonnet` select **Sonnet 5.5**;
+deprecated `gpt-bedrock` selects **GPT-6.1 Sol**. Opus 5, Sonnet 5, and
+GPT-5.6 Sol version-specific names were removed on September 30 as curation,
+after confirming that their upstream endpoints were still live.
+
 ## `ConfigLoader` must forward every key it parses
 
 A key present in `models.yaml` but absent from the `<Name>Config` construction is invisible: no
@@ -73,7 +92,9 @@ that NIM is the registry's shortest-lived block and the choice is a bet on the e
 ## Generation-neutral aliases track the current generation
 
 Bare family names (`opus`, `claude-opus`) belong to the newest entry in that family — they moved
-to `opus5` when Opus 5 shipped and on to `opus5.5` on 2026-09-23, and a superseded entry keeps
+to `opus5` when Opus 5 shipped and on to `opus5.5` on 2026-09-23.
+Opus 5 was removed as curation on 2026-09-30;
+a superseded entry keeps
 version-explicit names only until it's retired. The CLI default is a separate decision: it names
 an entry `id` (`opus5.5` since 2026-09-23), not an alias, so moving `opus` doesn't move the default.
 
@@ -101,8 +122,20 @@ short-cutting it. 3.7's own version-explicit spellings (`gemini-3.7-flash`, `gem
 `sonnet` was the deliberate exception for a while — it stayed on Sonnet 4.6 when Sonnet 5 shipped,
 because 4.6 was the cheaper daily driver and holding the bare name there was a pricing choice, not
 an oversight. The 2026-08-29 curation pass ended the exception by removing the 4.6 entry, so
-`sonnet`/`claude-sonnet` now sit on `sonnet5` as plain `aliases` (not deprecated: this *is* the
-current Sonnet, so the name is truthful and worth advertising).
+`sonnet`/`claude-sonnet` moved to `sonnet5` as plain `aliases`. On 2026-09-30,
+Sonnet 5.5 replaced that entry at user request, so the names now select `sonnet5.5`.
+The version-explicit `sonnet5`, `claude-sonnet-5`, `sonnet-5`, and `claude-sonnet5`
+were deleted. Sonnet 5 remains live upstream; this was curation.
+
+Sonnet 5.5 preserves the 1M context and 128K output cap, but AWS serves it through
+`global.anthropic.claude-sonnet-5-5` only. The replacement changes US residency to
+Global routing and lowers the configured rates from $2.20/$11 to $2/$10 per M.
+The AWS catalog, inference profile, and Converse invocation were checked from
+us-east-1 on 2026-09-30. Its
+[model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-sonnet-5-5.html)
+lists structured outputs as unsupported; prompt parsing and a 1800s read timeout
+follow the reasoning-model rules. The installed LangChain package has no Sonnet
+5.5 profile, so the removed Sonnet 5 divergence needs no replacement allowlist row.
 
 ## Removing a model must not break a `--model` invocation *silently*
 
@@ -204,10 +237,12 @@ endpoints are live** — the probes were run, and they answer. Three consequence
   cheapest ($1.25 → $5.00), its widest context, and its only entry accepting `temperature`/`top_p`.
   An entry removed as "superseded" needs the successor's price and window in the comment when
   either is worse.
-- **Evidence outlives the entry.** A removed model's observed behavior can be load-bearing for
-  entries that stay (Opus 4.8's literal-text reproduction underpins Opus 5 / Sonnet 5 / Fable 5;
-  GPT-5.5's reasoning-only failure underpins GPT-5.6 Sol). Move it into the surviving entry's
-  comment or into `docs/`, not into git history alone.
+- **Evidence outlives the entry.** A removed model's observed behavior can
+  inform later entries: Opus 4.8's literal-text reproduction informed Opus 5
+  and Sonnet 5, and remains relevant to Fable 5 and the 5.5 releases.
+  GPT-5.5's reasoning-only failure informed GPT-5.6 Sol and the later GPT-6
+  family. Keep the evidence in comments or `docs/`, with observed failures
+  distinguished from conservative defaults on successors.
 
 What happens to the removed entry's identifiers depends on **whether the name states a version**
 (narrowed 2026-07-25 from a blanket "migrate everything"):
@@ -254,7 +289,11 @@ choice to track the family's current release, not an identity claim. The provide
 `glm5-bedrock`/`glm-5-bedrock`/`glm5b` were deleted, since the suffix names a provider that no
 longer serves it.) `kimi-bedrock` → Moonshot's `kimi-k3` was the same shape until 2026-09-23,
 when Kimi K3 reached Bedrock and the name moved back onto `kimi-k3-bedrock` as a plain alias — a
-parked version-neutral name goes home once its suffix is true again. `gpt-bedrock` → `gpt5.6-sol-bedrock` are the same shape.
+parked version-neutral name goes home once its suffix is true again. `gpt-bedrock` followed GPT-5.6 Sol until that entry was removed on 2026-09-30,
+then moved to `gpt6.1-sol-bedrock` as a deprecated alias. Version-specific
+`gpt5.6-sol-bedrock`/`gpt5.6`/`gpt-5.6`/`gpt5.6-bedrock` were deleted. Both
+GPT-5.6 Sol and Opus 5 were removed at user request as curation, while live.
+The default remains Opus 5.5; version-specific Opus 5 names were also deleted.
 
 ## `aliases` vs `deprecated_aliases` is purely a display split
 
@@ -288,18 +327,19 @@ misleading. Keep genuinely current alternative spellings in `aliases`.
 `tests/test_model_profile_drift.py`. Each LangChain partner package ships a `_MODEL_PROFILES`
 table in `<package>/data/_profiles.py`, read via the private
 `_get_default_model_profile(name)` — a plain dict lookup, so no credentials, no client, no
-network. 9 of 22 entries resolve one (Bedrock 4/6, Azure 2/2, DeepSeek 2/2, Google 1/2); the
-misses are re-hosts and direct vendor APIs whose wire ids the tables don't carry (all of NVIDIA,
-Z.AI, Moonshot and `bedrock_openai`, plus `kimi-k3-bedrock`) plus anything newer than the installed package —
-`gemini-3.8-flash` and `opus5.5` (`global.anthropic.claude-opus-5-5`) are currently that last group.
+network. 6 of 23 entries resolve one (Bedrock 2/6, Azure 2/2, DeepSeek 1/2,
+Google 1/2). Every NVIDIA, Z.AI, Moonshot, and Mantle entry lacks a profile.
+The other missing entries are Opus 5.5, Sonnet 5.5, Kimi K3 on Bedrock,
+Grok 4.7, DeepSeek-V4-Flash, and Gemini 3.8 Flash. A missing profile means
+there is nothing to cross-check in the installed partner package.
 
 **Neither side is authoritative**: the tables are generated from the community-curated
 [models.dev](https://github.com/sst/models.dev), and our `supports_tool_use` is *empirical* — the
 whole structured-output matrix (`docs/structured-output.md`) exists because models advertising
 `structured_output: true` fail on the forced `tool_choice` anyway. So a disagreement is a prompt
-to check, and the four deliberate ones are allowlisted with a reason each (there were eight before
-the 2026-08-29 curation pass removed the entries behind four of them — a stale allowlist row is
-itself a test failure, see rule 2).
+to check, and deliberate differences are allowlisted with a reason each. Only the Azure
+GPT-5.4 Pro difference remains after Opus 5 and Sonnet 5 were removed; a stale
+allowlist row is itself a test failure, see rule 2.
 
 Three design rules:
 
@@ -308,10 +348,12 @@ Three design rules:
    bug).
 2. A separate test fails when an allowlist entry stops diverging, so it can't accumulate
    permission for problems already fixed.
-3. Re-host ids are **not** mapped onto the direct API's profile (`openai.gpt-5.6-sol` →
-   `gpt-5.6-sol` would compare our 272K `bedrock-mantle` window against the direct API's 1.05M —
-   the exact over-claim the file exists to catch). Only `strip_cross_region_prefix` is
-   applied, because a Bedrock inference-profile prefix names the *same* endpoint and langchain-aws's
+3. Re-host ids are **not** mapped onto the direct API's profile. The retired
+   GPT-5.6 Sol entry illustrated the hazard: stripping `openai.` would have
+   compared its 272K Mantle window against the direct API's 1.05M. The guard
+   now uses GPT-6 Astra and checks every remaining Mantle entry.
+   Only `strip_cross_region_prefix` is applied, because a Bedrock
+   inference-profile prefix names the *same* endpoint and langchain-aws's
    table carries both spellings with identical limits.
 
 What makes the profiles worth checking at all: langchain-aws **acts** on its own table at

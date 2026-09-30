@@ -50,7 +50,7 @@ def test_cli_with_directory(cli_runner, sample_code_dir):
     ):
         # Setup factory mock
         mock_factory = Mock()
-        mock_factory.get_model_display_name.return_value = "Claude Opus 5"
+        mock_factory.get_model_display_name.return_value = "Claude Opus 5.5"
         mock_factory_cls.return_value = mock_factory
 
         # Setup analyzer mock
@@ -99,7 +99,7 @@ def test_cli_output_option(cli_runner, sample_code_dir, tmp_path):
     ):
         # Setup factory mock
         mock_factory = Mock()
-        mock_factory.get_model_display_name.return_value = "Claude Opus 5"
+        mock_factory.get_model_display_name.return_value = "Claude Opus 5.5"
         mock_factory_cls.return_value = mock_factory
 
         # Setup analyzer mock
@@ -203,8 +203,8 @@ def _list_models_output(cli_runner, models, extra_args=()):
 
 _DEPRECATED_MODEL = [
     {
-        "id": "opus5",
-        "name": "Claude Opus 5",
+        "id": "opus5.5",
+        "name": "Claude Opus 5.5",
         "aliases": "opus, claude-opus",
         "deprecated_aliases": "legacy-name-a, legacy-name-b",
     }
@@ -249,8 +249,8 @@ def test_list_models_never_truncates_an_alias(cli_runner):
         cli_runner,
         [
             {
-                "id": "opus5",
-                "name": "Claude Opus 5",
+                "id": "opus5.5",
+                "name": "Claude Opus 5.5",
                 "aliases": long_alias,
                 "deprecated_aliases": "",
             }
@@ -302,7 +302,7 @@ def test_cli_with_model_option(cli_runner, sample_code_dir):
     ):
         # Setup factory mock
         mock_factory = Mock()
-        mock_factory.get_model_display_name.return_value = "Claude Sonnet 4.6"
+        mock_factory.get_model_display_name.return_value = "Claude Sonnet 5.5"
         mock_factory_cls.return_value = mock_factory
 
         # Setup analyzer mock
@@ -361,7 +361,7 @@ def test_cli_default_model(cli_runner, sample_code_dir):
     ):
         # Setup factory mock
         mock_factory = Mock()
-        mock_factory.get_model_display_name.return_value = "Claude Opus 5"
+        mock_factory.get_model_display_name.return_value = "Claude Opus 5.5"
         mock_factory_cls.return_value = mock_factory
 
         # Setup analyzer mock
@@ -463,7 +463,7 @@ def test_validate_flag(cli_runner):
         # Setup factory mock
         mock_factory = Mock()
         mock_provider = Mock()
-        mock_provider.get_model_display_name.return_value = "Claude Opus 5"
+        mock_provider.get_model_display_name.return_value = "Claude Opus 5.5"
 
         # Mock validation result
         mock_result = ValidationResult(valid=True, provider="AWS Bedrock")
@@ -477,7 +477,7 @@ def test_validate_flag(cli_runner):
 
         assert result.exit_code == 0, f"CLI failed with: {result.output}"
         assert "Validating credentials" in result.output
-        assert "Claude Opus 5" in result.output
+        assert "Claude Opus 5.5" in result.output
         mock_provider.validate_credentials.assert_called_once()
 
 
@@ -854,7 +854,7 @@ def test_all_batches_failed_exits_nonzero(cli_runner, sample_code_dir):
         patch("codereview.cli.ProviderFactory") as mock_factory_cls,
     ):
         mock_factory = Mock()
-        mock_factory.get_model_display_name.return_value = "Claude Opus 5"
+        mock_factory.get_model_display_name.return_value = "Claude Opus 5.5"
         mock_factory_cls.return_value = mock_factory
 
         mock_analyzer = Mock()
@@ -937,7 +937,7 @@ def _run_with_issues(cli_runner, sample_code_dir, issues, extra_args=()):
         patch("codereview.cli.ProviderFactory") as mock_factory_cls,
     ):
         mock_factory = Mock()
-        mock_factory.get_model_display_name.return_value = "Claude Opus 5"
+        mock_factory.get_model_display_name.return_value = "Claude Opus 5.5"
         mock_factory_cls.return_value = mock_factory
 
         mock_provider = Mock()
@@ -1537,7 +1537,7 @@ def test_validate_withholds_the_aws_message_without_verbose():
         with patch("codereview.cli.ProviderFactory") as factory_cls:
             factory_cls.return_value.create_provider.side_effect = _leaky_client_error()
             with pytest.raises(SystemExit):
-                validate_provider_credentials("opus5", None, con)
+                validate_provider_credentials("opus5.5", None, con)
 
     output = _rendered(run)
     assert "explicit deny" not in output
@@ -1551,7 +1551,7 @@ def test_validate_shows_the_aws_message_with_verbose():
         with patch("codereview.cli.ProviderFactory") as factory_cls:
             factory_cls.return_value.create_provider.side_effect = _leaky_client_error()
             with pytest.raises(SystemExit):
-                validate_provider_credentials("opus5", None, con, verbose=True)
+                validate_provider_credentials("opus5.5", None, con, verbose=True)
 
     assert "explicit deny" in _rendered(run)
 

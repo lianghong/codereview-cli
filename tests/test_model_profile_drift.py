@@ -51,33 +51,7 @@ from codereview.providers.bedrock import strip_cross_region_prefix
 # documented failure mode.
 # ---------------------------------------------------------------------------
 _ALLOWED_DIVERGENCES: dict[tuple[str, str, str], str] = {
-    # supports_tool_use is empirical here; see the path matrix in
-    # docs/structured-output.md. A forced tool_choice comes back as literal text
-    # on these — an observed failure, not a documented API restriction:
-    # Anthropic limits tool_choice to auto/none only under manual
-    # thinking.type: "enabled", and documents forced tool use as supported with
-    # adaptive thinking.
-    ("bedrock", "sonnet5", "structured_output"): (
-        "first Sonnet tier with adaptive thinking on by default — inherits the "
-        "literal-text failure under a forced tool_choice that was reproduced on "
-        "Opus 4.8 (entry removed 2026-08-29; the reproduction is recorded in "
-        "docs/structured-output.md)"
-    ),
-    # New in langchain-aws 1.7.6, which added an Opus 5 profile where 1.6.3 had
-    # none — so this divergence appeared on a dependency bump, not on a change
-    # to our YAML. Ours wins here on evidence: Opus 5's `false` rests on its
-    # Bedrock model card (Opus 5.5's card says the same, but it has no profile
-    # to diverge from yet), and the profile is community-curated (models.dev)
-    # with a `last_updated` of 2026-07-24, three days after the model shipped.
-    # Flipping the YAML on it would put forced tool_choice on the previous
-    # default model.
-    ("bedrock", "opus5", "structured_output"): (
-        "the Bedrock model card lists 'Structured outputs: Not Supported' on "
-        "both bedrock-runtime and bedrock-mantle; the profile's True is "
-        "community-curated and contradicts the vendor's own card. Thinking is "
-        "also on by default, which independently reproduces the Opus 4.8 "
-        "forced-tool_choice failure (docs/structured-output.md)"
-    ),
+    # Opus 5 and Sonnet 5 divergences were removed with their registry entries.
     ("azure_openai", "gpt-5.4-pro", "structured_output"): (
         "the profile is conservative and the Azure deployment does tolerate a "
         "forced tool_choice — live-verified on the tool-use path, unlike the "
@@ -125,7 +99,7 @@ def _profile_lookups():
 
     # zai and bedrock_openai are ChatOpenAI-based, so they read OpenAI's table
     # — which is why neither of them ever hits (their wire ids are `glm-5.3`
-    # and `openai.gpt-5.6-sol`, not names OpenAI's table carries).
+    # and `openai.gpt-6-astra`, not names OpenAI's table carries).
     return {
         "bedrock": aws,
         "azure_openai": openai,
@@ -350,7 +324,7 @@ def test_allowlist_has_no_stale_entries():
 #                    it carries older NIM models only
 #   moonshot       — the table has kimi-k2.5, not our kimi-k3
 #   zai            — GLM isn't in langchain-openai's table at all
-#   bedrock_openai — its id is `openai.gpt-5.6-sol`, not `gpt-5.6-sol`; see
+#   bedrock_openai — its id is `openai.gpt-6-astra`, not `gpt-6-astra`; see
 #                    test_rehosted_ids_are_not_mapped_onto_direct_api_profiles
 _PROVIDERS_WITH_PROFILE_COVERAGE = {
     "bedrock",
@@ -395,22 +369,28 @@ def test_rehosted_ids_are_not_mapped_onto_direct_api_profiles():
     inference-profile prefix names the *same* endpoint (langchain-aws's own table
     carries both spellings with identical limits).
 
-    Written against ``openai.gpt-5.5`` (400K on Bedrock vs the same 1.05M
-    profile) until that entry was removed 2026-08-29. The gap is wider on Sol,
-    not narrower — the hazard did not go away with the entry.
+    Originally written against GPT-5.5, then GPT-5.6 Sol (retired 2026-09-30).
+    The current witness is Astra's 1M configured window versus the direct
+    profile's 1.05M. Check every remaining re-host and our own lookup too, so
+    removing a model cannot silently erase the provider-boundary guard.
     """
     from langchain_openai.chat_models.base import _get_default_model_profile
 
-    loader = get_config_loader()
-    rehosted = {m.id: m for m in loader.list_models()["bedrock_openai"]}
-    sol = rehosted["gpt5.6-sol-bedrock"]
-    direct = _get_default_model_profile("gpt-5.6-sol")
+    rehosted = get_config_loader().list_models()["bedrock_openai"]
+    astra = next(model for model in rehosted if model.id == "gpt6-astra-bedrock")
+    direct = _get_default_model_profile("gpt-6-astra")
 
-    assert direct.get("max_input_tokens", 0) > (sol.context_window or 0), (
-        "GPT-5.6 Sol's direct-API profile no longer over-states the Bedrock "
+    assert direct.get("max_input_tokens", 0) > (astra.context_window or 0), (
+        "GPT-6 Astra's direct-API profile no longer over-states the Bedrock "
         "endpoint's window; re-check whether that mapping is now safe"
     )
-    assert not _get_default_model_profile(sol.full_id), (
-        f"{sol.full_id} now resolves a profile directly — verify its limits "
-        "describe the bedrock-mantle endpoint before trusting the comparison"
-    )
+    for model in rehosted:
+        assert not _get_default_model_profile(model.full_id), (
+            f"{model.full_id} now resolves a profile directly — verify its limits "
+            "describe the bedrock-mantle endpoint before trusting the comparison"
+        )
+    # Exercise our lookup too: stripping "openai." here would apply the
+    # direct API's profile even though the package's exact lookup stays empty.
+    for provider, model, profile in _registry_rows():
+        if provider == "bedrock_openai":
+            assert profile == {}, f"{model.id} borrowed a direct-API profile"

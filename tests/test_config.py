@@ -50,13 +50,11 @@ def test_config_loader_default_model():
 
 
 # Anthropic's global-endpoint list price per model (platform.claude.com
-# pricing page, 2026-09-23). Sonnet 5's $2/$10 launch price became standard
-# when the scheduled rise to $3/$15 was cancelled.
+# pricing page, 2026-09-30). Sonnet 5.5 keeps Sonnet 5's $2/$10 list price.
 _CLAUDE_GLOBAL_LIST_PRICE = {
     "claude-fable-5": (10.00, 50.00),
-    "claude-opus-5": (5.00, 25.00),
     "claude-opus-5-5": (4.00, 20.00),
-    "claude-sonnet-5": (2.00, 10.00),
+    "claude-sonnet-5-5": (2.00, 10.00),
     "claude-haiku-4-5-20251001-v1:0": (1.00, 5.00),
 }
 
@@ -111,14 +109,14 @@ def test_resolve_model_id_with_alias():
     """Test resolving short model names to full IDs via ConfigLoader."""
     loader = ConfigLoader()
     # `opus` moved from Opus 5 to Opus 5.5 when the 5.5 entry was added
-    # (2026-09-23); opus5 keeps its version-explicit names.
+    # (2026-09-23); the opus5 entry was retired on 2026-09-30.
     provider, model_config = loader.resolve_model("opus")
     assert model_config.full_id == "global.anthropic.claude-opus-5-5"
 
-    # `sonnet` moved from Sonnet 4.6 to Sonnet 5 when the 4.6 entry was removed
-    # (2026-08-29) — generation-neutral names track the current generation.
+    # Sonnet 5.5 replaced Sonnet 5 on 2026-09-30; generation-neutral names
+    # track the current release.
     provider, model_config = loader.resolve_model("sonnet")
-    assert model_config.full_id == "us.anthropic.claude-sonnet-5"
+    assert model_config.full_id == "global.anthropic.claude-sonnet-5-5"
 
     provider, model_config = loader.resolve_model("haiku")
     assert model_config.full_id == "global.anthropic.claude-haiku-4-5-20251001-v1:0"
@@ -134,15 +132,15 @@ def test_resolve_model_id_case_insensitive():
     provider1, model1 = loader.resolve_model("opus")
     provider2, model2 = loader.resolve_model("sonnet")
     assert model1.name == "Claude Opus 5.5"
-    assert model2.name == "Claude Sonnet 5"
+    assert model2.name == "Claude Sonnet 5.5"
 
 
 def test_resolve_model_id_with_full_id():
     """Test resolving with full model ID works."""
     loader = ConfigLoader()
     # Short ID (which is used in the YAML as the primary ID)
-    provider, model_config = loader.resolve_model("opus5")
-    assert model_config.id == "opus5"
+    provider, model_config = loader.resolve_model("opus5.5")
+    assert model_config.id == "opus5.5"
 
 
 def test_all_aliases_map_to_valid_models():
@@ -175,43 +173,6 @@ def test_fable5_read_timeout_covers_thinking_latency():
     _, model_config = loader.resolve_model("fable5")
     assert model_config.read_timeout is not None
     assert model_config.read_timeout >= 1800
-
-
-def test_opus5_read_timeout_covers_thinking_latency():
-    """opus5 has thinking ON by default (a breaking change from Opus 4.8, where
-    it was off unless requested) at default effort "high", and the Converse call
-    is non-streaming — no bytes arrive until the full response is generated, so
-    think-heavy batches would outlast the 300s provider-default read_timeout.
-    Same condition that forced fable5's override."""
-    loader = ConfigLoader()
-    _, model_config = loader.resolve_model("opus5")
-    assert model_config.read_timeout is not None
-    assert model_config.read_timeout >= 1800
-
-
-def test_opus5_context_and_output_match_bedrock_card():
-    """Opus 5 advertises 1M context (both default and maximum) / 128K output."""
-    loader = ConfigLoader()
-    _, config = loader.resolve_model("opus5")
-    assert config.context_window == 1_000_000
-    assert config.inference_params is not None
-    assert config.inference_params.max_output_tokens == 128_000
-
-
-def test_opus5_omits_sampling_params():
-    """Opus 5 is a reasoning model — temperature/top_p/top_k are unsupported.
-
-    The Bedrock provider passes ``allow_none=True`` to ``_resolve_temperature``,
-    so an absent ``default_temperature`` in the YAML (loaded into the
-    ``temperature`` field) is what opts the model out of sending
-    ``temperature`` on the Converse call.
-    """
-    loader = ConfigLoader()
-    _, config = loader.resolve_model("opus5")
-    assert config.inference_params is not None
-    assert config.inference_params.temperature is None
-    assert config.inference_params.top_p is None
-    assert config.inference_params.top_k is None
 
 
 def test_opus55_matches_the_live_probe_and_model_card():
@@ -251,10 +212,6 @@ def test_generation_neutral_opus_alias_tracks_the_newest_opus():
     for alias in ("opus", "claude-opus", "claude-opus-5.5", "opus-5.5"):
         _, config = loader.resolve_model(alias)
         assert config.id == "opus5.5", f"{alias!r} resolved to {config.id!r}"
-    # The version-explicit Opus 5 names stay on Opus 5.
-    for alias in ("claude-opus-5", "opus-5", "claude-opus5"):
-        _, config = loader.resolve_model(alias)
-        assert config.id == "opus5", f"{alias!r} resolved to {config.id!r}"
 
 
 def test_superseded_opus_generation_aliases_are_gone():
@@ -356,10 +313,10 @@ def test_reregistering_the_same_entry_is_not_a_conflict(caplog):
     import logging
 
     loader = ConfigLoader()
-    _, existing = loader.resolve_model("opus5")
+    _, existing = loader.resolve_model("opus5.5")
 
     with caplog.at_level(logging.WARNING):
-        loader._register_model("bedrock", existing, "opus5")
+        loader._register_model("bedrock", existing, "opus5.5")
 
     assert "Model name conflict" not in caplog.text
 
@@ -575,20 +532,18 @@ def test_retired_model_aliases_redirect_to_live_successors():
         # Claude Sonnet 4.6 removed in favour of Sonnet 5 (same $3/$15, 5x the
         # context). `sonnet` was the removed entry's *id* and names the tier, not
         # a version, so it moves up — and as a plain `alias`, not a deprecated
-        # one, because sonnet5 genuinely is the current Sonnet.
-        "sonnet": "us.anthropic.claude-sonnet-5",
-        "claude-sonnet": "us.anthropic.claude-sonnet-5",
+        # one. They moved forward again to Sonnet 5.5 on 2026-09-30.
+        "sonnet": "global.anthropic.claude-sonnet-5-5",
+        "claude-sonnet": "global.anthropic.claude-sonnet-5-5",
         # Kimi K2.5 on *Bedrock* removed; the Moonshot direct API is the family's
         # canonical owner, so this is the same move `kimi-azure` made. Crosses a
         # provider boundary, hence deprecated rather than advertised. Since
         # 2026-09-23 Kimi K3 is on Bedrock, so the name is back on a Bedrock
         # entry as a plain alias — same $3/$15, no billing change.
         "kimi-bedrock": "global.moonshotai.kimi-k3",
-        # GPT-5.5 on Bedrock removed; GPT-5.6 Sol is the only OpenAI entry left
-        # on bedrock-mantle. `gpt-bedrock` names "the GPT on Bedrock", which Sol
-        # now is — but following it forward DOUBLES the rate ($2.50/$15 ->
-        # $5/$30), which is why it stays a deprecated_alias.
-        "gpt-bedrock": "openai.gpt-5.6-sol",
+        # GPT-5.5 -> GPT-5.6 Sol -> GPT-6.1 Sol (2026-09-30). The
+        # version-neutral compatibility name stays a deprecated alias.
+        "gpt-bedrock": "openai.gpt-6.1-sol",
         # Grok returned on 2026-09-29. Generation-neutral names now resolve
         # to 4.7; every 4.3-specific spelling remains deleted.
         "grok": "us.xai.grok-4.7",
@@ -712,6 +667,15 @@ RETIRED_ALIASES_DELETED_NOT_REDIRECTED = frozenset(
         # evidence, and DEAD_UPSTREAM_FULL_IDS for why none of their wire ids
         # were blacklisted.
         #
+        # 2026-09-30 curation: version-specific names are retired, not redirected.
+        "opus5",
+        "claude-opus-5",
+        "opus-5",
+        "claude-opus5",
+        "gpt5.6-sol-bedrock",
+        "gpt5.6",
+        "gpt-5.6",
+        "gpt5.6-bedrock",
         # Opus 4.8 — superseded by opus5 at identical $5/$25, context and output.
         # `opus`/`claude-opus` were already on opus5, so nothing migrated.
         "opus4.8",
@@ -724,6 +688,12 @@ RETIRED_ALIASES_DELETED_NOT_REDIRECTED = frozenset(
         # support and the tool-use structured-output path.
         "sonnet4.6",
         "claude-sonnet-4.6",
+        # Sonnet 5 replaced by 5.5 on 2026-09-30 as curation, while still live.
+        # Version-specific names must fail instead of silently switching models.
+        "sonnet5",
+        "claude-sonnet-5",
+        "sonnet-5",
+        "claude-sonnet5",
         # Kimi K2.5 on Bedrock — `kimi-bedrock` migrated to Moonshot-direct
         # (K2.6 at the time, K3 since 2026-09-19).
         "kimi-k2.5-bedrock",
@@ -1092,7 +1062,7 @@ def test_every_provider_default_in_the_defaults_block_names_a_live_model():
     """The doc-only ``defaults:`` block still has to name models that exist.
 
     CLAUDE.md documents this block as informational — nothing in the code reads
-    it, and the CLI's real default ``--model`` is hardcoded to ``opus5``. That is
+    it, and the CLI's real default ``--model`` is hardcoded to ``opus5.5``. That is
     exactly why it rots unnoticed: ``nvidia_default`` sat on
     ``mistral-medium-nvidia`` after the 2026-08-29 removal pass deleted that
     entry, and no test, no loader path and no CLI surface objected. A reader
@@ -1178,7 +1148,7 @@ def test_adaptive_thinking_claude_models_disable_tool_use():
     not established.
     Opus 5 has independent confirmation: its Bedrock model card lists
     "Structured outputs: Not Supported" on bedrock-runtime and bedrock-mantle.
-    Opus 5.5 has the same card entry.
+    Opus 5.5 and Sonnet 5.5 have the same card entry.
 
     ``opus4.8`` is no longer in this list because that entry was removed
     2026-08-29 (superseded by opus5 at identical pricing) — the *evidence* it
@@ -1186,12 +1156,39 @@ def test_adaptive_thinking_claude_models_disable_tool_use():
     reproduction is written down rather than just cited.
     """
     loader = ConfigLoader()
-    for alias in ("opus5.5", "opus5", "sonnet5", "fable5"):
+    for alias in ("opus5.5", "sonnet5.5", "fable5"):
         _, config = loader.resolve_model(alias)
         assert config.supports_tool_use is False, (
             f"{alias} is an adaptive-thinking model and must set "
             "supports_tool_use: false to avoid forced tool_choice"
         )
+
+
+def test_sonnet55_uses_global_routing_and_published_limits():
+    """Sonnet 5.5 is Global-only; default reasoning needs a long timeout."""
+    loader = ConfigLoader()
+    aliases = (
+        "sonnet5.5",
+        "sonnet",
+        "claude-sonnet",
+        "claude-sonnet-5.5",
+        "sonnet-5.5",
+        "claude-sonnet-5-5",
+    )
+    for alias in aliases:
+        provider, config = loader.resolve_model(alias)
+        assert provider == "bedrock"
+        assert config.id == "sonnet5.5"
+        assert config.full_id == "global.anthropic.claude-sonnet-5-5"
+        assert config.context_window == 1_000_000
+        assert config.read_timeout == 1800
+        assert config.supports_tool_use is False
+        params = config.inference_params
+        assert params is not None
+        assert params.max_output_tokens == 128000
+        assert params.temperature is None
+        assert params.top_p is None
+        assert params.top_k is None
 
 
 def test_latest_zai_models_use_prompt_parsing_and_published_limits():
@@ -1622,27 +1619,6 @@ def test_gpt6_astra_carries_both_pricing_tiers_for_its_wide_window():
     assert config.pricing.long_context_threshold_tokens == 272_000
     assert config.pricing.long_input_per_million == 22.00
     assert config.pricing.long_output_per_million == 82.50
-
-
-def test_gpt56_sol_matches_the_published_model_card_pricing():
-    """GPT-5.6 Sol bills the card's In-Region rates, both tiers.
-
-    The entry carried a $5/$30 flat rate from the launch for a month; the
-    Bedrock card (checked 2026-09-23) says $4.40/$22 at 272K input tokens or
-    fewer and $8.80/$33 above. The window is still 272K, so the long tier is
-    unreachable today; it is pinned so that raising the window can't underbill.
-    """
-    _, config = ConfigLoader().resolve_model("gpt5.6")
-
-    assert config.pricing is not None
-    assert (config.pricing.input_per_million, config.pricing.output_per_million) == (
-        4.40,
-        22.00,
-    )
-    assert config.pricing.has_long_context_tier
-    assert config.pricing.long_context_threshold_tokens == 272_000
-    assert config.pricing.long_input_per_million == 8.80
-    assert config.pricing.long_output_per_million == 33.00
 
 
 @pytest.mark.parametrize(

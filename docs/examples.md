@@ -92,9 +92,8 @@ codereview ./src/auth --model opus
 
 # Pin a specific Opus generation
 codereview ./src/auth --model opus5.5   # Claude Opus 5.5 (the default model), $4/$20
-codereview ./src/auth --model opus5     # Claude Opus 5 (the previous default), $5.50/$27.50
 
-# Balanced review with Sonnet (daily development)
+# Balanced review with Sonnet 5.5 (Global routing, $2/$10 per million)
 codereview ./src --model sonnet
 
 # Fast review with Haiku (large codebase)
@@ -112,6 +111,14 @@ codereview ./src --model gpt
 
 # GPT-6 Luna - cheapest GPT-6 tier on Bedrock (us-east-1), 1M context — high-volume/CI
 codereview ./src --model gpt6-luna
+
+# GPT-6.1 Sol - current coding tier, Mantle us-east-1, 1M context
+# $2.20/$11 per million through 272K input per request; $4.40/$16.50 above
+codereview ./src --model gpt6.1-sol
+
+# Grok 4.7 - native Bedrock Converse, US profile, 500K context
+# $2.20/$6.60 per million; uses AWS credentials and us-east-1 source Region
+codereview ./src --model grok-4.7
 
 # Kimi K3 - 2.8T MoE, 1M context (Moonshot direct; `kimi-azure` also routes here)
 codereview ./src --model kimi-k3
@@ -132,7 +139,7 @@ codereview ./src --model gemini-3.8-flash
 🔍 Code Review Tool
 
 📂 Scanning directory: ./src
-🤖 Model: Claude Sonnet 5
+🤖 Model: Claude Sonnet 5.5
 
 ✓ Found 50 files to review
 
@@ -214,7 +221,7 @@ codereview ./src \
 ```
 
 **Cost Comparison**:
-- Opus 5 (100 files): ~$1.50
+- Opus 5.5 (100 files): ~$0.30-$1.50
 - GPT-5.4 (100 files): ~$0.75
 - Kimi K3 direct (100 files): ~$0.60
 - Gemini 3.1 Pro (100 files): ~$0.50
@@ -226,14 +233,20 @@ codereview ./src \
 
 ### Example 10: Region-Specific Configuration
 
-Use different AWS regions for redundancy:
+Configure the native Bedrock source Region in `codereview/config/models.yaml`.
+The current provider default is `us-east-1`; per-model `region` values take
+precedence. Sonnet 5.5 uses Global cross-Region inference, and Grok 4.7 uses
+the US inference profile.
 
-```bash
-# Primary region
-codereview ./src --aws-region us-west-2 --output review-west.md || \
-# Fallback region
-codereview ./src --aws-region us-east-1 --output review-east.md
+```yaml
+providers:
+  bedrock:
+    region: us-east-1
 ```
+
+For Mantle, one `OPENAI_BASE_URL` serves all four configured GPT models:
+their model entries select `us-west-2` for Astra and `us-east-1` for the
+Sol/Luna tiers. See [Region Selection](usage.md#region-selection).
 
 ### Example 11: Verbose Debugging
 
@@ -436,8 +449,7 @@ pipeline {
                             --output review-report.json \
                             --format json \
                             --severity high \
-                            --max-files 100 \
-                            --aws-region us-west-2
+                            --max-files 100
                     '''
                 }
             }
@@ -658,7 +670,7 @@ management and database access. Consider:
 
 **`review-report.md`**:
 
-```markdown
+````markdown
 # Code Review Report
 
 **Generated**: 2026-01-22
@@ -709,7 +721,7 @@ The authentication module shows tight coupling...
 1. Fix SQL injection vulnerability immediately
 2. Add comprehensive error handling
 3. Optimize database query patterns
-```
+````
 
 ## Real-World Scenarios
 
@@ -824,7 +836,7 @@ diff before.md after.md
    - **Gemini 3.1 Pro** for advanced reasoning reviews (1M context)
    - **Sonnet** for PR reviews (balanced)
    - **GPT-5.4** for Azure-hosted reviews ($2.50/$15 per M, 1.05M context)
-   - **Opus 5** for production releases only (latest reasoning model, 1M context)
+   - **Opus 5.5** for production releases only (latest reasoning model, 1M context)
 
 3. **Use Artifacts**: Always save review reports as build artifacts
 
@@ -875,9 +887,11 @@ codereview ./src --max-files 100 --max-file-size 10
 
 ### Issue: Inconsistent Results
 
-**Solution**: Pin to specific AWS region:
+**Solution**: Pin a model version and compare reviews of the same input.
+Model responses can still vary between runs.
+
 ```bash
-codereview ./src --aws-region us-west-2
+codereview ./src --model sonnet5.5
 ```
 
 ### Issue: High Costs

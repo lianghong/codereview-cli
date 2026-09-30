@@ -190,7 +190,7 @@ provider class.
 `OutputParsingRetryError` (include_raw `parsed` is None), and `OutputParserException` (prompt-
 parsing path got malformed JSON — a `ValueError` subclass but NOT a `ValidationError`, so it
 must be named explicitly or it falls into the generic non-retryable `except`). Reasoning models
-on the prompt-parsing path (e.g. GPT-5.6 Sol on Bedrock) intermittently emit invalid JSON on
+on the prompt-parsing path (e.g. GPT-6 Astra on Bedrock) intermittently emit invalid JSON on
 think-heavy batches; the retry is what makes those runs complete.
 
 ## Token accounting counts what was billed, not what parsed
@@ -316,7 +316,7 @@ Three coupled defects, all in `tests/test_streaming_contract.py`:
    `disable_streaming=True` (and its `read_timeout: 1800` overrides depend on the
    non-streaming Converse path), `ChatNVIDIA` has no `streaming` field at all, and Google's is
    off because `method="json_schema"` structured output through the streaming wire path is
-   unproven live — so on three providers, including the default `opus5`, the flag bought a
+   unproven live — so on three providers, including the default `opus5.5`, the flag bought a
    3-5x slowdown for output that cannot appear.
 
 `ModelProvider.supports_token_streaming()` is a **classmethod** (default `True`; those three
@@ -332,20 +332,23 @@ a run; `create_provider` reports the real error.
 
 ## Sampling params
 
-**Reasoning models** (Claude Opus 5, Claude Sonnet 5, Claude Fable 5, GPT-5.4 / 5.4 Pro on Azure,
-GPT-5.6 Sol, GPT-6 Astra/Sol/Luna, Opus 5.5 and Kimi K3 on Bedrock, DeepSeek-V4-Pro) don't accept `temperature`/`top_p`. Bedrock and Azure
+**Sampling opt-out entries** include Claude Opus 5.5, Sonnet 5.5, Fable 5,
+GPT-5.4 / 5.4 Pro on Azure, GPT-6.1 Sol and GPT-6 Astra/Sol/Luna on Mantle,
+and Kimi K3 on Bedrock. These omit `temperature`/`top_p`. Bedrock and Azure
 providers both pass `allow_none=True` to `_resolve_temperature`; omit `default_temperature` from
 `inference_params` for new reasoning models. Bedrock and OpenAI-on-Bedrock also pass
 `drop_override_on_opt_out=True`, so an explicit `--temperature` is **ignored with a warning** for an
-opted-out entry instead of being sent. Opus 5 only ever survived it because langchain-aws's model
+opted-out entry instead of being sent. The retired Opus 5 entry survived it
+because langchain-aws's model
 profile stripped the key; Opus 5.5 and Kimi K3 have no profile, so Converse got it and answered with
 a non-retryable `ValidationException` on every batch, and GPT-6 on mantle answers with a 400.
 
 Being a reasoning model does not by itself mean the sampling params are refused — xAI's Grok 4.3
 was reasoning-first *and* accepted `temperature`/`top_p` (card defaults 0.7/0.95), which is why its
-entry rode Chat Completions rather than the Responses API. Its entry was removed 2026-08-29, so
-every remaining reasoning entry refuses them; read the model card rather than generalizing from
-that.
+entry rode Chat Completions rather than the Responses API. Its entry was
+removed 2026-08-29. Current DeepSeek-direct and Z.AI entries keep configured
+sampling values, while Grok 4.7 conservatively omits them. Read the model
+card and verify the endpoint rather than generalizing from reasoning support.
 
 **Gemini sampling params are deprecated from 3.6 Flash onward** — Google's API ignores
 `temperature`/`top_p`/`top_k` on Gemini 3.6 Flash and documents an HTTP 400 for future model
@@ -364,7 +367,7 @@ single-entry test can't catch that.
 
 ### OpenAI-on-Bedrock is NOT the `bedrock` provider
 
-GPT-5.6 Sol and GPT-6 Astra on Bedrock go through Bedrock's *OpenAI-compatible* endpoint, which
+GPT-6.1 Sol and GPT-6 Astra on Bedrock go through Bedrock's *OpenAI-compatible* endpoint, which
 authenticates with an Amazon Bedrock **API key (bearer token)** via `ChatOpenAI` + `base_url` —
 not the SigV4 `ChatBedrockConverse` path. It lives in the separate `bedrock_openai` provider.
 Underlying transport is the `openai` SDK (already pulled by `langchain-openai`; no new dep).
@@ -380,7 +383,7 @@ batches returns a reasoning-only response (`tool_calls=[]`, no `parsed` field �
 response does not have a 'parsed' field"), which breaks the forced `tool_choice` that
 `.with_structured_output()` sets. Intermittent (only the batches where it thinks). Same failure
 mode as Opus 4.8 on Bedrock, so they route through prompt-based JSON parsing. **The GPT-5.5 entry
-was removed 2026-08-29 but that observation is the whole basis for Sol's flag**, so it is recorded
+was removed 2026-08-29 but that observation remains provider-path evidence**, so it is recorded
 here and in the YAML rather than left in git history — `openai.gpt-5.5` is still live on
 `bedrock-mantle`, and re-adding the entry should restore `supports_tool_use: false` with it.
 
@@ -390,23 +393,23 @@ version-explicit rule in `docs/model-registry.md`). Note GPT-5.4 on *Azure* is a
 that stays and keeps `supports_tool_use: true` — that deployment doesn't exhibit this; the
 Bedrock OpenAI-compatible endpoint does.
 
-**GPT-5.6 Sol** (`openai.gpt-5.6-sol`, id `gpt5.6-sol-bedrock`, aliases
-`gpt5.6`/`gpt-5.6`/`gpt5.6-bedrock` plus the inherited `gpt-bedrock`; flagship of the
-Sol/Terra/Luna family) is Responses-API-only, rejects
-`temperature`/`top_p`, and its `full_id` is a real published wire id rather than a console
-literal. It's OpenAI's best coding model, so it's the code-review pick of the family; In-Region
-only us-east-1 / us-east-2. It is also, at $4.40/$22 per million, **1.5–1.8× the price of the GPT-5.5
-entry it replaced** ($2.50/$15) and narrower (272K vs 400K) — which is why `gpt-bedrock` sits in
-`deprecated_aliases`, resolvable but unadvertised, rather than in `aliases`.
+**GPT-5.6 Sol was removed as curation on 2026-09-30**, while its
+`openai.gpt-5.6-sol` Responses endpoint still answered HTTP 200. Its entry id
+`gpt5.6-sol-bedrock` and version-specific aliases were retired. It used prompt
+parsing, omitted sampling params, and was configured for 272K context at
+$4.40/$22 per million. The compatibility alias `gpt-bedrock` now selects
+GPT-6.1 Sol, with 1M context and short rates of $2.20/$11. That successor is
+us-east-1 only; removing 5.6 loses its us-east-2 availability.
 
 **GPT-6 Astra** (`openai.gpt-6-astra`, id `gpt6-astra-bedrock`, aliases
 `gpt6`/`gpt-6`/`gpt6-bedrock`) joined 2026-09-13, ending Sol's spell as the provider's only entry.
 GA on Bedrock 2026-09-08, OpenAI's most capable model, text + image input, 128K max output,
 knowledge cutoff 2026-04-30. Two properties are unlike anything else in the registry:
 
-- **Its Region is mutually exclusive with Sol's.** `base_url` is *provider*-level
-  (`${OPENAI_BASE_URL}`), and `bedrock-mantle` serves Astra from **us-west-2 only** while Sol is
-  In-Region us-east-1 / us-east-2 only. One base URL cannot reach both; the wrong one 404s the
+- **Its Region is mutually exclusive with the Sol entries'.** `base_url` is *provider*-level
+  (`${OPENAI_BASE_URL}`), and `bedrock-mantle` serves Astra from **us-west-2 only**
+  while GPT-6 Sol and GPT-6.1 Sol are us-east-1 only. The original comparison
+  used the now-retired GPT-5.6 Sol (us-east-1 / us-east-2). One base URL cannot reach both; the wrong one 404s the
   model id with no fallback, on *every* batch of the run — the observed shape on 2026-09-13 was
   four batches and four identical `The model 'openai.gpt-6-astra' does not exist` 404s against a
   us-east-2 endpoint. This was an operator switch (re-export `OPENAI_BASE_URL` to change models)
@@ -453,7 +456,7 @@ knowledge cutoff 2026-04-30. Two properties are unlike anything else in the regi
 joined 2026-09-23 as the mid and low-cost GPT-6 tiers. The generation-neutral `gpt6`/`gpt-6`
 stay on Astra, the flagship. What a live probe of both showed that day:
 
-- **us-east-1 only** — a third Region, distinct from both Astra's and GPT-5.6 Sol's, so each
+- **us-east-1 only** — distinct from Astra's us-west-2, so each
   entry carries `region: us-east-1`. A us-east-2 base URL reached both through the rewrite.
 - **Temperature returns HTTP 400**, so neither entry sets `default_temperature`; both Responses
   and Chat Completions answered 200, and `use_responses_api: true` is kept for reasoning
@@ -512,7 +515,8 @@ provider is OpenAI-specific, so a non-OpenAI `bedrock-mantle` model needs a YAML
 code. Two things that entry taught, worth keeping for the next one: a `bedrock-mantle` model may
 **accept `temperature`/`top_p`** and therefore omit `use_responses_api` and ride Chat Completions
 (Grok's card defaulted 0.7/0.95); and In-Region support is per-model, not per-endpoint (Grok:
-us-west-2 / us-east-1 / us-east-2; Sol: us-east-1 / us-east-2 only), so give the entry a
+us-west-2 / us-east-1 / us-east-2; the then-current GPT-5.6 Sol:
+us-east-1 / us-east-2 only), so give the entry a
 **`region:`** naming a Region that serves that specific model rather than relying on whatever
 `OPENAI_BASE_URL` happens to point at.
 

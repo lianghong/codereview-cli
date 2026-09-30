@@ -42,8 +42,9 @@ prefill and a stop sequence, and both additions are hazards here:
    Reviewing Markdown or fenced docstrings would trigger it.
 2. Anthropic documents *"You can't pre-fill the assistant response while thinking is on"* —
    and every Bedrock entry we'd use it for has thinking on by default.
-3. It is `ChatBedrockConverse`-only, while 9 of our 13 prompt-path entries are NVIDIA /
-   Moonshot / Z.AI / Google / `bedrock_openai`, so adopting it means two structured-output
+3. It is `ChatBedrockConverse`-only, while 12 of our 17 prompt-path entries
+   are NVIDIA / Moonshot / Z.AI / Google / `bedrock_openai`, so adopting it
+   means two structured-output
    paths to maintain.
 
 Upstream's own docstring names its target as non-thinking models ("notably Amazon Nova"),
@@ -54,11 +55,9 @@ which is consistent with all of the above.
 | Model (provider) | Thinking | `supports_tool_use` | Path | Why prompt-parsing (if so) |
 |---|---|---|---|---|
 | Claude Fable 5 (Bedrock) | adaptive (always on, can't disable) | `false` | prompt | Same forced-`tool_choice`-while-thinking conflict reproduced on Opus 4.8 (see below), but **constant** rather than intermittent — thinking can't be disabled. Also rejects `temperature`/`top_p`/`top_k`; requires one-time `provider_data_share` data-retention opt-in |
-| **Claude Opus 5 (Bedrock)** | **on by default** (effort-controlled) | `false` | prompt | **Documented, not assumed**: the Bedrock model card lists *Structured outputs: Not Supported* on both `bedrock-runtime` and `bedrock-mantle`. Thinking-on-by-default also reproduces the Opus 4.8 forced-`tool_choice` conflict. Current CLI default; also needs `read_timeout: 1800` (Fable 5's non-streaming-Converse problem) |
 | **Claude Opus 5.5 (Bedrock)** | **always on, no off switch** (effort-controlled, default medium) | `false` | prompt | **Model card + observed behaviour**: the Bedrock model card lists *Structured outputs: Not Supported* on both endpoints (as Opus 5's does); the forced-`tool_choice` failure itself is the observed one from `de5e2fc`, not an Anthropic API restriction (see below). Not A/B-tested with `true`. Live 2026-09-23 on the prompt path: `codereview/providers/` (3 files, ~25K input) finished clean in 53s. Rejects `temperature`, 128K output cap, `read_timeout: 1800`. Owns `opus`/`claude-opus` since 2026-09-23 |
-| Claude Sonnet 5 (Bedrock) | adaptive (on by default, server-side) | `false` | prompt | Same forced-`tool_choice`-while-thinking conflict as Opus 4.8 — first Sonnet tier with adaptive thinking on by default. Also rejects `temperature`/`top_p`/`top_k`. No `provider_data_share` opt-in (unlike Fable 5); geo-US routes from the us-west-2 default. Owns the generation-neutral `sonnet`/`claude-sonnet` since the Sonnet 4.6 entry was removed 2026-08-29 |
+| Claude Sonnet 5.5 (Bedrock) | adaptive (on by default, default effort high) | `false` | prompt | Bedrock model card lists *Structured outputs: Not Supported* on both endpoints. Forced tool use has not been A/B-verified on this release; Opus 4.8's literal-text failure remains observed evidence. 1M context, 128K output, sampling params omitted, `read_timeout: 1800`. Global-only profile; replaces Sonnet 5 and owns `sonnet`/`claude-sonnet` since 2026-09-30 |
 | Claude Haiku 4.5 (Bedrock) | opt-in, and we never ask | `true` | tool-use | Thinking is off unless requested and this entry doesn't request it, so there is no forced-`tool_choice` conflict to route around — and since the 2026-08-29 curation pass this is the **only** Bedrock entry on the tool-use path. Keep it that way when trimming: it is the case that proves the Bedrock tool-use path still works at all. Takes `temperature` (0.1) |
-| GPT-5.6 Sol (**Bedrock** `bedrock-mantle` OpenAI-compat) | adaptive (server-side) | `false` | prompt | The reasoning-only failure mode **live-verified on GPT-5.5** at this same endpoint (entry removed 2026-08-29): think-heavy batches came back `tool_calls=[]` with no `parsed` → "no 'parsed' field", intermittently. **Responses API only** (Chat Completions not supported → `use_responses_api: true` required), no `temperature`/`top_p`. Sol tier = OpenAI's best coding model; In-Region us-east-1/us-east-2 only |
 | GPT-6 Astra (**Bedrock** `bedrock-mantle` OpenAI-compat) | adaptive (server-side) | `false` | prompt | **Live-verified 2026-09-13 by A/B on `codereview/providers/`** (2 batches, ~98K input): with `true`, batch 1 died on `ResponseError(code='server_error')` from the Responses API after burning the retry budget — 3m06s for a half-finished review; with `false`, both batches finished in 37.4s with 4 issues. **A different symptom from GPT-5.5's** reasoning-only `tool_calls=[]`/no-`parsed` response — this endpoint 500s instead — but the same root cause and fix. A trivial batch passes forced `tool_choice` cleanly, so only a think-heavy target reproduces it. Keep Responses for reasoning summaries; no `temperature`/`top_p`. us-west-2 only |
 | GPT-6 Sol / GPT-6 Luna (**Bedrock** `bedrock-mantle` OpenAI-compat) | adaptive (server-side) | `false` | prompt | **Assumed, not A/B-verified** (added 2026-09-23). The reasoning-model rule plus OpenAI's note that function calling on these tiers needs `reasoning_effort: none`; Astra's A/B is the nearest evidence. One small review each completed on the prompt path. us-east-1 only |
 | GPT-6.1 Sol (Mantle) | on | `false` | prompt | New reasoning model |
@@ -87,11 +86,12 @@ now. If NVIDIA re-publishes any of them, restore the row rather than re-deriving
 Qwen3-Coder-Next-on-Bedrock, MiniMax M2.5-on-Bedrock, Kimi K2.6-on-NVIDIA, Gemini 3.6 Flash,
 GPT-5.5-on-Bedrock and Grok 4.3-on-Bedrock. **Every one of those endpoints is still live**, so
 these rows are absent by choice, not by upstream removal, and re-adding an entry means restoring
-its row rather than re-deriving the path. Three observations from that set are load-bearing for
-rows that remain and are preserved below rather than only in `git log`: Opus 4.8's literal-text
-reproduction (Opus 5 / Sonnet 5 / Fable 5 rest on it), GPT-5.5's reasoning-only failure (GPT-5.6
-Sol rests on it), and Kimi K2.5-on-Bedrock's tool-call-marker leakage (the "mangles the tool
-call" shape's clearest case). Gemini 3.6 Flash was the *first* model to earn `true` back with a
+its row rather than re-deriving the path. Three observations remain relevant
+and are preserved below: Opus 4.8's literal-text reproduction informed
+later Claude entries; GPT-5.5's reasoning-only failure informed GPT-5.6 Sol
+before its retirement and the later GPT-6 family; and Kimi K2.5-on-Bedrock's
+tool-call-marker leakage remains the clearest historical "mangles the tool
+call" case. Gemini 3.6 Flash was the *first* model to earn `true` back with a
 live run, and 3.7 Flash carried that precedent until its own entry was curated away on
 2026-09-19 — **so the precedent now survives only in this paragraph.** No live `true` remains in
 the matrix for a thinking model. That matters for the rule: 3.7's three clean runs
@@ -138,14 +138,18 @@ GLM-5.2-on-Z.AI entries' fenced JSON. The clearest case was Kimi-K2.5-on-Bedrock
 leakage (entry removed 2026-08-29), which is why that observation is kept above. No *current*
 entry sits in this shape; every live `false` below is the thinking conflict.
 
-**"Can tool-call but not *while thinking*"** — Opus 5, Sonnet 5, Fable 5,
-GPT-5.6-Sol-on-Bedrock, GPT-6-Astra-on-Bedrock, K3 on both providers. These are intermittent,
-except the always-on-thinking models (Fable 5, K3), which are constant. **K3-on-Moonshot is the
+**"Can tool-call but not *while thinking*"** — observed on retired Opus 4.8,
+GPT-5.5 on Mantle, current GPT-6 Astra, and Kimi K3 on Moonshot and Bedrock.
+Other reasoning entries use conservative prompt parsing until verified.
+Some failures are intermittent; Moonshot K3's always-on thinking makes its
+explicit HTTP 400 unconditional. **K3-on-Moonshot is the
 cheapest live reproduction in the registry**: one forced-`tool_choice` call returns an HTTP 400
 naming the conflict, no think-heavy batch required.
 
-Opus 5 belongs to **both** shapes: its model card denies structured-output support outright
-*and* thinking is on by default.
+The retired Opus 5 entry had a separate model-card restriction:
+structured outputs were unsupported and thinking was on by default.
+Current Opus 5.5 and Sonnet 5.5 cards also list structured outputs as
+unsupported; neither has a recorded forced-tool-use A/B failure.
 
 Many NVIDIA-NIM and Bedrock re-host `false` values are set under the **assume-prompt-parsing
 rule** (thinking model, forced `tool_choice` unproven live), not a confirmed live failure —
@@ -166,30 +170,38 @@ forces a `tool_choice` on our Bedrock Claude entries **by design**, and there is
 bug to file (I nearly filed one).
 
 What survives is the empirical failure, reproduced live on Opus 4.8 in `de5e2fc`: markup as
-text, `list_type` on `issues`, only on think-heavy batches. Opus 5 has an independent reason
-anyway (its model card denies structured-output support). Keep `supports_tool_use: false`;
+text, `list_type` on `issues`, only on think-heavy batches. Current Opus 5.5
+and Sonnet 5.5 have an independent reason: their Bedrock cards deny
+structured-output support. Keep `supports_tool_use: false`;
 describe it as observed behavior, and don't attach a vendor-rule explanation that the vendor
 contradicts.
 
 ## Per-model detail
 
 **DeepSeek-V4.1-Flash on NVIDIA, Kimi K3 on NVIDIA, Moonshot and Bedrock,
-Claude Opus 5.5, Opus 5, Sonnet 5 and
-Fable 5 on Bedrock, GPT-5.6 Sol and GPT-6 Astra, Sol and Luna on `bedrock-mantle` (Sol/Luna
-assumed), Gemini 3.8 Flash, and the GLM-5.3 family on both Z.AI and NVIDIA** use
+Claude Opus 5.5, Sonnet 5.5 and
+Fable 5 on Bedrock, GPT-6.1 Sol and GPT-6 Astra, Sol and Luna on `bedrock-mantle` (Sol/Luna
+assumed), Grok 4.7 on native Bedrock, Gemini 3.8 Flash, and the GLM-5.3
+family on both Z.AI and NVIDIA** use
 prompt-based structured output — 17 of the 23 entries. Some have observed tool-use
 failures; others use the conservative default pending live verification.
 
 - **Opus 5.5** carries the same model-card line as Opus 5 and nothing more — no A/B run with
   `true`. Don't cite Anthropic's tool-use docs for it: they document forced tool use as
   supported with adaptive thinking.
-- **Opus 5** was the first case with vendor confirmation rather than inference: its Bedrock model
+- **Opus 5 (entry retired 2026-09-30)** was the first case with vendor confirmation rather than inference: its Bedrock model
   card lists *Structured outputs: Not Supported* for both `bedrock-runtime` and
   `bedrock-mantle`, and thinking is on by default (a breaking change from Opus 4.8, where it
-  was off unless requested) so it also hits the forced-`tool_choice`-while-thinking conflict.
-  Opus 5 additionally rejects sampling params and needs `read_timeout: 1800`.
-- **Sonnet 5** is the first Sonnet-tier model with adaptive thinking on by default, so it
-  inherits the exact Opus 4.8 conflict (unverified live; ships `false` under the rule).
+  was off unless requested). Its entry used the conservative prompt path;
+  the literal-text reproduction was on Opus 4.8, not an Opus 5 A/B.
+  Opus 5 also rejected sampling params and used `read_timeout: 1800`.
+- **Sonnet 5.5** replaced Sonnet 5 on 2026-09-30. Its Bedrock model card lists
+  structured outputs as unsupported on both endpoints, and adaptive thinking is
+  on by default. It ships `false` under the reasoning-model rule; no forced-tool-use
+  A/B has been recorded on this release. The Global profile supports Converse,
+  with a 128K output cap and 1800s read timeout. Sonnet 5's retired entry was
+  likewise prompt-based; the Opus 4.8 observation below remains the evidence for
+  the literal-text failure rather than a claim of a new Sonnet 5.5 reproduction.
 - **GLM-5.3 and GLM-5.3-Flash (Z.AI)** are always-thinking models and ship on
   prompt parsing under the assume-prompt-parsing rule. Z.AI advertises Function Calling and
   Structured Output for both, but that does not prove LangChain's forced `tool_choice` works
@@ -203,14 +215,16 @@ failures; others use the conservative default pending live verification.
   has no off switch, the 400 is unconditional rather than batch-dependent. This is the registry's
   one *positive* confirmation of a `false` value from the vendor's own error message — cite it
   when someone asks whether the assume-prompt-parsing rule ever actually catches anything.
-- **Sonnet 5 (and Opus 4.8, whose entry was removed 2026-08-29)** support only
-  `thinking.type: "adaptive"` and engage thinking server-side per request, and a forced
+- **Opus 4.8 (entry removed 2026-08-29)** supplied the live reproduction:
+  with adaptive thinking engaged server-side, a forced
   `tool_choice` returns the tool call as **literal text** (`<invoke name="issues">…`) →
   `CodeReviewReport.issues` fails with a Pydantic `list_type` error on the batches where the
   model thinks (intermittent). `.with_structured_output()` sets exactly that forced
   `tool_choice`, so we route around it. Opus 4.8 is where this was actually reproduced
   (`de5e2fc`), which is why it is still named here — the model is live on Bedrock
   (`us.anthropic.claude-opus-4-8`), only our entry is gone.
+  Sonnet 5 used the conservative prompt path before its September 30
+  replacement; this observation does not establish a Sonnet 5 or 5.5 A/B.
 
 **Azure Foundry deployments of open-weight models (SGLang/vLLM) reject a forced `tool_choice`**
 — they need the backend started with `--enable-auto-tool-choice`. The Kimi K2.5 and
@@ -220,5 +234,6 @@ tool-use-less Foundry deployment: set `supports_tool_use: false`.
 `tests/test_azure_provider.py::test_supports_tool_use_false_uses_prompt_parsing` keeps the
 shape as the reference case with a synthetic config.
 
-**`use_responses_api: true`** for GPT-5.x in `models.yaml` — the ChatCompletion API does not
-support reasoning summaries for these.
+**`use_responses_api: true`** remains configured for every current GPT-6
+and GPT-6.1 Mantle entry to retain reasoning summaries. GPT-5.x Mantle
+entries are retired; their recorded failures remain historical evidence.

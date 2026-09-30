@@ -332,7 +332,7 @@ def test_factory_answers_streaming_support_without_building_a_client():
     from codereview.providers.factory import ProviderFactory
 
     with patch("codereview.providers.bedrock.ChatBedrockConverse") as mock_client:
-        assert ProviderFactory().supports_token_streaming("opus5") is False
+        assert ProviderFactory().supports_token_streaming("opus5.5") is False
         mock_client.assert_not_called()
 
 
@@ -431,7 +431,7 @@ def test_stream_on_a_non_streaming_provider_keeps_parallel_batches(sample_code_d
 
     No token reaches a callback there, so serializing the run bought nothing.
     """
-    workers, _ = _run_and_capture_workers(sample_code_dir, "opus5", stream=True)
+    workers, _ = _run_and_capture_workers(sample_code_dir, "opus5.5", stream=True)
     assert workers > 1, (
         "--stream dropped to one worker on a provider that never streams a token"
     )
@@ -439,7 +439,7 @@ def test_stream_on_a_non_streaming_provider_keeps_parallel_batches(sample_code_d
 
 def test_stream_on_a_non_streaming_provider_says_so(sample_code_dir):
     """Ignoring a flag silently is worse than the slowdown it replaces."""
-    _, output = _run_and_capture_workers(sample_code_dir, "opus5", stream=True)
+    _, output = _run_and_capture_workers(sample_code_dir, "opus5.5", stream=True)
     assert "--stream ignored" in output
     assert "Keeping parallel batches" in output
 
@@ -457,6 +457,6 @@ def test_stream_still_serializes_where_tokens_do_arrive(sample_code_dir):
 
 def test_no_stream_flag_is_unaffected(sample_code_dir):
     """Without --stream nothing changes, and no notice is printed."""
-    workers, output = _run_and_capture_workers(sample_code_dir, "opus5", stream=False)
+    workers, output = _run_and_capture_workers(sample_code_dir, "opus5.5", stream=False)
     assert workers > 1
     assert "--stream ignored" not in output

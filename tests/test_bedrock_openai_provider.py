@@ -349,7 +349,6 @@ def test_region_override_does_not_bypass_the_https_gate():
 @pytest.mark.parametrize(
     ("alias", "wire_model", "model_region"),
     [
-        ("gpt5.6", "openai.gpt-5.6-sol", "us-east-1"),
         ("gpt6", "openai.gpt-6-astra", "us-west-2"),
         ("gpt6-sol", "openai.gpt-6-sol", "us-east-1"),
         ("gpt6-luna", "openai.gpt-6-luna", "us-east-1"),

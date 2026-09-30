@@ -549,6 +549,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pin fails when a provider drops from "some coverage" to "none".
 
 ### Changed
+
+- **Documentation synchronized with the September 30 registry.** README,
+  usage/examples, provider guidance, and contributor notes now describe
+  23 models across eight providers, Sonnet 5.5, the Opus 5/GPT-5.6 removals,
+  and current aliases, pricing tiers, and Regions. Both comparison tables
+  include every registered model. Historical removal and failure evidence
+  is retained; unsupported `--aws-region` examples now use documented
+  configuration settings.
+
+- **Opus 5 and GPT-5.6 Sol removed as curation (2026-09-30).**
+  The `opus5` and `gpt5.6-sol-bedrock` entries were removed at user request;
+  both endpoints still answered live probes. Their version-specific names
+  now fail explicitly. `opus` continues to select Opus 5.5, the CLI default;
+  the informational `bedrock_default` now matches it. The compatibility alias
+  `gpt-bedrock` moves to GPT-6.1 Sol, with 1M context and $2.20/$11 short
+  rates versus the removed entry's configured 272K and $4.40/$22.
+  Removing Opus 5 loses its Geo-US option; removing GPT-5.6 Sol loses its
+  us-east-2 endpoint. Historical provider failure evidence is preserved, and
+  profile and streaming guards now cover the remaining registry.
+
+- **Sonnet 5 replaced by Sonnet 5.5 on AWS Bedrock (2026-09-30).**
+  `sonnet5.5`, `sonnet`, and `claude-sonnet` select
+  `global.anthropic.claude-sonnet-5-5`, launched September 28, 2026.
+  The new release preserves 1M context and the 128K output cap, uses
+  prompt-based JSON parsing with a 1800s read timeout, and omits sampling
+  params. Global pricing is $2/$10 per million tokens, down from the removed
+  Geo-US entry's $2.20/$11. AWS currently serves Sonnet 5.5 through Global
+  cross-Region inference only, so this replacement also changes data residency.
+  This is curation: Sonnet 5 remains active and its Converse endpoint answered
+  a live probe. Version-specific `sonnet5`, `claude-sonnet-5`, `sonnet-5`, and
+  `claude-sonnet5` were deleted rather than redirected. The obsolete Sonnet 5
+  profile divergence was removed; the installed package has no 5.5 profile.
+
 - **Dependency floors moved to the current releases; five of twenty-four were
   actually behind.** `langchain` 1.4.0 → 1.4.2, `langchain-aws` 1.7.6 → 1.7.8,
   `google-api-core` 2.36.0 → 2.38.0, `boto3` 1.43.93 → 1.43.98, `ruff`

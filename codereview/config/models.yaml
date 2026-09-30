@@ -49,8 +49,8 @@ providers:
         context_window: 1000000
         # Adaptive thinking is always on and cannot be disabled (Bedrock model
         # card), so it should reproduce the forced-tool_choice-while-thinking
-        # failure constantly rather than intermittently - see the opus5 entry
-        # below for what was observed on that path (a tool call returned as
+        # failure constantly rather than intermittently - see
+        # docs/structured-output.md for what was observed (a tool call returned as
         # literal text, so CodeReviewReport.issues fails with a list_type
         # error). Unverified live on this model: assume-prompt-parsing rule.
         # Note Anthropic documents forced tool use as SUPPORTED with adaptive
@@ -75,70 +75,13 @@ providers:
           Dual-use prompts fall back to Opus 4.8 server-side and are billed
           at Opus rates. Geo-US inference profile; in-region us-east-1 only.
 
-      - id: opus5
-        full_id: us.anthropic.claude-opus-5
-        name: Claude Opus 5
-        # Thinking is ON by default (breaking change from Opus 4.8, where it
-        # was off unless requested) at default effort "high", and the Converse
-        # call is non-streaming - so no bytes arrive until the full response is
-        # generated. Same condition that forced Fable 5's override; think-heavy
-        # batches outlast the provider-default read_timeout (300s).
-        read_timeout: 1800
-        # Version-explicit aliases only. The generation-neutral `opus` and
-        # `claude-opus` moved to opus5.5 on 2026-09-23 (generation-neutral
-        # aliases track the current generation); the CLI default model
-        # moved to opus5.5 the same day.
-        aliases:
-          - claude-opus-5
-          - opus-5
-          - claude-opus5
-        # 2026-07-25: the Opus 4.7 / 4.6 back-compat aliases (opus4.7,
-        # opus-4.7, claude-opus-4.7, claude-opus-47, opus4.6, opus-4.6,
-        # claude-opus-4.6) were deleted, not migrated - `--model opus4.6` now
-        # fails fast rather than silently resolving to a two-generations-newer
-        # model. Use `opus5` (`opus` now means Opus 5.5).
-        pricing:
-          # Geo-US (`us.`) rate: Anthropic's $5/$25 list price (unchanged from
-          # Opus 4.8) + the 10% Bedrock regional/geo premium over global for
-          # Claude 4.5+ (platform.claude.com pricing page, 2026-09-23). Was
-          # registered at the global rate until then, under-reporting 10%.
-          input_per_million: 5.50
-          output_per_million: 27.50
-        inference_params:
-          # Reasoning model - temperature/top_p/top_k not supported.
-          # default_temperature omitted intentionally.
-          max_output_tokens: 128000
-        context_window: 1000000
-        # Unlike the other adaptive-thinking Claude entries, this one is not an
-        # assume-prompt-parsing guess: the Bedrock model card lists "Structured
-        # outputs: Not Supported" for both the bedrock-runtime and
-        # bedrock-mantle endpoints. Thinking-on-by-default also reproduces the
-        # Opus 4.8 failure: .with_structured_output() forces a tool_choice, the
-        # tool call comes back as literal text, and CodeReviewReport.issues
-        # fails with a list_type error. That failure is observed, not a
-        # documented API restriction - Anthropic states forced tool use IS
-        # supported with adaptive thinking, and only manual
-        # thinking.type: "enabled" is limited to auto/none.
-        # Route through prompt-based JSON parsing.
-        supports_tool_use: false
-        capabilities:
-          - code_review
-          - security_analysis
-          - reasoning
-          - computer_use
-          - adaptive_thinking
-          - vision
-        notes: >-
-          Most capable Opus model (July 2026) and first of the Claude 5
-          generation's Opus tier; step-change gains in deep reasoning,
-          agentic/long-horizon coding, and code review and bug-finding at
-          Opus 4.8 pricing. 1M-token context (default and maximum), up to 128K
-          output. Thinking is on by default - effort (low/medium/high/xhigh/max,
-          default high) is the control for depth, and disabling thinking is
-          rejected above high effort. Structured output uses prompt-based JSON
-          parsing (supports_tool_use: false). Zero data retention on by default,
-          so no provider_data_share opt-in (unlike Fable 5). Geo-US inference
-          profile; In-Region us-east-1, Geo/Global route more broadly.
+      # Opus 5 removed 2026-09-30 as CURATION at user request, not EOL.
+      # Opus 5.5 keeps 1M context / 128K output at lower Global $4/$20 rates
+      # versus Opus 5's Geo-US $5.50/$27.50; the removed entry offered US
+      # residency. Version-specific opus5/claude-opus-5/opus-5/claude-opus5
+      # are DELETED; opus/claude-opus already select opus5.5.
+      # Converse answered HTTP 200 from us-east-1 on 2026-09-30.
+      # Model-card and tool-choice evidence stays in docs/structured-output.md.
 
       # Claude Opus 5.5 - added 2026-09-23 (launched 2026-09-22, EOL no
       # sooner than 2027-09-22). Verified live 2026-09-23:
@@ -146,8 +89,8 @@ providers:
       # us-west-2 but INFERENCE_PROFILE-only, so full_id must be a profile id;
       # both `us.` and `global.` answer a Converse call from us-east-1.
       #
-      # GLOBAL, not the `us.` geo profile opus5 uses, on price (same call as
-      # kimi-k3-bedrock): Anthropic lists Opus 5.5 at $4/$20 per M, and
+      # GLOBAL, unlike the retired opus5 entry's `us.` geo profile, on price
+      # (same call as kimi-k3-bedrock): Anthropic lists Opus 5.5 at $4/$20 per M, and
       # Bedrock regional/geo endpoints carry a 10% premium over global for
       # every Claude model from 4.5 on (platform.claude.com pricing page,
       # fetched 2026-09-23) - so `us.` would be $4.40/$22. Switch full_id to
@@ -162,7 +105,7 @@ providers:
         # and the Converse call is non-streaming - same condition as opus5.
         read_timeout: 1800
         # Generation-neutral `opus`/`claude-opus` moved here from opus5
-        # (2026-09-23); opus5 keeps its version-explicit names.
+        # (2026-09-23); opus5 was removed on 2026-09-30.
         aliases:
           - opus
           - claude-opus
@@ -207,41 +150,43 @@ providers:
       # `opus-4.8` and `claude-opus-48` all state a version, and `opus`/
       # `claude-opus` were already on opus5 (and moved on to opus5.5 on 2026-09-23).
 
-      - id: sonnet5
-        full_id: us.anthropic.claude-sonnet-5
-        name: Claude Sonnet 5
-        # Generation-neutral `sonnet`/`claude-sonnet` moved here 2026-08-29 when
-        # the Sonnet 4.6 entry was removed - see the removal note below. They are
-        # `aliases`, not `deprecated_aliases`: this IS the current Sonnet, so the
-        # names stay truthful and advertisable.
+      # Sonnet 5 replaced 2026-09-30 as CURATION at user request, not EOL:
+      # `us.anthropic.claude-sonnet-5` is still ACTIVE and answers Converse
+      # from us-east-1 (live probe, 2026-09-30). Sonnet 5.5 launched 2026-09-28
+      # with the same 1M context and 128K output cap, at $2/$10 per M on its
+      # Global profile versus Sonnet 5's Geo-US $2.20/$11.
+      # The new model is Global-only: replacing the entry loses US residency.
+      # `sonnet`/`claude-sonnet` move forward as advertised aliases; version-
+      # explicit sonnet5/claude-sonnet-5/sonnet-5/claude-sonnet5 are DELETED.
+      # Source: docs.aws.amazon.com/bedrock/latest/userguide/
+      # model-card-anthropic-claude-sonnet-5-5.html
+      - id: sonnet5.5
+        full_id: global.anthropic.claude-sonnet-5-5
+        name: Claude Sonnet 5.5
+        # Adaptive thinking is on by default; non-streaming Converse can
+        # spend minutes generating a response before sending any bytes.
+        read_timeout: 1800
+        # Generation-neutral names track the latest Sonnet release.
         aliases:
           - sonnet
           - claude-sonnet
-          - claude-sonnet-5
-          - sonnet-5
-          - claude-sonnet5
+          - claude-sonnet-5.5
+          - sonnet-5.5
+          - claude-sonnet-5-5
         pricing:
-          # Geo-US (`us.`) rate: $2/$10 list + the 10% Bedrock regional/geo
-          # premium for Claude 4.5+. The $2/$10 launch price became the
-          # STANDARD price - the scheduled 2026-09-01 rise to $3/$15 was
-          # cancelled (platform.claude.com pricing page, 2026-09-23), so the
-          # $3/$15 this entry carried until then over-reported ~36%.
-          input_per_million: 2.20
-          output_per_million: 11.00
+          # Global rate: platform.claude.com/docs/en/about-claude/pricing,
+          # verified 2026-09-30. No Geo-US premium on this profile.
+          input_per_million: 2.00
+          output_per_million: 10.00
         inference_params:
-          # Sonnet 5 rejects temperature/top_p/top_k with a 400 (same
-          # constraint as Opus 5 and Fable 5) - omit all sampling params.
-          # default_temperature omitted intentionally.
+          # Reasoning model: omit temperature/top_p/top_k.
           max_output_tokens: 128000
         context_window: 1000000
-        # First Sonnet-tier model with adaptive thinking on by default, engaged
-        # server-side per request. Anthropic forbids a forced tool_choice while
-        # thinking is active (only "auto"/"none" allowed), but
-        # .with_structured_output() sets exactly that forced tool_choice - so on
-        # batches where the model thinks, the tool call comes back as literal
-        # text and CodeReviewReport.issues fails with a list_type error. Same
-        # incompatibility as Opus 5. Route through prompt-based JSON
-        # parsing instead.
+        # The Bedrock model card lists "Structured outputs: Not Supported"
+        # on both endpoints. Keep prompt parsing under the reasoning-model
+        # rule; forced tool use has not been A/B-verified on Sonnet 5.5.
+        # Opus 4.8's literal-text tool-call failure is observed behavior, not
+        # an Anthropic API restriction on adaptive thinking.
         supports_tool_use: false
         capabilities:
           - code_review
@@ -252,17 +197,15 @@ providers:
           - adaptive_thinking
           - vision
         notes: >-
-          Latest Sonnet model (June 2026), first of the Claude 5 generation's
-          Sonnet tier. Near-Opus intelligence at Sonnet pricing. 1M-token
-          context, up to 128K output. Adaptive thinking on by default; rejects
-          temperature/top_p/top_k, and structured output uses prompt-based JSON
-          parsing (supports_tool_use: false), same as Opus 5. Uses an
-          updated tokenizer (~1.0-1.35x more tokens than Sonnet 4.6). Ships with
-          real-time cybersecurity safeguards (same as Opus 5). Geo-US
-          inference profile; routes us-east-1/us-east-2/us-west-2.
+          Latest Sonnet model (September 2026) for focused coding and
+          knowledge work. 1M-token context, up to 128K output, knowledge cutoff
+          June 2026. Adaptive thinking on by default; effort levels
+          low/medium/high/xhigh/max (default high). Sampling params omitted.
+          Structured output uses prompt-based JSON parsing
+          (supports_tool_use: false). Global cross-region inference only.
 
-      # Sonnet 4.6 removed 2026-08-29: superseded by sonnet5 above at the SAME
-      # $3/$15, with 5x the context (1M vs 200K) and double the output cap
+      # Sonnet 4.6 removed 2026-08-29: superseded by the then-current sonnet5
+      # at the SAME $3/$15, with 5x the context (1M vs 200K) and double the output cap
       # (128K vs 64K), so the older entry bought nothing. Cut as CURATION -
       # `global.anthropic.claude-sonnet-4-6` is still ACTIVE on Bedrock
       # (ListFoundationModels, 2026-08-29), so re-add from git history if a
@@ -272,8 +215,9 @@ providers:
       #
       # Alias disposition: the generation-neutral `sonnet` (the removed entry's
       # id) and `claude-sonnet` MIGRATED up to sonnet5, as `aliases` - they name
-      # the Sonnet tier, not a version, and sonnet5 is that tier now. The
-      # version-explicit `sonnet4.6` and `claude-sonnet-4.6` were DELETED, so
+      # the Sonnet tier, not a version. They moved again to sonnet5.5 on
+      # 2026-09-30. The version-explicit `sonnet4.6` and `claude-sonnet-4.6`
+      # were DELETED, so
       # `--model sonnet4.6` fails fast instead of quietly answering from a
       # different generation with different sampling-param and structured-output
       # behavior.
@@ -1531,7 +1475,7 @@ providers:
       # of 203K. Still live on Z.AI; re-add from git history if needed.
 
   # OpenAI-on-Bedrock Provider (OpenAI-compatible endpoint)
-  # AWS hosts OpenAI's frontier models (GPT-5.6 Sol here) and xAI's Grok on
+  # AWS hosts OpenAI's frontier models (GPT-6.1 Sol here) and xAI's Grok on
   # Amazon Bedrock through this surface. The provider is named for OpenAI but is
   # NOT OpenAI-only — Grok rode the same endpoint until 2026-08-29, so a
   # non-OpenAI vendor arriving on bedrock-mantle belongs here, not in a new
@@ -1559,8 +1503,8 @@ providers:
     request_timeout: 300
     models:
       # GPT-5.4 (Bedrock) removed 2026-07-25 and GPT-5.5 (Bedrock) removed
-      # 2026-08-29 - gpt5.6-sol-bedrock below is the only OpenAI entry left on
-      # this endpoint. Both are still LIVE on bedrock-mantle (5.4 probed HTTP
+      # 2026-08-29. GPT-5.6 Sol followed as curation on 2026-09-30.
+      # The remaining entries are GPT-6 Astra/Sol/Luna and GPT-6.1 Sol. Both are still LIVE on bedrock-mantle (5.4 probed HTTP
       # 200 on 2026-07-25; 5.5 probed HTTP 200 on the us-east-2 mantle base on
       # 2026-08-29), so both removals were CURATION - re-add from git history if
       # a generation comparison is wanted.
@@ -1571,13 +1515,13 @@ providers:
       #     and 5.5 had the wider context window (400K vs Sol's 272K). If
       #     per-token cost matters more than coding rank, the GPT-5.6 Terra
       #     ($2.50/$15) and Luna ($1/$6) tiers are the intended replacements -
-      #     add them the way the Sol entry below is written.
+      #     restore them from the former Sol entry in git history if needed.
       # NOTE: GPT-5.4 on *Azure* is a separate entry and stays - that's a
       # user-created deployment, and it's the newest GPT on that resource.
       #
       # Alias disposition: the generation-neutral `gpt-bedrock` MIGRATED to
       # gpt5.6-sol-bedrock, as a deprecated_alias - it names "the GPT on
-      # Bedrock", which Sol now is. It stays unadvertised BECAUSE OF THE PRICE:
+      # Bedrock"; it moved again to GPT-6.1 Sol on 2026-09-30. It stays unadvertised BECAUSE OF THE PRICE:
       # following the name forward doubles the per-token rate, and a name that
       # silently costs 2x should not be in the advertised list. The
       # version-explicit ids `gpt5.5-bedrock` and `gpt5.4-bedrock` were DELETED.
@@ -1589,97 +1533,24 @@ providers:
       # `parsed` field, so the forced tool_choice that .with_structured_output()
       # sets had nothing to parse ("Structured Output response does not have a
       # 'parsed' field"). Intermittent - it failed exactly on the think-heavy
-      # batches. That observation is the basis for the Sol entry's flag below.
+      # batches. That observation remains evidence for prompt parsing on this provider.
 
-      # GPT-5.6 Sol — OpenAI's flagship of the GPT-5.6 family (Sol/Terra/Luna),
-      # GA on Amazon Bedrock (launched 2026-07-13) via the OpenAI-compatible
-      # `bedrock-mantle` endpoint, and after the 2026-08-29 pass the ONLY entry
-      # left on it. We pick the Sol tier because it is OpenAI's best coding model
-      # to date (SOTA on the Artificial Analysis Coding Agent Index,
-      # Terminal-Bench 2.1, and DeepSWE) — the right match for code review. Terra
-      # ($2.50/$15) and Luna ($1/$6) are the cheaper balanced / high-volume tiers
-      # (ids openai.gpt-5.6-terra / openai.gpt-5.6-luna) — add them the same way
-      # if a cheaper run is wanted; they are also what replaces the removed
-      # GPT-5.5 entry on price rather than on capability.
-      #
-      # Reasoning model: the model card lists ONLY the Responses endpoint (Chat
-      # Completions, Converse, and bedrock-runtime are all NOT supported), so
-      # use_responses_api: true is REQUIRED here. Rejects temperature/top_p like
-      # the rest of the GPT-5.x family. In-Region only: us-east-1 / us-east-2
-      # (NOT us-west-2) — pin OPENAI_BASE_URL to one of those.
-      - id: gpt5.6-sol-bedrock
-        full_id: openai.gpt-5.6-sol
-        name: GPT-5.6 Sol (Bedrock)
-        # In-Region us-east-1 / us-east-2 only. The provider rewrites the Region
-        # label of OPENAI_BASE_URL to this value, so Sol and Astra (us-west-2
-        # only) both work from one export; without it the other one's endpoint
-        # 404s the model id rather than falling back. Re-read the model card's
-        # bedrock-mantle availability table before changing this.
-        region: us-east-1
-        aliases:
-          - gpt5.6
-          - gpt-5.6
-          - gpt5.6-bedrock
-        # Back-compat only: resolves, but hidden from --list-models
-        # (see --list-models --verbose).
-        # Inherited 2026-08-29 from the removed GPT-5.5 (Bedrock) entry. Kept
-        # unadvertised because following it forward raises the per-token rate
-        # ($2.50/$15 -> $4.40/$22) and narrows the context window (400K -> 272K);
-        # see the removal note above.
-        deprecated_aliases:
-          - gpt-bedrock
-        pricing:
-          # Verified 2026-09-23 against the Bedrock model card
-          # (model-card-openai-gpt-56-sol): In-Region, which is all
-          # bedrock-mantle offers, bills $4.40/$22 per 1M at 272K input tokens
-          # or fewer and $8.80/$33 above; the card's 10% In-Region fee is
-          # already included. This replaced a $5/$30 flat rate taken from the
-          # launch, which overestimated every request this entry can send.
-          # context_window stays 272000 (below) although the card now says
-          # 1M, so the long tier is unreachable today; it is recorded so that
-          # raising the window cannot silently underbill. Cache reads $0.44,
-          # 30m cache writes $5.50 are not read by the pricing path.
-          input_per_million: 4.40
-          output_per_million: 22.00
-          long_context_threshold_tokens: 272000
-          long_input_per_million: 8.80
-          long_output_per_million: 33.00
-        inference_params:
-          # No default_temperature/top_p — GPT-5.6 reasoning models reject them
-          # (as did GPT-5.5/5.4 on this endpoint). Reasoning effort defaults
-          # server-side; left unset so operators can tune per request.
-          max_output_tokens: 128000
-        use_responses_api: true
-        # Model card: 272K-token context window.
-        context_window: 272000
-        # Adaptive server-side reasoning, same as GPT-5.5/5.4 had on this
-        # endpoint: think-heavy batches return a reasoning-only response
-        # (tool_calls=[], no `parsed`), which breaks the forced tool_choice that
-        # .with_structured_output() sets ("no 'parsed' field"). Route through
-        # prompt-based JSON parsing. The GPT-5.5 behavior this rests on was
-        # verified live before that entry was removed — the evidence is preserved
-        # in the removal note above, not just in git history.
-        supports_tool_use: false
-        capabilities:
-          - reasoning
-          - code_review
-          - code_generation
-          - security_analysis
-          - structured_output
-        notes: >-
-          OpenAI GPT-5.6 Sol (flagship of the Sol/Terra/Luna family) hosted on
-          Amazon Bedrock via the OpenAI-compatible bedrock-mantle endpoint
-          (bearer-key auth, ChatOpenAI + base_url — NOT the SigV4 Converse path).
-          Best-in-class coding/agentic reasoning, 272K context. Responses API
-          only (no Chat Completions), no temperature/top_p. Structured output via
-          prompt-based JSON parsing (supports_tool_use: false) — the same
-          reasoning-only failure mode verified on GPT-5.5 on Bedrock. In-Region
-          only: us-east-1 / us-east-2.
+      # GPT-5.6 Sol removed 2026-09-30 as CURATION at user request, not EOL.
+      # GPT-6.1 Sol is the current coding-tier successor: 1M context / 131072
+      # output versus the removed entry's configured 272K / 128K, and short
+      # rates $2.20/$11 versus $4.40/$22 (long $4.40/$16.50 vs $8.80/$33).
+      # Both use Responses, prompt parsing and us-east-1; removing 5.6 also
+      # loses its us-east-2 availability. Its version-specific names
+      # gpt5.6-sol-bedrock/gpt5.6/gpt-5.6/gpt5.6-bedrock are DELETED.
+      # The inherited gpt-bedrock name moves to gpt6.1-sol-bedrock below.
+      # Live Responses probe in us-east-1 returned HTTP 200 on 2026-09-30,
+      # with no deprecation header.
+      # Historical GPT-5.5 reasoning-only failures remain documented above.
 
       # GPT-6 Astra — OpenAI's most capable model, GA on Amazon Bedrock
       # 2026-09-08 (model card: launch 2026-09-08, knowledge cutoff 2026-04-30,
-      # EOL no sooner than 2027-09-08). Second entry on this provider, alongside
-      # GPT-5.6 Sol. Two things about it are unlike every other entry in this
+      # EOL no sooner than 2027-09-08). It originally joined the now-retired
+      # GPT-5.6 Sol entry. Two things about it are unlike every other entry in this
       # file; read both before touching it.
       #
       # (1) THE REGION IS INCOMPATIBLE WITH SOL'S. `base_url` is
@@ -1794,8 +1665,7 @@ providers:
           272K to stay inside the cheaper pricing tier, 128K max output.
           Responses API, no temperature/top_p, structured output via
           prompt-based JSON parsing. bedrock-mantle serves it from us-west-2
-          ONLY — which is mutually exclusive with GPT-5.6 Sol's us-east-1 /
-          us-east-2, since OPENAI_BASE_URL is provider-wide.
+          ONLY — which is mutually exclusive with GPT-6.1 Sol's us-east-1, since OPENAI_BASE_URL is provider-wide.
 
       # GPT-6 Sol and GPT-6 Luna — the coding and high-volume tiers of the GPT-6
       # family, alongside Astra above. Added 2026-09-23. Evidence, because
@@ -1908,6 +1778,10 @@ providers:
           - gpt61-sol
           - gpt6.1
           - gpt-6.1
+        # Inherited from the curated GPT-5.6 Sol entry on 2026-09-30.
+        # A version-neutral compatibility name; --verbose displays it.
+        deprecated_aliases:
+          - gpt-bedrock
         pricing:
           # Published Mantle Standard rates, already including 10%.
           # Long-context rates apply to the entire request above 272K.
@@ -1961,7 +1835,7 @@ providers:
 
 # Default model configuration
 defaults:
-  bedrock_default: opus5
+  bedrock_default: opus5.5
   azure_default: gpt-5.4
   # Updated 2026-08-29: was mistral-medium-nvidia, whose endpoint NVIDIA EOL'd.
   # Updated 2026-09-19: was deepseek-v4-flash-nvidia, sunset 2026-09-21. The
@@ -2039,6 +1913,6 @@ scanning:
 # stale, and one named a model that no longer exists at all.
 # - Free: any NVIDIA NIM entry (free tier; $0/$0 above)
 # - Quick: Haiku 4.5 (the only sub-$3 Bedrock entry after the 2026-08-29 pass)
-# - Standard: Sonnet 5, Gemini 3.8 Flash, GLM-5.3 (Z.AI)
-# - Complex: Opus 5 (the CLI default), GPT-5.6 Sol (Bedrock)
+# - Standard: Sonnet 5.5, Gemini 3.8 Flash, GLM-5.3 (Z.AI)
+# - Complex: Opus 5.5 (the CLI default), GPT-6.1 Sol (Bedrock)
 # - Budget-with-a-key: DeepSeek-V4-Flash, Kimi K2.6 (Moonshot)
