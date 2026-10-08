@@ -487,6 +487,20 @@ Runtime would require `us.openai.gpt-6.1-sol`; the bare Mantle ID and the
 Runtime profile are not interchangeable. No global profile exists at launch.
 Existing GPT-6 Sol and Astra aliases retain their original entries.
 
+**GLM-5.3 is registered under native `bedrock` as `global.zai.glm-5.3`.**
+The [AWS card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-zai-glm-5-3.html)
+lists Converse, Invoke and the OpenAI-compatible APIs; native Converse keeps
+standard AWS credentials and avoids a second bearer-key path. `zai.glm-5.3`
+is INFERENCE_PROFILE-only (ListFoundationModels, 2026-10-08, all three US
+Regions). A Converse probe on the Global profile returned 200 and, unlike
+Kimi K3 and the Claude 5 tiers, accepted `temperature`, so the entry sends
+the vendor default 1.0. Reasoning is always on, so `read_timeout: 1800`
+applies; `reasoning_effort` is not forwarded by `bedrock.py`, so the server
+default effort is used. Pricing is the one unverified number: neither the
+Bedrock pricing page nor the Price List API (which needs IAM credentials,
+not a Bedrock bearer token) was reachable, so $1.68/$5.28 is a third-party
+reading of the AWS listing. Replace it once AWS's figure can be read.
+
 **Grok 4.7 is registered under native `bedrock`, not `bedrock_openai`.**
 The [AWS card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-xai-grok-4-7.html)
 documents Runtime cross-Region invocation: `us.xai.grok-4.7` or

@@ -287,7 +287,9 @@ about the model while changing where it comes from. (When the Bedrock re-host wa
 YAML says so: Z.AI serves a *distinct real* `glm-5`, so pointing `glm5` at 5.3 is a deliberate
 choice to track the family's current release, not an identity claim. The provider-explicit
 `glm5-bedrock`/`glm-5-bedrock`/`glm5b` were deleted, since the suffix names a provider that no
-longer serves it.) `kimi-bedrock` → Moonshot's `kimi-k3` was the same shape until 2026-09-23,
+longer serves it. GLM-5.3 reached Bedrock on 2026-10-08 as `glm-5.3-bedrock`, but those names
+stay deleted. They were explicitly deleted rather than parked as deprecated aliases, so nothing
+is waiting to go home, unlike `kimi-bedrock`.) `kimi-bedrock` → Moonshot's `kimi-k3` was the same shape until 2026-09-23,
 when Kimi K3 reached Bedrock and the name moved back onto `kimi-k3-bedrock` as a plain alias — a
 parked version-neutral name goes home once its suffix is true again. `gpt-bedrock` followed GPT-5.6 Sol until that entry was removed on 2026-09-30,
 then moved to `gpt6.1-sol-bedrock` as a deprecated alias. Version-specific

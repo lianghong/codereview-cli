@@ -459,7 +459,19 @@ rtk proxy uv run codereview ./src --model grok-4.7
 rtk proxy uv run codereview ./src --model grok --aws-profile my-profile
 ```
 
-GPT-6.1 Sol and Grok 4.7 use prompt-based JSON parsing under the
+**GLM-5.3 (Bedrock)** uses native Converse and standard AWS credentials
+through the Global profile `global.zai.glm-5.3`; the bare `zai.glm-5.3` ID
+has no on-demand throughput. 1M context, 32K review output budget,
+temperature 1.0, 1800s read timeout. AWS limits access to eligible accounts.
+**The $1.68/$5.28 rate is third-party-sourced** (AWS's pricing page was
+unreachable on 2026-10-08); the `us.zai.glm-5.3` profile would be
+$1.848/$5.808.
+
+```bash
+rtk proxy uv run codereview ./src --model glm53-bedrock
+```
+
+GPT-6.1 Sol, Grok 4.7 and GLM-5.3 use prompt-based JSON parsing under the
 reasoning-model rule. Existing GPT-6 Sol/Astra names still select their
 original entries.
 
@@ -503,6 +515,9 @@ Be aware of costs and choose models accordingly:
 - **Kimi K3**: Moonshot's flagship via Converse on the Global cross-Region profile, 1M context, always-on thinking ($3/M input, $15/M output — same as Moonshot direct; the `us.` geo profile would be $3.30/$16.50)
 - **Grok 4.7**: Native Converse, 500K context, 16K review output budget,
   us-east-1 source Region ($2.20/M input, $6.60/M output — Geo-US profile)
+- **GLM-5.3**: Z.ai's flagship via Converse on the Global profile, 1M context,
+  always-on reasoning ($1.68/M input, $5.28/M output — third-party-sourced,
+  pending AWS verification)
 
 **OpenAI-on-Bedrock (`bedrock-mantle`):**
 - **GPT-6.1 Sol**: Current coding tier, 1M context, us-east-1 only

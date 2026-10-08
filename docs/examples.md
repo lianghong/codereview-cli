@@ -126,6 +126,10 @@ codereview ./src --model kimi-k3
 # Kimi K3 on AWS Bedrock - same model and $3/$15 price, AWS credentials instead of KIMI_API_KEY
 codereview ./src --model kimi-bedrock
 
+# GLM-5.3 on AWS Bedrock - Global profile, 1M context, AWS credentials instead of ZAI_API_KEY
+# $1.68/$5.28 per million (third-party-sourced rate; verify against your bill)
+codereview ./src --model glm53-bedrock
+
 # Gemini 3.1 Pro - Most advanced reasoning, 1M context (Google GenAI)
 codereview ./src --model gemini-3.1-pro
 
@@ -235,8 +239,8 @@ codereview ./src \
 
 Configure the native Bedrock source Region in `codereview/config/models.yaml`.
 The current provider default is `us-east-1`; per-model `region` values take
-precedence. Sonnet 5.5 uses Global cross-Region inference, and Grok 4.7 uses
-the US inference profile.
+precedence. Sonnet 5.5 and GLM-5.3 use Global cross-Region inference, and
+Grok 4.7 uses the US inference profile.
 
 ```yaml
 providers:
