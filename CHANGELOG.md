@@ -17,9 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   AWS credentials, 1M context, a 32K review output budget, temperature 1.0,
   and 1800s read timeout. Uses prompt-based JSON parsing under the
   assume-prompt-parsing rule; a live review of `batcher.py` succeeded in 2m14s.
-  Pricing ($1.68/$5.28 per million, Global) is **third-party-sourced**:
-  AWS's pricing page and Price List API were unreachable, so verify it
-  against your bill. The deleted GLM 5 names (`glm5-bedrock`,
+  Global Standard pricing is $1.68/$5.28 per million (US profile
+  $1.848/$5.808), per the Bedrock pricing page. The deleted GLM 5 names (`glm5-bedrock`,
   `glm-5-bedrock`) stay deleted.
 
 - **GPT-6.1 Sol and Grok 4.7 on AWS Bedrock.** AWS model cards and live

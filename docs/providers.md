@@ -496,10 +496,10 @@ Regions). A Converse probe on the Global profile returned 200 and, unlike
 Kimi K3 and the Claude 5 tiers, accepted `temperature`, so the entry sends
 the vendor default 1.0. Reasoning is always on, so `read_timeout: 1800`
 applies; `reasoning_effort` is not forwarded by `bedrock.py`, so the server
-default effort is used. Pricing is the one unverified number: neither the
-Bedrock pricing page nor the Price List API (which needs IAM credentials,
-not a Bedrock bearer token) was reachable, so $1.68/$5.28 is a third-party
-reading of the AWS listing. Replace it once AWS's figure can be read.
+default effort is used. Pricing is the Bedrock pricing page's Global CRIS
+Standard rate, $1.68/$5.28 per million (US CRIS $1.848/$5.808). The Price
+List API needs IAM credentials rather than a Bedrock bearer token, so the
+page, not the API, is the source.
 
 **Grok 4.7 is registered under native `bedrock`, not `bedrock_openai`.**
 The [AWS card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-xai-grok-4-7.html)

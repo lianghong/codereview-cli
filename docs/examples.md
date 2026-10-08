@@ -127,7 +127,7 @@ codereview ./src --model kimi-k3
 codereview ./src --model kimi-bedrock
 
 # GLM-5.3 on AWS Bedrock - Global profile, 1M context, AWS credentials instead of ZAI_API_KEY
-# $1.68/$5.28 per million (third-party-sourced rate; verify against your bill)
+# $1.68/$5.28 per million (Global Standard tier)
 codereview ./src --model glm53-bedrock
 
 # Gemini 3.1 Pro - Most advanced reasoning, 1M context (Google GenAI)

@@ -463,9 +463,8 @@ rtk proxy uv run codereview ./src --model grok --aws-profile my-profile
 through the Global profile `global.zai.glm-5.3`; the bare `zai.glm-5.3` ID
 has no on-demand throughput. 1M context, 32K review output budget,
 temperature 1.0, 1800s read timeout. AWS limits access to eligible accounts.
-**The $1.68/$5.28 rate is third-party-sourced** (AWS's pricing page was
-unreachable on 2026-10-08); the `us.zai.glm-5.3` profile would be
-$1.848/$5.808.
+Global Standard pricing is $1.68/$5.28 per million tokens; the
+`us.zai.glm-5.3` profile would be $1.848/$5.808.
 
 ```bash
 rtk proxy uv run codereview ./src --model glm53-bedrock
@@ -516,8 +515,8 @@ Be aware of costs and choose models accordingly:
 - **Grok 4.7**: Native Converse, 500K context, 16K review output budget,
   us-east-1 source Region ($2.20/M input, $6.60/M output — Geo-US profile)
 - **GLM-5.3**: Z.ai's flagship via Converse on the Global profile, 1M context,
-  always-on reasoning ($1.68/M input, $5.28/M output — third-party-sourced,
-  pending AWS verification)
+  always-on reasoning ($1.68/M input, $5.28/M output — Global profile; `us.` would be
+  $1.848/$5.808)
 
 **OpenAI-on-Bedrock (`bedrock-mantle`):**
 - **GPT-6.1 Sol**: Current coding tier, 1M context, us-east-1 only
@@ -790,7 +789,7 @@ codereview ./src --model gpt6-luna          # GPT-6 Luna (cheapest GPT-6; us-eas
 | **Haiku 4.5** | AWS Bedrock | Large codebases, CI/CD integration, cheapest Bedrock entry, 200K context | $1/M input, $5/M output |
 | **Kimi K3 (Bedrock)** | AWS Bedrock | 2.8T/104B MoE, 1M context, always-on thinking; Global profile, AWS credentials | $3/M input, $15/M output |
 | **Grok 4.7** | AWS Bedrock | Native Converse, 500K context, 16K review output budget; US profile, us-east-1 source | $2.20/M input, $6.60/M output |
-| **GLM-5.3 (Bedrock)** | AWS Bedrock | ~744B/40B MoE, 1M context, always-on reasoning; Global profile, AWS credentials, eligible accounts only (third-party-sourced rate) | $1.68/M input, $5.28/M output |
+| **GLM-5.3 (Bedrock)** | AWS Bedrock | ~744B/40B MoE, 1M context, always-on reasoning; Global profile, AWS credentials, eligible accounts only | $1.68/M input, $5.28/M output |
 | **GPT-5.4** | Azure OpenAI | Frontier reasoning, default Azure, 1.05M context | $2.50/M input, $15/M output |
 | **GPT-5.4 Pro** | Azure OpenAI | Deeper reasoning, hardest problems | $30/M input, $180/M output |
 | **Kimi K3 (NVIDIA)** | NVIDIA NIM | Free tier, 2.8T/104B MoE, 1M context, multimodal (text+image in), always-on thinking | Free* |

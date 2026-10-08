@@ -15,9 +15,8 @@
 - ✅ **GLM-5.3 on AWS Bedrock**: `--model glm53-bedrock` uses native Converse
   on the Global profile `global.zai.glm-5.3`, with 1M context, always-on
   reasoning, and prompt-based JSON parsing; it passed a live CLI review.
-  AWS limits access to eligible accounts. **The $1.68/$5.28 rate is
-  third-party-sourced** (AWS's pricing page was unreachable when the entry
-  was added), so check your bill before trusting the estimate.
+  AWS limits access to eligible accounts. Global Standard pricing is
+  $1.68/$5.28 per million tokens.
 - ✅ **Claude Sonnet 5.5 replaces Sonnet 5 on Bedrock**:
   `--model sonnet` or `--model sonnet5.5` selects the September 28 release,
   with 1M context, 128K output, and $2/$10 per million tokens.
@@ -162,8 +161,7 @@ direct). For US data residency, switch its `full_id` to `us.moonshotai.kimi-k3` 
 `models.yaml` and its pricing to $3.30/$16.50.
 
 GLM-5.3 (`--model glm53-bedrock`) is likewise profile-only and uses the Global profile
-`global.zai.glm-5.3`. AWS limits it to eligible accounts. Its $1.68/$5.28 rate is
-third-party-sourced, so verify it against your bill. For US residency use
+`global.zai.glm-5.3`. AWS limits it to eligible accounts. It is priced at $1.68/$5.28 per M. For US residency use
 `us.zai.glm-5.3` at $1.848/$5.808.
 
 ### 3. Verify IAM Permissions
@@ -573,7 +571,7 @@ codereview /path/to/code -m kimi
 | **GPT-6 Luna (Bedrock)** | **OpenAI-on-Bedrock** | **Cheapest GPT-6 tier, 1M context, 128K output, `bedrock-mantle` us-east-1 only; tiered above 272K ($0.22/$0.825). Derived rate — AWS unpublished** | **$0.11** | **$0.55** |
 | GPT-6.1 Sol | OpenAI-on-Bedrock | Current coding tier, 1M context, 131,072 output tokens, Mantle us-east-1; tiered above 272K ($4.40/$16.50); also selected by `gpt-bedrock` | $2.20 | $11.00 |
 | Grok 4.7 | AWS Bedrock | Native Converse, 500K context, 16K review output budget; Geo-US profile, us-east-1 source (owns `grok`) | $2.20 | $6.60 |
-| GLM-5.3 (Bedrock) | AWS Bedrock | ~744B MoE / 40B active, 1M context, always-on reasoning; Global profile, AWS credentials, eligible accounts only (owns `glm-bedrock`). Rate is third-party-sourced | $1.68 | $5.28 |
+| GLM-5.3 (Bedrock) | AWS Bedrock | ~744B MoE / 40B active, 1M context, always-on reasoning; Global profile, AWS credentials, eligible accounts only (owns `glm-bedrock`) | $1.68 | $5.28 |
 
 *NVIDIA NIM models are currently in free preview tier. Their zero-valued
 pricing entries render as `Estimated cost: TBD` in the CLI. All configured

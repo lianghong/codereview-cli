@@ -400,13 +400,11 @@ providers:
           - glm5.3-bedrock
           - glm-bedrock
         pricing:
-          # NOT verified against AWS: the Bedrock pricing page and the Price
-          # List API were both unreachable on 2026-10-08 (the latter needs IAM
-          # credentials; this environment has a Bedrock bearer token only).
-          # Figures are OrcaRouter's reading of the Bedrock listing (global
-          # $1.68/$5.28, Geo-US $1.848/$5.808 — 1.2x Z.AI's $1.40/$4.40 list,
-          # with the usual 10% geo premium on top). Check your bill, and
-          # replace with the AWS-published rate once it can be read.
+          # Verified: aws.amazon.com/bedrock/pricing (Z AI tab, 2026-10-08),
+          # Standard tier. Global CRIS $1.68/$5.28; US CRIS $1.848/$5.808
+          # (the usual 10% geo premium). 1.2x Z.AI's $1.40/$4.40 direct list.
+          # Cache read $0.312 and implicit caching is automatic, so this
+          # cache-MISS rate over-states.
           input_per_million: 1.68
           output_per_million: 5.28
         inference_params:
@@ -435,9 +433,8 @@ providers:
           Z.ai GLM-5.3 via Bedrock Converse on the Global cross-Region
           profile. Always-on reasoning, 1M context, 32K review output budget,
           1800s read timeout. Uses the standard AWS credential chain rather
-          than a Z.AI key; access is limited to eligible accounts. Pricing is
-          third-party-sourced pending AWS verification. Prompt-based JSON
-          parsing.
+          than a Z.AI key; access is limited to eligible accounts. Global
+          Standard pricing $1.68/$5.28 per million. Prompt-based JSON parsing.
 
       # Kimi K2.5 (Bedrock) removed 2026-08-29: `moonshotai.kimi-k2.5` is still
       # ACTIVE on Bedrock (ListFoundationModels, 2026-08-29) - this was CURATION.
