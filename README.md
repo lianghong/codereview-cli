@@ -4,7 +4,7 @@
 [![Python 3.14+](https://img.shields.io/badge/python-3.14+-blue.svg)](https://www.python.org/downloads/)
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 
-> AI-powered code review with 23 models across eight LLM providers.
+> AI-powered code review with 24 models across eight LLM providers.
 
 ## 🎉 What's New (Unreleased)
 
@@ -12,6 +12,12 @@
   Use `opus` / `opus5.5` for Claude and `gpt6.1-sol` for the current Sol tier.
   Version-specific names are retired; the compatibility alias `gpt-bedrock`
   now selects GPT-6.1 Sol. The default remains Opus 5.5.
+- ✅ **GLM-5.3 on AWS Bedrock**: `--model glm53-bedrock` uses native Converse
+  on the Global profile `global.zai.glm-5.3`, with 1M context, always-on
+  reasoning, and prompt-based JSON parsing; it passed a live CLI review.
+  AWS limits access to eligible accounts. **The $1.68/$5.28 rate is
+  third-party-sourced** (AWS's pricing page was unreachable when the entry
+  was added), so check your bill before trusting the estimate.
 - ✅ **Claude Sonnet 5.5 replaces Sonnet 5 on Bedrock**:
   `--model sonnet` or `--model sonnet5.5` selects the September 28 release,
   with 1M context, 128K output, and $2/$10 per million tokens.
@@ -71,7 +77,7 @@ GPT-6 Astra, Grok 4.7, Gemini, DeepSeek, Kimi, and GLM through eight providers.
 
 ## Features
 
-- **Multi-Provider Support** (8 providers): AWS Bedrock (Claude, Kimi K3, Grok 4.7), Azure OpenAI (GPT-5.4, GPT-5.4 Pro), NVIDIA NIM (DeepSeek-V4.1-Flash, GLM-5.3, GLM-5.3-Flash, Kimi K3), Google GenAI (Gemini 3.1 Pro / 3.8 Flash), DeepSeek direct (V4-Pro, V4-Flash), Z.AI (GLM-5.3, GLM-5.3-Flash), Moonshot direct (Kimi K3), and OpenAI-on-Bedrock (GPT-6.1 Sol and GPT-6 Astra/Sol/Luna via `bedrock-mantle`)
+- **Multi-Provider Support** (8 providers): AWS Bedrock (Claude, Kimi K3, Grok 4.7, GLM-5.3), Azure OpenAI (GPT-5.4, GPT-5.4 Pro), NVIDIA NIM (DeepSeek-V4.1-Flash, GLM-5.3, GLM-5.3-Flash, Kimi K3), Google GenAI (Gemini 3.1 Pro / 3.8 Flash), DeepSeek direct (V4-Pro, V4-Flash), Z.AI (GLM-5.3, GLM-5.3-Flash), Moonshot direct (Kimi K3), and OpenAI-on-Bedrock (GPT-6.1 Sol and GPT-6 Astra/Sol/Luna via `bedrock-mantle`)
 - **AI-Powered Analysis**: Leverages Claude Opus 5.5, Claude Sonnet 5.5, GPT-5.4, GPT-6.1 Sol, GPT-6 Astra, GPT-6 Sol, GPT-6 Luna, DeepSeek-V4-Pro, Kimi K3, GLM-5.3, Gemini 3.1 Pro, Gemini 3.8 Flash, and other leading models for deep code understanding
 - **Multi-Language Support**: Reviews Python, Go, Shell Script, C++, Java, JavaScript, and TypeScript codebases
 - **Smart Batching**: Automatically groups files for efficient token usage
@@ -91,7 +97,7 @@ GPT-6 Astra, Grok 4.7, Gemini, DeepSeek, Kimi, and GLM through eight providers.
 
 - Python 3.14+
 - **At least one of the following:**
-  - AWS account with Bedrock access (Claude Opus 5.5 / Sonnet 5.5 / Haiku 4.5 / Fable 5, Kimi K3, Grok 4.7)
+  - AWS account with Bedrock access (Claude Opus 5.5 / Sonnet 5.5 / Haiku 4.5 / Fable 5, Kimi K3, Grok 4.7, GLM-5.3)
   - Azure OpenAI resource with model deployment (GPT-5.4, GPT-5.4 Pro) — `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`
   - NVIDIA API key from [build.nvidia.com](https://build.nvidia.com) — `NVIDIA_API_KEY` (DeepSeek-V4.1-Flash, GLM-5.3, GLM-5.3-Flash, Kimi K3; free tier available)
   - Google API key from [AI Studio](https://aistudio.google.com/apikey) — `GOOGLE_API_KEY` (Gemini 3.1 Pro / 3.8 Flash)
@@ -494,6 +500,7 @@ codereview /path/to/code --model sonnet    # Claude Sonnet 5.5 (1M context, Glob
 codereview /path/to/code --model haiku     # Claude Haiku 4.5 (fastest, cheapest Bedrock entry)
 codereview /path/to/code --model kimi-bedrock # Kimi K3 (Global profile, 1M context)
 codereview /path/to/code --model grok-4.7     # Grok 4.7 (US profile, 500K context)
+codereview /path/to/code --model glm53-bedrock # GLM-5.3 (Global profile, 1M context)
 
 # Azure OpenAI Models
 codereview /path/to/code --model gpt              # GPT-5.4 (1.05M context, frontier reasoning)
@@ -561,6 +568,7 @@ codereview /path/to/code -m kimi
 | **GPT-6 Luna (Bedrock)** | **OpenAI-on-Bedrock** | **Cheapest GPT-6 tier, 1M context, 128K output, `bedrock-mantle` us-east-1 only; tiered above 272K ($0.22/$0.825). Derived rate — AWS unpublished** | **$0.11** | **$0.55** |
 | GPT-6.1 Sol | OpenAI-on-Bedrock | Current coding tier, 1M context, 131,072 output tokens, Mantle us-east-1; tiered above 272K ($4.40/$16.50); also selected by `gpt-bedrock` | $2.20 | $11.00 |
 | Grok 4.7 | AWS Bedrock | Native Converse, 500K context, 16K review output budget; Geo-US profile, us-east-1 source (owns `grok`) | $2.20 | $6.60 |
+| GLM-5.3 (Bedrock) | AWS Bedrock | ~744B MoE / 40B active, 1M context, always-on reasoning; Global profile, AWS credentials, eligible accounts only (owns `glm-bedrock`). Rate is third-party-sourced | $1.68 | $5.28 |
 
 *NVIDIA NIM models are currently in free preview tier. Their zero-valued
 pricing entries render as `Estimated cost: TBD` in the CLI. All configured
@@ -568,8 +576,8 @@ Bedrock models have nonzero rates; GPT-6 Sol/Luna rates remain derived
 estimates. Mantle prices above are the short-context rates; each request
 over 272K input tokens uses its model's higher tier.
 
-The registry contains **23 models across eight providers as of 2026-09-30**.
-Sonnet 5.5 replaces Sonnet 5; Opus 5 and GPT-5.6 Sol were removed as curation
+The registry contains **24 models across eight providers as of 2026-10-08**.
+GLM-5.3 joined Bedrock on 2026-10-08. Sonnet 5.5 replaces Sonnet 5; Opus 5 and GPT-5.6 Sol were removed as curation
 while their upstream endpoints still answered. The NVIDIA roster has four
 entries, including the new DeepSeek-V4.1-Flash. `--list-models` is authoritative;
 see [registry conventions](docs/model-registry.md) and [CHANGELOG](CHANGELOG.md)
@@ -1139,9 +1147,9 @@ For issues, questions, or contributions:
 ## Version History
 
 The package version is **v0.4.0**. The current checkout includes unreleased
-changes: **23 models across eight providers**, **Claude Opus 5.5** as the
+changes: **24 models across eight providers**, **Claude Opus 5.5** as the
 default, **Sonnet 5.5** as the current Sonnet, and GPT-6.1 Sol plus native
-Bedrock Grok 4.7. Opus 5, Sonnet 5, and GPT-5.6 Sol are no longer registered.
+Bedrock Grok 4.7 and GLM-5.3. Opus 5, Sonnet 5, and GPT-5.6 Sol are no longer registered.
 See [What's New](#-whats-new-unreleased) and the [CHANGELOG](CHANGELOG.md).
 
 Full history is maintained in [CHANGELOG.md](CHANGELOG.md).

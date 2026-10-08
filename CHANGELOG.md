@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **GLM-5.3 on AWS Bedrock** (`global.zai.glm-5.3`, id `glm-5.3-bedrock`,
+  aliases `glm53-bedrock`, `glm5.3-bedrock`, `glm-bedrock`). Checked live on
+  2026-10-08: `zai.glm-5.3` is ACTIVE in us-east-1, us-east-2 and us-west-2,
+  but only through an inference profile. Converse on the Global profile
+  returned HTTP 200 and accepted `temperature`. Native Converse with standard
+  AWS credentials, 1M context, a 32K review output budget, temperature 1.0,
+  and 1800s read timeout. Uses prompt-based JSON parsing under the
+  assume-prompt-parsing rule; a live review of `batcher.py` succeeded in 2m14s.
+  Pricing ($1.68/$5.28 per million, Global) is **third-party-sourced**:
+  AWS's pricing page and Price List API were unreachable, so verify it
+  against your bill. The deleted GLM 5 names (`glm5-bedrock`,
+  `glm-5-bedrock`) stay deleted.
+
 - **GPT-6.1 Sol and Grok 4.7 on AWS Bedrock.** AWS model cards and live
   requests were checked on 2026-09-29. GPT-6.1 Sol uses Mantle in us-east-1
   (`openai.gpt-6.1-sol`, alias `gpt6.1-sol`), 1M context, 131,072 output tokens,

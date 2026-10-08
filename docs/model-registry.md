@@ -3,7 +3,7 @@
 Background for the Configuration rules in `CLAUDE.md`. Read this before adding, renaming or
 removing a model entry, or before adding a config key.
 
-The registry contains **23 models across eight providers as of 2026-09-30**.
+The registry contains **24 models across eight providers as of 2026-10-08**.
 `codereview --list-models` is authoritative; the current provider counts are:
 
 | Provider | Models |
@@ -327,10 +327,10 @@ misleading. Keep genuinely current alternative spellings in `aliases`.
 `tests/test_model_profile_drift.py`. Each LangChain partner package ships a `_MODEL_PROFILES`
 table in `<package>/data/_profiles.py`, read via the private
 `_get_default_model_profile(name)` — a plain dict lookup, so no credentials, no client, no
-network. 6 of 23 entries resolve one (Bedrock 2/6, Azure 2/2, DeepSeek 1/2,
+network. 6 of 24 entries resolve one (Bedrock 2/7, Azure 2/2, DeepSeek 1/2,
 Google 1/2). Every NVIDIA, Z.AI, Moonshot, and Mantle entry lacks a profile.
 The other missing entries are Opus 5.5, Sonnet 5.5, Kimi K3 on Bedrock,
-Grok 4.7, DeepSeek-V4-Flash, and Gemini 3.8 Flash. A missing profile means
+Grok 4.7, GLM-5.3 on Bedrock (langchain-aws profiles only `zai.glm-5`), DeepSeek-V4-Flash, and Gemini 3.8 Flash. A missing profile means
 there is nothing to cross-check in the installed partner package.
 
 **Neither side is authoritative**: the tables are generated from the community-curated

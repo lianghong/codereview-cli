@@ -365,6 +365,80 @@ providers:
           pricing $2.20/$6.60 per million; prompt-based JSON parsing.
           Grok 4.3 version-specific aliases remain retired.
 
+      # GLM-5.3 (via Bedrock) — Z.ai flagship, added 2026-10-08 (Bedrock
+      # launch 2026-10-05). Same model as `zhipuai/glm-5.3` (Z.AI direct) and
+      # `glm-5.3-nvidia`: ~744B MoE / ~40B active, always-on reasoning, 1M
+      # context, 128K output ceiling. This is the GLM-on-Bedrock re-add the
+      # GLM 5 removal note below anticipated — a newer generation, not a
+      # revival of `zai.glm-5`.
+      # https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-zai-glm-5-3.html
+      #
+      # Verified live 2026-10-08: `zai.glm-5.3` is ACTIVE in us-east-1,
+      # us-east-2 and us-west-2 but INFERENCE_PROFILE-only (the card: "In-Region
+      # on-demand inference is not supported"), so full_id must be a profile
+      # id; `us.` and `global.` are both ACTIVE. Converse on the global profile
+      # from us-east-1 answered HTTP 200 with a reasoningContent block, and
+      # accepted `temperature` (unlike Kimi K3 and the Claude 5 tiers). The
+      # card restricts access to "eligible customers"; this account is one,
+      # yours may not be.
+      #
+      # GLOBAL, not `us.`, on price — same call as kimi-k3-bedrock. Switch
+      # full_id to `us.zai.glm-5.3` and pricing to 1.848/5.808 if US data
+      # residency matters more than the 10%.
+      - id: glm-5.3-bedrock
+        full_id: global.zai.glm-5.3
+        name: GLM-5.3 (Bedrock)
+        # Always-on reasoning + non-streaming Converse: no response bytes
+        # until generation finishes. Use the thinking-model timeout.
+        read_timeout: 1800
+        # Bedrock-suffixed aliases only — the bare `glm`, `glm-5.3`, `glm5.3`
+        # belong to Z.AI direct, canonical owner of the GLM family. NOT reusing
+        # `glm5-bedrock`/`glm-5-bedrock`: those were deleted with the GLM 5
+        # entry because they spell a version this model is not.
+        aliases:
+          - glm53-bedrock
+          - glm5.3-bedrock
+          - glm-bedrock
+        pricing:
+          # NOT verified against AWS: the Bedrock pricing page and the Price
+          # List API were both unreachable on 2026-10-08 (the latter needs IAM
+          # credentials; this environment has a Bedrock bearer token only).
+          # Figures are OrcaRouter's reading of the Bedrock listing (global
+          # $1.68/$5.28, Geo-US $1.848/$5.808 — 1.2x Z.AI's $1.40/$4.40 list,
+          # with the usual 10% geo premium on top). Check your bill, and
+          # replace with the AWS-published rate once it can be read.
+          input_per_million: 1.68
+          output_per_million: 5.28
+        inference_params:
+          # Mirror the Z.AI-direct and NIM siblings: temperature 1.0 (the
+          # vendor default; Bedrock accepts it), omit top_p, and a 32K review
+          # budget below the 128K ceiling since reasoning bills as output.
+          # No reasoning_effort: bedrock.py does not forward it.
+          default_temperature: 1.0
+          max_output_tokens: 32768
+        # "Context window: 1M tokens" (Bedrock model card); matches Z.AI direct.
+        context_window: 1000000
+        # The card lists "Structured outputs" as supported on bedrock-runtime,
+        # but that is not evidence a FORCED tool_choice survives always-on
+        # thinking — Kimi K3 (Bedrock) passed a trivial probe and failed a real
+        # review. Assume-prompt-parsing rule, matching both GLM-5.3 siblings.
+        supports_tool_use: false
+        architecture: "MoE (~744B total, ~40B active, DeepSeek sparse attention)"
+        capabilities:
+          - code_review
+          - code_generation
+          - reasoning
+          - agentic_tasks
+          - thinking
+          - long_horizon_agentic
+        notes: >-
+          Z.ai GLM-5.3 via Bedrock Converse on the Global cross-Region
+          profile. Always-on reasoning, 1M context, 32K review output budget,
+          1800s read timeout. Uses the standard AWS credential chain rather
+          than a Z.AI key; access is limited to eligible accounts. Pricing is
+          third-party-sourced pending AWS verification. Prompt-based JSON
+          parsing.
+
       # Kimi K2.5 (Bedrock) removed 2026-08-29: `moonshotai.kimi-k2.5` is still
       # ACTIVE on Bedrock (ListFoundationModels, 2026-08-29) - this was CURATION.
       # It was a re-host of a model this registry already carries from its
@@ -444,6 +518,8 @@ providers:
       # exactly why it stays out of the dead list: that list means "pointing
       # an entry here is a bug", and an unverified absence is not evidence.
       # This is the re-add candidate if a GLM on Bedrock is wanted again.
+      # 2026-10-08 UPDATE: a GLM is on Bedrock again — `glm-5.3-bedrock`
+      # above (`zai.glm-5.3`). The deleted GLM 5 names below stay deleted.
       #
       # Alias disposition: `glm5` and `glm-5` MIGRATED onto the Z.AI-direct
       # `zhipuai/glm-5.3` as deprecated_aliases. They name GLM *5* without

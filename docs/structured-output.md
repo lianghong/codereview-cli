@@ -62,6 +62,7 @@ which is consistent with all of the above.
 | GPT-6 Sol / GPT-6 Luna (**Bedrock** `bedrock-mantle` OpenAI-compat) | adaptive (server-side) | `false` | prompt | **Assumed, not A/B-verified** (added 2026-09-23). The reasoning-model rule plus OpenAI's note that function calling on these tiers needs `reasoning_effort: none`; Astra's A/B is the nearest evidence. One small review each completed on the prompt path. us-east-1 only |
 | GPT-6.1 Sol (Mantle) | on | `false` | prompt | New reasoning model |
 | Grok 4.7 (Converse) | on | `false` | prompt | New reasoning model |
+| GLM-5.3 (Bedrock Converse) | **always on, no off switch** | `false` | prompt | **Assumed, not A/B-verified** (added 2026-10-08). The model card lists *Structured outputs* as supported on `bedrock-runtime`, which is the Kimi K3 (Bedrock) trap: a capability line is not evidence a forced `tool_choice` survives thinking on a real batch. One review of `codereview/batcher.py` (~12K input) finished clean on the prompt path in 2m14s, using ~19K output tokens. Accepts `temperature` (1.0 here); no `reasoning_effort`, since `bedrock.py` doesn't forward it |
 | GPT-5.4 / 5.4 Pro (**Azure**) | reasoning | `true` | tool-use | Azure deployment tolerates forced `tool_choice`; Bedrock's endpoint does not |
 | **Kimi K3 (NVIDIA)** | **always on, no off switch** | `false` | prompt | 2.8T/104B MoE, 1M context, native multimodal. Model card: *"Thinking is always enabled"* — so this is the **constant** forced-`tool_choice`-while-thinking profile (like Fable 5), not the intermittent one. Tool-use unverified: NIM's free tier 429'd every forced-`tool_choice` probe, so the assume-prompt-parsing rule decides it. K3 on Moonshot-direct is prompt-path too, and there it is **live-verified** rather than assumed — see the row below, which is the best available evidence for this one. Effort levels are low/high/max, but **no `reasoning_effort` is set** — `InferenceParams` only permits up to `high` and the wire spelling couldn't be verified |
 | **Kimi K3 (Moonshot)** | **always on (server-side), no off switch** | `false` | prompt | **Live-verified 2026-09-19, not assumed**: a forced `tool_choice='specified'` returns HTTP 400 *"tool_choice 'specified' is incompatible with thinking enabled"* — the vendor names the conflict in the error string. Byte-identical to the K2.6 failure this entry replaced, and K3 cannot turn thinking off, so it is **constant** rather than intermittent. 2.8T/104B MoE, 1M context; `reasoning_effort: high` is pinned down from the card's `max` default and forwarded by `moonshot.py` |
@@ -182,8 +183,8 @@ contradicts.
 Claude Opus 5.5, Sonnet 5.5 and
 Fable 5 on Bedrock, GPT-6.1 Sol and GPT-6 Astra, Sol and Luna on `bedrock-mantle` (Sol/Luna
 assumed), Grok 4.7 on native Bedrock, Gemini 3.8 Flash, and the GLM-5.3
-family on both Z.AI and NVIDIA** use
-prompt-based structured output — 17 of the 23 entries. Some have observed tool-use
+family on Z.AI, NVIDIA and Bedrock** use
+prompt-based structured output — 18 of the 24 entries. Some have observed tool-use
 failures; others use the conservative default pending live verification.
 
 - **Opus 5.5** carries the same model-card line as Opus 5 and nothing more — no A/B run with

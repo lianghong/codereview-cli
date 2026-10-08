@@ -692,7 +692,7 @@ codereview ./src --aws-profile production
 
 Choose the right model for your needs. Use short model names (aliases supported).
 
-As of 2026-09-30, the registry contains **23 models across eight providers**.
+As of 2026-10-08, the registry contains **24 models across eight providers**.
 The default is **Opus 5.5**. `sonnet` selects **Sonnet 5.5**, and the
 compatibility alias `gpt-bedrock` selects **GPT-6.1 Sol**. Opus 5, Sonnet 5,
 and GPT-5.6 Sol version-specific names are retired.
@@ -725,6 +725,7 @@ codereview ./src --model sonnet   # Claude Sonnet 5.5 (balanced, 1M context; `so
 codereview ./src --model haiku    # Claude Haiku 4.5 (fastest, cheapest Bedrock entry)
 codereview ./src --model kimi-bedrock # Kimi K3 (Global profile, 1M context)
 codereview ./src --model grok-4.7     # Grok 4.7 (US profile, 500K context)
+codereview ./src --model glm53-bedrock # GLM-5.3 (Global profile, 1M context)
 
 # Azure OpenAI
 codereview ./src --model gpt           # GPT-5.4 (frontier reasoning, default Azure)
@@ -774,6 +775,7 @@ codereview ./src --model gpt6-luna          # GPT-6 Luna (cheapest GPT-6; us-eas
 | **Haiku 4.5** | AWS Bedrock | Large codebases, CI/CD integration, cheapest Bedrock entry, 200K context | $1/M input, $5/M output |
 | **Kimi K3 (Bedrock)** | AWS Bedrock | 2.8T/104B MoE, 1M context, always-on thinking; Global profile, AWS credentials | $3/M input, $15/M output |
 | **Grok 4.7** | AWS Bedrock | Native Converse, 500K context, 16K review output budget; US profile, us-east-1 source | $2.20/M input, $6.60/M output |
+| **GLM-5.3 (Bedrock)** | AWS Bedrock | ~744B/40B MoE, 1M context, always-on reasoning; Global profile, AWS credentials, eligible accounts only (third-party-sourced rate) | $1.68/M input, $5.28/M output |
 | **GPT-5.4** | Azure OpenAI | Frontier reasoning, default Azure, 1.05M context | $2.50/M input, $15/M output |
 | **GPT-5.4 Pro** | Azure OpenAI | Deeper reasoning, hardest problems | $30/M input, $180/M output |
 | **Kimi K3 (NVIDIA)** | NVIDIA NIM | Free tier, 2.8T/104B MoE, 1M context, multimodal (text+image in), always-on thinking | Free* |
@@ -795,7 +797,8 @@ codereview ./src --model gpt6-luna          # GPT-6 Luna (cheapest GPT-6; us-eas
 *NVIDIA NIM models are currently in free preview tier; their zero-valued
 registry rates render as `Estimated cost: TBD` in the CLI.
 
-This table reflects the current 23 entries. Sonnet 5 was replaced with 5.5,
+This table reflects the current 24 entries. GLM-5.3 joined Bedrock on
+October 8. Sonnet 5 was replaced with 5.5,
 and Opus 5 plus GPT-5.6 Sol were removed as curation on September 30.
 Earlier removals include both retired endpoints and live models.
 `--list-models` is authoritative; see the
