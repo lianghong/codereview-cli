@@ -447,7 +447,8 @@ Same per-request tiering as Astra. **These rates are derived, not published:** A
 
 **Grok 4.7 (Bedrock)** uses native Converse and standard AWS credentials
 through `us.xai.grok-4.7`. Its source Region is pinned to **us-east-1**,
-with a 500K context window, 16K review output budget, and 1800s read timeout.
+with a 500K context window, low reasoning effort, a 32K review output budget,
+and 1800s read timeout.
 The bare `xai.grok-4.7` ID cannot replace the US inference profile.
 Geo-US Standard pricing is $2.20/$6.60 per million tokens.
 The installed AWS SDK also accepts `AWS_BEARER_TOKEN_BEDROCK`, which was
@@ -458,6 +459,26 @@ standard AWS credentials or a profile for its STS identity check.
 rtk proxy uv run codereview ./src --model grok-4.7
 rtk proxy uv run codereview ./src --model grok --aws-profile my-profile
 ```
+
+Low completed the tested large single-file Grok review. Medium found
+an extra confirmed defect in a small comparison, but the 7,309-line review
+disconnected after ten minutes even with 64K and streaming. The low default
+therefore remains in place. For medium, start with smaller inputs and validate
+each review; `--batch-size` limits files per batch and cannot split one file.
+Automatic file splitting and a CLI reasoning-effort override are not
+implemented. Effort is configured in the Grok entry in
+[models.yaml](../codereview/config/models.yaml).
+
+For a detailed whole-file review, you can select Sonnet 5.5 or Opus 5.5:
+
+```bash
+rtk proxy uv run codereview /path/to/project/src --model sonnet5.5
+rtk proxy uv run codereview /path/to/project/src --model opus5.5
+```
+
+See the [measured results](providers.md#reasoning-effort-and-large-reviews)
+for the quality comparison and the observed ten-minute failures. That timing
+describes the tested environment; it is not a documented universal AWS limit.
 
 **GLM-5.3 (Bedrock)** uses native Converse and standard AWS credentials
 through the Global profile `global.zai.glm-5.3`; the bare `zai.glm-5.3` ID
@@ -512,7 +533,8 @@ Be aware of costs and choose models accordingly:
   ($2/M input, $10/M output — Global cross-Region inference only)
 - **Haiku 4.5**: Cheapest Bedrock entry, 200K context ($1/M input, $5/M output) — became the cheapest when Qwen3 Coder Next ($0.50/$1.20) was removed 2026-08-29
 - **Kimi K3**: Moonshot's flagship via Converse on the Global cross-Region profile, 1M context, always-on thinking ($3/M input, $15/M output — same as Moonshot direct; the `us.` geo profile would be $3.30/$16.50)
-- **Grok 4.7**: Native Converse, 500K context, 16K review output budget,
+- **Grok 4.7**: Native Converse, low reasoning effort, 500K context,
+  32K review output budget,
   us-east-1 source Region ($2.20/M input, $6.60/M output — Geo-US profile)
 - **GLM-5.3**: Z.ai's flagship via Converse on the Global profile, 1M context,
   always-on reasoning ($1.68/M input, $5.28/M output — Global profile; `us.` would be
@@ -788,7 +810,7 @@ codereview ./src --model gpt6-luna          # GPT-6 Luna (cheapest GPT-6; us-eas
 | **Sonnet 5.5** | AWS Bedrock | Daily development, PR reviews, 1M context, Global routing (owns `sonnet`) | $2/M input, $10/M output |
 | **Haiku 4.5** | AWS Bedrock | Large codebases, CI/CD integration, cheapest Bedrock entry, 200K context | $1/M input, $5/M output |
 | **Kimi K3 (Bedrock)** | AWS Bedrock | 2.8T/104B MoE, 1M context, always-on thinking; Global profile, AWS credentials | $3/M input, $15/M output |
-| **Grok 4.7** | AWS Bedrock | Native Converse, 500K context, 16K review output budget; US profile, us-east-1 source | $2.20/M input, $6.60/M output |
+| **Grok 4.7** | AWS Bedrock | Native Converse, low reasoning effort, 500K context, 32K review output budget; US profile, us-east-1 source | $2.20/M input, $6.60/M output |
 | **GLM-5.3 (Bedrock)** | AWS Bedrock | ~744B/40B MoE, 1M context, always-on reasoning; Global profile, AWS credentials, eligible accounts only | $1.68/M input, $5.28/M output |
 | **GPT-5.4** | Azure OpenAI | Frontier reasoning, default Azure, 1.05M context | $2.50/M input, $15/M output |
 | **GPT-5.4 Pro** | Azure OpenAI | Deeper reasoning, hardest problems | $30/M input, $180/M output |

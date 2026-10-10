@@ -18,6 +18,7 @@ from codereview.config.models import BedrockConfig, ModelConfig
 from codereview.models import CodeReviewReport
 from codereview.providers.base import (
     ModelProvider,
+    OutputTokenLimitError,
     RetryConfig,
     ValidationResult,
 )
@@ -153,6 +154,19 @@ class BedrockProvider(TokenTrackingMixin, ModelProvider):
         if self.top_k is not None:
             additional_fields["top_k"] = self.top_k
 
+        params = self.model_config.inference_params
+        if params and params.reasoning_effort is not None:
+            if not strip_cross_region_prefix(self.model_config.full_id).startswith(
+                "xai.grok-"
+            ):
+                raise ValueError(
+                    "Bedrock reasoning_effort is currently supported only for Grok."
+                )
+            # Grok validates this Responses-style field on Converse too.
+            # reasoning_effort / reasoningConfig are silently ignored, and
+            # langchain-aws has neither a Grok profile nor an effort mapping.
+            additional_fields["reasoning"] = {"effort": params.reasoning_effort}
+
         # Configure botocore with timeout settings. Models with always-on
         # thinking (e.g. Fable 5) stream nothing until the full response is
         # generated, so think-heavy batches outlast the provider default;
@@ -202,6 +216,29 @@ class BedrockProvider(TokenTrackingMixin, ModelProvider):
         # Tool-use vs prompt-parsing routing (and _create_chain) live in the
         # base class; supports_tool_use in models.yaml decides the path.
         return self._apply_structured_output(base_model)
+
+    def _invoke_chain(self, chain_input: dict[str, str]) -> Any:
+        """Reject token-limited responses before accepting or retrying their JSON."""
+        result = super()._invoke_chain(chain_input)
+        if isinstance(result, dict):
+            raw = result.get("raw")
+            metadata = getattr(raw, "response_metadata", None)
+            if (
+                isinstance(metadata, dict)
+                and metadata.get("stopReason") == "max_tokens"
+            ):
+                # Usage is billed even when reasoning consumes the entire
+                # response. Raising here bypasses the parsing-retry branch,
+                # and also rejects partially complete reports that parse.
+                self._track_usage_from_raw(raw)
+                raise OutputTokenLimitError(
+                    f"{self.get_model_display_name()} exhausted its output token "
+                    f"budget ({self.max_tokens:,} tokens, including reasoning). "
+                    "Increase inference_params.max_output_tokens or reduce the "
+                    "reviewed code/context. Retrying unchanged will not resolve "
+                    "token exhaustion."
+                )
+        return result
 
     def _is_retryable_error(self, error: Exception) -> bool:
         """Check if error is a retryable AWS throttling or transport failure.

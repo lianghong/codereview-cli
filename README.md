@@ -449,10 +449,18 @@ requires standard AWS credentials or a profile, even when a review can run
 with `AWS_BEARER_TOKEN_BEDROCK`. A bearer-only setup therefore fails that
 preflight identity check; it does not indicate a wrong model Region.
 
-Both entries use prompt-based JSON parsing. Grok has a 16K review output
-budget and a 30-minute read timeout because Converse waits for reasoning
-and generation to finish. GPT-6.1 Sol uses the Responses API with no sampling
-parameters; its documented output cap is 131,072 tokens.
+Both entries use prompt-based JSON parsing. Grok uses low reasoning effort,
+a 32K review output budget, and a 30-minute read timeout because Converse waits
+for reasoning and generation to finish. GPT-6.1 Sol uses the Responses API
+with no sampling parameters; its documented output cap is 131,072 tokens.
+
+Low remains the Grok default because it completed the tested large review.
+Medium found an extra confirmed defect in a small C++ comparison, but the
+7,309-line review disconnected after ten minutes even with a 64K budget and
+streaming. For medium, start with smaller inputs and validate each review;
+automatic file splitting and a CLI effort override are not implemented.
+See the [measured results](docs/providers.md#reasoning-effort-and-large-reviews)
+for the quality comparison and the scope of the observed connection failures.
 
 ```bash
 # GPT-6.1 Sol - current coding tier, 1M context (Responses API, us-east-1)
@@ -570,7 +578,7 @@ codereview /path/to/code -m kimi
 | **GPT-6 Sol (Bedrock)** | **OpenAI-on-Bedrock** | **Mid GPT-6 tier, 1M context, 128K output, `bedrock-mantle` us-east-1 only; tiered above 272K ($4.40/$16.50). Derived rate — AWS unpublished** | **$2.20** | **$11.00** |
 | **GPT-6 Luna (Bedrock)** | **OpenAI-on-Bedrock** | **Cheapest GPT-6 tier, 1M context, 128K output, `bedrock-mantle` us-east-1 only; tiered above 272K ($0.22/$0.825). Derived rate — AWS unpublished** | **$0.11** | **$0.55** |
 | GPT-6.1 Sol | OpenAI-on-Bedrock | Current coding tier, 1M context, 131,072 output tokens, Mantle us-east-1; tiered above 272K ($4.40/$16.50); also selected by `gpt-bedrock` | $2.20 | $11.00 |
-| Grok 4.7 | AWS Bedrock | Native Converse, 500K context, 16K review output budget; Geo-US profile, us-east-1 source (owns `grok`) | $2.20 | $6.60 |
+| Grok 4.7 | AWS Bedrock | Native Converse, low reasoning effort, 500K context, 32K review output budget; Geo-US profile, us-east-1 source (owns `grok`) | $2.20 | $6.60 |
 | GLM-5.3 (Bedrock) | AWS Bedrock | ~744B MoE / 40B active, 1M context, always-on reasoning; Global profile, AWS credentials, eligible accounts only (owns `glm-bedrock`) | $1.68 | $5.28 |
 
 *NVIDIA NIM models are currently in free preview tier. Their zero-valued

@@ -1,6 +1,7 @@
 """Tests for BedrockProvider."""
 
 import logging
+from copy import deepcopy
 from unittest.mock import Mock, patch
 
 import pytest
@@ -113,12 +114,123 @@ def test_grok47_registry_builds_converse_in_a_us_region_with_a_long_timeout():
     assert kwargs["region_name"] == "us-east-1"
     assert kwargs["config"].read_timeout == 1800
     assert kwargs["config"].retries["max_attempts"] == 0
-    assert kwargs["max_tokens"] == 16000
+    assert kwargs["max_tokens"] == 32768
     assert "temperature" not in kwargs
-    assert kwargs["additional_model_request_fields"] is None
+    assert kwargs["additional_model_request_fields"] == {"reasoning": {"effort": "low"}}
     assert kwargs["disable_streaming"] is True
     client.return_value.with_structured_output.assert_not_called()
     assert provider._use_prompt_parsing
+
+
+@pytest.mark.parametrize("effort", ["low", "medium", "high"])
+def test_grok_effort_reaches_the_real_converse_request(effort, mock_report):
+    """Check the wire request, including the SDK's field conversion.
+
+    Grok silently ignores reasoning_effort and reasoningConfig fields, but
+    validates reasoning.effort. The installed SDK has no Grok translation.
+    """
+    from codereview.config import ConfigLoader
+
+    loader = ConfigLoader()
+    _, config = loader.resolve_model("grok-4.7-bedrock")
+    config = config.model_copy(
+        update={
+            "inference_params": config.inference_params.model_copy(
+                update={"reasoning_effort": effort}
+            )
+        }
+    )
+    runtime = Mock()
+    runtime.converse.return_value = {
+        "output": {
+            "message": {
+                "role": "assistant",
+                "content": [{"text": mock_report.model_dump_json()}],
+            }
+        },
+        "stopReason": "end_turn",
+        "usage": {"inputTokens": 100, "outputTokens": 50, "totalTokens": 150},
+        "metrics": {"latencyMs": 42},
+    }
+    with patch(
+        "langchain_aws.chat_models.bedrock_converse.create_aws_client",
+        return_value=runtime,
+    ):
+        provider = BedrockProvider(config, loader.get_provider_config("bedrock"))
+    provider.model.rate_limiter = None
+
+    assert (
+        provider.analyze_batch(1, 1, {"main.cpp": "int main() {}"}, max_retries=0)
+        == mock_report
+    )
+    runtime.converse.assert_called_once()
+    request = runtime.converse.call_args.kwargs
+    assert request["additionalModelRequestFields"] == {"reasoning": {"effort": effort}}
+    assert request["inferenceConfig"]["maxTokens"] == 32768
+    assert "temperature" not in request["inferenceConfig"]
+    assert provider.total_input_tokens == 100
+    assert provider.total_output_tokens == 50
+
+
+def test_bedrock_rejects_unmapped_reasoning_effort(model_config, provider_config):
+    """An explicit effort setting must not silently disappear on another model."""
+    config = model_config.model_copy(
+        update={
+            "inference_params": model_config.inference_params.model_copy(
+                update={"reasoning_effort": "low"}
+            )
+        }
+    )
+    with patch("codereview.providers.bedrock.ChatBedrockConverse") as client:
+        with pytest.raises(ValueError, match="reasoning_effort.*Grok"):
+            BedrockProvider(config, provider_config)
+    client.assert_not_called()
+
+
+@pytest.mark.parametrize("has_report", [False, True])
+def test_converse_output_limit_is_terminal_and_billed(
+    has_report, mock_report, monkeypatch
+):
+    """Replay the real Grok failure through its client and analyze_batch.
+
+    A reasoning-only max_tokens response used to trigger four identical
+    requests. Even syntactically valid JSON at the limit may be an incomplete
+    review and must not be accepted.
+    """
+    from codereview.providers.factory import ProviderFactory
+
+    content = (
+        [{"text": mock_report.model_dump_json()}]
+        if has_report
+        else [{"reasoningContent": {"reasoningText": {"text": "Still reasoning."}}}]
+    )
+    response = {
+        "output": {"message": {"role": "assistant", "content": content}},
+        "stopReason": "max_tokens",
+        "usage": {
+            "inputTokens": 123268,
+            "outputTokens": 16000,
+            "totalTokens": 139268,
+        },
+        "metrics": {"latencyMs": 197000},
+    }
+    runtime = Mock()
+    # langchain-aws pops usage from each response during normalization.
+    runtime.converse.side_effect = lambda **kwargs: deepcopy(response)
+    with patch(
+        "langchain_aws.chat_models.bedrock_converse.create_aws_client",
+        return_value=runtime,
+    ):
+        provider = ProviderFactory().create_provider("grok-4.7-bedrock")
+    provider.model.rate_limiter = None
+    monkeypatch.setattr("codereview.providers.base.time.sleep", lambda _: None)
+
+    with pytest.raises(ValueError, match="output token budget"):
+        provider.analyze_batch(1, 1, {"main.cpp": "int main() {}"})
+
+    runtime.converse.assert_called_once()
+    assert provider.total_input_tokens == 123268
+    assert provider.total_output_tokens == 16000
 
 
 def test_model_read_timeout_overrides_provider_read_timeout(provider_config):

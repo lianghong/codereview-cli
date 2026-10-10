@@ -109,7 +109,7 @@ class InferenceParams(BaseModel):
         enable_thinking: Enable thinking/reasoning mode (model-specific).
         clear_thinking: Clear thinking content between turns (False preserves reasoning).
         thinking: Thinking mode selector (e.g. DeepSeek-V4-Pro: False/'high'/'max').
-        reasoning_effort: Per-request reasoning budget. No live example since 2026-08-29.
+        reasoning_effort: Per-request reasoning effort for supported models.
     """
 
     model_config = {"frozen": True}
@@ -142,12 +142,9 @@ class InferenceParams(BaseModel):
     reasoning_effort: Literal["none", "low", "medium", "high"] | None = Field(
         None,
         description=(
-            "Reasoning effort budget sent with each request, for models that "
-            "accept 'none'/'high' to toggle between instant reply and deep "
-            "reasoning. No entry in models.yaml sets it since Mistral Medium "
-            "3.5 (the only one that did) was removed 2026-08-29 — kept because "
-            "the NVIDIA provider still forwards it (nvidia.py) and NIM models "
-            "with effort levels come and go."
+            "Model-specific reasoning effort sent with each request. Native "
+            "Bedrock Grok uses reasoning.effort; other providers translate "
+            "this according to their API. Supported levels vary by model."
         ),
     )
 

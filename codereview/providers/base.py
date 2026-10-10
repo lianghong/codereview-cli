@@ -29,6 +29,10 @@ class OutputParsingRetryError(ValueError):
     """
 
 
+class OutputTokenLimitError(ValueError):
+    """Generation exhausted its output budget; an unchanged retry cannot finish."""
+
+
 # Shared prompt template used by all providers
 BATCH_PROMPT_TEMPLATE = ChatPromptTemplate.from_messages(
     [

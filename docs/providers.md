@@ -495,13 +495,15 @@ is INFERENCE_PROFILE-only (ListFoundationModels, 2026-10-08, all three US
 Regions). A Converse probe on the Global profile returned 200 and, unlike
 Kimi K3 and the Claude 5 tiers, accepted `temperature`, so the entry sends
 the vendor default 1.0. Reasoning is always on, so `read_timeout: 1800`
-applies; `reasoning_effort` is not forwarded by `bedrock.py`, so the server
+applies; `reasoning_effort` is not forwarded for GLM, so the server
 default effort is used. Pricing is the Bedrock pricing page's Global CRIS
 Standard rate, $1.68/$5.28 per million (US CRIS $1.848/$5.808). The Price
 List API needs IAM credentials rather than a Bedrock bearer token, so the
 page, not the API, is the source.
 
-**Grok 4.7 is registered under native `bedrock`, not `bedrock_openai`.**
+### Grok 4.7 on native Bedrock
+
+Grok 4.7 is registered under native `bedrock`.
 The [AWS card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-xai-grok-4-7.html)
 documents Runtime cross-Region invocation: `us.xai.grok-4.7` or
 `global.xai.grok-4.7`, rather than an in-Region bare model ID. Converse
@@ -509,11 +511,81 @@ requests with the US profile returned 200 from us-east-1 and us-west-2 on
 2026-09-29. The entry pins the source Region to us-east-1, uses standard
 AWS credentials, and prices at the published Geo-US Standard $2.20/$6.60
 per million. The cheaper $2/$6 rates belong to the global profile.
-Its 500K context comes from the card; 16K output is a conservative review
-budget, not a claim about the model's maximum output. Always-on reasoning
-plus non-streaming Converse requires `read_timeout: 1800`. Effort is left
-at the server default and forced tool use remains unverified, so it uses
-prompt parsing. `grok`/`grok-bedrock` now select 4.7; version-specific 4.3
+Its 500K context comes from the card; 32K output is a review budget, not a
+claim about the model's maximum output. Always-on reasoning plus non-streaming
+Converse requires `read_timeout: 1800`. `reasoning_effort: low` is forwarded
+as `additionalModelRequestFields.reasoning.effort`. The installed LangChain
+adapter has no Grok effort translation, and Converse silently ignores the
+`reasoning_effort` and `reasoningConfig` spellings. An invalid
+`reasoning.effort` value is rejected, confirming the recognized field.
+
+#### Reasoning effort and large reviews
+
+Live diagnosis on 2026-10-10 used a 7,309-line C++ file and its 23KB README.
+The registry retains low effort, a 32,768-token output budget, prompt-based
+JSON parsing, and a 1800s client read timeout. The output budget includes
+reasoning tokens. The following runs used the same large review input:
+
+| Effort | Budget | API              | Outcome                | Time   |
+| :----- | :----- | :--------------- | :--------------------- | :----- |
+| high   | 16,000 | Converse         | no report; token limit | —      |
+| high   | 65,536 | Converse         | connection lost        | —      |
+| low    | 16,000 | Converse         | valid report           | 33.4s  |
+| low    | 32,768 | Converse (CLI)   | valid report           | —      |
+| medium | 32,768 | Converse (CLI)   | exit 1; cause unknown  | 524.6s |
+| medium | 65,536 | Converse         | connection lost        | 601.1s |
+| medium | 65,536 | Stream           | connection lost        | 601.1s |
+| medium | 65,536 | Stream + summary | connection lost        | 601.1s |
+
+Times are elapsed seconds where measured; a dash means no retained timing.
+Stream denotes diagnostic ConverseStream requests. The production provider
+retains non-streaming Converse; the CLI's `--stream` option does not enable
+ConverseStream for Bedrock.
+
+Changing only effort from the server-default high to low produced valid JSON
+with 1,521 output tokens. The full CLI run at the retained low/32K settings
+used 1,359 output tokens. These full-file runs verified completion and parsing.
+Forced tool use remains unverified, so the provider retains prompt parsing.
+
+A small C++ comparison on the same date found all six seeded defects at
+both low and medium effort. Medium also identified signed integer overflow
+that low missed; UBSan confirmed that finding. Low took 23.7s and 1,580 output
+tokens; medium took 149.6s and 8,912 output tokens. This is a single-run
+diagnostic, not a general quality benchmark.
+
+At medium/32K, the failed CLI run did not retain its stop reason. At
+medium/64K, Converse raised `ConnectionClosedError` despite the 1800s client
+read timeout. ConverseStream opened in 3.3s but delivered no final metadata
+and raised `ProtocolError`. Requesting native `reasoning.summary: auto`
+produced the same failure. Invalid summary values
+were rejected with the supported values auto/concise/detailed, confirming
+the field is recognized; this did not make the large stream stay active.
+The SDK had no configured proxy. These observations establish a repeatable
+ten-minute connection failure in this environment, not a universal AWS limit.
+Usage was unavailable on those connection failures; zero tracked tokens
+does not mean the requests were free.
+
+Low remains the verified default for this input. The small comparison gives
+some evidence for deeper review at medium, with higher latency and token use.
+For medium, start with smaller inputs and validate the resulting requests
+before attempting large reviews. Automatic file splitting and a CLI
+reasoning-effort override are not implemented. Effort is selected in the Grok
+entry's `inference_params.reasoning_effort` in
+[models.yaml](../codereview/config/models.yaml); `--batch-size` only changes
+the number of files per batch.
+
+Previously, a reasoning-only `max_tokens` response could surface as an empty
+`Invalid json output` wrapped in `OutputParsingRetryError`, because the parser
+received no report text. Bedrock responses stopped by `max_tokens` now raise
+`OutputTokenLimitError` after recording their billed usage. This applies even
+when partial JSON parses: the report may be incomplete. The error names the
+output budget and recommends increasing it or reducing the reviewed
+code/context. It bypasses parsing
+retries, which otherwise resend the same insufficient budget four times.
+
+#### Compatibility and credentials
+
+`grok`/`grok-bedrock` now select 4.7; version-specific 4.3
 aliases remain deleted.
 The installed AWS SDK also supports `AWS_BEARER_TOKEN_BEDROCK`; the live
 review used that credential source and exported valid JSON. Native

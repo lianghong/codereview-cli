@@ -118,6 +118,7 @@ codereview ./src --model gpt6.1-sol
 
 # Grok 4.7 - native Bedrock Converse, US profile, 500K context
 # $2.20/$6.60 per million; uses AWS credentials and us-east-1 source Region
+# Uses low reasoning effort and a 32K output budget, including reasoning
 codereview ./src --model grok-4.7
 
 # Kimi K3 - 2.8T MoE, 1M context (Moonshot direct; `kimi-azure` also routes here)
@@ -223,6 +224,13 @@ codereview ./src \
   --severity high \
   --output large-scan.md
 ```
+
+Grok retains low reasoning effort because it completed the tested 7,309-line
+review. Medium found an extra confirmed defect in a small comparison, but the
+large review lost its connection after ten minutes, including with 64K and
+streaming. `--batch-size` limits files per batch; automatic splitting of one
+large file and a CLI effort override are not implemented. See the
+[measured results](providers.md#reasoning-effort-and-large-reviews).
 
 **Cost Comparison**:
 - Opus 5.5 (100 files): ~$0.30-$1.50

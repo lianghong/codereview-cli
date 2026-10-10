@@ -1581,7 +1581,8 @@ def test_grok47_uses_a_us_runtime_profile_and_geo_pricing(alias):
     assert config.context_window == 500_000
     assert not config.supports_tool_use
     assert config.inference_params is not None
-    assert config.inference_params.max_output_tokens == 16_000
+    assert config.inference_params.max_output_tokens == 32_768
+    assert config.inference_params.reasoning_effort == "low"
     assert config.inference_params.temperature is None
     assert config.inference_params.top_p is None
     assert config.pricing.rates_for_request(500_000) == (2.20, 6.60)
