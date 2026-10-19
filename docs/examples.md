@@ -119,7 +119,7 @@ codereview ./src --model gpt6.1-sol
 # Uses low reasoning effort and a 32K output budget, including reasoning
 codereview ./src --model grok-4.7
 
-# Kimi K3 - 2.8T MoE, 1M context (Moonshot direct; `kimi-azure` also routes here)
+# Kimi K3 - 2.8T MoE, 1M context (Moonshot direct)
 codereview ./src --model kimi-k3
 
 # Kimi K3 on AWS Bedrock - same model and $3/$15 price, AWS credentials instead of KIMI_API_KEY

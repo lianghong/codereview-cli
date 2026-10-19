@@ -409,7 +409,7 @@ codereview ./src --model gpt
 codereview ./src --model gpt-pro
 ```
 
-**Gemini 3.1 Pro** - Most advanced reasoning, 1M context (Google GenAI; `gemini-3-pro` routes here after Google retired 3 Pro 2026-03-09):
+**Gemini 3.1 Pro** - Most advanced reasoning, 1M context (Google GenAI; also selected by `gemini-pro`):
 ```bash
 codereview ./src --model gemini-3.1-pro
 ```
@@ -425,8 +425,8 @@ codereview ./src --model fable
 ```
 
 **GPT-6.1 Sol (Bedrock)** - Current coding tier via `bedrock-mantle`,
-1M context, 131,072-token output cap, us-east-1 only (also selected by
-`gpt-bedrock`). Uses `OPENAI_API_KEY`/`OPENAI_BASE_URL`; the entry rewrites
+1M context, 131,072-token output cap, us-east-1 only.
+Uses `OPENAI_API_KEY`/`OPENAI_BASE_URL`; the entry rewrites
 the URL Region automatically. AWS-published Standard rates are $2.20/$11
 per million up to 272K input tokens per request and $4.40/$16.50 above,
 including the regional premium.
@@ -742,14 +742,14 @@ codereview ./src --aws-profile production
 Choose the right model for your needs. Use short model names (aliases supported).
 
 As of 2026-10-19, the registry contains **22 models across eight providers**.
-The default is **Opus 5.5**. `sonnet` selects **Sonnet 5.5**, and the
-compatibility alias `gpt-bedrock` selects **GPT-6.1 Sol**. Opus 5, Sonnet 5,
+The default is **Opus 5.5**. `sonnet` selects **Sonnet 5.5**, and
+`gpt6.1-sol` selects **GPT-6.1 Sol**. Opus 5, Sonnet 5,
 and GPT-5.6 Sol version-specific names are retired.
 
-`--list-models` advertises only the current, recommended aliases. A handful of
-version-*neutral* names inherited from removed models (`glm5`, `kimi-azure`,
-`gemini-3-flash`, `gpt-bedrock`, …) still resolve to their successor
-and are shown as `+N deprecated`; add `--verbose` to see them spelled out.
+`--list-models` shows the current model names and aliases. All 14 deprecated
+compatibility names (`glm5`, `kimi-azure`, `gemini-3-flash`, `gpt-bedrock`,
+and the others in the migration table) were deleted on October 19 and now
+fail explicitly.
 Version-*explicit* aliases of removed models (`opus4.6`, `opus4.8`, `glm51`, `mm25`,
 `kimi25`, `step35`, `gpt5.4-bedrock`, `gpt5.5-bedrock`, `gemini-3.6-flash`,
 `grok-4.3`, `opus5`, `sonnet5`, `gpt5.6-sol-bedrock`, …) were deleted in the
@@ -763,9 +763,6 @@ replacement table.
 ```bash
 # List all available models
 codereview --list-models
-
-# ...including deprecated back-compat aliases
-codereview --list-models --verbose
 
 # AWS Bedrock - native Converse
 codereview ./src --model opus     # Claude Opus 5.5 (default; newest Opus, reasoning model, 1M context)
@@ -803,7 +800,7 @@ codereview ./src --model kimi               # Short alias
 
 # OpenAI-on-Bedrock (bedrock-mantle OpenAI-compatible endpoint; Bedrock API-key auth)
 # The GPT-5.5 and Grok 4.3 entries were removed 2026-08-29 as curation (both
-# endpoints are still live). `gpt-bedrock` now resolves to GPT-6.1 Sol.
+# endpoints are still live). Select GPT-6.1 Sol with gpt6.1-sol.
 # NOTE: Astra uses us-west-2; GPT-6.1 Sol and GPT-6 Sol/Luna use us-east-1.
 # Each entry's `region:` handles routing, so one OPENAI_BASE_URL serves all four.
 codereview ./src --model gpt6.1-sol         # GPT-6.1 Sol (current coding tier, 1M context)

@@ -18,9 +18,14 @@ The registry contains **22 models across eight providers as of 2026-10-19**.
 | OpenAI-on-Bedrock (Mantle) | 4 |
 
 The default is **Opus 5.5**. `sonnet`/`claude-sonnet` select **Sonnet 5.5**;
-deprecated `gpt-bedrock` selects **GPT-6.1 Sol**. Opus 5, Sonnet 5, and
+`gpt6.1-sol` selects **GPT-6.1 Sol**. Opus 5, Sonnet 5, and
 GPT-5.6 Sol version-specific names were removed on September 30 as curation,
 after confirming that their upstream endpoints were still live.
+
+All 14 remaining deprecated aliases were deleted on October 19 at user
+request. The bundled registry has no `deprecated_aliases`; current model IDs
+and advertised aliases keep their existing targets. README's *Migrating
+Deleted Aliases* table lists replacements.
 
 The [October 19 NVIDIA audit](nvidia-model-review-2026-10.md) removed
 `moonshotai/kimi-k3` (HTTP 410, EOL October 15) and `z-ai/glm-5.3`
@@ -122,10 +127,10 @@ showed the other half of the rule while both entries were live: 3.6 **kept** its
 version-explicit `gemini-3-flash`/`gemini3-flash`/`g3flash` back-compat names, because a name
 that says "3" must not jump between live minor versions. Only the generation-neutral name
 travels. When the 3.6 entry was retired on 2026-08-29, all three names moved onto 3.7 as
-`deprecated_aliases`. They moved once more when 3.7 itself was curated away on 2026-09-19, so all
-three now sit on 3.8 alongside `gemini-flash` — two hops, each following the rule rather than
-short-cutting it. 3.7's own version-explicit spellings (`gemini-3.7-flash`, `gemini37-flash`,
-`gemini3.7-flash`) were **deleted**, not migrated.
+`deprecated_aliases`. They moved once more when 3.7 itself was curated away on
+2026-09-19, then were deleted in the 2026-10-19 deprecated-alias cleanup.
+`gemini-flash` still selects 3.8. 3.7's own version-explicit spellings
+(`gemini-3.7-flash`, `gemini37-flash`, `gemini3.7-flash`) were also deleted.
 
 `sonnet` was the deliberate exception for a while — it stayed on Sonnet 4.6 when Sonnet 5 shipped,
 because 4.6 was the cheaper daily driver and holding the bare name there was a pricing choice, not
@@ -252,76 +257,53 @@ endpoints are live** — the probes were run, and they answer. Three consequence
   family. Keep the evidence in comments or `docs/`, with observed failures
   distinguished from conservative defaults on successors.
 
-What happens to the removed entry's identifiers depends on **whether the name states a version**
-(narrowed 2026-07-25 from a blanket "migrate everything"):
+The bundled registry's removal policy, updated 2026-10-19:
 
-- **Version-neutral name** (`glm5`, `kimi-azure`, `kimi-bedrock`, `gemini-3-flash`, `sonnet`,
-  `gpt-bedrock`) → **migrate onto the live successor**, as `deprecated_aliases`. The user asked
-  for "the GLM one"; giving them the current GLM one is what they meant. Canonical-owner and
-  generation-neutral conventions decide which successor. `sonnet` is the one that landed in plain
-  `aliases` instead, because its successor is the *same family's current generation* rather than a
-  sideways move — nothing about the name became untrue.
-- **Version-explicit name** (`opus4.6`, `opus4.8`, `glm51`, `mm25`, `mm2.5-bedrock`, `kimi25`,
-  `step35`, `gpt5.4-bedrock`, `gpt5.5-bedrock`, `grok-4.3`, `gemini-3.6-flash`) → **delete it**. A
-  name that says "4.6" resolving to a two-generations-newer model with different pricing,
-  different sampling-param support and a different structured-output path is worse than an error a
-  human reads and fixes. Add every deleted name to `RETIRED_ALIASES_DELETED_NOT_REDIRECTED` in
-  `tests/test_config.py` with a one-line reason, and give it a row in README's *Migrating Deleted
-  Aliases* table.
+- **Current family aliases** (`opus`, `sonnet`, `gemini-flash`, `kimi`) may
+  track the current model as advertised `aliases`, provided the family,
+  tier, and any provider suffix remain accurate.
+- **Deprecated compatibility aliases** are deleted. Do not park removed
+  names under `deprecated_aliases` in the bundled registry. A removed name
+  should fail explicitly so the caller can choose its replacement.
+- **Version-specific or provider-specific names** are deleted when the
+  version or provider they name is removed. A silent redirect can change
+  model behavior, credentials, or billing. Add every deleted name to
+  `RETIRED_ALIASES_DELETED_NOT_REDIRECTED` in `tests/test_config.py` with a
+  reason, and give it a row in README's *Migrating Deleted Aliases* table.
 
 The same rule applies to `CodeAnalyzer`'s deprecated `model_id` argument.
 `global.anthropic.claude-sonnet-4-6` no longer redirects to the floating
 `sonnet` alias. Select `model_name="sonnet"` explicitly to use the current
 generation, or `model_name="sonnet5.5"` to pin the configured version.
 
-**"Migrate onto the live successor" needs a successor that is honestly the same thing.** Three
-version-neutral families were *deleted* across the two 2026-08-29 passes rather than migrated, and
-each reason generalizes:
+Earlier compatibility redirects included `glm5`/`glm-5` from NVIDIA to
+Bedrock and then Z.AI, Azure Kimi/DeepSeek names to their direct APIs, and
+`gpt-bedrock` through successive GPT releases. Those redirects ended on
+2026-10-19. Select `glm`, `kimi`, `deepseek-v4-pro`, or `gpt6.1-sol`
+explicitly. Z.AI serves a distinct `glm-5`, so redirecting that name to 5.3
+was especially ambiguous.
 
-- `step-flash` / `step-nvidia` — no StepFun model remains anywhere in the registry. There is
-  nothing to migrate onto, so the whole family fails fast.
-- `qwen-nvidia` / `qwen3-nvidia` / `qwen-coder-nvidia` — deleted in the EOL pass because the only
-  live Qwen was then `qwen-next-bedrock`, and resolving a `-nvidia`-suffixed name to Bedrock would
-  move the user across **both a provider and a billing boundary** (free NIM tier → billed
-  Bedrock), silently. The provider suffix is part of what the name states; treat it like a
-  version. The curation pass then removed that Bedrock entry too, which took the *bare* `qwen` and
-  `qwen-coder` with it — reason one, applied a second time to the same family.
-- `grok` / `grok-bedrock` — no xAI model remained after Grok 4.3 was cut.
-  Those aliases failed until Grok 4.7 returned on 2026-09-29 under native
-  `bedrock` with `us.xai.grok-4.7`. They now name 4.7 as current aliases.
-  The version-specific `grok-4.3`, `grok43`, and `grok-4.3-bedrock` names
-  remain deleted; returning a vendor does not revive its retired versions.
-
-`glm5` / `glm-5` are the counter-example that shows the line: they migrated to `glm5-bedrock`,
-also a provider change, but the target *is* GLM 5 — the thing the name says. Being a
-`deprecated_alias` (resolvable, unadvertised) is the right home for a name that stays truthful
-about the model while changing where it comes from. (When the Bedrock re-host was curated away on
-2026-09-19 they moved again, onto Z.AI's `zhipuai/glm-5.3`. That one stretches the rule and the
-YAML says so: Z.AI serves a *distinct real* `glm-5`, so pointing `glm5` at 5.3 is a deliberate
-choice to track the family's current release, not an identity claim. The provider-explicit
-`glm5-bedrock`/`glm-5-bedrock`/`glm5b` were deleted, since the suffix names a provider that no
-longer serves it. GLM-5.3 reached Bedrock on 2026-10-08 as `glm-5.3-bedrock`, but those names
-stay deleted. They were explicitly deleted rather than parked as deprecated aliases, so nothing
-is waiting to go home, unlike `kimi-bedrock`.) `kimi-bedrock` → Moonshot's `kimi-k3` was the same shape until 2026-09-23,
-when Kimi K3 reached Bedrock and the name moved back onto `kimi-k3-bedrock` as a plain alias — a
-parked version-neutral name goes home once its suffix is true again. `gpt-bedrock` followed GPT-5.6 Sol until that entry was removed on 2026-09-30,
-then moved to `gpt6.1-sol-bedrock` as a deprecated alias. Version-specific
-`gpt5.6-sol-bedrock`/`gpt5.6`/`gpt-5.6`/`gpt5.6-bedrock` were deleted. Both
-GPT-5.6 Sol and Opus 5 were removed at user request as curation, while live.
-The default remains Opus 5.5; version-specific Opus 5 names were also deleted.
+Current provider-specific names remain valid where their suffix is true:
+`kimi-bedrock` selects Bedrock K3 and `grok-bedrock` selects native Bedrock
+Grok 4.7. Retired version names remain deleted. The `qwen*`, `step*`,
+`mistral*`, and `minimax*` families have no configured successor.
 
 ## `aliases` vs `deprecated_aliases` is purely a display split
 
-`ConfigLoader._register_all_names` registers both identically, so resolution never differs.
-`deprecated_aliases` holds the back-compat-only names inherited from removed entries;
-`--list-models` renders them as `+N deprecated` and only spells them out under `--verbose`,
-because advertising a name that resolves to a *different* model than it says is actively
-misleading. Keep genuinely current alternative spellings in `aliases`.
+The schema retains `deprecated_aliases` for custom configurations.
+`ConfigLoader._register_all_names` registers both lists identically.
+`--list-models` renders custom deprecated names as `+N deprecated` and spells
+them out under `--verbose`. The bundled registry uses only `aliases` and
+contains no deprecated names.
 
-## The six guards in `tests/test_config.py`
+## Registry guards in `tests/test_config.py`
 
-- `test_retired_model_aliases_redirect_to_live_successors` — every *migrated* identifier still
-  resolves.
+- `test_current_family_aliases_resolve_to_expected_models` — current names
+  retain their expected model and provider.
+- `test_bundled_registry_has_no_deprecated_aliases` — bundled entries use
+  current names only.
+- `test_custom_deprecated_aliases_still_resolve` — custom configurations
+  retain opt-in compatibility aliases.
 - `test_deleted_aliases_do_not_resolve` — every entry in the allowlist raises.
 - `test_no_historical_model_id_is_orphaned` — replays the last 8 revisions of `models.yaml`; a
   name is either resolvable or explicitly allowlisted.

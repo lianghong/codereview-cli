@@ -353,7 +353,7 @@ def test_real_registry_loads_without_any_conflict_warning(caplog):
 #
 # Superseded-but-still-live endpoints are deliberately NOT listed — re-adding
 # those is a judgement call, not a bug. Their aliases are covered by
-# test_retired_model_aliases_redirect_to_live_successors instead.
+# test_current_family_aliases_resolve_to_expected_models and the deletion guard.
 #   minimaxai/minimax-m2.5              — NIM deprecated 2026-05-12
 #   moonshotai/kimi-k2.5                — NIM shut down 2026-05-20 (NOTE: the
 #                                         dotted Bedrock id is a different
@@ -488,92 +488,34 @@ def test_no_model_points_at_missing_azure_deployment():
     assert not offenders, f"Entries name missing Azure deployments: {offenders}"
 
 
-def test_retired_model_aliases_redirect_to_live_successors():
-    """Aliases inherited from removed entries resolve to a live successor.
-
-    Removing a model should not break a scripted ``--model <alias>`` when the
-    successor is a drop-in: the successor absorbs the alias. The exception is a
-    name that states a *version* (``opus4.6``, ``minimax-m2.5``, ``glm-5.1``) —
-    those were deleted in the 2026-07-25 alias cleanup rather than redirected,
-    because silently serving a different generation is worse than a clear error.
-    ``RETIRED_ALIASES_DELETED_NOT_REDIRECTED`` below is the counterpart guard.
-    """
+def test_current_family_aliases_resolve_to_expected_models():
+    """Current aliases retain their model and provider after deprecated-name removal."""
     loader = ConfigLoader()
     expected = {
-        # Kimi/DeepSeek-on-Azure: both deployments are gone from the resource,
-        # and the direct APIs are the canonical owners of those families. These
-        # names don't state a version, so redirecting is safe.
-        "kimi-azure": "kimi-k3",
-        "kimi25-azure": "kimi-k3",
-        "deepseek-v4-azure": "deepseek-v4-pro",
-        "ds-v4-azure": "deepseek-v4-pro",
-        # GLM-on-NVIDIA went away in 2026-08 (glm5 deprecated 2026-04-20,
-        # glm-5.1 ~2026-07, glm-5.2 EOL 2026-08-21), so these first moved onto
-        # Bedrock's `zai.glm-5`. That entry was itself removed 2026-09-19 as
-        # curation, so they moved again, to the Z.AI-direct flagship — the
-        # family's canonical owner. They say GLM *5* without pinning a minor and
-        # GLM-5.3 is a GLM 5, so the names stay truthful. Every provider-suffixed
-        # GLM spelling was deleted instead — see the counterpart guard.
-        "glm5": "glm-5.3",
-        "glm-5": "glm-5.3",
-        # GLM-on-Z.AI: 5.1 -> 5.2 -> 5.3, all at the same $1.40/$4.40
-        # rate; the generation-neutral direct-provider names track the current
-        # flagship while version-specific names are deleted.
-        "zai-glm": "glm-5.3",
-        "glm-zai": "glm-5.3",
-        # Gemini: 3 Pro shut down 2026-03-09; the generation-3 Flash names have
-        # now walked forward three times — 3 Flash Preview -> 3.6 (2026-07-25)
-        # -> 3.7 (2026-08-29) -> 3.8 (2026-09-19) — because each hop landed on
-        # another generation-3 Flash at the same $1.50/$7.50, same 1M context and
-        # same 64K output, so the names never stopped being true. Every
-        # *minor*-version spelling (gemini36-flash, gemini3.6-flash,
-        # gemini37-flash, gemini3.7-flash) was deleted instead.
-        "gemini-3-pro": "gemini-3.1-pro-preview",
-        "gemini3-pro": "gemini-3.1-pro-preview",
-        "gemini-3-flash": "gemini-3.8-flash",
-        "gemini3-flash": "gemini-3.8-flash",
-        "g3flash": "gemini-3.8-flash",
-        # ---- 2026-08-29 curation pass (nine live entries removed) ----
-        # Claude Sonnet 4.6 removed in favour of Sonnet 5 (same $3/$15, 5x the
-        # context). `sonnet` was the removed entry's *id* and names the tier, not
-        # a version, so it moves up — and as a plain `alias`, not a deprecated
-        # one. They moved forward again to Sonnet 5.5 on 2026-09-30.
-        "sonnet": "global.anthropic.claude-sonnet-5-5",
-        "claude-sonnet": "global.anthropic.claude-sonnet-5-5",
-        # Kimi K2.5 on *Bedrock* removed; the Moonshot direct API is the family's
-        # canonical owner, so this is the same move `kimi-azure` made. Crosses a
-        # provider boundary, hence deprecated rather than advertised. Since
-        # 2026-09-23 Kimi K3 is on Bedrock, so the name is back on a Bedrock
-        # entry as a plain alias — same $3/$15, no billing change.
-        "kimi-bedrock": "global.moonshotai.kimi-k3",
-        # GPT-5.5 -> GPT-5.6 Sol -> GPT-6.1 Sol (2026-09-30). The
-        # version-neutral compatibility name stays a deprecated alias.
-        "gpt-bedrock": "openai.gpt-6.1-sol",
-        # Grok returned on 2026-09-29. Generation-neutral names now resolve
-        # to 4.7; every 4.3-specific spelling remains deleted.
-        "grok": "us.xai.grok-4.7",
-        "grok-bedrock": "us.xai.grok-4.7",
-        # Every qwen* spelling is still deleted: no successor remains.
-        #
-        # A removed entry's *id* is a --model spelling too, not just its
-        # aliases — these were ids of removed entries and are easy to forget.
-        "deepseek-v4-pro-azure": "deepseek-v4-pro",
-        "kimi-k2.5-azure": "kimi-k3",
+        "kimi": ("moonshot", "kimi-k3"),
+        "deepseek-v4-pro": ("deepseek", "deepseek-v4-pro"),
+        "glm": ("zai", "glm-5.3"),
+        "zai-glm": ("zai", "glm-5.3"),
+        "glm-zai": ("zai", "glm-5.3"),
+        "gemini-pro": ("google_genai", "gemini-3.1-pro-preview"),
+        "gemini-flash": ("google_genai", "gemini-3.8-flash"),
+        "sonnet": ("bedrock", "global.anthropic.claude-sonnet-5-5"),
+        "claude-sonnet": ("bedrock", "global.anthropic.claude-sonnet-5-5"),
+        "kimi-bedrock": ("bedrock", "global.moonshotai.kimi-k3"),
+        "gpt6.1-sol": ("bedrock_openai", "openai.gpt-6.1-sol"),
+        "grok": ("bedrock", "us.xai.grok-4.7"),
+        "grok-bedrock": ("bedrock", "us.xai.grok-4.7"),
     }
-    for alias, live_full_id in expected.items():
-        _, config = loader.resolve_model(alias)
-        assert config.full_id == live_full_id, (
-            f"alias {alias!r} resolved to {config.full_id!r}, expected {live_full_id!r}"
-        )
+    for alias, target in expected.items():
+        provider, config = loader.resolve_model(alias)
+        assert (provider, config.full_id) == target, alias
 
 
 # Identifiers that once shipped and were deliberately DELETED — in the
-# 2026-07-25 alias cleanup, the 2026-08-29 dead-endpoint pass, or the 2026-08-29
-# curation pass — rather than redirected onto a successor. Each either states a
-# specific model version, names a vendor/provider that no longer appears in the
-# registry at all, or is a redundant short form. Resolving any of them to a newer
-# generation would silently change pricing, sampling-param support and the
-# structured-output path, so failing fast is the correct behavior.
+# endpoint, curation, and alias cleanups — rather than redirected onto a
+# successor. Each names a retired version/provider, is a redundant short form,
+# or was kept only for compatibility. A redirect can silently change pricing,
+# sampling-param support, or the structured-output path; these names fail fast.
 #
 # Whether the endpoint is still alive upstream does NOT enter into it: the
 # 2026-08-29 curation group below is nine live endpoints, and their names are
@@ -583,6 +525,24 @@ def test_retired_model_aliases_redirect_to_live_successors():
 # NOT listed here must still resolve.
 RETIRED_ALIASES_DELETED_NOT_REDIRECTED = frozenset(
     {
+        # 2026-10-19: remove all remaining deprecated aliases from bundled models.
+        # Gemini: use the advertised gemini-pro / gemini-flash names.
+        "gemini-3-pro",
+        "gemini3-pro",
+        "gemini-3-flash",
+        "gemini3-flash",
+        "g3flash",
+        # Azure suffixes must not silently select the DeepSeek or Moonshot APIs.
+        "deepseek-v4-pro-azure",
+        "deepseek-v4-azure",
+        "ds-v4-azure",
+        "kimi-k2.5-azure",
+        "kimi-azure",
+        "kimi25-azure",
+        # These compatibility names tracked successors; select glm / gpt6.1-sol.
+        "glm5",
+        "glm-5",
+        "gpt-bedrock",
         # Opus 4.7 / 4.6 (removed entries) — Opus 5 is two generations newer.
         "opus4.7",
         "opus-4.7",
@@ -661,7 +621,7 @@ RETIRED_ALIASES_DELETED_NOT_REDIRECTED = frozenset(
         "mistral-medium-nvidia",
         "mistral-medium",
         "mistral-medium-3.5",
-        # GPT-5.4 on Bedrock — gpt-bedrock still redirects (now to GPT-5.6 Sol).
+        # GPT-5.4 on Bedrock — the former gpt-bedrock redirect is now deleted too.
         "gpt5.4-bedrock",
         # ---- 2026-08-29 curation pass: nine LIVE entries removed ----
         # Unlike every group above, nothing here died upstream. These endpoints
@@ -801,9 +761,9 @@ RETIRED_ALIASES_DELETED_NOT_REDIRECTED = frozenset(
         # Nothing here died upstream; all three endpoints still answer. Same rule
         # as the 2026-08-29 pass.
         #
-        # GLM 5 on Bedrock — `glm5`/`glm-5` migrated to Z.AI-direct GLM-5.3 (see
-        # the redirect map). The provider-suffixed pair is deleted: the suffix
-        # names a provider the GLM family is no longer on in this registry.
+        # GLM 5 on Bedrock — `glm5`/`glm-5` temporarily migrated to Z.AI-direct
+        # GLM-5.3, then were deleted too. The provider-suffixed pair still names
+        # the retired GLM 5 entry, not the current Bedrock GLM-5.3 entry.
         "glm5-bedrock",
         "glm-5-bedrock",
         # Gemini 3.7 Flash — 3.8 Flash is identical on price, context and output,
@@ -826,25 +786,48 @@ RETIRED_ALIASES_DELETED_NOT_REDIRECTED = frozenset(
 )
 
 
-def test_deprecated_aliases_resolve_but_are_not_advertised():
-    """The two lists must differ in display only, never in resolution.
-
-    This is the whole contract of the ``aliases`` / ``deprecated_aliases``
-    split. If ``_register_all_names`` ever skipped the deprecated list, every
-    back-compat name would break at once while ``--list-models`` looked fine.
-    """
+def test_bundled_registry_has_no_deprecated_aliases():
+    """Bundled model selection exposes current names only."""
     loader = ConfigLoader()
-    checked = 0
-    for models in loader.list_models().values():
-        for config in models:
-            for name in config.deprecated_aliases:
-                provider, resolved = loader.resolve_model(name)
-                assert resolved.id == config.id, (
-                    f"deprecated alias {name!r} resolved to {resolved.id!r}, "
-                    f"expected {config.id!r}"
-                )
-                checked += 1
-    assert checked, "no deprecated aliases in the registry — is the split wired?"
+    offenders = {
+        config.id: config.deprecated_aliases
+        for models in loader.list_models().values()
+        for config in models
+        if config.deprecated_aliases
+    }
+    assert not offenders, f"Bundled models still carry deprecated aliases: {offenders}"
+
+
+def test_custom_deprecated_aliases_still_resolve(tmp_path):
+    """Custom configurations retain opt-in compatibility aliases."""
+    config_path = tmp_path / "models.yaml"
+    config_path.write_text(
+        yaml.safe_dump(
+            {
+                "providers": {
+                    "google_genai": {
+                        "models": [
+                            {
+                                "id": "custom-model",
+                                "full_id": "custom-wire-id",
+                                "name": "Custom model",
+                                "aliases": ["custom-current"],
+                                "deprecated_aliases": ["custom-old"],
+                                "pricing": {
+                                    "input_per_million": 1.0,
+                                    "output_per_million": 2.0,
+                                },
+                            }
+                        ]
+                    }
+                }
+            }
+        )
+    )
+    loader = ConfigLoader(config_path=config_path)
+    for name in ("custom-model", "custom-current", "custom-old"):
+        provider, config = loader.resolve_model(name)
+        assert (provider, config.full_id) == ("google_genai", "custom-wire-id")
 
 
 def test_no_model_lists_its_own_id_as_an_alias():
@@ -895,7 +878,7 @@ def test_model_config_rejects_duplicate_alias_across_both_lists():
 def test_deleted_aliases_do_not_resolve():
     """The deleted names must raise, not quietly resolve.
 
-    Complements ``test_retired_model_aliases_redirect_to_live_successors``: that
+    Complements ``test_current_family_aliases_resolve_to_expected_models``: that
     one pins what still works, this one pins what deliberately stopped working.
     Without it, re-adding ``mm25`` as an M3 alias would pass every other test.
     """
@@ -1619,23 +1602,15 @@ def test_gpt6_sol_and_luna_match_the_live_probe(alias, entry_id, full_id, short,
 
 
 def test_generation_neutral_gemini_flash_alias_tracks_the_newest_flash():
-    """``gemini-flash`` and the generation-3 names both land on 3.8.
-
-    The generation-neutral name moved 3.6 -> 3.7 -> 3.8 as each Flash model
-    shipped. The deprecated ``gemini-3-flash`` spellings walked the same path one
-    hop behind — inherited by 3.7 when 3.6 was removed, then by 3.8 when 3.7 was
-    removed 2026-09-19 — so the two now coincide. That is expected, not a
-    duplicate: they differ in advertisement, not resolution. Minor-version names
-    never redirect.
-    """
+    """``gemini-flash`` tracks 3.8; deprecated and retired names fail explicitly."""
     loader = ConfigLoader()
 
     _, current = loader.resolve_model("gemini-flash")
     assert current.id == "gemini-3.8-flash"
 
     for alias in ("gemini-3-flash", "gemini3-flash", "g3flash"):
-        _, config = loader.resolve_model(alias)
-        assert config.id == "gemini-3.8-flash"
+        with pytest.raises(ValueError, match="Unknown model"):
+            loader.resolve_model(alias)
 
     for deleted_37 in ("gemini37-flash", "gemini3.7-flash", "gemini-3.7-flash"):
         with pytest.raises(ValueError, match="Unknown model"):

@@ -408,8 +408,9 @@ Bedrock OpenAI-compatible endpoint does.
 `openai.gpt-5.6-sol` Responses endpoint still answered HTTP 200. Its entry id
 `gpt5.6-sol-bedrock` and version-specific aliases were retired. It used prompt
 parsing, omitted sampling params, and was configured for 272K context at
-$4.40/$22 per million. The compatibility alias `gpt-bedrock` now selects
-GPT-6.1 Sol, with 1M context and short rates of $2.20/$11. That successor is
+$4.40/$22 per million. Select its successor with `gpt6.1-sol`; the
+compatibility alias `gpt-bedrock` was deleted on October 19. GPT-6.1 Sol
+has 1M context and short rates of $2.20/$11. That successor is
 us-east-1 only; removing 5.6 loses its us-east-2 availability.
 
 **GPT-6 Astra** (`openai.gpt-6-astra`, id `gpt6-astra-bedrock`, aliases

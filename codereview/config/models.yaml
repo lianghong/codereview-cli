@@ -5,6 +5,11 @@
 # Pricing/parameters researched: January 2026
 # Sources: AWS Bedrock, Azure OpenAI,
 #   Anthropic, Moonshot, Alibaba, Zhipu
+#
+# 2026-10-19: all 14 deprecated compatibility aliases were deleted.
+# Current IDs and advertised aliases retain their targets. Historical removal
+# notes below preserve endpoint evidence; see README's migration table for
+# replacements. The bundled registry does not use deprecated_aliases.
 
 ---
 version: "1.1"
@@ -460,7 +465,7 @@ providers:
       # Alias disposition: the version-neutral `kimi-bedrock` MIGRATED to the
       # Moonshot-direct `kimi-k2.6`, the same move `kimi-azure` made when that
       # deployment went away. It names the Kimi family, and the target really is
-      # a Kimi - the provider suffix becomes a lie, which is why it lands in
+      # a Kimi - the provider suffix became a lie, which is why it landed in
       # `deprecated_aliases` (resolvable, unadvertised) rather than `aliases`.
       # Unlike the deleted `qwen*-nvidia` names it crosses no billing boundary in
       # the surprising direction: Moonshot-direct is cheaper than the Bedrock
@@ -468,6 +473,7 @@ providers:
       # along with the entry id `kimi-k2.5-bedrock`.
       # 2026-09-23 UPDATE: `kimi-bedrock` moved back onto `kimi-k3-bedrock`
       # above, as a plain alias - Kimi K3 is on Bedrock, so the suffix is true.
+      # 2026-10-19 UPDATE: the deprecated Azure names were deleted.
 
       # Qwen3 Coder 480B (Bedrock) removed 2026-07-25 and Qwen3 Coder Next
       # (Bedrock) removed 2026-08-29 - NO Qwen model remains anywhere in this
@@ -529,18 +535,11 @@ providers:
       # 2026-10-08 UPDATE: a GLM is on Bedrock again — `glm-5.3-bedrock`
       # above (`zai.glm-5.3`). The deleted GLM 5 names below stay deleted.
       #
-      # Alias disposition: `glm5` and `glm-5` MIGRATED onto the Z.AI-direct
-      # `zhipuai/glm-5.3` as deprecated_aliases. They name GLM *5* without
-      # pinning a minor version, and GLM-5.3 is a GLM 5 — the `gemini-3-flash`
-      # case, not the `sonnet4.6` case. Both the old and new targets are
-      # billed, so this does not repeat the Qwen-on-NVIDIA free-to-billed
-      # trap. One wrinkle recorded because it will look wrong later: Z.AI's
-      # catalog *does* serve a distinct `glm-5`, so the alias `glm-5` resolves
-      # to 5.3 rather than to the upstream model of the same name. That is the
-      # deliberate cost of keeping the name working; `--list-models --verbose`
-      # discloses it. The provider-explicit `glm-5-bedrock` and the entry id
-      # `glm5-bedrock` were DELETED — the provider suffix names a provider
-      # this model is no longer on, and no other entry may answer to it.
+      # Alias disposition: `glm5` and `glm-5` temporarily migrated onto
+      # Z.AI-direct GLM-5.3, then were DELETED on 2026-10-19. Z.AI serves a
+      # distinct `glm-5`, so the redirect did not preserve model identity.
+      # Use `glm` / `zhipuai/glm-5.3` explicitly. The provider-specific
+      # `glm-5-bedrock` and entry id `glm5-bedrock` also remain deleted.
 
   # Azure OpenAI Provider
   azure_openai:
@@ -889,14 +888,9 @@ providers:
       # `glm52-nvidia`, `glm5.2-nvidia`, `glm-5.2-nvidia`, `glm5-nvidia`):
       # nothing GLM-shaped is left on this provider to point them at.
       #
-      # The version-neutral `glm5`/`glm-5` MIGRATED to `glm5-bedrock` instead of
-      # being deleted, and note they land on the model they actually name: those
-      # spellings say GLM *5*, and `zai.glm-5` on Bedrock is GLM 5 and is live in
-      # the configured us-east-1 (verified against ListFoundationModels). That
-      # is a provider *and* a billing change from the free NIM endpoint they used
-      # to reach, which is why they stay `deprecated_aliases` — resolvable, but
-      # not advertised by --list-models. For a current direct GLM use Z.AI's
-      # `glm` / `zhipuai/glm-5.3`; version-specific 5.2 names are retired.
+      # `glm5`/`glm-5` temporarily migrated to billed Bedrock GLM 5 and then
+      # to Z.AI GLM-5.3. Both compatibility names were DELETED on 2026-10-19.
+      # For current direct GLM use `glm` / `zhipuai/glm-5.3`.
 
       # GLM-5.3 (NVIDIA) removed 2026-10-19 ahead of its announced sunset:
       # still listed and HTTP 200, but Deprecation: 2026-10-28T08:00:00Z.
@@ -987,12 +981,6 @@ providers:
         aliases:
           - gemini31-pro
           - gemini-pro
-        # Back-compat only: resolves, but hidden from --list-models
-        # (see --list-models --verbose).
-        # Named Gemini 3 Pro, whose endpoint shut down 2026-03-09.
-        deprecated_aliases:
-          - gemini-3-pro
-          - gemini3-pro
         pricing:
           input_per_million: 2.00
           output_per_million: 12.00
@@ -1021,20 +1009,6 @@ providers:
           - gemini-flash
           - gemini38-flash
           - gemini3.8-flash
-        # Back-compat only: resolves, but hidden from --list-models
-        # (see --list-models --verbose). Absorbed 2026-09-19 from the removed
-        # Gemini 3.7 Flash entry, which had inherited them from 3.6 Flash
-        # (2026-08-29) and before that from Gemini 3 Flash Preview
-        # (2026-07-25). They state generation *3* without pinning a minor, and
-        # 3.8 Flash is a generation-3 Flash at the same $1.50/$7.50, the same
-        # 1M context and the same 64K output cap, so following them forward
-        # does not change what the name claims. Deprecated rather than
-        # advertised because all three were minted for models several
-        # releases back.
-        deprecated_aliases:
-          - gemini-3-flash
-          - gemini3-flash
-          - g3flash
         pricing:
           # Verified: ai.google.dev/gemini-api/docs/pricing (2026-09-09).
           # Record the standard rate rather than the introductory
@@ -1092,6 +1066,8 @@ providers:
       # they moved 3.6 → 3.7. The version-explicit `gemini37-flash`,
       # `gemini3.7-flash` and the entry id `gemini-3.7-flash` were DELETED: a
       # name that pins the minor version must not answer from a different one.
+      # 2026-10-19 UPDATE: all three deprecated generation-3 names were
+      # deleted too. Use the current `gemini-flash` alias or the 3.8 ID.
       # Gemini 3 Flash Preview removed 2026-07-25, Gemini 3.6 Flash removed
       # 2026-08-29, Gemini 3.7 Flash removed 2026-09-19 (note above);
       # gemini-3.8-flash is now the only live Flash entry:
@@ -1131,15 +1107,6 @@ providers:
         aliases:
           - dsv4-pro
           - ds-v4-pro
-        # Back-compat only: resolves, but hidden from --list-models
-        # (see --list-models --verbose).
-        # Absorbed from the removed DeepSeek-V4-Pro (Azure) entry, whose Foundry
-        # deployment is gone (2026-07-25). DeepSeek direct is the canonical
-        # owner of this family, so no -azure name is advertised.
-        deprecated_aliases:
-          - deepseek-v4-pro-azure
-          - deepseek-v4-azure
-          - ds-v4-azure
         pricing:
           # Peak rates verified against DeepSeek's official pricing table on
           # 2026-09-09. The API charges half-price off peak; recording peak
@@ -1255,26 +1222,12 @@ providers:
         aliases:
           - kimi
           - kimi3
-        # Back-compat only: resolves, but hidden from --list-models
-        # (see --list-models --verbose).
-        # All of these were absorbed from the removed Kimi K2.5 (Azure) entry,
-        # whose Foundry deployment is gone (2026-07-25), and the removed Kimi
-        # K2.5 (Bedrock) entry (2026-08-29); they are version-neutral names for
-        # the Kimi family whose provider suffix no longer holds. Inherited again
-        # here because this entry replaced K2.6 as the family's canonical owner.
-        # `kimi-bedrock` left 2026-09-23 for `kimi-k3-bedrock`, where its
-        # provider suffix is true again.
-        #
         # The version-explicit `kimi26` and the old entry id `kimi-k2.6` were
         # DELETED rather than migrated: K2.6 is a different, still-live model
         # (Moonshot still serves it at $0.95/$4.00 on 256K context), so
         # answering to its name from K3 would silently swap a model AND
         # roughly triple the bill. Re-add K2.6 as its own entry from git
         # history if it is wanted alongside K3.
-        deprecated_aliases:
-          - kimi-k2.5-azure
-          - kimi-azure
-          - kimi25-azure
         pricing:
           # Authoritative: platform.moonshot.ai/docs/pricing/chat, fetched
           # 2026-09-19. Cache-hit input is $0.30 and caching is automatic with
@@ -1358,17 +1311,6 @@ providers:
           - glm5.3
           - zai-glm
           - glm-zai
-        # Back-compat only: resolves, but hidden from --list-models
-        # (see --list-models --verbose). Absorbed 2026-09-19 from the removed
-        # GLM 5 (Bedrock) entry, which had itself absorbed them from the
-        # GLM-5.2 (NVIDIA) entry NVIDIA end-of-lifed 2026-08-21. They say
-        # GLM *5* without pinning a minor, and this is a GLM 5 — see the
-        # removal note in the bedrock block for the full disposition,
-        # including why `glm-5` resolving here rather than to Z.AI's own
-        # `glm-5` is intended.
-        deprecated_aliases:
-          - glm5
-          - glm-5
         pricing:
           # Official pay-as-you-go rates, verified 2026-09-09.
           input_per_million: 1.40
@@ -1492,12 +1434,10 @@ providers:
       # NOTE: GPT-5.4 on *Azure* is a separate entry and stays - that's a
       # user-created deployment, and it's the newest GPT on that resource.
       #
-      # Alias disposition: the generation-neutral `gpt-bedrock` MIGRATED to
-      # gpt5.6-sol-bedrock, as a deprecated_alias - it names "the GPT on
-      # Bedrock"; it moved again to GPT-6.1 Sol on 2026-09-30. It stays unadvertised BECAUSE OF THE PRICE:
-      # following the name forward doubles the per-token rate, and a name that
-      # silently costs 2x should not be in the advertised list. The
-      # version-explicit ids `gpt5.5-bedrock` and `gpt5.4-bedrock` were DELETED.
+      # Alias disposition: `gpt-bedrock` temporarily migrated through
+      # GPT-5.6 Sol and GPT-6.1 Sol, then was DELETED on 2026-10-19.
+      # Use `gpt6.1-sol` explicitly. Version-specific ids
+      # `gpt5.5-bedrock` and `gpt5.4-bedrock` also remain deleted.
       #
       # Evidence worth keeping from the 5.5 entry: its supports_tool_use: false
       # was VERIFIED against the live endpoint, not assumed. GPT-5.5 engaged
@@ -1515,7 +1455,7 @@ providers:
       # Both use Responses, prompt parsing and us-east-1; removing 5.6 also
       # loses its us-east-2 availability. Its version-specific names
       # gpt5.6-sol-bedrock/gpt5.6/gpt-5.6/gpt5.6-bedrock are DELETED.
-      # The inherited gpt-bedrock name moves to gpt6.1-sol-bedrock below.
+      # The inherited gpt-bedrock name was also deleted on 2026-10-19.
       # Live Responses probe in us-east-1 returned HTTP 200 on 2026-09-30,
       # with no deprecation header.
       # Historical GPT-5.5 reasoning-only failures remain documented above.
@@ -1751,10 +1691,6 @@ providers:
           - gpt61-sol
           - gpt6.1
           - gpt-6.1
-        # Inherited from the curated GPT-5.6 Sol entry on 2026-09-30.
-        # A version-neutral compatibility name; --verbose displays it.
-        deprecated_aliases:
-          - gpt-bedrock
         pricing:
           # Published Mantle Standard rates, already including 10%.
           # Long-context rates apply to the entire request above 272K.

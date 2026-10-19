@@ -8,6 +8,10 @@
 
 ## 🎉 What's New (Unreleased)
 
+- ➖ **Deprecated aliases removed, 2026-10-19:** all 14 compatibility names
+  now fail explicitly. The 22 current models and their advertised aliases
+  remain available; see [Migrating deleted aliases](#migrating-deleted-aliases)
+  for replacements.
 - ✅ **Review reliability and security, 2026-10-19:** token budgets include
   numbered source, truncated responses fail explicitly, and partial reviews
   export failed-file details before exiting 1. Configuration checks cover
@@ -15,8 +19,8 @@
   discovery skips symlinks and respects Git worktrees.
 - ➖ **Opus 5 and GPT-5.6 Sol removed on 2026-09-30** at user request.
   Use `opus` / `opus5.5` for Claude and `gpt6.1-sol` for the current Sol tier.
-  Version-specific names are retired; the compatibility alias `gpt-bedrock`
-  now selects GPT-6.1 Sol. The default remains Opus 5.5.
+  Version-specific names and the compatibility alias `gpt-bedrock` are
+  retired. The default remains Opus 5.5.
 - ⚠️ **NVIDIA cleanup, 2026-10-19:** removed Kimi K3 (HTTP 410, EOL October 15)
   and GLM-5.3 (announced October 28 sunset). DeepSeek-V4.1-Flash and
   GLM-5.3-Flash remain; the registry now has 22 models.
@@ -61,8 +65,8 @@
 - ➖ **Curation pass, 2026-08-29 (9 more entries removed, 27 → 18)** — this one is **not** a dead-endpoint cleanup: **all nine endpoints were live when probed for that pass.** Removed: Claude Opus 4.8, Claude Sonnet 4.6, Kimi K2.5 (Bedrock), Qwen3-Coder-Next (Bedrock), MiniMax M2.5 (Bedrock), Kimi K2.6 (NVIDIA), Gemini 3.6 Flash, GPT-5.5 (Bedrock) and Grok 4.3 (Bedrock). What it costs, stated plainly so re-adding is an informed choice: Bedrock's cheapest entry goes from **$0.50/M → $1.00/M** (`haiku`), Bedrock keeps exactly **one** entry on the tool-use structured-output path (`haiku`), and `bedrock_openai`'s cheapest goes from **$1.25/M → $5.00/M** with a narrower window (400K → 272K). Every removal site in `models.yaml` carries a dated comment saying what the probe showed and what was lost.
 - ⚠️ **Alias cleanup (94 aliases deleted in the earlier passes)** —
   version-specific names of removed models fail explicitly. Version-neutral
-  compatibility names appear under `--list-models --verbose`; `gpt-bedrock`
-  now selects GPT-6.1 Sol. Advertised `sonnet`/`claude-sonnet` select Sonnet
+  compatibility names were also deleted on October 19. Advertised
+  `sonnet`/`claude-sonnet` select Sonnet
   5.5, and `grok`/`grok-bedrock` select native Bedrock Grok 4.7.
   Families with no configured successor (`qwen*`, `mistral*`, `step*`,
   `minimax*`) remain retired. See
@@ -318,12 +322,11 @@ export GOOGLE_API_KEY="your-api-key-here"
 
 ```bash
 # Gemini 3.1 Pro - Most advanced reasoning model (1M context)
-# (Google shut down gemini-3-pro 2026-03-09; gemini-3-pro now routes here)
+# (Google shut down Gemini 3 Pro on 2026-03-09; its old aliases are retired)
 codereview /path/to/code --model gemini-3.1-pro
 
 # Gemini 3.8 Flash - latest Flash generation for long-horizon engineering (1M context)
-# (owns gemini-flash, plus the removed 3.7 entry's gemini-3-flash,
-#  gemini3-flash and g3flash names)
+# (also selected by gemini-flash)
 codereview /path/to/code --model gemini-3.8-flash
 ```
 
@@ -478,7 +481,7 @@ for the quality comparison and the scope of the observed connection failures.
 
 ```bash
 # GPT-6.1 Sol - current coding tier, 1M context (Responses API, us-east-1)
-# The compatibility alias gpt-bedrock selects this entry.
+# Use gpt6.1-sol; the compatibility alias gpt-bedrock is retired.
 codereview /path/to/code --model gpt6.1-sol
 
 # GPT-6 Astra - OpenAI's most capable model (Responses API, text + image in)
@@ -514,9 +517,6 @@ codereview /path/to/your/codebase
 ```bash
 # List all available models (advertised aliases only)
 codereview --list-models
-
-# Also show deprecated aliases — back-compat names that resolve to a successor model
-codereview --list-models --verbose
 
 # AWS Bedrock Models (native Converse)
 codereview /path/to/code --model fable5    # Claude Fable 5 (Mythos-class, 1M context)
@@ -587,7 +587,7 @@ codereview /path/to/code -m kimi
 | **GPT-6 Astra (Bedrock)** | **OpenAI-on-Bedrock** | **OpenAI's most capable model, text + image in, 128K output, `bedrock-mantle` endpoint us-west-2 only. 1M context; tiered pricing — a request over 272K input tokens bills $22/$82.50** | **$11.00** | **$55.00** |
 | **GPT-6 Sol (Bedrock)** | **OpenAI-on-Bedrock** | **Mid GPT-6 tier, 1M context, 128K output, `bedrock-mantle` us-east-1 only; tiered above 272K ($4.40/$16.50). Derived rate — AWS unpublished** | **$2.20** | **$11.00** |
 | **GPT-6 Luna (Bedrock)** | **OpenAI-on-Bedrock** | **Cheapest GPT-6 tier, 1M context, 128K output, `bedrock-mantle` us-east-1 only; tiered above 272K ($0.22/$0.825). Derived rate — AWS unpublished** | **$0.11** | **$0.55** |
-| GPT-6.1 Sol | OpenAI-on-Bedrock | Current coding tier, 1M context, 131,072 output tokens, Mantle us-east-1; tiered above 272K ($4.40/$16.50); also selected by `gpt-bedrock` | $2.20 | $11.00 |
+| GPT-6.1 Sol | OpenAI-on-Bedrock | Current coding tier, 1M context, 131,072 output tokens, Mantle us-east-1; tiered above 272K ($4.40/$16.50) | $2.20 | $11.00 |
 | Grok 4.7 | AWS Bedrock | Native Converse, low reasoning effort, 500K context, 32K review output budget; Geo-US profile, us-east-1 source (owns `grok`) | $2.20 | $6.60 |
 | GLM-5.3 (Bedrock) | AWS Bedrock | ~744B MoE / 40B active, 1M context, always-on reasoning; Global profile, AWS credentials, eligible accounts only (owns `glm-bedrock`) | $1.68 | $5.28 |
 
@@ -978,6 +978,13 @@ Error: 'opus4.6' is not a valid model
 
 The July–September 2026 alias cleanups, including the September 30 removals,
 **deleted** version-specific names instead of pointing them at a successor.
+On October 19, all 14 remaining deprecated aliases were also deleted.
+Update scripts that use them to the explicit replacements below; names with
+an Azure suffix no longer silently select another provider.
+The DeepSeek replacement uses `DEEPSEEK_API_KEY` and DeepSeek billing;
+Moonshot Kimi uses `KIMI_API_KEY` and Moonshot billing. Select `kimi-bedrock`
+explicitly if you want K3 on Bedrock.
+
 A name that says "4.6" silently
 resolving to a two-generations-newer model — with different pricing, different
 sampling-parameter support and a different structured-output path — is worse than an error
@@ -987,23 +994,30 @@ version-pinning names are deleted on exactly the same rule.
 
 | Deleted alias(es) | Use instead |
 |---|---|
+| `gemini-3-pro`, `gemini3-pro` | `gemini-pro` / `gemini-3.1-pro` |
+| `gemini-3-flash`, `gemini3-flash`, `g3flash` | `gemini-flash` |
+| `deepseek-v4-pro-azure` | `deepseek-v4-pro` (DeepSeek direct) |
+| `deepseek-v4-azure`, `ds-v4-azure` | `deepseek-v4-pro` (DeepSeek direct) |
+| `kimi-k2.5-azure`, `kimi-azure`, `kimi25-azure` | `kimi` (Moonshot direct) |
+| `glm5`, `glm-5` | `glm` / `zhipuai/glm-5.3` (Z.AI direct) |
+| `gpt-bedrock` | `gpt6.1-sol` (OpenAI-on-Bedrock) |
 | `opus4.7`, `opus-4.7`, `claude-opus-4.7`, `claude-opus-47`, `opus4.6`, `opus-4.6`, `claude-opus-4.6`, `opus4.8`, `opus-4.8`, `claude-opus-4.8`, `claude-opus-48`, `opus5`, `claude-opus-5`, `opus-5`, `claude-opus5` | `opus` / `opus5.5` — current default, 1M context, 128K output, Global $4/$20 pricing |
 | `sonnet4.6`, `claude-sonnet-4.6` | `sonnet5.5` (or `sonnet`) — $2/$10, 1M context, Global routing and prompt parsing; sampling params omitted |
 | `sonnet5`, `claude-sonnet-5`, `sonnet-5`, `claude-sonnet5` | `sonnet5.5` (or `sonnet`) — replaced September 30, 2026; same 1M context and 128K output, lower $2/$10 rates, Global routing replaces US residency |
 | `minimax-m2.7`, `minimax-m2.7-nvidia`, `mm2.7-nvidia`, `mm27`, `minimax-m2.5-nvidia`, `mm2.5-nvidia`, `minimax-m2.5`, `mm25`, `minimax-m2.5-bedrock`, `mm2.5-bedrock`, `minimax-m3`, `minimax-m3-nvidia`, `mm3-nvidia`, `mm3` | **nothing** — no MiniMax model remains anywhere in the registry. NIM end-of-lifed `minimaxai/minimax-m3` on 2026-09-09 and serves no MiniMax at all; the Bedrock re-host was cut as curation on 2026-08-29 while still live. `glm53-flash-nvidia` is a free NIM alternative (multimodal, 1M context, thinking) |
-| `kimi-k2.5-nvidia`, `kimi-k2.5`, `kimi25`, `kimi-k2.5-bedrock`, `kimi25-bedrock` | `kimi` / `kimi-k3` (Moonshot direct), or `kimi-bedrock` for Kimi K3 on Bedrock. `kimi-azure`, `kimi25-azure` and `kimi-k2.5-azure` still resolve, now to Moonshot's K3 |
+| `kimi-k2.5-nvidia`, `kimi-k2.5`, `kimi25`, `kimi-k2.5-bedrock`, `kimi25-bedrock` | `kimi` / `kimi-k3` (Moonshot direct), or `kimi-bedrock` for Kimi K3 on Bedrock |
 | `kimi-k2.6-nvidia`, `kimi-nvidia-26`, `kimi26-nvidia` | `kimi` (K3 on Moonshot) or `kimi-bedrock` (K3 on Bedrock), both billed. K3 on NVIDIA was retired October 15. The NIM K2.6 endpoint is still listed upstream but is not provisioned for every account; K3 is a different generation, so these names don't follow it |
 | `kimi-k3-nvidia`, `kimi-nvidia-3`, `kimi3-nvidia` | `kimi` / `kimi-bedrock` for billed K3, or `glm53-flash-nvidia` for a different free model. NVIDIA returned HTTP 410 with EOL `2026-10-15T08:00:00Z`; hosted retirement does not remove self-hosted weights |
 | `glm-5.3-nvidia`, `glm53-nvidia`, `glm5.3-nvidia` | `glm` (Z.AI) or `glm53-bedrock` for the billed flagship, or `glm53-flash-nvidia` for the distinct free Flash model. Removed ahead of `deprecation: 2026-10-28T08:00:00Z`; still answering HTTP 200 at the October 19 audit |
 | `kimi-k2.6`, `kimi26` | **nothing** — the Moonshot entry was upgraded to **K3** on 2026-09-19 and these version-explicit names were deleted rather than migrated. K2.6 is a *different, still-live* model at roughly a third of K3's price ($0.95/$4.00 vs $3.00/$15.00); silently pointing them at K3 would swap the model and triple the bill. Use `kimi` / `kimi-k3` deliberately, or restore the K2.6 entry from git history — no provider code is needed |
-| `glm5-bedrock`, `glm-5-bedrock`, `glm5b` | `glm53-bedrock` for GLM-5.3 on Bedrock (added 2026-10-08), `glm` / `zhipuai/glm-5.3` (Z.AI direct), or the distinct free `glm53-flash-nvidia` model. These names stay deleted rather than following the new Bedrock entry. The Bedrock re-host was removed 2026-09-19 as **curation** at explicit request — `zai.glm-5` was **not** re-verified as dead, so this is not an upstream EOL. The version-neutral `glm5`/`glm-5` migrated to Z.AI's 5.3 entry; the provider-explicit spellings were deleted, since the suffix names a provider that no longer serves it. Note Z.AI does serve a distinct real `glm-5`, so `glm5` resolving to 5.3 is a deliberate choice, not an identity |
+| `glm5-bedrock`, `glm-5-bedrock`, `glm5b` | `glm53-bedrock` for GLM-5.3 on Bedrock (added 2026-10-08), `glm` / `zhipuai/glm-5.3` (Z.AI direct), or the distinct free `glm53-flash-nvidia` model. These names stay deleted rather than following the new Bedrock entry. The Bedrock re-host was removed 2026-09-19 as **curation**; its endpoint was live at the August 29 check but could not be re-verified at removal. The temporary `glm5`/`glm-5` redirects were also removed on October 19 |
 | `gemini-3.7-flash`, `gemini37-flash`, `gemini3.7-flash` | `gemini-3.8-flash` (or `gemini-flash`) — identical $1.50/$7.50, 1M context and 64K output, and it absorbed 3.7's generation-neutral names. Removed 2026-09-19 as **curation** while still live. ⚠️ 3.7 was the registry's only entry that had *won* `supports_tool_use: true` back with a live thinking run, so it was the documented bar for flipping 3.8 or either GLM-5.3 entry; version-explicit names were deleted rather than migrated because 3.8 is on the prompt path |
-| `glm51`, `glm51-nvidia`, `glm-5.1`, `glm5.1`, `glm5.1-zai`, `zhipuai/glm-5.1`, `zhipuai/glm-5.2`, `glm-5.2`, `glm5.2`, `glm5.2-zai`, `glm52`, `glm52-nvidia`, `glm5.2-nvidia`, `glm-5.2-nvidia`, `glm5-nvidia` | `glm` / `zhipuai/glm-5.3` (Z.AI direct). Version-explicit 5.2 names were deleted when 5.3 superseded it at identical price and limits; `glm5`/`glm-5` still resolve, now to this same Z.AI entry |
+| `glm51`, `glm51-nvidia`, `glm-5.1`, `glm5.1`, `glm5.1-zai`, `zhipuai/glm-5.1`, `zhipuai/glm-5.2`, `glm-5.2`, `glm5.2`, `glm5.2-zai`, `glm52`, `glm52-nvidia`, `glm5.2-nvidia`, `glm-5.2-nvidia`, `glm5-nvidia` | `glm` / `zhipuai/glm-5.3` (Z.AI direct). Version-explicit 5.2 names were deleted when 5.3 superseded it at identical price and limits |
 | `qwen3.5`, `qwen35`, `qwen3.5-nvidia`, `qwen35-nvidia`, `qwen-nvidia`, `qwen3-nvidia`, `qwen-coder-nvidia`, `qwen-next-bedrock`, `qwen-bedrock`, `qwen-next`, `qwen3-next`, `qwen-coder-next`, `qwen`, `qwen-coder` | **nothing** — no Qwen model remains anywhere in the registry. `qwen-next-bedrock` (the last one, and Bedrock's cheapest entry at $0.50/$1.20) was removed 2026-08-29 while still live; the closest replacements are `haiku` on Bedrock or the free `glm53-flash-nvidia` |
 | `grok-4.3`, `grok43`, `grok-4.3-bedrock` | `grok` / `grok-4.7` for native Bedrock 4.7; restore the old Mantle configuration from git history if 4.3 is required |
 | `mistral-small`, `mistral-small-4`, `mistral-small-nvidia`, `ms4`, `mistral-medium`, `mistral-medium-3.5`, `mistral-medium-nvidia`, `mm35`, `mmed` | **nothing** — NIM retired both endpoints and carries no Mistral successor, so no Mistral model remains in this registry |
 | `step35`, `step-3.5-flash`, `step-3.7-flash`, `step-3.7`, `step37`, `step37-nvidia`, `step-flash`, `step-nvidia` | **nothing** — NIM serves no StepFun model any more |
-| `gpt5.4-bedrock`, `gpt5.5-bedrock`, `gpt5.6-sol-bedrock`, `gpt5.6`, `gpt-5.6`, `gpt5.6-bedrock` | `gpt6.1-sol` — 1M context, $2.20/$11 up to 272K input per request; `gpt-bedrock` now selects it |
+| `gpt5.4-bedrock`, `gpt5.5-bedrock`, `gpt5.6-sol-bedrock`, `gpt5.6`, `gpt-5.6`, `gpt5.6-bedrock` | `gpt6.1-sol` — 1M context, $2.20/$11 up to 272K input per request |
 | `gpt5.6-sol`, `sol` | `gpt6.1-sol` |
 | `gpt54p` | `gpt54-pro` (or `gpt-pro`) |
 | `dsv4pro`, `dsv4f` | `dsv4-pro`, `dsv4-flash` |
@@ -1011,13 +1025,12 @@ version-pinning names are deleted on exactly the same rule.
 | `dsv4-nvidia`, `ds-v4-nvidia`, `deepseek-v4-nvidia`, `deepseek-v4-pro-nvidia` | `deepseek-v4-pro` (DeepSeek direct, same 1.65T model but **billed** at $1.32/$3.96). NIM end-of-lifed `deepseek-v4-pro-0813` on 2026-09-14. These names were **not** redirected to the Flash-on-NIM entry — Pro and Flash shipped as separate concurrent entries, so `dsv4-nvidia` meant "the Pro one" — and that entry has since been removed as well |
 | `dsv4-flash-nvidia`, `ds-v4-flash-nvidia`, `deepseek-v4-flash-nvidia` | `dsv41-flash-nvidia` for the new V4.1 release on NIM, `glm53-flash-nvidia` for fast free reviews, or `dsv4-flash` for billed V4-Flash on DeepSeek direct ($0.44/$1.32). The old `deepseek-v4-flash-0731` advertised its September 21 sunset in a `deprecation` header while still returning 200. Its version-specific names remain retired; they do not silently move to V4.1 or a billed provider |
 | `g31pro`, `g3pro` | `gemini31-pro` (or `gemini-pro`) |
-| `gemini-3.6-flash`, `gemini36-flash`, `gemini3.6-flash`, `g36flash` | `gemini-3.8-flash` — identical $1.50/$7.50, 1M context and 64K output, which is why the generation-3 names `gemini-3-flash`/`gemini3-flash`/`g3flash` migrated (first to 3.7, then to 3.8 when 3.7 was curated away). `gemini-flash` also tracks 3.8 |
+| `gemini-3.6-flash`, `gemini36-flash`, `gemini3.6-flash`, `g36flash` | `gemini-3.8-flash` / `gemini-flash` — identical $1.50/$7.50, 1M context and 64K output; the temporary generation-3 compatibility aliases were deleted October 19 |
 | `kimi-moonshot` | `kimi` |
 
-Version-*neutral* aliases (`glm5`, `kimi-azure`, `gemini-3-flash`,
-`gpt-bedrock`, …) were kept and still resolve to their successor — run
-`codereview --list-models --verbose` to see them. `sonnet`/`claude-sonnet` are the one pair
-promoted to fully advertised aliases and now select Sonnet 5.5.
+The bundled registry contains no deprecated aliases. Current advertised
+names remain supported: `sonnet`/`claude-sonnet` select Sonnet 5.5,
+`kimi` selects Moonshot K3, and `gemini-flash` selects Gemini 3.8 Flash.
 The `step*` and `qwen*` families have no successor in the registry.
 `grok`/`grok-bedrock` now select Grok 4.7; its version-specific 4.3 names
 remain deleted. The retired `qwen*-nvidia` names would also have crossed

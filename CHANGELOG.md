@@ -898,6 +898,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- **All 14 deprecated model aliases (2026-10-19).** The bundled registry
+  now accepts current model IDs and advertised aliases only. Removed
+  `gemini-3-pro`, `gemini3-pro`, `gemini-3-flash`, `gemini3-flash`, `g3flash`,
+  `deepseek-v4-pro-azure`, `deepseek-v4-azure`, `ds-v4-azure`,
+  `kimi-k2.5-azure`, `kimi-azure`, `kimi25-azure`, `glm5`, `glm-5`, and
+  `gpt-bedrock`. These names now fail explicitly instead of silently
+  selecting a successor, sometimes through a different provider. Use
+  `gemini-pro`, `gemini-flash`, `deepseek-v4-pro`, `kimi`, `glm`, or
+  `gpt6.1-sol`, respectively. All 22 model entries, their pricing, and current
+  aliases remain unchanged. Custom configurations still support the
+  `deprecated_aliases` field.
+
 - **NVIDIA cleanup, 2026-10-19: 24 → 22 models.** Removed Kimi K3
   (`moonshotai/kimi-k3`): absent from the live catalog and HTTP 410 with
   EOL `2026-10-15T08:00:00Z`. Removed GLM-5.3 (`z-ai/glm-5.3`) ahead of
