@@ -217,3 +217,11 @@ def test_passes_project_context_to_provider() -> None:
             "opus", None, callbacks=None, project_context=readme_content
         )
         assert analyzer is not None  # Verify analyzer was created
+
+
+def test_retired_sonnet_wire_id_is_not_redirected(mock_provider):
+    with patch("codereview.analyzer.ProviderFactory") as factory:
+        factory.return_value.create_provider.return_value = mock_provider
+        with pytest.warns(DeprecationWarning):
+            analyzer = CodeAnalyzer(model_id="global.anthropic.claude-sonnet-4-6")
+        assert analyzer.model_name == "global.anthropic.claude-sonnet-4-6"

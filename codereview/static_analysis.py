@@ -378,9 +378,9 @@ class StaticAnalyzer:
     # actually loads code — a ``plugins`` declaration, or a config file that is
     # itself executable JS. Everything else runs exactly as before.
     #
-    # ``suffixes`` are config extensions that are executable by definition (the
-    # file is a module the tool imports); ``names`` are data-format configs that
-    # are only a risk if they declare plugins.
+    # ``suffixes`` names configs that require trust by existence: executable
+    # modules and compiler argument files, whose plugin flags can be indirect.
+    # ``names`` are data configs checked for code-loading keys.
     #
     # ``tree_wide`` says *where* to look, and it is not cosmetic. mypy and
     # golangci-lint resolve config from the working directory (which is
@@ -405,6 +405,15 @@ class StaticAnalyzer:
             "suffixes": (),
             "keys": ("plugins",),
             "tree_wide": False,
+        },
+        "clang-tidy": {
+            "names": (".clang-tidy",),
+            # Compiler arguments can load native plugins, including indirectly
+            # via response files. Compilation databases/flag files require
+            # explicit trust; ordinary Checks/CheckOptions YAML remains safe.
+            "suffixes": ("compile_commands.json", "compile_flags.txt"),
+            "keys": ("extraargs", "extraargsbefore", "plugins"),
+            "tree_wide": True,
         },
         "eslint": {
             # Flat config is JavaScript by definition — ESLint imports it, so
@@ -483,9 +492,7 @@ class StaticAnalyzer:
     # counting those would skip eslint/prettier on every real JS repo. That
     # trades the whole feature away for a threat that isn't there, which is the
     # same bargain ``_CONFIG_EXECUTION_RISK`` refuses to make on content.
-    _CONFIG_SCAN_PRUNE_DIRS = frozenset(
-        {"node_modules", ".git", ".hg", ".svn", ".venv", "venv", ".tox"}
-    )
+    _CONFIG_SCAN_PRUNE_DIRS = frozenset({"node_modules"})
 
     # Largest config file to read when looking for a plugin declaration. A
     # config bigger than this is not a config; reading it wholesale would be the
@@ -512,7 +519,7 @@ class StaticAnalyzer:
             tool_timeout: Per-tool subprocess timeout in seconds. Defaults to
                 ``DEFAULT_TOOL_TIMEOUT_SECONDS`` (120). Raise this for slow
                 cppcheck/mypy runs on large repos.
-            trust_repo_config: Run mypy/ESLint/Prettier even when the repository
+            trust_repo_config: Run tools even when the repository
                 ships a config that would make them load code from the tree.
                 Off by default: that config executes with the reviewer's
                 privileges (see ``_CONFIG_EXECUTION_RISK``). Turn it on only for
@@ -723,7 +730,7 @@ class StaticAnalyzer:
 
         Ancestor directories are included because tools discover configs above
         the selected review directory. ``tree_wide`` also includes descendants
-        for ESLint/Prettier, which resolve config per linted file. Symlinked
+        for ESLint/Prettier/clang-tidy, which resolve config per linted file. Symlinked
         configs count too: the tools load them regardless of their target.
 
         A config that cannot be read counts as risky: an unreadable file is
@@ -740,6 +747,11 @@ class StaticAnalyzer:
             set(risk["suffixes"]) | set(risk["names"]),
             tree_wide=bool(risk.get("tree_wide")),
             stop_at_repo_root=tool_name == "mypy",
+            prune_dirs=(
+                self._CONFIG_SCAN_PRUNE_DIRS
+                if tool_name in ("eslint", "prettier")
+                else frozenset()
+            ),
         )
         if tool_name == "mypy":
             # mypy uses the nearest applicable config, in this filename order,
@@ -834,11 +846,13 @@ class StaticAnalyzer:
         *,
         tree_wide: bool,
         stop_at_repo_root: bool = False,
+        prune_dirs: frozenset[str] = frozenset(),
     ) -> list[Path]:
         """Config files named in *filenames* that exist, in deterministic order.
 
         Both modes include the root and ancestors. ``tree_wide=True`` also
-        walks descendants, pruning ``_CONFIG_SCAN_PRUNE_DIRS``. Symlinks are
+        walks descendants, pruning only directories excluded by the caller's
+        tool invocation. Symlinks are
         retained and treated as risky rather than silently cleared.
 
         Sorted so the reported path (and therefore the skip message) is the
@@ -864,9 +878,7 @@ class StaticAnalyzer:
                 for dirpath, dirnames, files in os.walk(
                     self.directory, onerror=raise_walk_error
                 ):
-                    dirnames[:] = [
-                        d for d in dirnames if d not in self._CONFIG_SCAN_PRUNE_DIRS
-                    ]
+                    dirnames[:] = [d for d in dirnames if d not in prune_dirs]
                     base = Path(dirpath)
                     for name in files:
                         if name in filenames:

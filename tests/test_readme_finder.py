@@ -450,3 +450,32 @@ class TestPromptReadmeConfirmation:
             patch("codereview.readme_finder._timed_input", return_value=str(custom)),
         ):
             assert prompt_readme_confirmation(readme) == custom.resolve()
+
+
+@pytest.mark.parametrize("git_marker", ["directory", "file"])
+def test_auto_readme_does_not_follow_external_symlink(tmp_path, git_marker):
+    from codereview.readme_finder import find_readme, read_readme_content
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    marker = repo / ".git"
+    if git_marker == "directory":
+        marker.mkdir()
+    else:
+        marker.write_text("gitdir: ../worktree-metadata")
+    private = tmp_path / "private.txt"
+    private.write_text("synthetic private context")
+    (repo / "README.md").symlink_to(private)
+    assert find_readme(repo) is None
+    # Deliberately selected external context remains supported.
+    assert read_readme_content(private)[0] == "synthetic private context"
+
+
+def test_readme_discovery_stops_at_worktree_git_file(tmp_path):
+    from codereview.readme_finder import find_readme
+
+    (tmp_path / "README.md").write_text("unrelated parent context")
+    repo = tmp_path / "worktree"
+    repo.mkdir()
+    (repo / ".git").write_text("gitdir: ../metadata")
+    assert find_readme(repo) is None

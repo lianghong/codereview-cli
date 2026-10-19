@@ -87,7 +87,6 @@ class CodeAnalyzer:
         # Opus 5.5: silently swapping a pinned 4.6 wire id for a different
         # generation at a different price is not a "legacy mapping".
         legacy_mappings = {
-            "global.anthropic.claude-sonnet-4-6": "sonnet",
             "global.anthropic.claude-haiku-4-5-20251001-v1:0": "haiku",
         }
 

@@ -46,9 +46,9 @@ from codereview.config import (
     get_config_loader,
 )
 from codereview.models import (
-    CodeReviewReport,
     ReviewIssue,
     ReviewMetrics,
+    ReviewRunReport,
     get_drift_counters,
     reset_drift_counters,
 )
@@ -692,9 +692,9 @@ def validate_provider_credentials(
     "--trust-repo-config",
     is_flag=True,
     help=(
-        "Run mypy/ESLint/Prettier even when the reviewed repository ships a "
-        "config that makes them execute code from the tree (a mypy 'plugins' "
-        "entry, a JavaScript eslint.config.*). Off by default: that code runs "
+        "Run static analysis tools even when repository configs can load code "
+        "(mypy/ESLint/Prettier/golangci-lint plugins or clang-tidy compiler "
+        "arguments). Off by default: that code runs "
         "with your privileges. Use only on a repository you trust."
     ),
 )
@@ -902,7 +902,7 @@ def run_review(
         aws_profile: AWS profile to export as ``AWS_PROFILE``, or None.
         static_analysis: Run installed linters and feed findings to the model.
         tool_timeout: Per-tool subprocess timeout in seconds, or None.
-        trust_repo_config: Let mypy/ESLint/Prettier honour a repo config that
+        trust_repo_config: Let static analysis tools honour a repo config that
             executes code from the reviewed tree. Off by default.
         temperature: Sampling temperature override, or None for the model default.
         dry_run: Print the cost/file preview and return without API calls.
@@ -918,7 +918,8 @@ def run_review(
         click.Abort: The run failed (credentials, AWS error, unwritable output,
             or any unexpected exception). Click turns this into exit code 1.
         SystemExit: ``EXIT_QUALITY_GATE_FAILED`` (2) when *fail_on* trips, or 1
-            when every batch failed. Deliberately a ``BaseException`` so it
+            when any batch failed (partial results are exported first).
+            Deliberately a ``BaseException`` so it
             passes through the ``except Exception`` handler untouched while the
             ``finally`` block still cleans up callback handlers.
     """
@@ -1271,20 +1272,8 @@ def run_review(
         # this one out is what made the Recommendations section a count summary.
         all_recommendations: list[str] = []
         failed_batches = 0
-        # Count what the model actually receives, not what the scanner found.
-        # A file the batcher dropped as oversized (already reported above) is
-        # never sent to any provider, so counting len(files) claimed coverage
-        # the review does not have — "Analyzed 120 files" for a run that
-        # reviewed 118. Batch membership is the only authority on what was sent.
-        total_files = sum(len(batch.files) for batch in batches)
-        # Same authority for the line count, and for the same reason: an
-        # oversized file the batcher dropped is often a *huge* file, so counting
-        # every scanned file's lines here overstated the reviewed size by far
-        # more than files_analyzed ever did — a 40k-line generated file dropped
-        # from a 5k-line review still reported 45k lines "reviewed".
-        total_lines = sum(
-            lines_by_file.get(path, 0) for batch in batches for path in batch.files
-        )
+        failed_files: list[str] = []
+        reviewed_files: list[Path] = []
 
         # Concurrency: parallel batches give a 3-5x speedup on multi-batch runs.
         # Streaming forces sequential execution because token-by-token output
@@ -1338,8 +1327,10 @@ def run_review(
                         all_recommendations.extend(report.recommendations)
                         if report.system_design_insights:
                             all_design_insights.append(report.system_design_insights)
+                        reviewed_files.extend(batch.files)
                     except Exception as e:
                         failed_batches += 1
+                        failed_files.extend(str(path) for path in batch.files)
                         _render_batch_error(con, i, e, model_display_name, verbose)
 
                     progress.update(task, advance=1)
@@ -1372,6 +1363,11 @@ def run_review(
                 f"\n[yellow]⚠ {failed_batches}/{len(batches)} batch(es) failed. "
                 f"Results below are from {succeeded} successful batch(es) only.[/yellow]"
             )
+
+        # Only successful batches contribute to coverage. Failed requests may
+        # still incur cost, but their files have no usable review.
+        total_files = len(reviewed_files)
+        total_lines = sum(lines_by_file.get(path, 0) for path in reviewed_files)
 
         # Step 4: Create final report
         # Get pricing from provider
@@ -1475,8 +1471,14 @@ def run_review(
             else "No architectural concerns identified."
         )
 
-        final_report = CodeReviewReport(
-            summary=f"Analyzed {total_files} files and found {len(all_issues)} issues",
+        final_report = ReviewRunReport(
+            summary=(
+                ("Incomplete review: " if failed_batches else "")
+                + f"Analyzed {total_files} files and found {len(all_issues)} issues"
+            ),
+            review_complete=failed_batches == 0,
+            failed_batches=failed_batches,
+            failed_files=sorted(failed_files),
             metrics=metrics,
             issues=all_issues,
             system_design_insights=aggregated_insights,
@@ -1632,13 +1634,15 @@ def run_review(
                 )
                 raise click.Abort()
 
-        # Step 7: Apply the --fail-on quality gate.
+        # Step 7: Fail incomplete runs before applying the severity gate.
         #
         # Deliberately the LAST thing in the run: the report is rendered and
         # exported first, so a CI job that fails the build still gets its
         # artifact. SystemExit derives from BaseException, not Exception, so it
         # passes through the `except Exception` handler below untouched while
         # the `finally` block still cleans up the callback handlers.
+        if failed_batches:
+            raise SystemExit(1)
         if fail_on:
             gate = _evaluate_fail_on(final_report.issues, fail_on)
             if gate is not None:

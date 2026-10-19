@@ -4,14 +4,23 @@
 [![Python 3.14+](https://img.shields.io/badge/python-3.14+-blue.svg)](https://www.python.org/downloads/)
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 
-> AI-powered code review with 24 models across eight LLM providers.
+> AI-powered code review with 22 models across eight LLM providers.
 
 ## 🎉 What's New (Unreleased)
 
+- ✅ **Review reliability and security, 2026-10-19:** token budgets include
+  numbered source, truncated responses fail explicitly, and partial reviews
+  export failed-file details before exiting 1. Configuration checks cover
+  Python environments and clang-tidy compiler arguments; automatic README
+  discovery skips symlinks and respects Git worktrees.
 - ➖ **Opus 5 and GPT-5.6 Sol removed on 2026-09-30** at user request.
   Use `opus` / `opus5.5` for Claude and `gpt6.1-sol` for the current Sol tier.
   Version-specific names are retired; the compatibility alias `gpt-bedrock`
   now selects GPT-6.1 Sol. The default remains Opus 5.5.
+- ⚠️ **NVIDIA cleanup, 2026-10-19:** removed Kimi K3 (HTTP 410, EOL October 15)
+  and GLM-5.3 (announced October 28 sunset). DeepSeek-V4.1-Flash and
+  GLM-5.3-Flash remain; the registry now has 22 models.
+  [Evidence and migration guidance](docs/nvidia-model-review-2026-10.md).
 - ✅ **GLM-5.3 on AWS Bedrock**: `--model glm53-bedrock` uses native Converse
   on the Global profile `global.zai.glm-5.3`, with 1M context, always-on
   reasoning, and prompt-based JSON parsing; it passed a live CLI review.
@@ -48,8 +57,8 @@
   `grok`/`grok-bedrock` through native Bedrock; 4.3-specific aliases stay
   deleted. See [Migrating deleted aliases](#migrating-deleted-aliases).
 - ✅ **Registry cleanup (11 entries removed)** — every model probed against its live provider endpoint; superseded, region-unavailable, and dead entries dropped. 30 models remained, 32 with Gemini 3.7 Flash and Kimi K3.
-- ⚠️ **Second cleanup pass, 2026-08-29 (5 more entries removed)** — re-probing every entry found **half the NVIDIA NIM roster dead**: `mistralai/mistral-small-4-119b-2603` (EOL 2026-07-27), `qwen/qwen3.5-397b-a17b` (2026-07-27), `mistralai/mistral-medium-3.5-128b` (2026-08-07), `z-ai/glm-5.2` (2026-08-21) and `stepfun-ai/step-3.7-flash` (2026-08-28) all answered **HTTP 410 Gone** with NVIDIA's own end-of-life date. At that check NIM served no Mistral, Qwen, GLM or StepFun model; GLM returned with 5.3 and 5.3-Flash on September 19. **27 models remained at the time.** These failed at invocation time only — local `--list-models` does not probe endpoints, and `--validate` treats a missing catalog entry as a warning.
-- ➖ **Curation pass, 2026-08-29 (9 more entries removed, 27 → 18)** — this one is **not** a dead-endpoint cleanup: **all nine endpoints are live and were probed to confirm it.** Removed: Claude Opus 4.8, Claude Sonnet 4.6, Kimi K2.5 (Bedrock), Qwen3-Coder-Next (Bedrock), MiniMax M2.5 (Bedrock), Kimi K2.6 (NVIDIA), Gemini 3.6 Flash, GPT-5.5 (Bedrock) and Grok 4.3 (Bedrock). What it costs, stated plainly so re-adding is an informed choice: Bedrock's cheapest entry goes from **$0.50/M → $1.00/M** (`haiku`), Bedrock keeps exactly **one** entry on the tool-use structured-output path (`haiku`), and `bedrock_openai`'s cheapest goes from **$1.25/M → $5.00/M** with a narrower window (400K → 272K). Every removal site in `models.yaml` carries a dated comment saying what the probe showed and what was lost.
+- ⚠️ **Second cleanup pass, 2026-08-29 (5 more entries removed)** — re-probing every entry found **half the NVIDIA NIM roster dead**: `mistralai/mistral-small-4-119b-2603` (EOL 2026-07-27), `qwen/qwen3.5-397b-a17b` (2026-07-27), `mistralai/mistral-medium-3.5-128b` (2026-08-07), `z-ai/glm-5.2` (2026-08-21) and `stepfun-ai/step-3.7-flash` (2026-08-28) all answered **HTTP 410 Gone** with NVIDIA's own end-of-life date. At that check NIM served no Mistral, Qwen, GLM or StepFun model; GLM returned with 5.3 and 5.3-Flash on September 19. **27 models remained at the time.** These failed at invocation time only — local `--list-models` does not probe endpoints, and NVIDIA's `--validate` tests endpoint connectivity without checking model membership or invocation.
+- ➖ **Curation pass, 2026-08-29 (9 more entries removed, 27 → 18)** — this one is **not** a dead-endpoint cleanup: **all nine endpoints were live when probed for that pass.** Removed: Claude Opus 4.8, Claude Sonnet 4.6, Kimi K2.5 (Bedrock), Qwen3-Coder-Next (Bedrock), MiniMax M2.5 (Bedrock), Kimi K2.6 (NVIDIA), Gemini 3.6 Flash, GPT-5.5 (Bedrock) and Grok 4.3 (Bedrock). What it costs, stated plainly so re-adding is an informed choice: Bedrock's cheapest entry goes from **$0.50/M → $1.00/M** (`haiku`), Bedrock keeps exactly **one** entry on the tool-use structured-output path (`haiku`), and `bedrock_openai`'s cheapest goes from **$1.25/M → $5.00/M** with a narrower window (400K → 272K). Every removal site in `models.yaml` carries a dated comment saying what the probe showed and what was lost.
 - ⚠️ **Alias cleanup (94 aliases deleted in the earlier passes)** —
   version-specific names of removed models fail explicitly. Version-neutral
   compatibility names appear under `--list-models --verbose`; `gpt-bedrock`
@@ -61,13 +70,13 @@
 - ✅ **`--fail-on <severity>`** — CI merge gate: exits 2 when issues at that severity or above are found, distinct from exit 1 (the run itself failed). Independent of `--severity`, and applied after the report is written
 - ✅ **New `Correctness` category** — logic errors, edge cases, error paths, race conditions, and resource leaks are no longer filed as "Code Quality" next to naming nits
 - ✅ **`--tool-timeout`** — override the static-analysis subprocess timeout (default 120s) for slow C++/mypy runs
-- 🔒 **`--trust-repo-config`** — static analysis no longer runs mypy/ESLint/Prettier when the *reviewed* repository ships a config that makes them load code from the tree (a mypy `plugins =` entry, a JavaScript `eslint.config.*`). Those tools are skipped with a visible reason; pass the flag to opt back in for a repository you trust
+- 🔒 **`--trust-repo-config`** — static analysis skips tools when repository configs can load code, including mypy/ESLint/Prettier/golangci-lint plugins and clang-tidy compiler arguments. Those tools are skipped with a visible reason; pass the flag to opt back in for a repository you trust
 - ✅ **`--include-hidden`** — opt-in scanning of `.github/scripts`, `.config/`, etc.
 - ✅ **Reproducible static analysis** — file lists sorted before truncation so CI runs are deterministic (locked in by regression test)
 - ✅ **Accurate issue counts** — ruff/mypy/bandit summary-line parsing replaces the old substring-match heuristic
 - ✅ **Supply-chain hardening** — static-analysis tools resolved via `shutil.which()`; binaries inside the analyzed directory are refused (gofmt cache-bypass also fixed)
 - ✅ **AWS error redaction** — STS/Bedrock validation errors no longer leak SCP fragments or IAM policy details
-- ✅ **1,350 tests passing as of 2026-09-30**; ruff check/format, isort,
+- ✅ **1,403 tests passing as of 2026-10-19**; ruff check/format, isort,
   mypy, and vulture clean.
 
 A LangChain-based CLI for code reviews across Python, Go, Shell, C++, Java,
@@ -76,7 +85,7 @@ GPT-6 Astra, Grok 4.7, Gemini, DeepSeek, Kimi, and GLM through eight providers.
 
 ## Features
 
-- **Multi-Provider Support** (8 providers): AWS Bedrock (Claude, Kimi K3, Grok 4.7, GLM-5.3), Azure OpenAI (GPT-5.4, GPT-5.4 Pro), NVIDIA NIM (DeepSeek-V4.1-Flash, GLM-5.3, GLM-5.3-Flash, Kimi K3), Google GenAI (Gemini 3.1 Pro / 3.8 Flash), DeepSeek direct (V4-Pro, V4-Flash), Z.AI (GLM-5.3, GLM-5.3-Flash), Moonshot direct (Kimi K3), and OpenAI-on-Bedrock (GPT-6.1 Sol and GPT-6 Astra/Sol/Luna via `bedrock-mantle`)
+- **Multi-Provider Support** (8 providers): AWS Bedrock (Claude, Kimi K3, Grok 4.7, GLM-5.3), Azure OpenAI (GPT-5.4, GPT-5.4 Pro), NVIDIA NIM (DeepSeek-V4.1-Flash, GLM-5.3-Flash), Google GenAI (Gemini 3.1 Pro / 3.8 Flash), DeepSeek direct (V4-Pro, V4-Flash), Z.AI (GLM-5.3, GLM-5.3-Flash), Moonshot direct (Kimi K3), and OpenAI-on-Bedrock (GPT-6.1 Sol and GPT-6 Astra/Sol/Luna via `bedrock-mantle`)
 - **AI-Powered Analysis**: Leverages Claude Opus 5.5, Claude Sonnet 5.5, GPT-5.4, GPT-6.1 Sol, GPT-6 Astra, GPT-6 Sol, GPT-6 Luna, DeepSeek-V4-Pro, Kimi K3, GLM-5.3, Gemini 3.1 Pro, Gemini 3.8 Flash, and other leading models for deep code understanding
 - **Multi-Language Support**: Reviews Python, Go, Shell Script, C++, Java, JavaScript, and TypeScript codebases
 - **Smart Batching**: Automatically groups files for efficient token usage
@@ -98,7 +107,7 @@ GPT-6 Astra, Grok 4.7, Gemini, DeepSeek, Kimi, and GLM through eight providers.
 - **At least one of the following:**
   - AWS account with Bedrock access (Claude Opus 5.5 / Sonnet 5.5 / Haiku 4.5 / Fable 5, Kimi K3, Grok 4.7, GLM-5.3)
   - Azure OpenAI resource with model deployment (GPT-5.4, GPT-5.4 Pro) — `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`
-  - NVIDIA API key from [build.nvidia.com](https://build.nvidia.com) — `NVIDIA_API_KEY` (DeepSeek-V4.1-Flash, GLM-5.3, GLM-5.3-Flash, Kimi K3; free tier available)
+  - NVIDIA API key from [build.nvidia.com](https://build.nvidia.com) — `NVIDIA_API_KEY` (DeepSeek-V4.1-Flash, GLM-5.3-Flash; free tier available)
   - Google API key from [AI Studio](https://aistudio.google.com/apikey) — `GOOGLE_API_KEY` (Gemini 3.1 Pro / 3.8 Flash)
   - DeepSeek API key from [platform.deepseek.com](https://platform.deepseek.com/api_keys) — `DEEPSEEK_API_KEY` (V4-Pro, V4-Flash)
   - Z.AI API key from [z.ai](https://z.ai) — `ZAI_API_KEY` (GLM-5.3 / 5.3-Flash; international)
@@ -223,9 +232,22 @@ codereview --list-models  # Should show Azure models
 
 ## NVIDIA NIM Configuration (Alternative Provider)
 
-NVIDIA NIM provides access to [DeepSeek-V4.1-Flash](https://build.nvidia.com/deepseek-ai/deepseek-v4.1-flash), GLM-5.3, GLM-5.3-Flash and Kimi K3 — with a free tier for development.
+NVIDIA NIM provides access to [DeepSeek-V4.1-Flash](https://build.nvidia.com/deepseek-ai/deepseek-v4.1-flash) and [GLM-5.3-Flash](https://build.nvidia.com/z-ai/glm-5-3-flash) — with a free tier for development.
 
-**NIM endpoints can be retired, and catalog visibility does not prove invocability.** A retired endpoint disappears from the catalog and answers `HTTP 410 Gone` with its end-of-life date. `--list-models` reads local configuration, while `--validate` checks catalog visibility and treats a miss as a warning. The previous DeepSeek V4 endpoints were retired in August–September 2026; V4-Flash-0731 advertised its September 21 sunset in a `deprecation` response header while still returning HTTP 200. V4.1-Flash is a separate endpoint with new aliases. If a NIM model starts failing every batch, check `https://integrate.api.nvidia.com/v1/models` and the completion response headers.
+**NIM endpoints can be retired, and catalog visibility does not prove
+invocability.** `--list-models` reads local configuration. NVIDIA's `--validate`
+checks credentials and requests `/models` to test endpoint connectivity; it
+does not check membership of the configured model or invoke it. A retired
+endpoint can return `HTTP 410 Gone`, while an endpoint still returning 200
+can announce its sunset in a `deprecation` response header. Check both the
+catalog and completion response headers when diagnosing model availability.
+
+**Checked October 19, 2026:** Kimi K3's hosted endpoint returns HTTP 410
+(EOL October 15). GLM-5.3 still answers, but its response announces an
+**October 28** sunset; it has been removed ahead of shutdown. GLM-5.3-Flash
+remains the free default. See the [audit and sources](docs/nvidia-model-review-2026-10.md).
+The removed NVIDIA names fail explicitly; select billed `kimi` / `kimi-bedrock`
+or `glm` / `glm53-bedrock` deliberately if you need those models.
 
 ### 1. Get API Key
 
@@ -239,6 +261,13 @@ NVIDIA NIM provides access to [DeepSeek-V4.1-Flash](https://build.nvidia.com/dee
 export NVIDIA_API_KEY="nvapi-your-key-here"
 ```
 
+For a self-hosted NIM, optionally set `NVIDIA_BASE_URL` to its HTTPS API root,
+for example `https://nim.example.com/v1`. An explicit NVIDIA `base_url` in
+`models.yaml` takes precedence over the environment variable. Otherwise the
+default is `https://integrate.api.nvidia.com/v1`. Inference and validation use
+the same resolved URL; HTTP endpoints, including localhost, are rejected
+before the client is constructed.
+
 ### 3. Use NVIDIA Models
 
 ```bash
@@ -249,29 +278,14 @@ codereview /path/to/code --model dsv41-flash-nvidia
 # GLM-5.3-Flash - the fast, free NIM default: 320B/18B MoE, 1M context, native
 # multimodal, always-on reasoning. Bare `glm-flash` stays reserved for Z.AI direct.
 codereview /path/to/code --model glm53-flash-nvidia
-
-# GLM-5.3 - Z.ai's 753B/40B text flagship, 1M context, leads CyberGym for
-# vulnerability discovery. WARNING: served NVFP4 on GB300 and very slow (a probe
-# took ~5 min to return 8 tokens) - prefer the Flash entry above for CI.
-codereview /path/to/code --model glm53-nvidia
-
-# Kimi K3 - Moonshot flagship: 2.8T/104B MoE, 1M context, native multimodal,
-# always-on thinking. Bare `kimi-k3` stays reserved for the Moonshot direct API.
-# (the Kimi K2.6 NIM entry was removed 2026-08-29 - the endpoint is listed but
-#  not provisioned for every account; use `--model kimi` for K3 on Moonshot)
-codereview /path/to/code --model kimi-nvidia-3
 ```
 
-**Note:** NVIDIA NIM models are currently in free tier. All four entries use
+**Note:** NVIDIA NIM models are currently in free tier. Both entries use
 prompt-based JSON parsing with reasoning enabled. DeepSeek-V4.1-Flash keeps
 NVIDIA's sampling and reasoning defaults and requests the example's 262,144-token
-output budget within its 1,048,576-token combined context. GLM-5.3 and
-GLM-5.3-Flash pin `reasoning_effort: high`; Kimi K3 leaves effort unset.
+output budget within its 1,048,576-token combined context. GLM-5.3-Flash
+pins `reasoning_effort: high`.
 Reasoning consumes output tokens that the review report also needs.
-**`glm53-nvidia` is by far the slowest entry in the registry**
-(NVFP4 on GB300; a probe took ~5 minutes to return 8 tokens, and a real review of
-a single 7-line file took **19 minutes**, versus 3 minutes for Flash); use
-`glm53-flash-nvidia` for CI and high-volume runs.
 
 The retired `dsv4-flash-nvidia` / `dsv4-nvidia` aliases still fail explicitly.
 Use `dsv41-flash-nvidia` for the new NVIDIA release, or `dsv4-flash` /
@@ -279,7 +293,7 @@ Use `dsv41-flash-nvidia` for the new NVIDIA release, or `dsv4-flash` /
 
 GLM-5.3 and GLM-5.3-Flash also have billed Z.AI-direct routes (`--model glm`
 and `--model glm-flash`). Kimi K3 is available on Moonshot direct
-(`--model kimi`) and native Bedrock (`--model kimi-bedrock`) as well as NIM.
+(`--model kimi`) and native Bedrock (`--model kimi-bedrock`); both are billed.
 DeepSeek-V4-Pro remains on DeepSeek direct (`--model deepseek-v4-pro`,
 $1.32/$3.96 per million). No Qwen, Mistral, StepFun, or MiniMax entry remains
 in this registry; their retired aliases fail explicitly.
@@ -520,8 +534,6 @@ codereview /path/to/code --model gpt-pro          # GPT-5.4 Pro (deeper reasonin
 # NVIDIA NIM Models (free tier)
 codereview /path/to/code --model dsv41-flash-nvidia # DeepSeek-V4.1-Flash (1M context)
 codereview /path/to/code --model glm53-flash-nvidia # GLM-5.3-Flash on NVIDIA (free, 1M context, fast)
-codereview /path/to/code --model glm53-nvidia       # GLM-5.3 on NVIDIA (free; 753B MoE - but very slow)
-codereview /path/to/code --model kimi-nvidia-3      # Kimi K3 on NVIDIA (free; 2.8T MoE, 1M context)
 
 # Google Generative AI Models
 codereview /path/to/code --model gemini-3.1-pro     # Gemini 3.1 Pro (1M context)
@@ -565,8 +577,6 @@ codereview /path/to/code -m kimi
 | GPT-5.4 Pro | Azure OpenAI | Deeper reasoning, hardest problems | $30.00 | $180.00 |
 | GLM-5.3-Flash (NVIDIA) | NVIDIA NIM | 320B MoE / 18B active, 1M context, multimodal input, always-on reasoning; the fast free NIM default | Free* | Free* |
 | DeepSeek-V4.1-Flash (NVIDIA) | NVIDIA NIM | 552B MoE, 1M context, reasoning; prompt-based JSON output | Free* | Free* |
-| GLM-5.3 (NVIDIA) | NVIDIA NIM | 753B MoE / 40B active, 1M context, leads CyberGym for vulnerability discovery; **very slow** (NVFP4 on GB300) | Free* | Free* |
-| Kimi K3 (NVIDIA) | NVIDIA NIM | 2.8T MoE / 104B active, 1M context, multimodal input, always-on thinking | Free* | Free* |
 | Gemini 3.1 Pro | Google GenAI | Most advanced reasoning, 1M context (supersedes retired 3 Pro) | $2.00 | $12.00 |
 | Gemini 3.8 Flash | Google GenAI | Latest Flash: long-horizon software engineering and autonomous agents, 1M context, 64K output (owns `gemini-flash` and the generation-3 names) | $1.50 | $7.50 |
 | **DeepSeek-V4-Pro** | **DeepSeek direct** | **1M context, three reasoning modes, tool calling; peak rate shown** | **$1.32** | **$3.96** |
@@ -587,10 +597,11 @@ Bedrock models have nonzero rates; GPT-6 Sol/Luna rates remain derived
 estimates. Mantle prices above are the short-context rates; each request
 over 272K input tokens uses its model's higher tier.
 
-The registry contains **24 models across eight providers as of 2026-10-08**.
+The registry contains **22 models across eight providers as of 2026-10-19**.
 GLM-5.3 joined Bedrock on 2026-10-08. Sonnet 5.5 replaces Sonnet 5; Opus 5 and GPT-5.6 Sol were removed as curation
-while their upstream endpoints still answered. The NVIDIA roster has four
-entries, including the new DeepSeek-V4.1-Flash. `--list-models` is authoritative;
+while their upstream endpoints still answered. The October 19 NVIDIA cleanup
+removed Kimi K3 (retired) and GLM-5.3 (scheduled sunset), leaving
+DeepSeek-V4.1-Flash and GLM-5.3-Flash. `--list-models` is authoritative;
 see [registry conventions](docs/model-registry.md) and [CHANGELOG](CHANGELOG.md)
 for the dated removal evidence and earlier roster changes.
 
@@ -629,11 +640,15 @@ Exit codes:
 | Code | Meaning |
 |---|---|
 | `0` | Review completed; nothing at or above the `--fail-on` threshold |
-| `1` | The **run** failed (no results, bad credentials, API error, unwritable output) |
+| `1` | The **run** failed or was incomplete (any failed batch, bad credentials, API error, unwritable output) |
 | `2` | The review **succeeded** and found blocking issues (`--fail-on` tripped) |
 
 `1` and `2` are deliberately distinct: a broken pipeline and a failing code
 review need different responses.
+
+Partial results are exported before exit 1. JSON includes `review_complete`,
+`failed_batches`, and `failed_files`; Markdown lists files without results.
+File and line metrics count successful batches.
 
 Two things to know:
 
@@ -719,14 +734,15 @@ Useful for `cppcheck --enable=all` on large C++ repos and `mypy` strict mode on 
 ### Repo-Supplied Configs That Execute Code
 
 Reviewing an untrusted repository means running linters against files you did not
-write — and three of them load *code* from the tree when the repository asks them
-to:
+write. Some tools can load code through repository configuration:
 
 | Tool | Config | What it executes |
 |---|---|---|
 | mypy | `mypy.ini`, `setup.cfg`, `pyproject.toml` with a `plugins =` entry | imports the named Python module |
 | ESLint | `eslint.config.{js,mjs,cjs,ts}`, `.eslintrc.{js,cjs,mjs}` | the config *is* JavaScript |
 | ESLint / Prettier | `.eslintrc.json`, `.prettierrc`, `package.json` with a `plugins` key | loads the named plugin module |
+| golangci-lint | custom linter settings | Go plugin |
+| clang-tidy | compiler arguments or plugin settings | native plugin |
 
 That code runs with your privileges, in your shell, before any review output
 exists. So by default the tool **detects those configs and skips the tool**,
@@ -739,12 +755,13 @@ naming what it skipped and why:
   repository you trust).
 ```
 
-Detection is on **content, not presence**: an ordinary `pyproject.toml` with a
-`[tool.mypy]` section but no `plugins` entry still runs mypy normally — repo
-config is what makes linter output match that project's CI, and this project's
-own `pyproject.toml` is not flagged. An unreadable or oversized (>512 KB) config
-*is* treated as risky, since that is what an attacker would arrange if it
-bypassed the check.
+Data configs are checked for code-loading keys: an ordinary `[tool.mypy]`
+section without plugins, or `.clang-tidy` check settings, still runs.
+Executable config modules and clang-tidy's `compile_commands.json` and
+`compile_flags.txt` require explicit trust. Config discovery covers Python
+environment directories when their files can reach the tool. Unreadable,
+invalid, symlinked, or oversized (>512 KB) configs are treated as risky.
+See [the configuration rules](docs/static-analysis.md#repo-supplied-configs-that-execute-code).
 
 Opt back in for a repository you trust:
 
@@ -850,12 +867,29 @@ For CI/CD integration, use `--format json`:
 codereview ./src --output report.json --format json
 ```
 
-JSON output includes the full `CodeReviewReport` structure for programmatic consumption:
+JSON exports a `ReviewRunReport`: the model's `CodeReviewReport` fields plus
+runner-owned `review_complete`, `failed_batches`, and `failed_files`.
+
 - Parse issues by severity for quality gates
 - Integrate with dashboards and monitoring
 - Automate notifications based on findings
 
+Check the process exit status before interpreting an empty issues list as a
+clean review. Partial reports contain results from successful batches only.
+`review_complete` describes completion of planned batches; it does not certify
+that every repository file or static-analysis tool was included. See the
+[JSON coverage example](docs/usage.md#report-completeness).
+
 ## Troubleshooting
+
+### Output Token Budget Exhausted
+
+A response that reaches the provider's output limit is rejected, even if its
+partial JSON parses. Reasoning and report text share that limit. The CLI records
+reported usage and does not retry the same exhausted budget. Reduce the review
+scope or adjust the model's `inference_params.max_output_tokens` within its
+supported limits. `--batch-size 1` reduces files per request; it does not split
+a single large file.
 
 ### Provider Credentials Not Found
 
@@ -956,11 +990,13 @@ version-pinning names are deleted on exactly the same rule.
 | `opus4.7`, `opus-4.7`, `claude-opus-4.7`, `claude-opus-47`, `opus4.6`, `opus-4.6`, `claude-opus-4.6`, `opus4.8`, `opus-4.8`, `claude-opus-4.8`, `claude-opus-48`, `opus5`, `claude-opus-5`, `opus-5`, `claude-opus5` | `opus` / `opus5.5` — current default, 1M context, 128K output, Global $4/$20 pricing |
 | `sonnet4.6`, `claude-sonnet-4.6` | `sonnet5.5` (or `sonnet`) — $2/$10, 1M context, Global routing and prompt parsing; sampling params omitted |
 | `sonnet5`, `claude-sonnet-5`, `sonnet-5`, `claude-sonnet5` | `sonnet5.5` (or `sonnet`) — replaced September 30, 2026; same 1M context and 128K output, lower $2/$10 rates, Global routing replaces US residency |
-| `minimax-m2.7`, `minimax-m2.7-nvidia`, `mm2.7-nvidia`, `mm27`, `minimax-m2.5-nvidia`, `mm2.5-nvidia`, `minimax-m2.5`, `mm25`, `minimax-m2.5-bedrock`, `mm2.5-bedrock`, `minimax-m3`, `minimax-m3-nvidia`, `mm3-nvidia`, `mm3` | **nothing** — no MiniMax model remains anywhere in the registry. NIM end-of-lifed `minimaxai/minimax-m3` on 2026-09-09 and serves no MiniMax at all; the Bedrock re-host was cut as curation on 2026-08-29 while still live. `kimi-nvidia-3` is the closest free NIM stand-in (multimodal, 1M context, thinking) |
+| `minimax-m2.7`, `minimax-m2.7-nvidia`, `mm2.7-nvidia`, `mm27`, `minimax-m2.5-nvidia`, `mm2.5-nvidia`, `minimax-m2.5`, `mm25`, `minimax-m2.5-bedrock`, `mm2.5-bedrock`, `minimax-m3`, `minimax-m3-nvidia`, `mm3-nvidia`, `mm3` | **nothing** — no MiniMax model remains anywhere in the registry. NIM end-of-lifed `minimaxai/minimax-m3` on 2026-09-09 and serves no MiniMax at all; the Bedrock re-host was cut as curation on 2026-08-29 while still live. `glm53-flash-nvidia` is a free NIM alternative (multimodal, 1M context, thinking) |
 | `kimi-k2.5-nvidia`, `kimi-k2.5`, `kimi25`, `kimi-k2.5-bedrock`, `kimi25-bedrock` | `kimi` / `kimi-k3` (Moonshot direct), or `kimi-bedrock` for Kimi K3 on Bedrock. `kimi-azure`, `kimi25-azure` and `kimi-k2.5-azure` still resolve, now to Moonshot's K3 |
-| `kimi-k2.6-nvidia`, `kimi-nvidia-26`, `kimi26-nvidia` | `kimi-nvidia-3` (Kimi K3 on NVIDIA, free) or `kimi` (K3 on Moonshot). The NIM K2.6 endpoint is still listed upstream but is not provisioned for every account; K3 is a different generation, so these names don't follow it |
+| `kimi-k2.6-nvidia`, `kimi-nvidia-26`, `kimi26-nvidia` | `kimi` (K3 on Moonshot) or `kimi-bedrock` (K3 on Bedrock), both billed. K3 on NVIDIA was retired October 15. The NIM K2.6 endpoint is still listed upstream but is not provisioned for every account; K3 is a different generation, so these names don't follow it |
+| `kimi-k3-nvidia`, `kimi-nvidia-3`, `kimi3-nvidia` | `kimi` / `kimi-bedrock` for billed K3, or `glm53-flash-nvidia` for a different free model. NVIDIA returned HTTP 410 with EOL `2026-10-15T08:00:00Z`; hosted retirement does not remove self-hosted weights |
+| `glm-5.3-nvidia`, `glm53-nvidia`, `glm5.3-nvidia` | `glm` (Z.AI) or `glm53-bedrock` for the billed flagship, or `glm53-flash-nvidia` for the distinct free Flash model. Removed ahead of `deprecation: 2026-10-28T08:00:00Z`; still answering HTTP 200 at the October 19 audit |
 | `kimi-k2.6`, `kimi26` | **nothing** — the Moonshot entry was upgraded to **K3** on 2026-09-19 and these version-explicit names were deleted rather than migrated. K2.6 is a *different, still-live* model at roughly a third of K3's price ($0.95/$4.00 vs $3.00/$15.00); silently pointing them at K3 would swap the model and triple the bill. Use `kimi` / `kimi-k3` deliberately, or restore the K2.6 entry from git history — no provider code is needed |
-| `glm5-bedrock`, `glm-5-bedrock`, `glm5b` | `glm53-bedrock` for GLM-5.3 on Bedrock (added 2026-10-08), `glm` / `zhipuai/glm-5.3` (Z.AI direct), or the free `glm53-nvidia`. These names stay deleted rather than following the new Bedrock entry. The Bedrock re-host was removed 2026-09-19 as **curation** at explicit request — `zai.glm-5` was **not** re-verified as dead, so this is not an upstream EOL. The version-neutral `glm5`/`glm-5` migrated to Z.AI's 5.3 entry; the provider-explicit spellings were deleted, since the suffix names a provider that no longer serves it. Note Z.AI does serve a distinct real `glm-5`, so `glm5` resolving to 5.3 is a deliberate choice, not an identity |
+| `glm5-bedrock`, `glm-5-bedrock`, `glm5b` | `glm53-bedrock` for GLM-5.3 on Bedrock (added 2026-10-08), `glm` / `zhipuai/glm-5.3` (Z.AI direct), or the distinct free `glm53-flash-nvidia` model. These names stay deleted rather than following the new Bedrock entry. The Bedrock re-host was removed 2026-09-19 as **curation** at explicit request — `zai.glm-5` was **not** re-verified as dead, so this is not an upstream EOL. The version-neutral `glm5`/`glm-5` migrated to Z.AI's 5.3 entry; the provider-explicit spellings were deleted, since the suffix names a provider that no longer serves it. Note Z.AI does serve a distinct real `glm-5`, so `glm5` resolving to 5.3 is a deliberate choice, not an identity |
 | `gemini-3.7-flash`, `gemini37-flash`, `gemini3.7-flash` | `gemini-3.8-flash` (or `gemini-flash`) — identical $1.50/$7.50, 1M context and 64K output, and it absorbed 3.7's generation-neutral names. Removed 2026-09-19 as **curation** while still live. ⚠️ 3.7 was the registry's only entry that had *won* `supports_tool_use: true` back with a live thinking run, so it was the documented bar for flipping 3.8 or either GLM-5.3 entry; version-explicit names were deleted rather than migrated because 3.8 is on the prompt path |
 | `glm51`, `glm51-nvidia`, `glm-5.1`, `glm5.1`, `glm5.1-zai`, `zhipuai/glm-5.1`, `zhipuai/glm-5.2`, `glm-5.2`, `glm5.2`, `glm5.2-zai`, `glm52`, `glm52-nvidia`, `glm5.2-nvidia`, `glm-5.2-nvidia`, `glm5-nvidia` | `glm` / `zhipuai/glm-5.3` (Z.AI direct). Version-explicit 5.2 names were deleted when 5.3 superseded it at identical price and limits; `glm5`/`glm-5` still resolve, now to this same Z.AI entry |
 | `qwen3.5`, `qwen35`, `qwen3.5-nvidia`, `qwen35-nvidia`, `qwen-nvidia`, `qwen3-nvidia`, `qwen-coder-nvidia`, `qwen-next-bedrock`, `qwen-bedrock`, `qwen-next`, `qwen3-next`, `qwen-coder-next`, `qwen`, `qwen-coder` | **nothing** — no Qwen model remains anywhere in the registry. `qwen-next-bedrock` (the last one, and Bedrock's cheapest entry at $0.50/$1.20) was removed 2026-08-29 while still live; the closest replacements are `haiku` on Bedrock or the free `glm53-flash-nvidia` |
@@ -1158,7 +1194,7 @@ For issues, questions, or contributions:
 ## Version History
 
 The package version is **v0.4.0**. The current checkout includes unreleased
-changes: **24 models across eight providers**, **Claude Opus 5.5** as the
+changes: **22 models across eight providers**, **Claude Opus 5.5** as the
 default, **Sonnet 5.5** as the current Sonnet, and GPT-6.1 Sol plus native
 Bedrock Grok 4.7 and GLM-5.3. Opus 5, Sonnet 5, and GPT-5.6 Sol are no longer registered.
 See [What's New](#-whats-new-unreleased) and the [CHANGELOG](CHANGELOG.md).

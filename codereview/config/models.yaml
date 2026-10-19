@@ -244,7 +244,7 @@ providers:
           cost-effective
 
       # Kimi K3 (via Bedrock) - Moonshot AI flagship, added 2026-09-23.
-      # Same model as `kimi-k3` (Moonshot direct) and `kimi-k3-nvidia`: 2.8T
+      # Same model as `kimi-k3` (Moonshot direct): 2.8T
       # MoE / 104B active, always-on thinking, 1M context. Bedrock launch date
       # 2026-09-18.
       #
@@ -378,7 +378,7 @@ providers:
 
       # GLM-5.3 (via Bedrock) — Z.ai flagship, added 2026-10-08 (Bedrock
       # launch 2026-10-05). Same model as `zhipuai/glm-5.3` (Z.AI direct) and
-      # `glm-5.3-nvidia`: ~744B MoE / ~40B active, always-on reasoning, 1M
+      # the removed NVIDIA GLM-5.3 re-host: ~744B MoE / ~40B active, 1M
       # context, 128K output ceiling. This is the GLM-on-Bedrock re-add the
       # GLM 5 removal note below anticipated — a newer generation, not a
       # revival of `zai.glm-5`.
@@ -513,7 +513,7 @@ providers:
       # GLM 5 (Bedrock) — `zai.glm-5` — removed 2026-09-19 as CURATION, at
       # explicit request. This was the GLM re-host on Bedrock; the GLM family
       # is now served by its canonical owner (Z.AI direct, `glm` /
-      # `zhipuai/glm-5.3`) and by the free NIM re-host (`glm53-nvidia`), both
+      # `zhipuai/glm-5.3`) and by the then-free NIM re-host (`glm53-nvidia`), both
       # of which are a full point release ahead of GLM 5 and both verified
       # live 2026-09-19. The entry was a strictly older model on a third
       # provider.
@@ -796,6 +796,9 @@ providers:
       # the retired V4-Flash-0731 endpoint; keep the deleted V4 aliases retired.
       # Live prompt-path smoke: a 3-line Python file completed in 3m55s with
       # a valid JSON report and the expected empty-list division finding.
+      # Re-verified 2026-10-19: listed, HTTP 200 in 122.6s, no deprecation or
+      # sunset header. The 8-token availability probe ended during reasoning;
+      # it does not establish full review or forced-tool-use behavior.
       - id: deepseek-v4.1-flash-nvidia
         full_id: deepseek-ai/deepseek-v4.1-flash
         name: DeepSeek-V4.1-Flash (NVIDIA)
@@ -834,62 +837,17 @@ providers:
           text output, 1M combined context; this CLI reviews text source files.
           Prompt-based JSON parsing with server-default reasoning and sampling.
 
-      # Kimi K3 (via NVIDIA) - Moonshot AI flagship
-      # MoE: 2.8T total, 104B active, 896 experts (16 routed + 2 shared
-      # per token); Kimi Delta Attention (69 KDA + 24 gated MLA layers),
-      # Attention Residuals, Stable LatentMoE, 401M MoonViT-V2 vision
-      # encoder. Quantization-aware trained (MXFP4 weights/MXFP8 acts).
-      # Best for: long-horizon agentic coding, whole-repo review at 1M
-      #   context, multimodal review (text + image in, text out)
-      - id: kimi-k3-nvidia
-        full_id: moonshotai/kimi-k3
-        name: Kimi K3 (NVIDIA)
-        # NVIDIA-suffixed aliases only — the bare `kimi-k3`/`kimi3` stay
-        # reserved for the Moonshot direct provider, canonical owner of the
-        # Kimi family (it currently ships K2.6). This is now the only Kimi on
-        # NIM: the K2.6 re-host was removed 2026-08-29 (note below).
-        aliases:
-          - kimi-nvidia-3
-          - kimi3-nvidia
-        pricing:
-          # Free/non-commercial NVIDIA NIM trial endpoint
-          input_per_million: 0.00
-          output_per_million: 0.00
-        inference_params:
-          # The model card's own evaluation config: temperature=1.0 with
-          # top_p=0.95 for single-step tasks (its top_p=1.0 is for agentic
-          # loops, which a one-shot review is not). Same fixed pair
-          # Moonshot requires for K2.6.
-          default_temperature: 1.0
-          default_top_p: 0.95
-          # Double the K2.6 sibling's 16384: thinking cannot be switched
-          # off here and NIM bills reasoning inside completion_tokens, so
-          # the report needs headroom above the reasoning it follows.
-          max_output_tokens: 32768
-        # Input Context Length (ISL) per the model card: 1,048,576
-        context_window: 1048576
-        # Thinking is ALWAYS enabled on K3 (model card, Output properties:
-        # "Thinking is always enabled") with no knob to disable it — the
-        # constant, not intermittent, forced-tool_choice-while-thinking
-        # profile, same as Fable 5. Tool-use is unproven on
-        # this endpoint (NIM's free tier rate-limited the probe), so the
-        # assume-prompt-parsing rule applies; K2.6 on Moonshot-direct is
-        # prompt-path for the same reason. Flip to true only if a live review
-        # run proves tool-use while thinking.
-        supports_tool_use: false
-        architecture: "MoE (2.8T total, 104B active, 896 experts, multimodal)"
-        capabilities:
-          - code_review
-          - code_generation
-          - reasoning
-          - agentic_tasks
-          - thinking
-          - multimodal
-        notes: >-
-          Native multimodal agentic model (text/image in, text out),
-          1M-token context, always-on thinking with low/high/max effort
-          levels. Modified MIT, commercial use allowed. Free NVIDIA NIM
-          trial endpoint. Prompt-based JSON parsing.
+      # Kimi K3 (NVIDIA) removed 2026-10-19: absent from GET /v1/models;
+      # completion HTTP 410 names EOL 2026-10-15T08:00:00Z.
+      # Source: https://build.nvidia.com/moonshotai/kimi-k3
+      # Deleted kimi-k3-nvidia, kimi-nvidia-3 and kimi3-nvidia. The remaining
+      # K3 routes, `kimi` (Moonshot) and `kimi-bedrock`, are billed; redirecting
+      # a free NVIDIA alias would silently change provider and billing.
+      # This retires only the hosted NIM endpoint, not K3 weights/self-hosting.
+      # Lost: free K3 (2.8T/104B, 1M context, multimodal, always-on thinking).
+      # Prompt parsing was conservative; forced tool use was never verified.
+      # For a free NIM alternative select glm53-flash-nvidia explicitly.
+      # Full evidence: docs/nvidia-model-review-2026-10.md.
 
       # Kimi K2.6 (NVIDIA) removed 2026-08-29 as CURATION - NOT because the
       # endpoint is dead, and this distinction matters for anyone re-adding it.
@@ -909,8 +867,8 @@ providers:
       #
       # `kimi-nvidia-26`, `kimi26-nvidia` and the entry id `kimi-k2.6-nvidia`
       # were all DELETED - version-explicit, and the surviving NIM Kimi is a
-      # different generation. Use `kimi-nvidia-3` (K3 on NIM) or `kimi`
-      # (K2.6 on Moonshot direct). The K2.5-on-NIM names (kimi-k2.5,
+      # different generation. K3 on NIM was itself removed 2026-10-19; use
+      # `kimi` (now K3 on Moonshot, billed). The K2.5-on-NIM names (kimi-k2.5,
       # kimi-k2.5-nvidia, kimi25) were already deleted on 2026-07-25 when NVIDIA
       # shut that endpoint down.
 
@@ -940,86 +898,17 @@ providers:
       # not advertised by --list-models. For a current direct GLM use Z.AI's
       # `glm` / `zhipuai/glm-5.3`; version-specific 5.2 names are retired.
 
-      # GLM-5.3 (via NVIDIA) — Z.ai text-only flagship, added 2026-09-19.
-      # MoE: 753B total / ~40B active, 78 layers (3 dense + 75 MoE), 256 routed
-      # experts top-8 + 1 shared, DeepSeek Sparse Attention (2,048 tokens per
-      # query), 1 MTP draft layer. Same base model as GLM-5.2 — every gain came
-      # from post-training. Best for: repo-scale agentic coding and whole-repo
-      # review at 1M context.
-      #
-      # Verified live 2026-09-19: listed by `GET /v1/models` and a completion
-      # returns HTTP 200 with no `deprecation` header.
-      #
-      # LATENCY WARNING, measured not guessed: a 13-token prompt at
-      # `reasoning_effort=low` capped to 8 output tokens took **4m50s**
-      # wall-clock. This endpoint serves an NVFP4-quantized checkpoint on
-      # two-node GB300 workers with CPU KV-cache offloading, and the
-      # non-streaming path returns nothing until generation finishes, so a real
-      # review batch is far slower than every other entry in this file: a
-      # **7-line** single-file review measured **19m0s** end to end (exit 0, a
-      # genuine structured report). That is the floor, not the average — it is
-      # what this endpoint costs to review almost nothing. The provider-level
-      # `polling_timeout: 1800` above exists for this entry; at the old 900 the
-      # same run only survived on a ReadTimeout retry. Also expect
-      # NVIDIA-gateway 504s, which `max_retries: 5` with the 4s 504 base wait is
-      # there to absorb. Prefer `glm-5.3-flash-nvidia` below (3m03s on the same
-      # file) for anything resembling a CI run.
-      - id: glm-5.3-nvidia
-        full_id: z-ai/glm-5.3
-        # NVIDIA-suffixed aliases only — the bare `glm`, `glm-5.3`, `glm5.3`
-        # are claimed by the Z.AI direct provider, canonical owner of the GLM
-        # family. Deliberately NOT reusing `glm5-nvidia`/`glm5.2-nvidia` etc:
-        # those were deleted with the 5.2 entry and must keep failing fast.
-        name: GLM-5.3 (NVIDIA)
-        aliases:
-          - glm53-nvidia
-          - glm5.3-nvidia
-        pricing:
-          # Free endpoint on build.nvidia.com
-          input_per_million: 0.00
-          output_per_million: 0.00
-        inference_params:
-          # Mirror the Z.AI-direct GLM-5.3 entry: temperature 1.0, and omit
-          # top_p so the server keeps its documented default.
-          default_temperature: 1.0
-          max_output_tokens: 32768
-          # The card's default is `max`. Pin `high` instead: reasoning bills
-          # inside completion_tokens on NIM, so max effort eats the output
-          # budget the report needs, and this endpoint is slow enough already
-          # (see the latency warning). `max` is not expressible here anyway —
-          # InferenceParams.reasoning_effort is Literal[none|low|medium|high].
-          reasoning_effort: high
-          # NOTE: `clear_thinking: true` is deliberately NOT set even though
-          # both cards recommend it "for chat scenarios". It clears reasoning
-          # from PRIOR turns, and a review request is single-turn, so it would
-          # be an inert knob — and this file already carries the cost of one of
-          # those (see the reasoning_effort note in the Mistral removal block).
-        # Card figure: 1,048,576 (the Z.AI-direct sibling rounds to 1,000,000).
-        context_window: 1048576
-        # Reasoning is always on with no off switch — the constant
-        # forced-tool_choice-while-thinking profile, same as Kimi K3 above and
-        # both Z.AI-direct GLM-5.3 entries. The card's "tool calls are emitted
-        # in OpenAI-compatible form" is not evidence that a FORCED tool_choice
-        # survives thinking, which is what .with_structured_output sets, so the
-        # assume-prompt-parsing rule applies. Flip to true only if a live
-        # review run proves otherwise.
-        supports_tool_use: false
-        architecture: "MoE (753B total, ~40B active, DeepSeek sparse attention)"
-        capabilities:
-          - code_review
-          - code_generation
-          - reasoning
-          - agentic_tasks
-          - thinking
-          - long_horizon_agentic
-        notes: >-
-          Z.ai text-only flagship on NIM's free tier, 1M-token context,
-          always-on reasoning at low/high/max effort. Leads CyberGym for
-          vulnerability discovery, which makes it a strong security reviewer.
-          MIT-like licence (a Model-as-a-Service operator above $10B revenue
-          needs a Z.ai security review). Served NVFP4-quantized, so outputs
-          may differ from full precision in edge cases, and it is by far the
-          slowest endpoint in this registry. Prompt-based JSON parsing.
+      # GLM-5.3 (NVIDIA) removed 2026-10-19 ahead of its announced sunset:
+      # still listed and HTTP 200, but Deprecation: 2026-10-28T08:00:00Z.
+      # Source: https://build.nvidia.com/z-ai/glm-5-3 (deprecation notice).
+      # Scheduled retirement, not an already-dead endpoint or mere curation.
+      # Deleted glm-5.3-nvidia, glm53-nvidia and glm5.3-nvidia: Flash is a
+      # distinct concurrent model, and `glm` (Z.AI) / `glm53-bedrock` are billed.
+      # Lost: free 753B/40B text flagship, 1M context, high reasoning effort.
+      # Observed prompt-path latency was 19m for a 7-line review; the timeout
+      # evidence remains in docs/providers.md. Tool use was never verified.
+      # glm53-flash-nvidia remains the free default (320B/18B, 1M, multimodal).
+      # Full evidence: docs/nvidia-model-review-2026-10.md.
 
       # GLM-5.3-Flash (via NVIDIA) — first natively multimodal GLM-5, added
       # 2026-09-19. MoE: 320B total / 18B active, 45 layers in a hybrid
@@ -1029,9 +918,9 @@ providers:
       # pre-training. Best for: high-volume review and CI, multimodal review
       # (text + up to 8 images in, text out).
       #
-      # Verified live 2026-09-19: HTTP 200, no `deprecation` header, and
-      # `reasoning_effort` accepted. Answered in seconds, unlike its sibling
-      # above — native FP8 on 8xH100 rather than NVFP4 on GB300.
+      # Re-verified 2026-10-19: listed, HTTP 200 in 1.2s, no deprecation or
+      # sunset header. The flagship's sunset does not apply to this endpoint.
+      # Native FP8 on 8xH100 rather than the removed flagship's NVFP4 on GB300.
       - id: glm-5.3-flash-nvidia
         full_id: z-ai/glm-5.3-flash
         name: GLM-5.3-Flash (NVIDIA)
@@ -1049,10 +938,11 @@ providers:
           default_temperature: 1.0
           default_top_p: 0.95
           max_output_tokens: 32768
-          # Same reasoning as the sibling above.
+          # Bound reasoning effort below the card's max default so the
+          # shared completion budget also has room for the review report.
           reasoning_effort: high
         context_window: 1048576
-        # Always-on reasoning; see the sibling entry for why the prompt path.
+        # Always-on reasoning; forced tool_choice during reviews is unproven.
         supports_tool_use: false
         architecture: "MoE (320B total, 18B active; hybrid sparse/linear attention, multimodal)"
         capabilities:
@@ -1066,9 +956,9 @@ providers:
           Native multimodal GLM-5 (text/image in, text out), 1M-token context,
           always-on reasoning at low/high/max effort, and roughly a tenth of
           GLM-5.2's price on the vendor's own API — free here on NIM's trial
-          tier. The fast, cheap NIM default for high-volume review; use
-          `glm53-nvidia` when you want the 753B flagship and can wait. MIT.
-          Prompt-based JSON parsing.
+          tier. The fast, cheap NIM default for high-volume review. MIT.
+          Prompt-based JSON parsing. The separate 753B flagship endpoint
+          sunsets on 2026-10-28 and is no longer registered.
 
       # Step 3.5 Flash (NVIDIA) removed 2026-07-25 and Step 3.7 Flash (NVIDIA)
       # removed 2026-08-29 — no StepFun model remains on NIM:
@@ -1360,9 +1250,8 @@ providers:
       - id: kimi-k3
         full_id: kimi-k3
         name: Kimi K3 (Moonshot)
-        # This entry is the canonical owner of the bare Kimi names (the NIM
-        # re-host `kimi-k3-nvidia` keeps provider-suffixed ones only, and its
-        # comment already reserves `kimi3` for exactly this entry).
+        # Canonical owner of the bare Kimi names. The retired NIM re-host's
+        # provider-suffixed aliases remain deleted rather than billing here.
         aliases:
           - kimi
           - kimi3

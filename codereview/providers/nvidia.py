@@ -217,10 +217,15 @@ class NVIDIAProvider(TokenTrackingMixin, ModelProvider):
         # Add base URL for self-hosted NIMs. Fail closed on cleartext so
         # NVIDIA_API_KEY can't be sent over HTTP even if validate_credentials
         # was skipped (the default cloud endpoint is HTTPS).
-        if self.provider_config.base_url:
-            model_params["base_url"] = require_https(
-                self.provider_config.base_url, "base_url"
-            )
+        # Resolve the SDK's environment fallback ourselves so it cannot bypass
+        # HTTPS validation. Freeze one endpoint for inference and preflight.
+        self.base_url = require_https(
+            self.provider_config.base_url
+            or os.environ.get("NVIDIA_BASE_URL")
+            or "https://integrate.api.nvidia.com/v1",
+            "base_url",
+        ).rstrip("/")
+        model_params["base_url"] = self.base_url
 
         # Add thinking mode parameters (for models like GLM-4.7 that support it)
         if self.model_config.inference_params:
@@ -457,11 +462,11 @@ class NVIDIAProvider(TokenTrackingMixin, ModelProvider):
         result.add_check("Model ID", True, f"Model: {model_id}")
 
         # Check 4: Base URL (informational)
-        if self.provider_config.base_url:
+        if self.base_url != "https://integrate.api.nvidia.com/v1":
             result.add_check(
                 "Base URL",
                 True,
-                f"Using custom endpoint: {self.provider_config.base_url}",
+                f"Using custom endpoint: {self.base_url}",
             )
         else:
             result.add_check(
@@ -483,11 +488,7 @@ class NVIDIAProvider(TokenTrackingMixin, ModelProvider):
                 # responded (status: 404)" as a *passing* check for a config
                 # that works fine at run time. A green check for the wrong URL
                 # is worse than no check.
-                base_url = (
-                    self.provider_config.base_url
-                    or "https://integrate.api.nvidia.com/v1"
-                ).rstrip("/")
-                test_url = f"{base_url}/models"
+                test_url = f"{self.base_url}/models"
 
                 with httpx.Client(timeout=5.0) as client:
                     response = client.get(

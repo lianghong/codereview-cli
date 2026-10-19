@@ -20,10 +20,8 @@ PER_FILE_OVERHEAD_TOKENS = 50
 # count_tokens() for the real path.
 BYTES_PER_TOKEN = 3
 
-# Maximum file size we'll feed to tiktoken's encoder. Above this, the file is
-# almost certainly going to be skipped or oversized anyway, so we save the
-# encode pass and use the byte heuristic. 2 MB ≈ ~700K tokens, well past
-# any provider's context window today.
+# Maximum file size we'll feed to tiktoken's encoder. Above this, save the
+# encode pass and stream a byte estimate of the numbered source.
 _TIKTOKEN_MAX_BYTES = 2 * 1024 * 1024
 
 # Cache slots for per-file token counts. One entry is three ints plus a path
@@ -90,6 +88,17 @@ def count_tokens(text: str) -> int:
     return len(enc.encode(text, disallowed_special=()))
 
 
+def format_file_context(file_path: str, content: str) -> str:
+    """Render the exact file block shared by prompt construction and budgeting."""
+    lines = [f"File: {file_path}", "-" * 80]
+    lines.extend(
+        f"{number:4d} | {line}"
+        for number, line in enumerate(content.splitlines(), start=1)
+    )
+    lines.extend(["", "=" * 80, ""])
+    return "\n".join(lines)
+
+
 @lru_cache(maxsize=_TOKEN_CACHE_SIZE)
 def _cached_file_tokens(path_key: str, size: int, _mtime_ns: int) -> int:
     """Token count for a file, memoized on (path, size, mtime).
@@ -113,16 +122,34 @@ def _cached_file_tokens(path_key: str, size: int, _mtime_ns: int) -> int:
     """
     path = Path(path_key)
     encoder = _get_encoder()
-    if encoder is not None and size <= _TIKTOKEN_MAX_BYTES:
+    if size <= _TIKTOKEN_MAX_BYTES:
         try:
             text = path.read_text(encoding="utf-8", errors="replace")
         except OSError:
             return size // BYTES_PER_TOKEN + PER_FILE_OVERHEAD_TOKENS
-        return (
-            len(encoder.encode(text, disallowed_special=())) + PER_FILE_OVERHEAD_TOKENS
+        rendered = format_file_context(path_key, text)
+        tokens = (
+            len(encoder.encode(rendered, disallowed_special=()))
+            if encoder is not None
+            else len(rendered.encode("utf-8")) // BYTES_PER_TOKEN
         )
+        return tokens + PER_FILE_OVERHEAD_TOKENS
 
-    return size // BYTES_PER_TOKEN + PER_FILE_OVERHEAD_TOKENS
+    # Large files still need the line-prefix cost. Stream them to avoid holding
+    # the entire numbered source in memory just to reject an oversized file.
+    rendered_bytes = len(format_file_context(path_key, "").encode("utf-8"))
+    line_number = 0
+    try:
+        with path.open(encoding="utf-8", errors="replace") as source:
+            for physical_line in source:
+                for line in physical_line.splitlines():
+                    line_number += 1
+                    rendered_bytes += len(
+                        f"{line_number:4d} | {line}\n".encode("utf-8")
+                    )
+    except OSError:
+        return size // BYTES_PER_TOKEN + PER_FILE_OVERHEAD_TOKENS
+    return rendered_bytes // BYTES_PER_TOKEN + PER_FILE_OVERHEAD_TOKENS
 
 
 def clear_token_cache() -> None:
@@ -178,8 +205,8 @@ class FileBatcher:
 
         Uses tiktoken (cl100k_base) for accuracy when available and the file
         is small enough to be worth encoding. Falls back to a UTF-8
-        byte-based heuristic for huge files (avoids reading 2 MB+ files that
-        would be skipped anyway) and when tiktoken is unavailable.
+        byte-based heuristic for huge files and when tiktoken is unavailable.
+        Both paths include the line numbers and headers sent to the provider.
 
         Results are memoized per ``(path, size, mtime)`` — see
         :func:`_cached_file_tokens` — so the second and later estimates of the

@@ -812,3 +812,28 @@ def test_connection_test_url_has_no_doubled_slash(
 
     assert requested_url == expected
     assert "//models" not in requested_url
+
+
+@pytest.mark.parametrize(
+    "url", ["http://example.invalid/v1", "http://localhost:8000/v1"]
+)
+def test_nvidia_environment_endpoint_cannot_bypass_https(
+    model_config, provider_config, monkeypatch, url
+):
+    monkeypatch.setenv("NVIDIA_BASE_URL", url)
+    with patch("codereview.providers.nvidia.ChatNVIDIA") as client:
+        with pytest.raises(ValueError, match="HTTPS|https"):
+            NVIDIAProvider(model_config, provider_config)
+        client.assert_not_called()
+
+
+def test_nvidia_environment_endpoint_used_for_client_and_validation(
+    model_config, provider_config, monkeypatch
+):
+    monkeypatch.setenv("NVIDIA_BASE_URL", "https://example.invalid/v1/")
+    monkeypatch.setenv("CODEREVIEW_SKIP_CONNECTION_TEST", "1")
+    with patch("codereview.providers.nvidia.ChatNVIDIA") as client:
+        provider = NVIDIAProvider(model_config, provider_config)
+    assert client.call_args.kwargs["base_url"] == "https://example.invalid/v1"
+    result = provider.validate_credentials()
+    assert "https://example.invalid/v1" in str(result.checks)

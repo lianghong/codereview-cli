@@ -137,7 +137,7 @@ Exit codes:
 | Code | Meaning | CI should |
 |---|---|---|
 | `0` | Nothing at or above the threshold | pass |
-| `1` | The **run** failed (credentials, API error, no results) | fail — investigate the tool/config |
+| `1` | The **run** failed or was incomplete (including any failed batch) | fail — investigate the tool/config |
 | `2` | The review found blocking issues | fail — fix the code |
 
 Because `1` and `2` are distinct, a pipeline can tell an infrastructure problem
@@ -153,6 +153,12 @@ case $status in
 esac
 ```
 
+If only some batches fail, the report is still written before exit 1. JSON
+includes `review_complete: false`, `failed_batches`, and `failed_files`;
+Markdown names the files without results. File and line metrics count successful
+batches. These fields concern planned batches; intentional scanner and size
+exclusions remain separate.
+
 `--fail-on` is independent of `--severity`: `--severity` filters only what is
 *printed*, so hiding low-severity noise from the terminal never weakens the
 gate.
@@ -162,7 +168,9 @@ gate.
 
 ```bash
 # Parse JSON to check for critical issues
-codereview ./src --output review-report.json --format json --max-files 100
+codereview ./src --output review-report.json --format json --max-files 100 \
+  || exit "$?"
+jq -e '.review_complete == true' review-report.json >/dev/null || exit 1
 CRITICAL_COUNT=$(jq '.metrics.critical_issues // 0' review-report.json)
 if [ "$CRITICAL_COUNT" -gt 0 ]; then
   echo "Found $CRITICAL_COUNT critical issues!"
@@ -514,13 +522,11 @@ codereview ./src --model kimi-k3
 codereview ./src --model kimi   # canonical short alias
 ```
 
-**Kimi K3 (NVIDIA)** - free tier, 2.8T MoE / 104B active, 1M context, multimodal (text + image in), always-on thinking:
-```bash
-codereview ./src --model kimi-nvidia-3
-codereview ./src --model kimi3-nvidia
-```
-The bare `kimi`/`kimi-k3` names stay with the Moonshot direct API (canonical owner of the
-Kimi family), so the NVIDIA re-host is reachable only under its provider-suffixed aliases.
+Kimi K3's NVIDIA endpoint was retired on October 15, 2026. Its NVIDIA
+aliases are deleted; use the billed Moonshot commands above or select
+`kimi-bedrock` explicitly. For a free alternative, use `glm53-flash-nvidia`.
+GLM-5.3's NVIDIA flagship was also removed ahead of its October 28 sunset;
+Flash remains available. See the [NVIDIA audit](nvidia-model-review-2026-10.md).
 
 ### 10. Monitor Token Usage and Costs
 
@@ -568,7 +574,7 @@ Be aware of costs and choose models accordingly:
 
 **NVIDIA NIM (Free Tier):**
 
-- **DeepSeek-V4.1-Flash, GLM-5.3, GLM-5.3-Flash, Kimi K3**: Currently free.
+- **DeepSeek-V4.1-Flash, GLM-5.3-Flash**: Currently free.
   DeepSeek-V4.1-Flash uses new NVIDIA-specific aliases; the retired V4-Pro and
   V4-Flash aliases are not redirected.
 
@@ -634,11 +640,17 @@ codereview ./src --no-readme
 ```
 
 **How it works:**
+
 - Searches target directory and parent directories for README.md
-- Stops at git repository root
+- Stops at a `.git` directory or file, including Git worktree boundaries
+- Skips symlinked README files during automatic discovery
 - Auto-confirms after 3 seconds (press Enter for immediate confirm, 'n' to skip)
 - README content is included in each batch sent to the LLM
 - Large files (>50KB) show a warning; files >100KB are truncated
+
+Explicit `--readme` paths and manually selected context files may point outside
+the repository or use a symlink. Choose those paths deliberately: their
+contents are sent with each batch. Use `--no-readme` to omit project context.
 
 **Benefits:**
 - LLM understands project conventions and requirements
@@ -665,11 +677,10 @@ NO_COLOR=1 codereview ./src
 
 ### Static Analysis on Untrusted Repositories
 
-`--static-analysis` runs real linters against the reviewed tree, and three of
-them execute code the *repository* supplies: mypy imports the module named by a
-`plugins =` entry, an `eslint.config.js` **is** JavaScript, and Prettier loads
-the modules named in its `plugins` key. That code runs with your privileges
-before any review output exists.
+`--static-analysis` runs real linters against the reviewed tree. Mypy,
+ESLint, Prettier, golangci-lint, and clang-tidy can execute code selected by
+repository settings, with your privileges. Clang-tidy compiler arguments can
+load native plugins; JavaScript config files can themselves be executable.
 
 So the tool detects those configs and skips the affected tool, saying so:
 
@@ -680,10 +691,12 @@ So the tool detects those configs and skips the affected tool, saying so:
   repository you trust).
 ```
 
-Detection is on content: a `pyproject.toml` with a `[tool.mypy]` section but no
-`plugins` entry runs normally, because matching a project's own lint config is
-the point of running its linters. Unreadable or oversized (>512 KB) configs are
-treated as risky — fail closed.
+Ordinary mypy settings without plugins and clang-tidy check settings run
+normally. Executable config modules and clang-tidy compilation databases or
+flag files require explicit trust. Config checks include `.venv`, `venv`, and
+`.tox` when their files can reach a tool. Unreadable, invalid, symlinked, or
+oversized (>512 KB) configs are treated as risky. See the full
+[configuration rules](static-analysis.md#repo-supplied-configs-that-execute-code).
 
 ```bash
 # Trusted repository (your own code): run everything
@@ -728,7 +741,7 @@ codereview ./src --aws-profile production
 
 Choose the right model for your needs. Use short model names (aliases supported).
 
-As of 2026-10-08, the registry contains **24 models across eight providers**.
+As of 2026-10-19, the registry contains **22 models across eight providers**.
 The default is **Opus 5.5**. `sonnet` selects **Sonnet 5.5**, and the
 compatibility alias `gpt-bedrock` selects **GPT-6.1 Sol**. Opus 5, Sonnet 5,
 and GPT-5.6 Sol version-specific names are retired.
@@ -771,8 +784,6 @@ codereview ./src --model gpt-pro       # GPT-5.4 Pro (deeper reasoning variant)
 # DeepSeek-V4.1-Flash (552B MoE, 1M context, reasoning)
 codereview ./src --model dsv41-flash-nvidia
 codereview ./src --model glm53-flash-nvidia  # GLM-5.3-Flash (320B/18B MoE, 1M context, multimodal, fast)
-codereview ./src --model glm53-nvidia        # GLM-5.3 (753B/40B MoE, 1M context — but ~19 min for a one-file review)
-codereview ./src --model kimi-nvidia-3       # Kimi K3 (2.8T/104B MoE, 1M context, multimodal, always-on thinking)
 
 # Google Generative AI
 codereview ./src --model gemini-3.1-pro     # Gemini 3.1 Pro (1M context; supersedes retired 3 Pro)
@@ -814,9 +825,7 @@ codereview ./src --model gpt6-luna          # GPT-6 Luna (cheapest GPT-6; us-eas
 | **GLM-5.3 (Bedrock)** | AWS Bedrock | ~744B/40B MoE, 1M context, always-on reasoning; Global profile, AWS credentials, eligible accounts only | $1.68/M input, $5.28/M output |
 | **GPT-5.4** | Azure OpenAI | Frontier reasoning, default Azure, 1.05M context | $2.50/M input, $15/M output |
 | **GPT-5.4 Pro** | Azure OpenAI | Deeper reasoning, hardest problems | $30/M input, $180/M output |
-| **Kimi K3 (NVIDIA)** | NVIDIA NIM | Free tier, 2.8T/104B MoE, 1M context, multimodal (text+image in), always-on thinking | Free* |
 | **DeepSeek-V4.1-Flash (NVIDIA)** | NVIDIA NIM | Free tier, 552B MoE, 1M context, reasoning, prompt-based JSON output | Free* |
-| **GLM-5.3 (NVIDIA)** | NVIDIA NIM | Free tier, 753B/40B MoE, 1M context, always-on reasoning; very slow for CI | Free* |
 | **GLM-5.3-Flash (NVIDIA)** | NVIDIA NIM | Free tier, 320B/18B MoE, 1M context, multimodal input; fast NIM default | Free* |
 | **Gemini 3.1 Pro** | Google GenAI | Most advanced reasoning, 1M context (3 Pro retired 2026-03-09) | $2/M input, $12/M output |
 | **Gemini 3.8 Flash** | Google GenAI | Current Flash: long-horizon engineering and autonomous agents, 1M context, 64K output (owns `gemini-flash`) | $1.50/M input, $7.50/M output |
@@ -833,8 +842,9 @@ codereview ./src --model gpt6-luna          # GPT-6 Luna (cheapest GPT-6; us-eas
 *NVIDIA NIM models are currently in free preview tier; their zero-valued
 registry rates render as `Estimated cost: TBD` in the CLI.
 
-This table reflects the current 24 entries. GLM-5.3 joined Bedrock on
-October 8. Sonnet 5 was replaced with 5.5,
+This table reflects 22 entries as of October 19, 2026, after removing NVIDIA's
+retired Kimi K3 endpoint and GLM-5.3 ahead of its announced October 28 sunset.
+GLM-5.3 joined Bedrock on October 8. Sonnet 5 was replaced with 5.5,
 and Opus 5 plus GPT-5.6 Sol were removed as curation on September 30.
 Earlier removals include both retired endpoints and live models.
 `--list-models` is authoritative; see the
@@ -860,6 +870,51 @@ codereview ./src --model glm53-flash-nvidia
 ```
 
 ## Understanding Results
+
+### Report Completeness
+
+JSON exports include execution metadata supplied by the runner. A partial
+report can have no findings while still being incomplete. For example, this
+excerpt describes one successful file and one failed batch:
+
+```json
+{
+  "summary": "Incomplete review: Analyzed 1 files and found 0 issues",
+  "review_complete": false,
+  "failed_batches": 1,
+  "failed_files": ["/repo/src/payments.py"],
+  "metrics": {
+    "files_analyzed": 1,
+    "total_lines": 42,
+    "total_issues": 0
+  },
+  "issues": []
+}
+```
+
+The command exits 1 after writing partial results, including under `--quiet`
+or `--fail-on`. Markdown lists the failed files under **Incomplete review**.
+File and line metrics count successful batches, while token usage can include
+billed failed attempts. If every batch fails, the command exits 1 without a
+review artifact.
+
+`review_complete: true` means no planned batch failed. It does not assert full
+repository coverage: exclusions, file limits, skipped files, and skipped
+static-analysis tools remain separate. A completed run with blocking findings
+exits 2 when `--fail-on` is set.
+
+### Output Limits and Batch Size
+
+The CLI rejects responses whose provider metadata says generation reached the
+output token limit. A parser can repair truncated JSON, so valid JSON alone
+does not establish a complete review. Reported usage is still counted; the
+same exhausted request is not retried automatically.
+
+Reduce files per batch or review a smaller directory. A single oversized file
+is not split automatically. You can also adjust the selected model's
+`inference_params.max_output_tokens` in `models.yaml`, within the provider's
+limits. Reasoning consumes part of this output budget, and raising it leaves
+less of the context window available for source.
 
 ### Interpreting Issues
 
@@ -986,7 +1041,7 @@ For projects with 1000+ files:
 | Development/testing | GLM-5.3-Flash | NVIDIA NIM | Free |
 | Advanced reasoning (1M) | Gemini 3.1 Pro | Google GenAI | $2.00-$12.00/M |
 | Large context (1M) | Gemini 3.8 Flash | Google GenAI | $1.50-$7.50/M |
-| Large context needed | Kimi K3 | NVIDIA NIM | Free |
+| Large context needed | DeepSeek-V4.1-Flash / GLM-5.3-Flash | NVIDIA NIM | Free |
 
 *Actual costs depend on file size and complexity
 
@@ -994,10 +1049,12 @@ For projects with 1000+ files:
 
 1. **Use free tier for development**: NVIDIA NIM models are free during preview
 2. **Choose appropriate model**: Use Haiku for large scans, Sonnet for daily work, Opus for critical reviews
-3. **Estimate tokens**: ~100 tokens per 4 lines of code
+3. **Estimate tokens**: Use `--dry-run`; estimates include source line numbers,
+   file headers, and reserved prompt/context overhead.
 4. **Use max-files**: Limit scope for cost control
 5. **Review incrementally**: Analyze changes, not entire codebase
-6. **Filter by severity**: Reduce output size with severity filters
+6. **Filter the display**: `--severity` reduces terminal noise; it does not
+   reduce the model's generation or cost.
 
 Example cost-conscious workflows:
 
@@ -1144,18 +1201,10 @@ If you encounter issues:
 
 3. **Verify provider setup**:
    ```bash
-   # AWS Bedrock
-   aws bedrock list-foundation-models --region us-west-2
-
-   # Azure OpenAI - check environment variables
-   echo $AZURE_OPENAI_ENDPOINT
-   echo $AZURE_OPENAI_API_KEY
-
-   # NVIDIA NIM - check API key
-   echo $NVIDIA_API_KEY
-
-   # Google GenAI - check API key
-   echo $GOOGLE_API_KEY
+   codereview --model sonnet --validate
+   codereview --model gpt-5.4 --validate
+   codereview --model glm53-flash-nvidia --validate
+   codereview --model gemini-pro --validate
    ```
 
 4. **Test with small directory**:

@@ -373,6 +373,62 @@ _RETRY_DEFAULTS = {
 }
 
 
+@pytest.mark.parametrize("provider_key", sorted(_RETRY_DEFAULTS))
+@pytest.mark.parametrize("parsed_successfully", [False, True])
+def test_output_limit_is_rejected_and_billed_for_every_provider(
+    provider_key, parsed_successfully, monkeypatch
+):
+    """A vendor's truncation signal overrides even successfully repaired JSON."""
+    from langchain_core.messages import AIMessage
+
+    from codereview.models import CodeReviewReport
+    from codereview.providers.base import OutputTokenLimitError
+
+    monkeypatch.setattr("codereview.providers.base.time.sleep", lambda _: None)
+    patch_target, build = _RETRY_DEFAULTS[provider_key][0](
+        _model_config(supports_tool_use=True)
+    )
+    metadata = {"finish_reason": "length"}
+    if provider_key == "bedrock":
+        metadata = {"stopReason": "max_tokens"}
+    elif provider_key == "bedrock_openai":
+        metadata = {
+            "status": "incomplete",
+            "incomplete_details": {"reason": "max_output_tokens"},
+        }
+    elif provider_key == "google_genai":
+        metadata = {"finish_reason": "MAX_TOKENS"}
+    elif provider_key == "nvidia":
+        metadata = {
+            "finish_reason": "length",
+            "usage": {"prompt_tokens": 1000, "completion_tokens": 16384},
+        }
+    raw = AIMessage(
+        content='{"summary":"Critical problems follow","issues":[',
+        response_metadata=metadata,
+        usage_metadata={
+            "input_tokens": 1000,
+            "output_tokens": 16384,
+            "total_tokens": 17384,
+        },
+    )
+    with patch(patch_target):
+        provider = build()
+    provider.chain = MagicMock()
+    provider.chain.invoke.return_value = {
+        "raw": raw,
+        "parsed": CodeReviewReport(summary="Critical problems follow")
+        if parsed_successfully
+        else None,
+        "parsing_error": None,
+    }
+    with pytest.raises(OutputTokenLimitError, match="output token budget"):
+        provider.analyze_batch(1, 1, {"main.py": "pass\n"})
+    provider.chain.invoke.assert_called_once()
+    assert provider.total_input_tokens == 1000
+    assert provider.total_output_tokens == 16384
+
+
 def _capture_retry_config(provider_key, max_retries):
     """Run analyze_batch and return the RetryConfig the provider built."""
     model_config = _model_config(supports_tool_use=True)

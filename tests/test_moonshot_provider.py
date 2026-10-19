@@ -90,6 +90,45 @@ def test_moonshot_provider_initialization(model_config, provider_config):
         assert provider.max_tokens == 16384
 
 
+def test_real_moonshot_client_rejects_repaired_truncated_json(
+    k3_model_config, provider_config, monkeypatch
+):
+    """Replay a length-limited HTTP payload through SDK conversion and parsing."""
+    from codereview.providers.base import OutputTokenLimitError
+
+    provider = MoonshotProvider(k3_model_config, provider_config)
+    provider.model.rate_limiter = None
+    monkeypatch.setattr("codereview.providers.base.time.sleep", lambda _: None)
+    response = {
+        "id": "chatcmpl-truncated",
+        "object": "chat.completion",
+        "created": 1,
+        "model": "kimi-k3",
+        "choices": [
+            {
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": '{"summary":"Critical problems follow","issues":[',
+                },
+                "finish_reason": "length",
+            }
+        ],
+        "usage": {
+            "prompt_tokens": 1000,
+            "completion_tokens": 16384,
+            "total_tokens": 17384,
+        },
+    }
+    with patch.object(provider.model.client.with_raw_response, "create") as request:
+        request.return_value.parse.return_value = response
+        with pytest.raises(OutputTokenLimitError, match="output token budget"):
+            provider.analyze_batch(1, 1, {"main.py": "pass\n"})
+    request.assert_called_once()
+    assert provider.total_input_tokens == 1000
+    assert provider.total_output_tokens == 16384
+
+
 def test_moonshot_uses_chatmoonshot_with_base_url(model_config, provider_config):
     """Moonshot integrates via langchain-moonshot's ChatMoonshot class."""
     with patch("codereview.providers.moonshot.ChatMoonshot") as mock_ms:

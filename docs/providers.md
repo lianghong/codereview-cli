@@ -21,6 +21,11 @@ calls into.
 | `_is_retryable_error` / `_calculate_backoff` | **hook (required)** | OpenAI-compatible providers should use `is_openai_retryable_error` + `parse_retry_after` (mixins.py); keep any provider-specific base-wait local (see Azure). |
 | `_execute_with_retry`, `_prepare_batch_context`, `_build_batch_system_prompt`, `_resolve_temperature`, `_resolve_max_retries`, `_build_rate_limiter` | **base-provided** | Inherited from `ModelProvider`; call them, don't override unless you have a specific reason. `_build_rate_limiter` only *builds* the limiter — an `InMemoryRateLimiter` throttles nothing unless it is passed to the client, so `_create_model` must also put `"rate_limiter": self.rate_limiter` in `model_params`. NVIDIA built one and dropped it, which left concurrent batches hammering NIM until 429s. |
 
+NVIDIA resolves its endpoint as explicit config `base_url`, then
+`NVIDIA_BASE_URL`, then `https://integrate.api.nvidia.com/v1`. HTTPS validation,
+client construction, and credential checks all use this resolved URL. Passing
+no URL to the SDK would let its environment fallback bypass validation.
+
 ## Classify retryability on the HTTP *status*, not on an exception class
 
 An `isinstance` check against a type the *installed* client never raises is dead code, and dead
@@ -80,13 +85,11 @@ ModelRateLimitError)`, `GoogleContextOverflowError(ClientError, ContextOverflowE
 still contains the class each provider's status extraction already reads, so the existing
 classifiers are unaffected by the upgrade.
 
-The one piece with standalone value is `ContextOverflowError`, which is a *diagnostic*, not a
-retry decision: it is already non-retryable on both sides (`openai.BadRequestError` → 400), and a
-batch the `bytes // 3 + 50` estimate under-counted currently fails with vendor prose instead of
-"this batch exceeded the context window". Partial provider coverage is acceptable for a message
-in a way it is never acceptable for retry classification — a missing nicer message degrades to
-today's behavior, a missing retry branch loses work. Revisit it as a message improvement if the
-estimator is ever observed to under-count in the field; do not fold it into `_is_retryable_error`.
+The shared retry loop catches `ContextOverflowError` as a terminal input-size
+diagnostic and recommends reducing `--batch-size`. Clients that do not emit
+that class retain their vendor error. File estimates now include numbered
+source and headers, but different tokenizers can still disagree. Keep input
+overflow handling separate from transient HTTP retry classification.
 
 **Retryability has to be tested from the *outside***: `_is_retryable_error` classifies on the
 exception's rendered text, and Bedrock's throttling arrives under several spellings
@@ -126,7 +129,7 @@ long time before emitting its first output token:
   always-reasoning model, and at 60s none of them can finish a batch: `glm53-flash-nvidia` on a
   7-line file failed every attempt with `ReadTimeout: read timeout=60`, taking 7m05s to fail, and
   completed in ~3m once the timeout was wired through. **Wiring it then exposed that the configured
-  value was itself too low:** `glm53-nvidia` needs 19m0s for the same 7-line file, so the YAML's 900
+  value was itself too low:** the since-removed `glm53-nvidia` needed 19m0s for the same 7-line file, so the YAML's 900
   sat under the flagship's floor and that run survived only on a retry. It is now `1800`, Bedrock's
   number for Bedrock's reason. Set this from the *slowest* entry the provider serves, not the
   typical one, and treat a run that exceeds the ceiling but still exits 0 as a finding — a
@@ -192,6 +195,14 @@ parsing path got malformed JSON — a `ValueError` subclass but NOT a `Validatio
 must be named explicitly or it falls into the generic non-retryable `except`). Reasoning models
 on the prompt-parsing path (e.g. GPT-6 Astra on Bedrock) intermittently emit invalid JSON on
 think-heavy batches; the retry is what makes those runs complete.
+
+**Output exhaustion is terminal across providers.** The shared retry loop
+checks raw metadata for Chat Completions `finish_reason: length`, Gemini
+`MAX_TOKENS`, Converse `stopReason: max_tokens`, and Responses
+`incomplete_details.reason: max_output_tokens`. It records reported usage and
+raises `OutputTokenLimitError` without retrying. This check precedes acceptance
+of parsed output: a JSON parser can repair a truncated response into a valid
+but incomplete report.
 
 ## Token accounting counts what was billed, not what parsed
 
@@ -578,10 +589,10 @@ Previously, a reasoning-only `max_tokens` response could surface as an empty
 `Invalid json output` wrapped in `OutputParsingRetryError`, because the parser
 received no report text. Bedrock responses stopped by `max_tokens` now raise
 `OutputTokenLimitError` after recording their billed usage. This applies even
-when partial JSON parses: the report may be incomplete. The error names the
-output budget and recommends increasing it or reducing the reviewed
-code/context. It bypasses parsing
-retries, which otherwise resend the same insufficient budget four times.
+when partial JSON parses: the report may be incomplete. The shared guard
+identifies output exhaustion and recommends increasing
+`inference_params.max_output_tokens` or reducing the reviewed code/context.
+It bypasses parsing retries across all providers.
 
 #### Compatibility and credentials
 

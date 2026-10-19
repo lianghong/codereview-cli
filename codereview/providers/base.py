@@ -14,6 +14,7 @@ from langchain_core.rate_limiters import InMemoryRateLimiter
 from langchain_core.runnables import RunnableLambda
 from pydantic import ValidationError
 
+from codereview.batcher import format_file_context
 from codereview.models import CodeReviewReport
 
 
@@ -393,18 +394,7 @@ class ModelProvider(ABC):
         )
 
         for file_path, content in files_content.items():
-            lines.append(f"File: {file_path}")
-            lines.append("-" * 80)
-
-            # Add line numbers (use extend with generator for efficiency)
-            lines.extend(
-                f"{i:4d} | {line}"
-                for i, line in enumerate(content.splitlines(), start=1)
-            )
-
-            lines.append("")
-            lines.append("=" * 80)
-            lines.append("")
+            lines.append(format_file_context(file_path, content))
 
         return "\n".join(lines)
 
@@ -751,6 +741,31 @@ class ModelProvider(ABC):
         """
         return self.chain.invoke(chain_input)  # type: ignore[attr-defined]
 
+    def _reject_truncated_response(self, raw: Any) -> None:
+        """Reject vendor-signaled truncation even if a parser repaired the JSON."""
+        metadata = getattr(raw, "response_metadata", None)
+        if not isinstance(metadata, dict):
+            return
+        stop_reasons = [
+            metadata.get("finish_reason"),
+            metadata.get("stopReason"),
+        ]
+        incomplete = metadata.get("incomplete_details")
+        if isinstance(incomplete, dict):
+            stop_reasons.append(incomplete.get("reason"))
+        if any(
+            isinstance(reason, str)
+            and reason.lower() in {"length", "max_tokens", "max_output_tokens"}
+            for reason in stop_reasons
+        ):
+            self._track_usage_from_raw(raw)
+            raise OutputTokenLimitError(
+                f"{self.get_model_display_name()} exhausted its output token budget "
+                "(including reasoning). Increase inference_params.max_output_tokens "
+                "or reduce the reviewed code/context. Retrying unchanged will not "
+                "resolve token exhaustion."
+            )
+
     def _execute_with_retry(
         self,
         chain_input: dict[str, str],
@@ -799,6 +814,7 @@ class ModelProvider(ABC):
                 # {"raw": AIMessage, "parsed": CodeReviewReport, "parsing_error": ...}
                 if isinstance(result, dict):
                     raw = result.get("raw")
+                    self._reject_truncated_response(raw)
                     parsed = result.get("parsed")
                     parsing_error = result.get("parsing_error")
 
@@ -869,6 +885,9 @@ class ModelProvider(ABC):
                 self._track_tokens(input_tokens, output_tokens)
 
                 return result
+
+            except OutputTokenLimitError:
+                raise
 
             except ContextOverflowError as e:
                 # Input exceeds model context window — retrying won't help

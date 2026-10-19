@@ -218,13 +218,8 @@ def test_deeply_qualified_exclude_does_not_prune_its_leaf_name(tmp_path):
     assert keep.resolve() in resolved
 
 
-def test_wildcard_prefixed_exclude_still_prunes(tmp_path):
-    """A pattern whose prefix is all wildcards is unanchored, so it may prune.
-
-    ``*/build/**`` names ``build`` at any location one level down, which a
-    bare-name prune expresses correctly — the traversal saving must survive the
-    fix above.
-    """
+def test_single_wildcard_prefix_uses_file_matching(tmp_path):
+    """A single star requires a path segment, so cannot prune at every depth."""
     build = tmp_path / "pkg" / "build"
     build.mkdir(parents=True)
     (build / "out.py").write_text("x = 1\n")
@@ -233,7 +228,7 @@ def test_wildcard_prefixed_exclude_still_prunes(tmp_path):
 
     scanner = FileScanner(tmp_path, exclude_patterns=["*/build/**"])
 
-    assert "build" in scanner._get_excluded_dir_names()
+    assert "build" not in scanner._get_excluded_dir_names()
     resolved = [f.resolve() for f in scanner.scan()]
     assert keep.resolve() in resolved
     assert all("build" not in p.parts for p in resolved)
@@ -369,3 +364,21 @@ def test_default_patterns_all_still_prune_their_directories():
     }
     assert expected, "no directory-style default patterns found; the scan is broken"
     assert expected <= pruned, f"stopped pruning {sorted(expected - pruned)}"
+
+
+@pytest.mark.parametrize(
+    "pattern", ["build/*", "*/build/**", "**/build/**/*.js", "build/**"]
+)
+def test_pruning_preserves_nonmatching_nested_source(tmp_path, pattern):
+    # Include root and nested build directories: a bare-name prune affects both.
+    for relative in ("build/nested/keep.py", "pkg/build/nested/keep.py"):
+        path = tmp_path / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("x = 1\n")
+    scanner = FileScanner(tmp_path, exclude_patterns=[pattern])
+    expected = {
+        p.resolve()
+        for p in tmp_path.rglob("*.py")
+        if not scanner._is_excluded(str(p.relative_to(tmp_path)))
+    }
+    assert {p.resolve() for p in scanner.scan()} == expected

@@ -1297,6 +1297,59 @@ def _pipeline_mocks(code_dir, issues=(), *, analyzer_error=None, recommendations
     return stack, mock_analyzer
 
 
+@pytest.mark.parametrize("output_format", ["json", "markdown"])
+@pytest.mark.parametrize("fail_on", [None, "high"])
+def test_partial_failure_exports_incomplete_report_and_exits_nonzero(
+    tmp_path, cli_runner, output_format, fail_on
+):
+    """Quiet CI runs must not pass with missing batches or overstate coverage."""
+    import json
+
+    from codereview.models import CodeReviewReport
+    from codereview.scanner import FileScanner
+
+    (tmp_path / "test.py").write_text("pass\n")
+    (tmp_path / "failed.py").write_text("pass\n" * 20)
+    output = tmp_path / f"report.{output_format}"
+    stack, analyzer = _pipeline_mocks(tmp_path)
+    stack.enter_context(patch("codereview.cli.FileScanner", FileScanner))
+
+    def analyze(batch):
+        if any(path.name == "failed.py" for path in batch.files):
+            raise ValueError("Provider rejected batch")
+        return CodeReviewReport()
+
+    analyzer.analyze_batch.side_effect = analyze
+    args = [
+        str(tmp_path),
+        "--quiet",
+        "--no-readme",
+        "--batch-size",
+        "1",
+        "--output",
+        str(output),
+        "--format",
+        output_format,
+    ]
+    if fail_on:
+        args.extend(["--fail-on", fail_on])
+    with stack:
+        result = cli_runner.invoke(main, args)
+    assert result.exit_code == 1, result.output
+    content = output.read_text()
+    if output_format == "json":
+        report = json.loads(content)
+        assert report["review_complete"] is False
+        assert report["failed_batches"] == 1
+        assert [Path(path).name for path in report["failed_files"]] == ["failed.py"]
+        assert report["metrics"]["files_analyzed"] == 1
+        assert report["metrics"]["total_lines"] == 1
+    else:
+        assert "Incomplete review" in content
+        assert "failed.py" in content
+        assert "Analyzed 1 files" in content
+
+
 def test_run_review_is_callable_without_the_click_runner(sample_code_dir):
     """The pipeline runs against a plain Console, no CliRunner.invoke needed."""
     from codereview.cli import run_review

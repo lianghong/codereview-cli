@@ -18,7 +18,6 @@ from codereview.config.models import BedrockConfig, ModelConfig
 from codereview.models import CodeReviewReport
 from codereview.providers.base import (
     ModelProvider,
-    OutputTokenLimitError,
     RetryConfig,
     ValidationResult,
 )
@@ -216,29 +215,6 @@ class BedrockProvider(TokenTrackingMixin, ModelProvider):
         # Tool-use vs prompt-parsing routing (and _create_chain) live in the
         # base class; supports_tool_use in models.yaml decides the path.
         return self._apply_structured_output(base_model)
-
-    def _invoke_chain(self, chain_input: dict[str, str]) -> Any:
-        """Reject token-limited responses before accepting or retrying their JSON."""
-        result = super()._invoke_chain(chain_input)
-        if isinstance(result, dict):
-            raw = result.get("raw")
-            metadata = getattr(raw, "response_metadata", None)
-            if (
-                isinstance(metadata, dict)
-                and metadata.get("stopReason") == "max_tokens"
-            ):
-                # Usage is billed even when reasoning consumes the entire
-                # response. Raising here bypasses the parsing-retry branch,
-                # and also rejects partially complete reports that parse.
-                self._track_usage_from_raw(raw)
-                raise OutputTokenLimitError(
-                    f"{self.get_model_display_name()} exhausted its output token "
-                    f"budget ({self.max_tokens:,} tokens, including reasoning). "
-                    "Increase inference_params.max_output_tokens or reduce the "
-                    "reviewed code/context. Retrying unchanged will not resolve "
-                    "token exhaustion."
-                )
-        return result
 
     def _is_retryable_error(self, error: Exception) -> bool:
         """Check if error is a retryable AWS throttling or transport failure.

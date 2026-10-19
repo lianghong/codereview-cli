@@ -15,8 +15,11 @@ FileScanner → FileBatcher → CodeAnalyzer → ProviderFactory → {Bedrock|Az
 
 ### Prune names may only come from *unanchored* patterns
 
-**Pruning is by bare directory name, which matches at any depth**, so a name may only be
-extracted from an unanchored pattern — every segment before it a wildcard, or none.
+**Pruning is by bare directory name, which matches at any depth**, so only
+`**/literal/**` (optionally with extra leading `**` segments) contributes a
+prune name. Both sides must be recursive: `build/*`, `*/build/**`,
+`**/build/**/*.js`, and bare `build/**` can leave nested files eligible under
+the file matcher and must be evaluated per file.
 
 `docs/api/*` must not contribute `api`, or an unrelated `app/api/` is skipped too and its files
 are never scanned, never counted, and never reported as skipped: the run silently reviews less
@@ -30,7 +33,7 @@ cost coverage in a directory the user never mentioned. To drop a whole subtree, 
 `**`: `docs/api/**` covers arbitrary depth *under that path*, and the unanchored `**/api/**`
 covers *any* directory named `api`.
 
-Locked by the four pruning tests in `tests/test_scanner.py`, one of which derives its
+Locked by the pruning tests in `tests/test_scanner.py`, one of which derives its
 expectations from `DEFAULT_EXCLUDE_PATTERNS` so a new default pattern can't quietly change the
 prune set.
 
@@ -59,11 +62,17 @@ the recursive patterns correctly.
 
 ## batcher.py — token-budget-aware batching
 
-Applies when `context_window` is set; falls back to count-only. Budget =
-`context_window − max_output − system_prompt − readme − safety_margin`. Safety margin =
-`clamp(context_window // 10, 1000, 20000)`. Token estimate = `bytes // 3 + 50` (tiktoken when
-available for files ≤ 2MB; the byte heuristic is the fallback). Greedy packing; oversized files
-are skipped with a warning.
+Applies when `context_window` is set and the computed budget is positive.
+Otherwise batching falls back to file count with a warning when reservations
+exhaust the configured window. Budget =
+`context_window − max_output − system_prompt − readme − linter − safety_margin`.
+Safety margin = `clamp(context_window // 10, 1000, 20000)`.
+File estimates count the formatted
+prompt block, including line numbers, path headers and separators, plus 50
+tokens of headroom. `format_file_context` is shared with the provider to keep
+estimation and rendering aligned. Tiktoken handles files ≤ 2MB; the fallback
+uses formatted UTF-8 bytes divided by 3, streaming larger files. Greedy packing;
+oversized files are skipped with a warning.
 
 Per-file counts are memoized on `(path, size, mtime_ns)` because a single run estimates every
 file at least twice (`--dry-run`'s table, then `create_batches`' packing loop) and each estimate
@@ -107,8 +116,9 @@ gate lives in **`run_review(directory, *, console, ...)`**, which is callable wi
 Runs batches concurrently via `ThreadPoolExecutor` (≤4 workers); `--stream` and single-batch runs
 stay sequential — but `--stream` is downgraded (with a notice) for a provider that never streams
 a token, so it only gives up concurrency where tokens actually appear (see the streaming section
-of `docs/providers.md`). Aborts when all batches fail; warns about partial results when some
-fail.
+of `docs/providers.md`). Aborts when all batches fail. When some fail, exports
+the partial results with coverage metadata, then exits 1 even under `--quiet`
+or `--fail-on`.
 
 `run_review`'s keyword-only params mirror the Click options **including their defaults** —
 `main` is a thin pass-through, and
@@ -123,9 +133,10 @@ Never conflate them. `_evaluate_fail_on` counts `report.issues`, *not* the rende
 gating on the filtered list would turn a display preference into a silent hole in the gate.
 Locked by `tests/test_cli.py::test_severity_filter_does_not_affect_fail_on`.
 
-Exit codes are meaningfully distinct: **1** = the run failed (no results/credentials/API/
-unwritable output), **2** = `EXIT_QUALITY_GATE_FAILED`, the review succeeded and found blocking
-issues.
+Exit codes are meaningfully distinct: **1** = a failed or incomplete run,
+including any failed batch; **2** = `EXIT_QUALITY_GATE_FAILED`, a completed
+review with blocking issues. Partial failure takes precedence over the
+severity gate after export.
 
 The gate is the last statement in `run_review`, *after* export, so a failing build still leaves
 its `--output` artifact; `SystemExit` is a `BaseException` so it passes through the
@@ -154,14 +165,18 @@ fix; capped at 5. Locked by the four recommendation tests in `tests/test_cli.py`
 When you add a model-written list field to `CodeReviewReport`, extend the batch loop in the same
 commit.
 
-### `files_analyzed` counts what was *sent*, not what was scanned
+### `files_analyzed` counts successful batches
 
-`sum(len(batch.files) for batch in batches)`, because the batcher drops oversized files after the
-scan. Counting `len(files)` claimed coverage the review doesn't have ("Analyzed 120 files" for a
-run that reviewed 118), and `--dry-run` priced the dropped bytes too: one skipped multi-MB file
-quoted ~1,000,350 input tokens for a run that sends 300. Batch membership is the only authority
-on both. Locked by `test_files_analyzed_excludes_files_the_batcher_dropped` and
-`test_dry_run_does_not_bill_files_the_batcher_will_drop`.
+Count files and lines from successful batches. Files dropped by the batcher or
+belonging to failed batches have no review results and do not contribute to
+those metrics. Dry-run estimates use planned batch membership.
+
+`ReviewRunReport` adds `review_complete`, `failed_batches`, and `failed_files`
+to exported JSON without changing the provider's `CodeReviewReport` schema.
+These fields describe execution of the planned batches; scanner and size skips
+remain separate. Markdown identifies an incomplete review and lists failed
+files. Exit 1 for partial failure takes precedence over the severity gate's
+exit 2, after the artifact is written.
 
 ### Provider error prose is withheld unless `--verbose`
 

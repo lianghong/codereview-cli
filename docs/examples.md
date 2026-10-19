@@ -103,8 +103,6 @@ codereview ./monorepo --model haiku --max-files 1000
 # DeepSeek-V4.1-Flash (552B MoE, 1M context, reasoning)
 codereview ./src --model dsv41-flash-nvidia
 codereview ./src --model glm53-flash-nvidia  # GLM-5.3-Flash (multimodal MoE, 1M context, fast)
-codereview ./src --model glm53-nvidia        # GLM-5.3 (753B MoE, 1M context — very slow, not for CI)
-codereview ./src --model kimi-nvidia-3       # Kimi K3 (multimodal MoE, 1M context, thinking)
 
 # GPT-5.4 - Frontier reasoning, 1.05M context (Azure default)
 codereview ./src --model gpt
@@ -325,9 +323,9 @@ jobs:
             --output review-report.json \
             --format json \
             --max-files 100
-        # --fail-on critical exits 2 when a Critical issue is found, so this
-        # step fails the job on its own. The report is written before the gate
-        # is applied, so the upload step below still has its artifact.
+        # Exit 2 means Critical findings; exit 1 means a failed/incomplete run.
+        # Partial results are exported first. If all batches fail, no report
+        # is produced.
 
       - name: Upload review report
         if: always()        # keep the artifact even when the gate failed
@@ -339,6 +337,15 @@ jobs:
       - name: Show critical issues
         if: failure()
         run: |
+          if [ ! -f review-report.json ]; then
+            echo "::error::Review failed before producing a report"
+            exit 1
+          fi
+          if ! jq -e '.review_complete == true' review-report.json >/dev/null; then
+            echo "::error::Incomplete review"
+            jq '{failed_batches, failed_files}' review-report.json
+            exit 1
+          fi
           CRITICAL=$(jq '.metrics.critical_issues // 0' review-report.json)
           HIGH=$(jq '.metrics.high_issues // 0' review-report.json)
           echo "::error::$CRITICAL critical, $HIGH high issues found in code review"
@@ -395,8 +402,8 @@ code-review:
     - uv pip install -e .
   script:
     - |
-      # --fail-on critical exits 2 on a Critical finding; `artifacts:` below
-      # still collects the report because it is written before the gate runs.
+      # Exit 2 means Critical findings; exit 1 means a failed/incomplete run.
+      # artifacts collects any partial report written before exit 1.
       codereview ./src \
         --model haiku \
         --fail-on critical \
@@ -408,7 +415,7 @@ code-review:
              echo "Critical issues found!"
              jq '.issues[] | select(.severity == "Critical")' review-report.json
            else
-             echo "codereview itself failed (exit $status)"
+             echo "Review failed or was incomplete (exit $status)"
            fi
            exit "$status"; }
   artifacts:
@@ -582,10 +589,9 @@ DIRS=$(echo "$STAGED_FILES" | xargs -I {} dirname {} | sort -u)
 # Review directories with staged changes
 for dir in $DIRS; do
   echo "Reviewing: $dir"
-  codereview "$dir" --severity high --max-files 20
-
-  if [ $? -ne 0 ]; then
-    echo "❌ Code review found issues. Please fix before committing."
+  if ! codereview "$dir" --severity high --fail-on high --no-readme \
+    --max-files 20; then
+    echo "❌ Review failed, was incomplete, or found blocking issues."
     exit 1
   fi
 done
@@ -798,13 +804,11 @@ codereview ./src \
 ```yaml
 - name: Quality Gate
   run: |
-    codereview ./src --output review.md --severity high
-    CRITICAL=$(grep -c "Critical" review.md || true)
-    if [ "$CRITICAL" -gt 0 ]; then
-      echo "❌ $CRITICAL critical issues found"
-      exit 1
-    fi
+    codereview ./src --output review.md --severity high --fail-on critical
 ```
+
+Exit 2 blocks on Critical findings. Exit 1 blocks on a failed or incomplete
+run; an empty issues list in a partial report does not pass the gate.
 
 **Impact**:
 - Prevented 3 security vulnerabilities from reaching production
@@ -840,7 +844,7 @@ diff before.md after.md
    ```
 
 2. **Choose Cost-Effective Models**:
-   - **NVIDIA NIM free tier** (DeepSeek-V4.1-Flash, GLM-5.3-Flash, Kimi K3) for development and CI experimentation
+   - **NVIDIA NIM free tier** (DeepSeek-V4.1-Flash, GLM-5.3-Flash) for development and CI experimentation
    - **GLM-5.3-Flash direct** for budget-conscious production reviews ($0.15/$0.50 list per M, 1M context)
    - **DeepSeek-V4-Flash direct** when off-peak pricing or native tool calling is preferred ($0.44/$1.32 peak, half-price off peak)
    - **Haiku** for CI/CD quality gates (fastest, cheapest Bedrock option since Qwen3 Coder Next was removed 2026-08-29)

@@ -3,14 +3,14 @@
 Background for the Configuration rules in `CLAUDE.md`. Read this before adding, renaming or
 removing a model entry, or before adding a config key.
 
-The registry contains **24 models across eight providers as of 2026-10-08**.
+The registry contains **22 models across eight providers as of 2026-10-19**.
 `codereview --list-models` is authoritative; the current provider counts are:
 
 | Provider | Models |
 | --- | ---: |
-| AWS Bedrock (native Converse) | 6 |
+| AWS Bedrock (native Converse) | 7 |
 | Azure OpenAI | 2 |
-| NVIDIA NIM | 4 |
+| NVIDIA NIM | 2 |
 | Google GenAI | 2 |
 | DeepSeek direct | 2 |
 | Z.AI | 2 |
@@ -21,6 +21,13 @@ The default is **Opus 5.5**. `sonnet`/`claude-sonnet` select **Sonnet 5.5**;
 deprecated `gpt-bedrock` selects **GPT-6.1 Sol**. Opus 5, Sonnet 5, and
 GPT-5.6 Sol version-specific names were removed on September 30 as curation,
 after confirming that their upstream endpoints were still live.
+
+The [October 19 NVIDIA audit](nvidia-model-review-2026-10.md) removed
+`moonshotai/kimi-k3` (HTTP 410, EOL October 15) and `z-ai/glm-5.3`
+(still HTTP 200, but `deprecation: 2026-10-28T08:00:00Z`). The latter is a
+scheduled retirement, following the V4-Flash precedent below. All six IDs and
+aliases were deleted; none silently redirect to billed providers or Flash.
+DeepSeek-V4.1-Flash and GLM-5.3-Flash remain, with Flash still the NIM default.
 
 ## `ConfigLoader` must forward every key it parses
 
@@ -76,8 +83,9 @@ When the same model is exposed by both a vendor's direct API and a re-hoster
 (Bedrock/NVIDIA/Azure), the **direct API owns the canonical aliases**. E.g. `deepseek-v4-pro`
 routes to DeepSeek direct — it held that name against NVIDIA's free re-host `dsv4-nvidia` until
 NIM end-of-lifed that endpoint on 2026-09-14; `kimi` and `kimi-k3`
-route to Moonshot direct, while NVIDIA's Kimi keeps `kimi-nvidia-3`/`kimi3-nvidia`. Re-host
-entries keep provider-suffixed aliases only.
+route to Moonshot direct. NVIDIA's K3 re-host was retired October 15;
+`kimi-nvidia-3`/`kimi3-nvidia` were deleted on October 19. Re-host entries keep
+provider-suffixed aliases only.
 
 The convention also decides which entry survives a curation pass: on 2026-08-29 the K2.5 and
 MiniMax re-hosts on Bedrock were dropped in favour of the canonical owner (Moonshot direct) and
@@ -151,9 +159,9 @@ with the evidence attached.
 procedure and found **five of ten NVIDIA NIM entries dead** (32 → 27 models): Mistral Small 4,
 Mistral Medium 3.5, Qwen3.5 397B, GLM-5.2 and Step 3.7 Flash all answer **HTTP 410 Gone** with
 NVIDIA's own EOL date in the body. `GET /v1/models` no longer lists them either, which is why
-neither `--list-models` (credential-free, reads the YAML) nor `--validate` (catalog visibility
-only, and a miss is a warning by design) could surface it — the entries looked healthy right up
-to the invocation. NIM retires endpoints on a rolling basis, so treat the NVIDIA roster as the
+neither `--list-models` (credential-free, reads the YAML) nor NVIDIA's
+`--validate` (endpoint connectivity, without model membership or invocation
+checks) could detect their retirement. NIM retires endpoints on a rolling basis, so treat the NVIDIA roster as the
 shortest-lived block in the registry and re-probe it whenever you touch this file. A 410 is
 *evidence*, not a judgement call: record the date it names. (This pass concluded NIM gives "no
 in-band deprecation signal"; that turned out to be wrong — see the header rule below.)
@@ -181,7 +189,7 @@ deprecation: 2026-09-21T08:00:00Z
 ```
 
 Every check this project had would have called that endpoint healthy — `--list-models` reads the
-YAML, `--validate` checks catalog visibility, and the removal procedure above says "probe a real
+YAML, NVIDIA's `--validate` checks endpoint connectivity, and the removal procedure above says "probe a real
 completion", which succeeded. So the procedure now has a third step: **probe the completion with
 `curl -D -` and read the `deprecation` header.** Two consequences worth internalising. First, it
 means NIM *does* warn in-band, contradicting the 2026-08-29 conclusion above — the earlier pass had
@@ -261,6 +269,11 @@ What happens to the removed entry's identifiers depends on **whether the name st
   `tests/test_config.py` with a one-line reason, and give it a row in README's *Migrating Deleted
   Aliases* table.
 
+The same rule applies to `CodeAnalyzer`'s deprecated `model_id` argument.
+`global.anthropic.claude-sonnet-4-6` no longer redirects to the floating
+`sonnet` alias. Select `model_name="sonnet"` explicitly to use the current
+generation, or `model_name="sonnet5.5"` to pin the configured version.
+
 **"Migrate onto the live successor" needs a successor that is honestly the same thing.** Three
 version-neutral families were *deleted* across the two 2026-08-29 passes rather than migrated, and
 each reason generalizes:
@@ -329,8 +342,9 @@ misleading. Keep genuinely current alternative spellings in `aliases`.
 `tests/test_model_profile_drift.py`. Each LangChain partner package ships a `_MODEL_PROFILES`
 table in `<package>/data/_profiles.py`, read via the private
 `_get_default_model_profile(name)` — a plain dict lookup, so no credentials, no client, no
-network. 6 of 24 entries resolve one (Bedrock 2/7, Azure 2/2, DeepSeek 1/2,
-Google 1/2). Every NVIDIA, Z.AI, Moonshot, and Mantle entry lacks a profile.
+network. Profile coverage depends on the installed package versions; run that
+test module to check the current registry. Every NVIDIA, Z.AI, Moonshot, and
+Mantle entry currently lacks a profile.
 The other missing entries are Opus 5.5, Sonnet 5.5, Kimi K3 on Bedrock,
 Grok 4.7, GLM-5.3 on Bedrock (langchain-aws profiles only `zai.glm-5`), DeepSeek-V4-Flash, and Gemini 3.8 Flash. A missing profile means
 there is nothing to cross-check in the installed partner package.

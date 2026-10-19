@@ -2,6 +2,7 @@
 
 from collections import defaultdict
 from datetime import datetime
+from html import escape as escape_html
 from pathlib import Path, PurePath
 from typing import Any
 
@@ -10,7 +11,7 @@ from rich.markup import escape
 from rich.panel import Panel
 from rich.table import Table
 
-from codereview.models import CodeReviewReport, ReviewIssue
+from codereview.models import CodeReviewReport, ReviewIssue, ReviewRunReport
 from codereview.providers.base import ValidationResult
 from codereview.static_analysis import StaticAnalysisResult, StaticAnalyzer
 
@@ -589,6 +590,17 @@ class MarkdownExporter:
             self._summary(report),
             self._metrics(report),
         ]
+
+        if isinstance(report, ReviewRunReport) and not report.review_complete:
+            sections.append(
+                "## Incomplete review\n\n"
+                f"{report.failed_batches} batch(es) failed. The following files "
+                "have no review results:\n\n"
+                + "\n".join(
+                    f"- <code>{escape_html(path)}</code>"
+                    for path in report.failed_files
+                )
+            )
 
         metrics_dict = metrics_to_dict(report)
 

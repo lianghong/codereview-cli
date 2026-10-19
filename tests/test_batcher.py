@@ -118,6 +118,34 @@ def test_estimate_file_tokens_missing_file():
     )
 
 
+@pytest.mark.parametrize("estimator", ["tiktoken", "byte_fallback", "large_file"])
+def test_numbered_source_fits_batch_budget(tmp_path, monkeypatch, estimator):
+    """Budget the prompt's line numbers, which dominate files with short lines."""
+    from codereview import batcher
+    from codereview.providers.base import ModelProvider
+
+    if estimator != "tiktoken":
+        monkeypatch.setattr(batcher, "_get_encoder", lambda: None)
+    if estimator == "large_file":
+        monkeypatch.setattr(batcher, "_TIKTOKEN_MAX_BYTES", 1)
+    files = []
+    for n in range(10):
+        path = tmp_path / f"short_lines_{n}.py"
+        path.write_text("pass\n" * 3000)
+        files.append(path)
+    budget = 85000
+    batches = FileBatcher(token_budget=budget).create_batches(files)
+    assert sum(len(batch.files) for batch in batches) == len(files)
+    for batch in batches:
+        rendered = ModelProvider._prepare_batch_context(
+            object(),
+            batch.batch_number,
+            batch.total_batches,
+            {str(path): path.read_text() for path in batch.files},
+        )
+        assert batcher.count_tokens(rendered) <= budget
+
+
 def test_token_budget_none_gives_count_only_behavior():
     """token_budget=None gives identical behavior to count-only batching."""
     files = [Path(f"file{i}.py") for i in range(25)]

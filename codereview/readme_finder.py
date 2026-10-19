@@ -67,7 +67,7 @@ def find_readme(target_dir: Path) -> Path | None:
 
     Searches target directory first, then parent directories until:
     - README.md is found
-    - Git repository root is reached (.git directory found)
+    - Git repository root is reached (.git file or directory found)
     - Filesystem root is reached
 
     Args:
@@ -81,12 +81,14 @@ def find_readme(target_dir: Path) -> Path | None:
     while True:
         # Check for README.md in current directory
         readme = current / "README.md"
-        if readme.is_file():
+        # Automatic context must not follow a repository-controlled link to
+        # private files. Explicit --readme/custom paths remain user-selected.
+        if not readme.is_symlink() and readme.is_file():
             return readme
 
         # Check if we've reached git root (stop here)
         git_dir = current / ".git"
-        if git_dir.is_dir():
+        if git_dir.exists() or git_dir.is_symlink():
             return None
 
         # Check if we've reached filesystem root

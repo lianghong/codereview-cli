@@ -1669,10 +1669,9 @@ def test_config_scan_ignores_node_modules(tmp_path):
     permanently skip eslint/prettier on every real JS repo — trading the feature
     away for a threat that isn't there.
     """
-    for pruned in ("node_modules", ".git", ".venv"):
-        cfg = tmp_path / pruned / "dep" / "eslint.config.mjs"
-        cfg.parent.mkdir(parents=True)
-        cfg.write_text("export default [];\n")
+    cfg = tmp_path / "node_modules" / "dep" / "eslint.config.mjs"
+    cfg.parent.mkdir(parents=True)
+    cfg.write_text("export default [];\n")
 
     analyzer = StaticAnalyzer(tmp_path)
     assert analyzer._find_executable_config("eslint") is None
@@ -1756,3 +1755,69 @@ def test_risky_config_report_is_deterministic(tmp_path):
     analyzer = StaticAnalyzer(tmp_path)
     picks = {str(analyzer._find_executable_config("eslint")) for _ in range(5)}
     assert len(picks) == 1
+
+
+@pytest.mark.parametrize("directory", ["venv", ".venv", ".tox"])
+def test_prettier_checks_configs_in_every_invoked_directory(tmp_path, directory):
+    nested = tmp_path / directory
+    nested.mkdir()
+    (nested / "index.js").write_text("const x = 1;\n")
+    (nested / ".prettierrc.cjs").write_text("module.exports = {};\n")
+    with patch.object(StaticAnalyzer, "_check_available_tools", return_value=[]):
+        analyzer = StaticAnalyzer(tmp_path)
+    analyzer.available_tools = ["prettier"]
+    analyzer._tool_paths["prettier"] = "/usr/bin/prettier"
+    with patch("subprocess.run") as run:
+        result = analyzer.run_tool("prettier")
+    run.assert_not_called()
+    assert not result.passed
+    assert "--trust-repo-config" in " ".join(result.errors)
+
+
+@pytest.mark.parametrize(
+    "config_name,content",
+    [
+        (".clang-tidy", "ExtraArgs: ['-Xclang', '-load', '-Xclang', './plugin.so']\n"),
+        (
+            "compile_commands.json",
+            '[{"directory":".","file":"main.cpp","arguments":["clang++","-fplugin=./plugin.so","main.cpp"]}]',
+        ),
+        ("compile_flags.txt", "-Xclang\n-load\n-Xclang\n./plugin.so\n"),
+    ],
+)
+@pytest.mark.parametrize("directory", [".", "src/nested", "node_modules"])
+def test_clang_tidy_plugin_configuration_requires_trust(
+    tmp_path, config_name, content, directory
+):
+    nested = tmp_path / directory
+    nested.mkdir(parents=True, exist_ok=True)
+    (nested / "main.cpp").write_text("int main() { return 0; }\n")
+    (nested / config_name).write_text(content)
+    with patch.object(StaticAnalyzer, "_check_available_tools", return_value=[]):
+        analyzer = StaticAnalyzer(tmp_path)
+    analyzer.available_tools = ["clang-tidy"]
+    analyzer._tool_paths["clang-tidy"] = "/usr/bin/clang-tidy"
+    with patch("subprocess.run") as run:
+        result = analyzer.run_tool("clang-tidy")
+    run.assert_not_called()
+    assert not result.passed
+    assert "--trust-repo-config" in " ".join(result.errors)
+
+
+@pytest.mark.parametrize("trust_repo_config", [False, True])
+def test_clang_tidy_runs_for_safe_config_or_explicit_trust(tmp_path, trust_repo_config):
+    (tmp_path / "main.cpp").write_text("int main() { return 0; }\n")
+    (tmp_path / ".clang-tidy").write_text(
+        "ExtraArgs: ['-fplugin=./plugin.so']\n"
+        if trust_repo_config
+        else "Checks: 'modernize-*'\n"
+    )
+    with patch.object(StaticAnalyzer, "_check_available_tools", return_value=[]):
+        analyzer = StaticAnalyzer(tmp_path, trust_repo_config=trust_repo_config)
+    analyzer.available_tools = ["clang-tidy"]
+    analyzer._tool_paths["clang-tidy"] = "/usr/bin/clang-tidy"
+    with patch("subprocess.run") as run:
+        run.return_value = Mock(returncode=0, stdout="", stderr="")
+        result = analyzer.run_tool("clang-tidy")
+    run.assert_called_once()
+    assert result.passed

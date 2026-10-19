@@ -344,8 +344,8 @@ def test_real_registry_loads_without_any_conflict_warning(caplog):
 # Upstream-currency guards
 # ---------------------------------------------------------------------------
 
-# Upstream endpoints no registry entry may target: either retired/shut down by
-# their provider, or unreachable from the region/resource this project is
+# Upstream endpoints no registry entry may target: retired/shut down, carrying
+# an announced near-term sunset, or unreachable from the region/resource this is
 # configured for. Audited 2026-05-30 and re-audited 2026-07-25 by probing every
 # entry against its live provider endpoint. The entries that pointed here were
 # removed and their aliases redirected to live successors; this guard fails if
@@ -445,6 +445,11 @@ DEAD_UPSTREAM_FULL_IDS = {
     # NIM removal procedure now says to read the response HEADERS, not just the
     # status.
     "deepseek-ai/deepseek-v4-flash-0731",
+    # Re-probed 2026-10-19: HTTP 410, EOL 2026-10-15T08:00:00Z.
+    "moonshotai/kimi-k3",
+    # Still HTTP 200 on 2026-10-19, but removed ahead of the announced
+    # Deprecation: 2026-10-28T08:00:00Z, as with V4-Flash-0731 above.
+    "z-ai/glm-5.3",
 }
 
 # Azure entries are addressed by deployment_name, not full_id, and only work if
@@ -457,7 +462,7 @@ DEAD_AZURE_DEPLOYMENT_NAMES = {
 
 
 def test_no_model_points_at_dead_upstream_endpoint():
-    """No registry entry may target a known-retired upstream endpoint."""
+    """No entry may target a retired, sunset, or unavailable upstream endpoint."""
     loader = ConfigLoader()
     offenders = {
         model_id: config.full_id
@@ -698,8 +703,17 @@ RETIRED_ALIASES_DELETED_NOT_REDIRECTED = frozenset(
         # (K2.6 at the time, K3 since 2026-09-19).
         "kimi-k2.5-bedrock",
         "kimi25-bedrock",
-        # Kimi K2.6 on NVIDIA — the surviving NIM Kimi is K3, a different
-        # generation, so these do not follow it. Use `kimi-nvidia-3` or `kimi`.
+        # October 2026 NIM removals: K3 EOL October 15; GLM-5.3 sunsets
+        # October 28. Never silently switch a free re-host name to a billed
+        # direct/Bedrock model or to the distinct GLM Flash sibling.
+        "kimi-k3-nvidia",
+        "kimi-nvidia-3",
+        "kimi3-nvidia",
+        "glm-5.3-nvidia",
+        "glm53-nvidia",
+        "glm5.3-nvidia",
+        # Kimi K2.6 on NVIDIA — the then-surviving NIM Kimi was K3, a different
+        # generation, so these did not follow it. Use `kimi` on Moonshot.
         "kimi-k2.6-nvidia",
         "kimi-nvidia-26",
         "kimi26-nvidia",
@@ -1290,61 +1304,6 @@ def test_kimi_k3_moonshot_matches_the_official_model_page():
     assert config.inference_params.top_p is None
 
 
-def test_kimi_k3_nvidia_matches_the_model_card():
-    """Kimi K3 on NIM: card figures, and no thinking knob that does nothing.
-
-    The card's Output properties say *"Thinking is always enabled"* and expose
-    effort levels (low/high/max) rather than an on/off switch, so this entry
-    must not ship ``thinking`` / ``enable_thinking`` / ``clear_thinking``:
-    ``NVIDIAProvider._create_model`` would forward them as
-    ``chat_template_kwargs`` where they cannot change anything, which is the
-    ConfigLoader "key that looks like configuration but affects nothing"
-    hazard in CLAUDE.md.
-
-    ``reasoning_effort`` is likewise absent: ``InferenceParams`` only permits
-    ``none``/``low``/``medium``/``high`` while the card names ``max``, and NIM's
-    free tier rate-limited every attempt to verify the wire spelling — an
-    unverified knob is worse than the endpoint default.
-    """
-    loader = ConfigLoader()
-    provider, config = loader.resolve_model("kimi-k3-nvidia")
-    assert provider == "nvidia"
-    assert config.full_id == "moonshotai/kimi-k3"
-    # Input Context Length (ISL) from the card, exact rather than rounded.
-    assert config.context_window == 1048576
-    assert config.inference_params is not None
-    assert config.inference_params.temperature == 1.0
-    assert config.inference_params.top_p == 0.95
-    assert config.inference_params.max_output_tokens == 32768
-    for knob in ("thinking", "enable_thinking", "clear_thinking", "reasoning_effort"):
-        assert getattr(config.inference_params, knob) is None, (
-            f"kimi-k3-nvidia sets {knob}: K3's thinking is always on with no "
-            "off switch, so this forwards a parameter that changes nothing"
-        )
-
-
-def test_kimi_k3_nvidia_disables_tool_use():
-    """Kimi K3 must use prompt-based JSON parsing, via every advertised name.
-
-    Thinking is always enabled and cannot be disabled — the *constant* form of
-    the forced-``tool_choice``-while-thinking failure (like Fable 5 and Grok
-    4.3), not the intermittent form. Tool-use is unproven on this endpoint, so
-    the assume-prompt-parsing rule applies; both K2.6 entries (NIM and
-    Moonshot-direct) are prompt-path for the same reason. Flip to ``true`` only
-    with a live review run that shows ``parsing_error`` None while the model
-    actually reasoned.
-    """
-    loader = ConfigLoader()
-    for name in ("kimi-k3-nvidia", "kimi-nvidia-3", "kimi3-nvidia"):
-        provider, config = loader.resolve_model(name)
-        assert provider == "nvidia", f"{name} should route to the nvidia provider"
-        assert config.id == "kimi-k3-nvidia"
-        assert config.supports_tool_use is False, (
-            f"{name} (Kimi K3) must set supports_tool_use: false — thinking is "
-            "always on and forced tool_choice is unproven on this endpoint"
-        )
-
-
 def test_bare_kimi_names_belong_to_the_direct_provider_not_the_nim_rehost():
     """The reservation this test used to guard has now been claimed.
 
@@ -1418,41 +1377,24 @@ def test_retired_deepseek_v4_nvidia_names_stay_retired():
     )
 
 
-def test_nvidia_glm53_entries_name_the_live_endpoints():
-    """The two GLM-5.3 entries on NIM must target the ids NVIDIA serves.
+def test_nvidia_glm53_flash_names_the_live_endpoint():
+    """Flash remains live independently of the flagship's October sunset.
 
-    Both were verified live 2026-09-19 (HTTP 200, no ``deprecation`` header)
-    after three weeks in which NIM served no ``z-ai/*`` model at all. They are
-    provider-suffixed only: Z.AI direct is the canonical owner of the GLM family
-    and keeps the bare ``glm`` / ``glm-5.3`` / ``glm-flash`` spellings.
+    Verified 2026-10-19: listed, HTTP 200, no deprecation header. Keep the
+    free NVIDIA names separate from the billed canonical Z.AI aliases.
     """
     loader = ConfigLoader()
-
-    for name in ("glm-5.3-nvidia", "glm53-nvidia", "glm5.3-nvidia"):
-        provider, config = loader.resolve_model(name)
-        assert provider == "nvidia"
-        assert config.full_id == "z-ai/glm-5.3"
-
     for name in ("glm-5.3-flash-nvidia", "glm53-flash-nvidia", "glm-flash-nvidia"):
         provider, config = loader.resolve_model(name)
         assert provider == "nvidia"
         assert config.full_id == "z-ai/glm-5.3-flash"
-
-    # The bare names still belong to Z.AI direct — a re-host must never take
-    # them over, or `--model glm` would silently move to NIM's trial tier.
-    for name in ("glm", "glm-5.3", "glm-flash", "glm5.3-flash"):
-        provider, _ = loader.resolve_model(name)
-        assert provider == "zai", f"{name!r} resolved to {provider!r}, not zai"
-
-    # Both are always-reasoning models on the prompt-parsing path, and both pin
-    # reasoning_effort rather than inheriting the card's `max` default, which
-    # would eat the output budget the report needs (NIM bills reasoning inside
-    # completion_tokens).
-    for name in ("glm53-nvidia", "glm53-flash-nvidia"):
-        _, config = loader.resolve_model(name)
         assert config.supports_tool_use is False
         assert config.inference_params is not None
         assert config.inference_params.reasoning_effort == "high"
+
+    for name in ("glm", "glm-5.3", "glm-flash", "glm5.3-flash"):
+        provider, _ = loader.resolve_model(name)
+        assert provider == "zai", f"{name!r} resolved to {provider!r}, not zai"
 
 
 def test_no_gemini_entry_claims_the_live_tool_use_path():

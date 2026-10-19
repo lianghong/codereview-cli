@@ -346,7 +346,7 @@ class TestProgressCallbackHandlerConcurrency:
         The mock-based tests above pin the handler's own bookkeeping; this one
         pins the consequence that actually broke the terminal — a stale entry
         left on Console._live_stack, its Live still `_started`, and its refresh
-        thread never joined.
+        thread never terminates.
         """
         import io
         import threading
@@ -376,11 +376,16 @@ class TestProgressCallbackHandlerConcurrency:
             "the enclosing Progress's clear_live() will now pop the wrong entry"
         )
         assert handler._status is None
-        leaked = [
-            t.name
+        refresh_threads = [
+            t
             for t in threading.enumerate()
-            if t not in threads_before and t not in workers and t.is_alive()
+            if t not in threads_before and t not in workers
         ]
+        # Rich stop() signals an Event; it does not join its refresh thread.
+        # Allow that signalled thread to exit before diagnosing a leak.
+        for thread in refresh_threads:
+            thread.join(timeout=1)
+        leaked = [thread.name for thread in refresh_threads if thread.is_alive()]
         assert not leaked, f"leaked rich refresh thread(s): {leaked}"
 
 

@@ -19,6 +19,17 @@ base class owns `_use_prompt_parsing`, `_output_parser` (cached property), the d
 `_create_chain`, and the format-instructions injection — so every provider, including Google,
 honors the YAML flag automatically.
 
+Both paths also preserve the provider's finish metadata. Before accepting a
+parsed report, the shared retry loop rejects an output-limit response with
+`OutputTokenLimitError` and records reported usage. JSON repair can turn an
+unfinished response into an empty report, so parsing success cannot override
+the provider's truncation signal. These failures are terminal; adjust the
+output budget or review scope instead of retrying unchanged.
+
+`CodeReviewReport` is the model-output schema. The CLI aggregates it into a
+`ReviewRunReport`, adding `review_complete`, `failed_batches`, and `failed_files`
+from execution state. Providers do not generate those coverage fields.
+
 ## The rule for new models
 
 **When adding a reasoning/thinking model, assume the prompt-parsing path until a live run
@@ -42,7 +53,7 @@ prefill and a stop sequence, and both additions are hazards here:
    Reviewing Markdown or fenced docstrings would trigger it.
 2. Anthropic documents *"You can't pre-fill the assistant response while thinking is on"* —
    and every Bedrock entry we'd use it for has thinking on by default.
-3. It is `ChatBedrockConverse`-only, while 12 of our 17 prompt-path entries
+3. It is `ChatBedrockConverse`-only, while 10 of our 16 prompt-path entries
    are NVIDIA / Moonshot / Z.AI / Google / `bedrock_openai`, so adopting it
    means two structured-output
    paths to maintain.
@@ -64,15 +75,13 @@ which is consistent with all of the above.
 | Grok 4.7 (Converse) | on, low | `false` | prompt | See notes below |
 | GLM-5.3 (Bedrock Converse) | **always on, no off switch** | `false` | prompt | **Assumed, not A/B-verified** (added 2026-10-08). The model card lists *Structured outputs* as supported on `bedrock-runtime`, which is the Kimi K3 (Bedrock) trap: a capability line is not evidence a forced `tool_choice` survives thinking on a real batch. One review of `codereview/batcher.py` (~12K input) finished clean on the prompt path in 2m14s, using ~19K output tokens. Accepts `temperature` (1.0 here); no `reasoning_effort`, since the native provider has no verified GLM mapping |
 | GPT-5.4 / 5.4 Pro (**Azure**) | reasoning | `true` | tool-use | Azure deployment tolerates forced `tool_choice`; Bedrock's endpoint does not |
-| **Kimi K3 (NVIDIA)** | **always on, no off switch** | `false` | prompt | 2.8T/104B MoE, 1M context, native multimodal. Model card: *"Thinking is always enabled"* — so this is the **constant** forced-`tool_choice`-while-thinking profile (like Fable 5), not the intermittent one. Tool-use unverified: NIM's free tier 429'd every forced-`tool_choice` probe, so the assume-prompt-parsing rule decides it. K3 on Moonshot-direct is prompt-path too, and there it is **live-verified** rather than assumed — see the row below, which is the best available evidence for this one. Effort levels are low/high/max, but **no `reasoning_effort` is set** — `InferenceParams` only permits up to `high` and the wire spelling couldn't be verified |
 | **Kimi K3 (Moonshot)** | **always on (server-side), no off switch** | `false` | prompt | **Live-verified 2026-09-19, not assumed**: a forced `tool_choice='specified'` returns HTTP 400 *"tool_choice 'specified' is incompatible with thinking enabled"* — the vendor names the conflict in the error string. Byte-identical to the K2.6 failure this entry replaced, and K3 cannot turn thinking off, so it is **constant** rather than intermittent. 2.8T/104B MoE, 1M context; `reasoning_effort: high` is pinned down from the card's `max` default and forwarded by `moonshot.py` |
 | **Kimi K3 (Bedrock)** | **always on, no off switch** | `false` | prompt | **Live-verified by A/B 2026-09-23** — and a sharper trap than Astra's. A *trivial* forced-`tool_choice` Converse probe returns a real `toolUse` block (Moonshot-direct 400s the same shape), yet a real review of `codereview/batcher.py` (~12K input) with the flag `true` failed every attempt with `list_type` on `CodeReviewReport.issues` — the Opus 5 shape — and exited 1 after 7m27s. The prompt path finished the same file in 1m46s, clean, with no `<\|tool_call_begin\|>` leakage (the removed K2.5 Bedrock entry had it). No `reasoning_effort`: no verified native Kimi mapping |
 | DeepSeek V4 family (**DeepSeek direct**) | on by default (both V4-Pro and V4-Flash) | `true` | tool-use | Thinking is on by default and rejects a forced `tool_choice` (HTTP 400), but **the provider explicitly sends `thinking: disabled`** so tool calling works — tool-use is a property of us disabling thinking, not of the model. **`inference_params.thinking: enabled` flips this entry to the prompt path at runtime** (see `deepseek._create_model`) |
 | **DeepSeek-V4.1-Flash (NVIDIA)** | enabled by default; no toggle exposed on the Build page | `false` | prompt | Added 2026-09-25 under the assume-prompt-parsing rule. NVIDIA advertises function calling with reasoning, but no live review has proved forced `tool_choice`. Keep server-default reasoning and sampling; do not inherit V4-Flash-0731's `thinking: false` or GLM's string effort levels. The configured 262,144-token output budget follows NVIDIA's example, within the 1,048,576-token combined context. |
 | GLM-5.3 / GLM-5.3-Flash (Z.AI) | always on, low/high/max (default max) | `false` | prompt | Both are new always-thinking models. Z.AI advertises Function Calling and Structured Output, but no live review has proved forced tool use while thinking; the assume-prompt-parsing rule applies. GLM-5.2's endpoint also returned fenced JSON on this provider path, reinforcing the conservative default. |
 | Gemini 3.8 Flash (Google) | supported low/medium/high (`minimal` errors) | `false` | prompt | New thinking model: its card advertises Structured outputs and Function calling, but policy requires a live review proving forced tool use while thinking. No such run has been recorded yet, and since the Gemini 3.7 Flash entry was curated away on 2026-09-19 there is **no longer a live-proven counter-example anywhere in the registry** — 3.7 was it. Owns `gemini-flash` plus 3.7's `gemini-3-flash`/`gemini3-flash`/`g3flash`; sampling params omitted. |
-| **GLM-5.3 (NVIDIA)** | **always on, low/high/max (default max)** | `false` | prompt | 753B/40B MoE, 1M context, text-only, NVFP4 on GB300. Same always-thinking profile as its Z.AI-direct twin above, and the NIM card's *"tool calls are emitted in OpenAI-compatible form"* says nothing about a **forced** `tool_choice` surviving thinking — which is what `.with_structured_output` sets — so the assume-prompt-parsing rule decides it. Unlike Kimi K3 this row **does** set `reasoning_effort: high`: the card's default is `max`, NIM bills reasoning inside `completion_tokens`, and `InferenceParams` caps at `high` anyway. **Latency is the operational catch, not the path**: ~4m50s to return 8 tokens on a probe and 19m0s for a real one-file review, so a forced-tool-use A/B here is expensive to run |
-| **GLM-5.3-Flash (NVIDIA)** | **always on, low/high/max (default max)** | `false` | prompt | 320B/18B MoE, 1M context, natively multimodal (up to 8 images/request), native FP8 on 8×H100 and fast. Same reasoning as the row above, same `reasoning_effort: high`. This is the NIM default (`nvidia_default`) and the cheapest place to attempt the live forced-tool-use run that would flip either GLM-5.3 row to `true` |
+| **GLM-5.3-Flash (NVIDIA)** | **always on, low/high/max (default max)** | `false` | prompt | 320B/18B MoE, 1M context, natively multimodal (up to 8 images/request), native FP8 on 8×H100 and fast. Uses `reasoning_effort: high` to reserve output budget for the report. Forced tool use during reasoning remains unverified. This is the NIM default (`nvidia_default`); it remains live after the separate flagship was removed for its October 28 sunset |
 | Everything else (Gemini 3.1 Pro) | — | `true` (default) | tool-use | Standard `.with_structured_output()` |
 
 Grok 4.7 keeps reasoning enabled at low effort; forced tool use remains
@@ -96,7 +105,7 @@ now. If NVIDIA re-publishes any of them, restore the row rather than re-deriving
 
 *Curation* then took nine more — Opus 4.8, Sonnet 4.6, Kimi K2.5-on-Bedrock,
 Qwen3-Coder-Next-on-Bedrock, MiniMax M2.5-on-Bedrock, Kimi K2.6-on-NVIDIA, Gemini 3.6 Flash,
-GPT-5.5-on-Bedrock and Grok 4.3-on-Bedrock. **Every one of those endpoints is still live**, so
+GPT-5.5-on-Bedrock and Grok 4.3-on-Bedrock. **Every one of those endpoints was live at that audit**, so
 these rows are absent by choice, not by upstream removal, and re-adding an entry means restoring
 its row rather than re-deriving the path. Three observations remain relevant
 and are preserved below: Opus 4.8's literal-text reproduction informed
@@ -188,14 +197,22 @@ structured-output support. Keep `supports_tool_use: false`;
 describe it as observed behavior, and don't attach a vendor-rule explanation that the vendor
 contradicts.
 
+The October 19, 2026 audit removed two prompt-path rows: Kimi K3 on NIM
+(HTTP 410, EOL October 15) and GLM-5.3 on NIM (HTTP 200 with an October 28
+sunset header). Both used conservative prompt parsing; neither had a successful
+forced-tool-use review. GLM-5.3's measured 19-minute review remains evidence for
+the provider timeout in [providers.md](providers.md). Their remaining direct and
+Bedrock entries keep their own path choices. See the
+[NVIDIA audit](nvidia-model-review-2026-10.md).
+
 ## Per-model detail
 
-**DeepSeek-V4.1-Flash on NVIDIA, Kimi K3 on NVIDIA, Moonshot and Bedrock,
+**DeepSeek-V4.1-Flash on NVIDIA, Kimi K3 on Moonshot and Bedrock,
 Claude Opus 5.5, Sonnet 5.5 and
 Fable 5 on Bedrock, GPT-6.1 Sol and GPT-6 Astra, Sol and Luna on `bedrock-mantle` (Sol/Luna
 assumed), Grok 4.7 on native Bedrock, Gemini 3.8 Flash, and the GLM-5.3
-family on Z.AI, NVIDIA and Bedrock** use
-prompt-based structured output — 18 of the 24 entries. Some have observed tool-use
+family on Z.AI and Bedrock plus GLM-5.3-Flash on NVIDIA** use
+prompt-based structured output — 16 of the 22 entries. Some have observed tool-use
 failures; others use the conservative default pending live verification.
 
 - **Opus 5.5** carries the same model-card line as Opus 5 and nothing more — no A/B run with

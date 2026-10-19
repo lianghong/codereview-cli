@@ -897,6 +897,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     so a name can never be dropped by accident, only on purpose.
 
 ### Removed
+
+- **NVIDIA cleanup, 2026-10-19: 24 → 22 models.** Removed Kimi K3
+  (`moonshotai/kimi-k3`): absent from the live catalog and HTTP 410 with
+  EOL `2026-10-15T08:00:00Z`. Removed GLM-5.3 (`z-ai/glm-5.3`) ahead of
+  its announced sunset: still listed and HTTP 200, with
+  `deprecation: 2026-10-28T08:00:00Z`. NVIDIA's public notices confirm both.
+  Deleted `kimi-k3-nvidia`, `kimi-nvidia-3`, `kimi3-nvidia`,
+  `glm-5.3-nvidia`, `glm53-nvidia`, and `glm5.3-nvidia`; callers must select
+  billed `kimi` / `kimi-bedrock` or `glm` / `glm53-bedrock` explicitly.
+  DeepSeek-V4.1-Flash and GLM-5.3-Flash remain; Flash keeps `nvidia_default`.
+  Registry guards, examples, migration guidance, counts, and the structured
+  output matrix now match. These are hosted endpoint retirements, not removal
+  of model weights or self-hosting support. See the
+  [audit](docs/nvidia-model-review-2026-10.md) for sources and probe limits.
+
 - **Two entries removed as curation at explicit request — both believed live
   upstream, 20 → 18 models.** `glm5-bedrock` (GLM 5 on Bedrock) and
   `gemini-3.7-flash`. Unlike the NVIDIA pass below, **neither endpoint was probed
@@ -1221,6 +1236,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   long-context tier note quoted a cached rate alongside the input/output pair.
 
 ### Fixed
+
+- Static analysis checks executable configurations inside Python environment
+  directories. Clang-tidy compiler arguments and plugin settings now require
+  `--trust-repo-config`; ordinary check settings remain available by default.
+- Automatic README discovery skips symlinks and stops at Git worktree
+  boundaries. Explicit `--readme` paths remain supported.
+- NVIDIA validates the effective endpoint, including `NVIDIA_BASE_URL`, before
+  creating its client and uses that same endpoint for credential validation.
+- Every provider rejects output-limit responses, including partial JSON that
+  can be repaired into an empty report, and accounts for reported token usage.
+- Batch token estimates include the line numbers, paths and separators sent
+  to providers.
+- Partial batch failures export incomplete reports with failed file paths and
+  successful coverage counts, then exit 1 even with `--quiet` or `--fail-on`.
+- Directory pruning preserves files left eligible by nonrecursive or
+  path-constrained exclusions.
+- The retired Sonnet 4.6 wire ID no longer silently redirects to Sonnet 5.5.
 
 - **Close static-analysis configuration bypasses.** Detect symlinked and
   parent-directory configs before tools start, and decode JSON/JSON5/YAML/TOML/INI

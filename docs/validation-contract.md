@@ -24,6 +24,18 @@ providers without one (DeepSeek, Moonshot, Z.AI, OpenAI-on-Bedrock) validate key
 HTTPS only and defer auth verification to the first call. When adding a provider with a
 connection test, follow this same mapping.
 
+URL validation runs before client construction, even when `--validate` is
+never called. For NVIDIA, resolve explicit `base_url`, then `NVIDIA_BASE_URL`,
+then the cloud default; enforce HTTPS on that effective value. The client
+and the `/models` connection test use the same URL. Skipping the connection
+test does not bypass HTTPS enforcement.
+
+NVIDIA's `/models` request checks reachability and authentication. It does not
+check whether the configured model appears in the response or can generate
+a completion. Neither successful validation nor an SDK catalog warning
+establishes hosted-model availability; retirement checks require separate
+catalog, completion, and response-header evidence.
+
 ## Placeholder keys
 
 **The placeholder set must include the exact strings the README tells users to export** (e.g.

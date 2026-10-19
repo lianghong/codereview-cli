@@ -37,6 +37,7 @@ These tools can load code the *reviewed repository* provides:
 | **ESLint** | `eslint.config.{js,mjs,cjs,ts}`, `.eslintrc.{js,cjs,mjs}` | the config file *is* JavaScript |
 | **ESLint / Prettier** | `.eslintrc.json`/`.eslintrc.yaml`, `.prettierrc*`, `package.json` with a `plugins` key | loads the named plugin module |
 | **golangci-lint** | `.golangci.*` with custom linters | Go plugin |
+| **clang-tidy** | compiler arguments or plugin settings | native plugin |
 
 Reviewing an untrusted repository would otherwise run that code with your
 privileges. By default the affected tool is **skipped** with a visible reason;
@@ -49,13 +50,22 @@ uv run codereview ./src --static-analysis --trust-repo-config
 Data configs are decoded as JSON, JSON5, YAML, TOML, or INI before checking
 code-loading keys. An ordinary `pyproject.toml` with a `[tool.mypy]` section
 but no `plugins` entry still runs mypy. Checks include parent directories and,
-for ESLint/Prettier, descendants, matching their upward configuration discovery.
+for ESLint/Prettier/clang-tidy, descendants, matching their upward configuration
+discovery.
 Symlinked configs, unreadable or invalid configs, and configs over 512 KB are
 treated as risky. Shared files are scoped to the relevant tool's section.
 ESLint's `extends`/`parser` declarations and Prettier shared-config module
 references also require `--trust-repo-config`.
 Mypy uses the nearest applicable config and stops at `.git`/`.hg`; configs
 shadowed by a nearer one or above that boundary do not trigger a skip.
+
+Configuration discovery covers Python environment directories such as `venv`,
+`.venv`, and `.tox` because source files there can reach these tools.
+Only directories the invoked tool ignores may be pruned from this check.
+Clang-tidy settings limited to checks and check options still run by default.
+`.clang-tidy` keys `ExtraArgs`, `ExtraArgsBefore`, and `Plugins` require trust.
+So do `compile_commands.json` and `compile_flags.txt`: compiler arguments can
+load plugins, including through response files.
 
 Ruff runs with `--no-fix --no-fix-only`, so repository settings requesting
 automatic fixes cannot modify source files during a review.

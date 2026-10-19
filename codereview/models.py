@@ -602,3 +602,11 @@ class CodeReviewReport(BaseModel):
         description="Constructive suggestions for code improvement and enhancement "
         "(e.g., better patterns, cleaner abstractions, improved testability)",
     )
+
+
+class ReviewRunReport(CodeReviewReport):
+    """CLI report with coverage recorded by the runner, outside the LLM schema."""
+
+    review_complete: bool = True
+    failed_batches: int = 0
+    failed_files: list[str] = Field(default_factory=list)
